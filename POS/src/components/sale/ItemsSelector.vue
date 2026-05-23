@@ -791,7 +791,7 @@ const {
 })
 
 // Local state
-const viewMode = ref("grid")
+const viewMode = settingsStore.default_card_view ? ref("grid") : ref("list") // 'grid' or 'list'
 const itemThreshold = ref(50) // Threshold for auto-switching to list view
 const userManuallySetView = ref(false) // Track if user manually changed view mode
 const lastAutoSwitchCount = ref(0)
