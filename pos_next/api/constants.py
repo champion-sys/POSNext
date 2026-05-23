@@ -40,6 +40,8 @@ POS_SETTINGS_FIELDS = [
 	"enable_session_lock",
 	"session_lock_timeout",
 	"show_variants_as_items",
+	"custom_show_offers",
+	"custom_show_coupon",
 ]
 
 # Default POS Settings values
@@ -70,4 +72,6 @@ DEFAULT_POS_SETTINGS = {
 	"enable_session_lock": 0,
 	"session_lock_timeout": 5,
 	"show_variants_as_items": 0,
+	"custom_show_offers": 0,
+	"custom_show_coupon": 0,
 }

@@ -297,10 +297,11 @@
 						</div>
 
 						<!-- Promotional offers & coupons (same entry points as cart — usable while paying) -->
-						<div class="px-3 py-2 border-b border-gray-100 bg-gray-50/80 shrink-0">
+						<div v-if="settingsStore.showOffers || settingsStore.showCoupon" class="px-3 py-2 border-b border-gray-100 bg-gray-50/80 shrink-0">
 							<div class="flex gap-2">
 								<button
 									type="button"
+									v-if="settingsStore.showOffers"
 									@click="emit('show-offers')"
 									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 hover:border-green-400 hover:from-green-100 hover:to-emerald-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('View all available offers')"
@@ -328,6 +329,7 @@
 								</button>
 								<button
 									type="button"
+									v-if="settingsStore.showCoupon"
 									@click="emit('show-coupon')"
 									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 hover:border-purple-400 hover:from-purple-100 hover:to-violet-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('Apply coupon or gift card')"
