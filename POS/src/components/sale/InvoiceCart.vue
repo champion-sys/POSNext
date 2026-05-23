@@ -1443,6 +1443,9 @@ const orderTypeOptions = ref([
 
 const orderTypesResource = createResource({
 	url: "pos_next.api.pos_order_type.get_order_types",
+	makeParams() {
+		return { pos_profile: props.posProfile };
+	},
 	auto: false,
 	onSuccess(data) {
 		const rows = data?.message || data || [];
