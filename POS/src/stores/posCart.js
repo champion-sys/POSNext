@@ -333,7 +333,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				rate: item.rate,
 				uom: item.uom,
 				warehouse: item.warehouse,
-				remarks: item.remarks,
+				custom_remarks: item.remarks || "",
 				conversion_factor: item.conversion_factor || 1,
 				price_list_rate: item.price_list_rate || item.rate,
 				discount_percentage: item.discount_percentage || 0,
