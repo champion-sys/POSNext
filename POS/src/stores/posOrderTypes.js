@@ -9,9 +9,44 @@ export const usePOSOrderTypesStore = defineStore("posOrderTypes", () => {
 	const isLoading = ref(false)
 	const isLoaded = ref(false)
 	const loadedForProfile = ref(null)
-
 	// Dedup concurrent fetches
 	let fetchPromise = null
+
+	// Selected value (the currently chosen order type)
+	const selectedOrderType = ref(null)
+
+	function setSelectedOrderType(value) {
+		selectedOrderType.value = value || null
+	}
+
+	/**
+	 * If no order type is selected yet, automatically pick the one marked as
+	 * default (from the POS Profile's allowed_pos_order_type "default" flag).
+	 * Falls back to the first available option.
+	 */
+	function ensureDefaultSelected() {
+		if (selectedOrderType.value) return
+
+		const defaultOpt = orderTypeOptions.value.find((o) => o.default)
+		if (defaultOpt) {
+			selectedOrderType.value = defaultOpt.value
+			return
+		}
+
+		if (orderTypeOptions.value.length > 0) {
+			selectedOrderType.value = orderTypeOptions.value[0].value
+		}
+	}
+
+	/**
+	 * Called after options are loaded to auto-pick a default only if
+	 * nothing has been chosen yet.
+	 */
+	function autoPickDefaultAfterLoad() {
+		if (!selectedOrderType.value) {
+			ensureDefaultSelected()
+		}
+	}
 
 	/**
 	 * Load order type options for the given POS Profile.
@@ -57,11 +92,17 @@ export const usePOSOrderTypesStore = defineStore("posOrderTypes", () => {
 							.map((r) => ({
 								label: String(r.label),
 								value: String(r.value),
+								default: Number(r.default || 0),
+								has_tables: Number(r.has_tables || 0),
 							}))
 					: []
 
 				loadedForProfile.value = posProfile
 				isLoaded.value = true
+
+				// Automatically select the default (if any) from the freshly loaded data
+				autoPickDefaultAfterLoad()
+
 				return true
 			} catch (error) {
 				console.error("Failed to load POS order types:", error)
@@ -79,6 +120,7 @@ export const usePOSOrderTypesStore = defineStore("posOrderTypes", () => {
 
 	function resetOrderTypes() {
 		orderTypeOptions.value = []
+		selectedOrderType.value = null
 		isLoaded.value = false
 		loadedForProfile.value = null
 		isLoading.value = false
@@ -93,10 +135,14 @@ export const usePOSOrderTypesStore = defineStore("posOrderTypes", () => {
 		isLoading,
 		isLoaded,
 		loadedForProfile,
+		selectedOrderType,
 
 		// Actions
 		loadOrderTypes,
 		resetOrderTypes,
+		setSelectedOrderType,
+		ensureDefaultSelected,
+		autoPickDefaultAfterLoad,
 
 		// Computed
 		hasOrderTypes,

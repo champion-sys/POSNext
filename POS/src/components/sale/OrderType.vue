@@ -78,6 +78,31 @@ const normalizedOptions = computed(() => {
 			: props.options || []
 	return source
 		.filter((o) => o && (o.value || o.value === "") && o.label)
-		.map((o) => ({ label: String(o.label), value: String(o.value) }))
+		.map((o) => ({
+			label: String(o.label),
+			value: String(o.value),
+			default: Number(o.default || 0),
+		}))
 })
+
+// Use the shared store to manage the selected order type (especially the
+// default that comes from the API after a page reload).
+// When options arrive in the store, ask it to pick a default if needed,
+// then sync that choice up to the v-model (parent / cartStore) if nothing
+// is selected yet.
+watch(
+	normalizedOptions,
+	() => {
+		if (props.modelValue) return
+
+		// Let the store decide (it already calls autoPick on load success)
+		orderTypesStore.ensureDefaultSelected()
+
+		const storeSelected = orderTypesStore.selectedOrderType.value
+		if (storeSelected) {
+			emit("update:modelValue", storeSelected)
+		}
+	},
+	{ immediate: true },
+)
 </script>
