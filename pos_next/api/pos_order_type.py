@@ -66,7 +66,7 @@ def get_order_types(pos_profile: str | None = None):
 				"parent": pos_profile,
 				"parentfield": "allowed_pos_order_type",
 			},
-			fields=["pos_order_type", "is_default"],
+			fields=["pos_order_type", "default"],
 			order_by="idx asc",
 		)
 
@@ -84,7 +84,7 @@ def get_order_types(pos_profile: str | None = None):
 			"label": r.get("type_name"),
 			"value": r.get("type_name"),
 			"has_tables": int(r.get("has_tables") or 0),
-			"is_default": int(next((ar.get("is_default") for ar in (allowed_rows or []) if ar.get("pos_order_type") == r.get("type_name")), 0)),
+			"default": int(next((a.get("default") for a in (allowed_rows or []) if a.get("pos_order_type") == r.get("type_name")), 0)),
 		}
 		for r in rows
 		if r and r.get("type_name")

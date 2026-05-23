@@ -1449,6 +1449,7 @@ const orderTypesResource = createResource({
 	auto: false,
 	onSuccess(data) {
 		const rows = data?.message || data || [];
+		console.log("Fetched order types:", rows);
 		if (!Array.isArray(rows) || rows.length === 0) return;
 		orderTypeOptions.value = rows
 			.filter((r) => r && r.value && r.label)
