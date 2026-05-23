@@ -788,11 +788,16 @@
 							<!-- Header: Item Name, Badges & Delete -->
 							<div class="flex items-start justify-between gap-0.5 mb-0.5">
 								<div class="flex items-center gap-1.5 flex-1 min-w-0">
-									<h4
+									<div class="flex gap-1.5 items-center min-w-0">
+										<h4
 										class="text-xs sm:text-sm font-extrabold text-gray-900 truncate leading-tight"
-									>
-										{{ item.item_name }}
-									</h4>
+										>
+											{{ item.item_name }}
+										</h4>
+										<p v-if="item.item_code" class="text-[9px] sm:text-[9px] font-bold text-gray-600 truncate leading-tight">
+											({{ item.item_code }})
+										</p>
+									</div>
 									<!-- Free Item Badge -->
 									<span
 										v-if="item.free_qty && item.free_qty > 0"

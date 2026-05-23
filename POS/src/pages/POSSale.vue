@@ -216,7 +216,7 @@
 			<div
 				v-if="shiftStore.hasOpenShift"
 				class="flex-1 flex overflow-hidden relative"
-				style="max-height: calc(100vh - 60px - var(--header-height, 60px))"
+				style="max-height: calc(100vh - var(--header-height, 60px))"
 			>
 				<!-- Icon-Only Management Slider - Always Visible -->
 				<ManagementSlider @menu-clicked="handleManagementMenuClick" />
@@ -441,7 +441,7 @@
 			<div
 				v-else
 				class="flex-1 flex items-center justify-center bg-gray-50"
-				style="max-height: calc(100vh - 60px - var(--header-height, 60px))"
+				style="max-height: calc(100vh - var(--header-height, 60px))"
 			>
 				<div class="text-center">
 					<div
@@ -977,7 +977,7 @@
 			/>
 
 			<!-- Footer -->
-			<POSFooter />
+			<POSFooter class="pos-footer" />
 		</template>
 
 		<!-- Session Lock Screen (outside v-if/v-else so it renders even during loading) -->
@@ -2995,3 +2995,9 @@ function handleTabSwitch(tab) {
 	});
 }
 </script>
+
+<style>
+.pos-footer{
+	display: none !important;
+}
+</style>

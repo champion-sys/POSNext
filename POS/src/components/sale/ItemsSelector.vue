@@ -379,6 +379,9 @@
 							<h3 class="text-[10px] sm:text-xs font-semibold text-gray-900 truncate mb-0.5 leading-tight">
 								{{ item.item_name }}
 							</h3>
+							<p v-if="item.item_code" class="text-[8px] sm:text-[9px] font-bold text-gray-700 truncate leading-tight my-1">
+								{{ item.item_code }}
+							</p>
 							<p v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
 								{{ Object.values(item.attributes).join(' / ') }}
 							</p>
