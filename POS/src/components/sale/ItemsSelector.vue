@@ -926,7 +926,7 @@ const activeFilterValue = computed(() => (
 const activeFilterOptions = computed(() => (
 	isBrandSortActive.value
 		? (brands.value || []).map((b) => ({ value: b.brand, label: b.brand }))
-		: (itemGroups.value || []).map((g) => ({ value: g.item_group, label: g.item_group }))
+		: (itemGroups.value || []).map((g) => ({ value: g.item_group, label: g.item_group_name || g.item_group }))
 ))
 const selectedFilterLabel = computed(() => selectedBrand.value || selectedItemGroup.value || null)
 

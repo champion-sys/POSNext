@@ -1805,7 +1805,7 @@ def get_item_groups(pos_profile):
 		if not configured_groups:
 			result = (
 				frappe.qb.from_(ItemGroup)
-				.select(ItemGroup.name.as_("item_group"))
+				.select(ItemGroup.name.as_("item_group"), ItemGroup.item_group_name)
 				.where(ItemGroup.is_group == 0)
 				.orderby(ItemGroup.name)
 				.limit(50)
