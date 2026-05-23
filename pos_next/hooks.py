@@ -28,6 +28,8 @@ app_license = "agpl-3.0"
 
 # Get unique build version for cache busting
 _asset_version = get_build_version()
+app_include_js = f"/assets/pos_next/js/grid_row_rtl.js?v={_asset_version}"
+
 
 # include js, css files in header of desk.html
 # app_include_css = f"/assets/pos_next/css/pos_next.css?v={_asset_version}"
