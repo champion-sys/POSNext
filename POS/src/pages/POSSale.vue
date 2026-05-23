@@ -371,6 +371,8 @@
 								:currency="shiftStore.profileCurrency"
 								:applied-offers="cartStore.appliedOffers"
 								:warehouses="profileWarehouses"
+								:show-pos-order-type="Boolean(shiftStore.currentProfile?.show_pos_order_type)"
+								:default-pos-order-type="shiftStore.currentProfile?.pos_default_order_type"
 								@update-quantity="cartStore.updateItemQuantity"
 								@remove-item="
 									(itemCode, uom) => cartStore.removeItem(itemCode, uom)
@@ -1441,6 +1443,11 @@ onMounted(async () => {
 		cartStore.posProfile = shiftStore.profileName;
 		cartStore.posOpeningShift = shiftStore.currentShift?.name;
 
+		cartStore.initializePosOrderType({
+			enabled: Boolean(shiftStore.currentProfile?.show_pos_order_type),
+			defaultType: shiftStore.currentProfile?.pos_default_order_type || null,
+		});
+
 		// Set warehouse context early (synchronous, no API call)
 		if (shiftStore.profileWarehouse) {
 			stockStore.setWarehouse(shiftStore.profileWarehouse);
@@ -1777,6 +1784,11 @@ async function handleShiftOpened() {
 
 	cartStore.posProfile = shiftStore.profileName;
 	cartStore.posOpeningShift = shiftStore.currentShift?.name;
+
+	cartStore.initializePosOrderType({
+		enabled: Boolean(shiftStore.currentProfile?.show_pos_order_type),
+		defaultType: shiftStore.currentProfile?.pos_default_order_type || null,
+	});
 
 	// Set warehouse context early (synchronous, no API call)
 	if (shiftStore.profileWarehouse) {

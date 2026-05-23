@@ -31,6 +31,7 @@ export function useInvoice() {
 	const couponCode = ref(null)
 	const taxRules = ref([]) // Tax rules from POS Profile
 	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
+	const posOrderType = ref(null) // Optional Sales Invoice order type (from POS Profile)
 
 	// Submission state - prevents duplicate submissions
 	const isSubmitting = ref(false)
@@ -1058,6 +1059,10 @@ export function useInvoice() {
 					update_stock: 1, // Critical: Ensures stock is updated
 				}
 
+				if (targetDoctype === "Sales Invoice" && posOrderType.value) {
+					invoiceData.pos_order_type = posOrderType.value
+				}
+
 				if (targetDoctype === "Sales Order" && deliveryDate) {
 					invoiceData.delivery_date = deliveryDate
 				}
@@ -1316,6 +1321,14 @@ export function useInvoice() {
 		rebuildIncrementalCache()
 	}
 
+	function setPosOrderType(orderType) {
+		posOrderType.value = orderType || null
+	}
+
+	function resetPosOrderType(defaultOrderType = null) {
+		posOrderType.value = defaultOrderType || null
+	}
+
 	return {
 		// State
 		invoiceItems,
@@ -1329,6 +1342,7 @@ export function useInvoice() {
 		couponCode,
 		taxRules,
 		taxInclusive,
+	posOrderType,
 		isSubmitting,
 
 		// Computed
@@ -1365,6 +1379,8 @@ export function useInvoice() {
 		rebuildIncrementalCache,
 		formatItemsForSubmission,
 		resolveUomPricing,
+		setPosOrderType,
+		resetPosOrderType,
 
 		// Resources
 		updateInvoiceResource,

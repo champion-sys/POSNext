@@ -89,6 +89,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		grandTotal,
 		posProfile,
 		posOpeningShift,
+		posOrderType,
 		payments,
 		salesTeam,
 		additionalDiscount,
@@ -103,6 +104,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		loadTaxRules,
 		setTaxInclusive,
 		setInvoiceRemarks,
+		setPosOrderType,
+		resetPosOrderType,
 		setDefaultCustomer,
 		applyDiscount,
 		removeDiscount,
@@ -125,6 +128,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const selectionMode = ref("uom") // 'uom' or 'variant'
 	const currentDraftId = ref(null)
 	const targetDoctype = ref("Sales Invoice")
+
+	// POS Order Type (optional, from POS Profile)
+	const isPosOrderTypeEnabled = ref(false)
+	const defaultPosOrderType = ref(null)
 
 	// Offer processing state management
 	const offerProcessingState = ref({
@@ -250,6 +257,11 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		currentDraftId.value = null
 		targetDoctype.value = "Sales Invoice"
 
+		// Reset order type selection back to default for the active profile
+		resetPosOrderType(
+			isPosOrderTypeEnabled.value ? defaultPosOrderType.value : null,
+		)
+
 		// Reset offer processing state
 		offerProcessingState.value.lastCartHash = ""
 		offerProcessingState.value.error = null
@@ -261,6 +273,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	function setTargetDoctype(doctype) {
 		targetDoctype.value = doctype
+	}
+
+	function initializePosOrderType({ enabled = false, defaultType = null } = {}) {
+		isPosOrderTypeEnabled.value = Boolean(enabled)
+		defaultPosOrderType.value = defaultType || null
+		resetPosOrderType(isPosOrderTypeEnabled.value ? defaultPosOrderType.value : null)
 	}
 
 	const deliveryDate = ref("")
@@ -1853,6 +1871,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		grandTotal,
 		posProfile,
 		posOpeningShift,
+		posOrderType,
 		payments,
 		salesTeam,
 		additionalDiscount,
@@ -1885,6 +1904,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		loadTaxRules,
 		setTaxInclusive,
 		setInvoiceRemarks,
+		setPosOrderType,
+		resetPosOrderType,
 		submitInvoice,
 		applyDiscountToCart,
 		removeDiscountFromCart,
@@ -1903,7 +1924,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 		// Sales Order feature
 		targetDoctype,
+		isPosOrderTypeEnabled,
+		defaultPosOrderType,
 		setTargetDoctype,
+		initializePosOrderType,
 		createSalesOrder,
 		deliveryDate,
 		setDeliveryDate,

@@ -161,7 +161,19 @@
 							</div>
 						</div>
 					</div>
+					<!-- Order Type Toggle (from POS Profile) -->
+					<div v-if="showPosOrderType" class="mt-2">
+						<OrderType
+							data-testid="pos-order-type"
+							:label="__('Order Type')"
+							:options="orderTypeOptions"
+							v-model="orderTypeModel"
+						/>
+					</div>
+
 				</div>
+
+
 				<div v-else>
 					<div class="flex gap-1.5">
 						<!-- Search Input -->
@@ -266,6 +278,16 @@
 							</button>
 						</div>
 					</div>
+				</div>
+
+				<!-- Order Type Toggle (from POS Profile) -->
+				<div v-if="showPosOrderType" class="mt-2">
+					<OrderType
+						data-testid="pos-order-type-no-customer"
+						:label="__('Order Type')"
+						:options="orderTypeOptions"
+						v-model="orderTypeModel"
+					/>
 				</div>
 
 				<!-- Customer Dropdown -->
@@ -1276,6 +1298,7 @@ const log = logger.create("InvoiceCart");
 import { createResource } from "frappe-ui";
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue";
 import EditItemDialog from "./EditItemDialog.vue";
+import OrderType from "./OrderType.vue";
 
 /**
  * ============================================================================
@@ -1342,6 +1365,14 @@ const props = defineProps({
 		type: Array,
 		default: () => [],
 	},
+	showPosOrderType: {
+		type: Boolean,
+		default: false,
+	},
+	defaultPosOrderType: {
+		type: String,
+		default: "Dine In",
+	},
 });
 
 /**
@@ -1403,6 +1434,31 @@ const selectedItem = ref(null); // Item being edited
 
 // UOM dropdown state - tracks which item's UOM dropdown is open (by item_code)
 const openUomDropdown = ref(null);
+
+// POS Order Type (from POS Profile)
+const orderTypeOptions = [
+	{ label: "Dine In", value: "Dine In" },
+	{ label: "Takeaway", value: "Takeaway" },
+];
+
+const orderTypeModel = computed({
+	get: () => cartStore.posOrderType,
+	set: (val) => cartStore.setPosOrderType(val),
+});
+
+watch(
+	() => [props.showPosOrderType, props.defaultPosOrderType, cartStore.posProfile],
+	([show, def]) => {
+		if (!show) {
+			return;
+		}
+		// Initialize only when empty to avoid overriding the user selection
+		if (!orderTypeModel.value) {
+			orderTypeModel.value = def || "Dine In";
+		}
+	},
+	{ immediate: true }
+);
 
 // Cart sort dropdown container (template ref for outside-click detection)
 const cartSortContainer = ref(null);

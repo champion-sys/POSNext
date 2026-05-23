@@ -6,22 +6,32 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "type_name"
+  "type_name",
+  "has_tables"
  ],
  "fields": [
   {
+   "allow_in_quick_entry": 1,
    "fieldname": "type_name",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Type Name",
    "reqd": 1,
    "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "has_tables",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Has Tables"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-24 01:04:24.899994",
+ "modified": "2026-05-24 01:29:01.459622",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Order Type",
@@ -39,8 +49,39 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Nexus POS Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "POS User",
+   "share": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "POSNext Cashier",
+   "share": 1
   }
  ],
+ "quick_entry": 1,
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
