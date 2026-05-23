@@ -447,6 +447,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		displayItemCode,
 		showCustomerBalance,
 		showOffers,
+		hideQuantity,
 		showCoupon,
 		hideExpectedAmount,
 		displayDiscountPercentage,
