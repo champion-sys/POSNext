@@ -219,7 +219,10 @@
 				style="max-height: calc(100vh - var(--header-height, 60px))"
 			>
 				<!-- Icon-Only Management Slider - Always Visible -->
-				<ManagementSlider @menu-clicked="handleManagementMenuClick" />
+				<ManagementSlider
+					:show-settings="canAccessPOSSettings"
+					@menu-clicked="handleManagementMenuClick"
+				/>
 
 				<!-- Main Content Container -->
 				<div
@@ -1213,6 +1216,7 @@ const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
 
 /** Desk link only for users with the Nexus POS Manager role (from bootstrap API). */
 const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_to_desk));
+const canAccessPOSSettings = computed(() => Boolean(bootstrapStore.data?.is_system_manager));
 
 // Resize state
 let resizeState = null;
@@ -2837,6 +2841,7 @@ function handleManagementMenuClick(menuItem) {
 	if (menuItem === "promotions") {
 		showPromotionManagement.value = true;
 	} else if (menuItem === "settings") {
+		if (!canAccessPOSSettings.value) return;
 		showPOSSettings.value = true;
 	} else if (menuItem === "invoices") {
 		// Load invoice history data before showing

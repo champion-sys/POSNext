@@ -55,11 +55,12 @@
 		<!-- Spacer to push settings to bottom -->
 		<div class="flex-1"></div>
 
-		<!-- Divider -->
-		<div class="w-8 border-t border-gray-200 my-2"></div>
+		<template v-if="showSettings">
+			<!-- Divider -->
+			<div class="w-8 border-t border-gray-200 my-2"></div>
 
-		<!-- Settings -->
-		<button
+			<!-- Settings -->
+			<button
 			@click="handleMenuClick('settings')"
 			:class="[
 				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
@@ -73,7 +74,8 @@
 			<div class="absolute start-full ms-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
 				{{ __('Settings') }}
 			</div>
-		</button>
+			</button>
+		</template>
 	</div>
 </template>
 
@@ -81,11 +83,20 @@
 import { FeatherIcon } from "frappe-ui"
 import { ref } from "vue"
 
+const props = defineProps({
+	showSettings: {
+		type: Boolean,
+		default: false,
+	},
+})
+
 const emit = defineEmits(["menu-clicked"])
 
 const activeMenu = ref("")
 
 function handleMenuClick(menuItem) {
+	if (menuItem === "settings" && !props.showSettings) return
+
 	activeMenu.value = menuItem
 	emit("menu-clicked", menuItem)
 }
