@@ -7,7 +7,8 @@
  "engine": "InnoDB",
  "field_order": [
   "type_name",
-  "has_tables"
+  "has_tables",
+  "disabled"
  ],
  "fields": [
   {
@@ -26,12 +27,20 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Has Tables"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Disabled"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-24 01:29:01.459622",
+ "modified": "2026-05-24 01:59:30.202835",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Order Type",

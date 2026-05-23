@@ -1436,15 +1436,40 @@ const selectedItem = ref(null); // Item being edited
 const openUomDropdown = ref(null);
 
 // POS Order Type (from POS Profile)
-const orderTypeOptions = [
+const orderTypeOptions = ref([
 	{ label: "Dine In", value: "Dine In" },
 	{ label: "Takeaway", value: "Takeaway" },
-];
+]);
+
+const orderTypesResource = createResource({
+	url: "pos_next.api.pos_order_type.get_order_types",
+	auto: false,
+	onSuccess(data) {
+		const rows = data?.message || data || [];
+		if (!Array.isArray(rows) || rows.length === 0) return;
+		orderTypeOptions.value = rows
+			.filter((r) => r && r.value && r.label)
+			.map((r) => ({
+				label: String(r.label),
+				value: String(r.value),
+			}));
+	},
+});
 
 const orderTypeModel = computed({
 	get: () => cartStore.posOrderType,
 	set: (val) => cartStore.setPosOrderType(val),
 });
+
+watch(
+	() => [props.showPosOrderType, cartStore.posProfile],
+	([show]) => {
+		if (!show) return;
+		if (isOffline()) return;
+		orderTypesResource.reload();
+	},
+	{ immediate: true },
+);
 
 watch(
 	() => [props.showPosOrderType, props.defaultPosOrderType, cartStore.posProfile],
