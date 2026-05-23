@@ -1436,10 +1436,7 @@ const selectedItem = ref(null); // Item being edited
 const openUomDropdown = ref(null);
 
 // POS Order Type (from POS Profile)
-const orderTypeOptions = ref([
-	{ label: "Dine In", value: "Dine In" },
-	{ label: "Takeaway", value: "Takeaway" },
-]);
+const orderTypeOptions = ref([]);
 
 const orderTypesResource = createResource({
 	url: "pos_next.api.pos_order_type.get_order_types",
@@ -1449,7 +1446,6 @@ const orderTypesResource = createResource({
 	auto: false,
 	onSuccess(data) {
 		const rows = data?.message || data || [];
-		console.log("Fetched order types:", rows);
 		if (!Array.isArray(rows) || rows.length === 0) return;
 		orderTypeOptions.value = rows
 			.filter((r) => r && r.value && r.label)
