@@ -29,7 +29,8 @@
 </template>
 
 <script setup>
-import { computed } from "vue"
+import { computed, watch } from "vue"
+import { usePOSOrderTypesStore } from "@/stores/posOrderTypes"
 
 const props = defineProps({
 	modelValue: {
@@ -47,13 +48,36 @@ const props = defineProps({
 		type: String,
 		default: "Order Type",
 	},
+	posProfile: {
+		type: String,
+		default: null,
+	},
 })
 
 const emit = defineEmits(["update:modelValue"])
 
-const normalizedOptions = computed(() =>
-	(props.options || [])
-		.filter((o) => o && (o.value || o.value === "") && o.label)
-		.map((o) => ({ label: String(o.label), value: String(o.value) })),
+const orderTypesStore = usePOSOrderTypesStore()
+
+// Fetch into shared Pinia store if page was reloaded (store empty) or profile provided.
+// The loadOrderTypes() method is idempotent and handles deduping/offline.
+watch(
+	() => props.posProfile,
+	(profile) => {
+		if (profile) {
+			orderTypesStore.loadOrderTypes(profile)
+		}
+	},
+	{ immediate: true },
 )
+
+const normalizedOptions = computed(() => {
+	const storeOpts = orderTypesStore.orderTypeOptions.value
+	const source =
+		Array.isArray(storeOpts) && storeOpts.length > 0
+			? storeOpts
+			: props.options || []
+	return source
+		.filter((o) => o && (o.value || o.value === "") && o.label)
+		.map((o) => ({ label: String(o.label), value: String(o.value) }))
+})
 </script>
