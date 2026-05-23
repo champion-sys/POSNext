@@ -43,7 +43,7 @@ POS_SETTINGS_FIELDS = [
 	"custom_show_offers",
 	"custom_show_coupon",
 	"default_card_view",
-	"custom_hide_stock_quantity_"
+	"custom_hide_stock_quantity"
 ]
 
 # Default POS Settings values
@@ -77,5 +77,5 @@ DEFAULT_POS_SETTINGS = {
 	"custom_show_offers": 0,
 	"custom_show_coupon": 0,
 	"default_card_view": 0,
-	"custom_hide_stock_quantity_": 0
+	"custom_hide_stock_quantity": 0
 }

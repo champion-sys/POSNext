@@ -21,7 +21,7 @@
    "dt": "POS Settings",
    "fetch_from": null,
    "fetch_if_empty": 0,
-   "fieldname": "custom_hide_stock_quantity_",
+   "fieldname": "custom_hide_stock_quantity",
    "fieldtype": "Check",
    "hidden": 0,
    "hide_border": 0,
@@ -44,7 +44,7 @@
    "modified": "2026-05-23 22:22:08.764031",
    "modified_by": "Administrator",
    "module": null,
-   "name": "POS Settings-custom_hide_stock_quantity_",
+   "name": "POS Settings-custom_hide_stock_quantity",
    "no_copy": 0,
    "non_negative": 0,
    "options": null,
@@ -290,7 +290,7 @@
    "property": "field_order",
    "property_type": "Data",
    "row_name": null,
-   "value": "[\"invoice_type\", \"pos_profile\", \"enabled\", \"section_break_localization\", \"allowed_locales\", \"section_break_wallet\", \"enable_loyalty_program\", \"default_loyalty_program\", \"wallet_account\", \"column_break_wallet\", \"auto_create_wallet\", \"loyalty_to_wallet\", \"section_break_general\", \"allow_user_to_edit_additional_discount\", \"allow_user_to_edit_item_discount\", \"allow_user_to_edit_rate\", \"use_percentage_discount\", \"max_discount_allowed\", \"column_break_general\", \"allow_credit_sale\", \"allow_customer_credit_payment\", \"allow_return\", \"allow_partial_payment\", \"use_exact_amount\", \"enable_sales_persons\", \"section_break_display\", \"default_card_view\", \"display_item_code\", \"show_customer_balance\", \"custom_show_offers\", \"custom_show_coupon\", \"column_break_display\", \"custom_hide_stock_quantity_\", \"hide_expected_amount\", \"display_discount_percentage\", \"display_discount_amount\", \"show_variants_as_items\", \"section_break_operations\", \"allow_sales_order\", \"allow_select_sales_order\", \"create_only_sales_order\", \"column_break_operations\", \"allow_return_without_invoice\", \"return_validity_days\", \"allow_free_batch_return\", \"allow_print_draft_invoices\", \"section_break_pricing\", \"decimal_precision\", \"tax_inclusive\", \"section_break_customer\", \"allow_customer_purchase_order\", \"allow_duplicate_customer_names\", \"fetch_coupon\", \"section_break_printing\", \"allow_print_last_invoice\", \"silent_print\", \"section_break_delivery\", \"use_delivery_charges\", \"auto_set_delivery_charges\", \"section_break_advanced\", \"use_limit_search\", \"search_limit\", \"column_break_advanced\", \"allow_submissions_in_background_job\", \"allow_delete_offline_invoice\", \"allow_change_posting_date\", \"section_break_misc\", \"input_qty\", \"allow_negative_stock\", \"section_break_security\", \"enable_session_lock\", \"session_lock_timeout\", \"barcode_tab\", \"barcode_rules\"]"
+   "value": "[\"invoice_type\", \"pos_profile\", \"enabled\", \"section_break_localization\", \"allowed_locales\", \"section_break_wallet\", \"enable_loyalty_program\", \"default_loyalty_program\", \"wallet_account\", \"column_break_wallet\", \"auto_create_wallet\", \"loyalty_to_wallet\", \"section_break_general\", \"allow_user_to_edit_additional_discount\", \"allow_user_to_edit_item_discount\", \"allow_user_to_edit_rate\", \"use_percentage_discount\", \"max_discount_allowed\", \"column_break_general\", \"allow_credit_sale\", \"allow_customer_credit_payment\", \"allow_return\", \"allow_partial_payment\", \"use_exact_amount\", \"enable_sales_persons\", \"section_break_display\", \"default_card_view\", \"display_item_code\", \"show_customer_balance\", \"custom_show_offers\", \"custom_show_coupon\", \"column_break_display\", \"\", \"hide_expected_amount\", \"display_discount_percentage\", \"display_discount_amount\", \"show_variants_as_items\", \"section_break_operations\", \"allow_sales_order\", \"allow_select_sales_order\", \"create_only_sales_order\", \"column_break_operations\", \"allow_return_without_invoice\", \"return_validity_days\", \"allow_free_batch_return\", \"allow_print_draft_invoices\", \"section_break_pricing\", \"decimal_precision\", \"tax_inclusive\", \"section_break_customer\", \"allow_customer_purchase_order\", \"allow_duplicate_customer_names\", \"fetch_coupon\", \"section_break_printing\", \"allow_print_last_invoice\", \"silent_print\", \"section_break_delivery\", \"use_delivery_charges\", \"auto_set_delivery_charges\", \"section_break_advanced\", \"use_limit_search\", \"search_limit\", \"column_break_advanced\", \"allow_submissions_in_background_job\", \"allow_delete_offline_invoice\", \"allow_change_posting_date\", \"section_break_misc\", \"input_qty\", \"allow_negative_stock\", \"section_break_security\", \"enable_session_lock\", \"session_lock_timeout\", \"barcode_tab\", \"barcode_rules\"]"
   }
  ],
  "sync_on_migrate": 1

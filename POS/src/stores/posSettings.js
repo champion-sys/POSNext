@@ -70,7 +70,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Security
 		enable_session_lock: 0,
 		session_lock_timeout: 5,
-		custom_hide_stock_quantity_: 0
+		custom_hide_stock_quantity: 0
 	})
 
 	const isLoading = ref(false)
@@ -144,7 +144,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		Boolean(settings.value.custom_show_offers),
 	)
 	const hideQuantity = computed(() =>
-		Boolean(settings.value.custom_hide_stock_quantity_),
+		Boolean(settings.value.custom_hide_stock_quantity),
 	)
 	const showCoupon = computed(() =>
 		Boolean(settings.value.custom_show_coupon),
