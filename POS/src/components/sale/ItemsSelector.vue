@@ -290,7 +290,7 @@
 					>
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
 						<div
-							v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants"
+							v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants && !settingsStore.hideQuantity"
 							@pointerdown="onLongPressStart(item)"
 							@pointerup="onLongPressEnd"
 							@pointercancel="clearLongPress"
@@ -564,7 +564,7 @@
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
 								<div
-									v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants"
+									v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants && !settingsStore.hideQuantity"
 									@pointerdown="onLongPressStart(item)"
 									@pointerup="onLongPressEnd"
 									@pointercancel="clearLongPress"
