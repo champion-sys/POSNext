@@ -24,6 +24,7 @@ export function useInvoice() {
 	const customer = ref(null)
 	const payments = ref([])
 	const salesTeam = ref([]) // Sales team for Sales Invoice
+	const invoiceRemarks = ref("")
 	const posProfile = ref(null)
 	const posOpeningShift = ref(null) // POS Opening Shift name
 	const additionalDiscount = ref(0)
@@ -960,6 +961,7 @@ export function useInvoice() {
 			payments: invoicePayments,
 			discount_amount: additionalDiscount.value || 0,
 			coupon_code: couponCode.value,
+			remarks: invoiceRemarks.value || "",
 			is_pos: 1,
 			update_stock: 1,
 		}
@@ -1026,6 +1028,7 @@ export function useInvoice() {
 					payments: invoicePayments,
 					discount_amount: additionalDiscount.value || 0,
 					coupon_code: couponCode.value,
+					remarks: invoiceRemarks.value || "",
 					is_pos: 1,
 					update_stock: 1, // Critical: Ensures stock is updated
 				}
@@ -1190,6 +1193,7 @@ export function useInvoice() {
 		payments.value = []
 		additionalDiscount.value = 0
 		couponCode.value = null
+		invoiceRemarks.value = ""
 
 		// Reset incremental cache
 		_cachedSubtotal.value = 0
@@ -1217,6 +1221,7 @@ export function useInvoice() {
 		payments.value = []
 		additionalDiscount.value = 0
 		couponCode.value = null
+		invoiceRemarks.value = ""
 
 		// Reset incremental cache
 		_cachedSubtotal.value = 0
@@ -1269,6 +1274,10 @@ export function useInvoice() {
 		}
 	}
 
+	function setInvoiceRemarks(remarks) {
+		invoiceRemarks.value = remarks || ""
+	}
+
 	function setTaxInclusive(value) {
 		/**
 		 * Set tax inclusive mode and recalculate all items
@@ -1288,6 +1297,7 @@ export function useInvoice() {
 		customer,
 		payments,
 		salesTeam,
+		invoiceRemarks,
 		posProfile,
 		posOpeningShift,
 		additionalDiscount,
@@ -1325,6 +1335,7 @@ export function useInvoice() {
 		setDefaultCustomer,
 		loadTaxRules,
 		setTaxInclusive,
+		setInvoiceRemarks,
 		recalculateItem,
 		rebuildIncrementalCache,
 		formatItemsForSubmission,

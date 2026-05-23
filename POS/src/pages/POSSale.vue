@@ -499,6 +499,7 @@
 			:discount-amount="cartStore.totalDiscount"
 			:target-doctype="cartStore.targetDoctype"
 			:is-submitting="cartStore.isSubmitting"
+			:remarks="cartStore.invoiceRemarks"
 			@payment-completed="handlePaymentCompleted"
 			@update-additional-discount="handleAdditionalDiscountUpdate"
 		/>
@@ -2023,6 +2024,8 @@ async function handlePaymentCompleted(paymentData) {
 			cartStore.salesTeam = [];
 		}
 
+		cartStore.setInvoiceRemarks(paymentData.remarks || "");
+
 		// Set delivery date for Sales Orders
 		if (paymentData.delivery_date) {
 			cartStore.setDeliveryDate(paymentData.delivery_date);
@@ -2055,6 +2058,7 @@ async function handlePaymentCompleted(paymentData) {
 				total_discount: cartStore.totalDiscount,
 				write_off_amount: paymentData.write_off_amount || 0,
 				change_amount: paymentData.change_amount || 0,
+				remarks: paymentData.remarks || "",
 				edited_from: editingOfflineContext?.originalOfflineId || null,
 			};
 
@@ -2106,6 +2110,7 @@ async function handlePaymentCompleted(paymentData) {
 				change_amount: paymentData.change_amount || 0,
 				outstanding_amount: Math.max(0, grandTotal - paidAmount),
 				status: Math.max(0, grandTotal - paidAmount) < 0.01 ? "Paid" : "Unpaid",
+				remarks: invoiceData.remarks,
 				docstatus: 0,
 			};
 			uiStore.setLastOfflinePrintDoc(offlinePrintDoc);

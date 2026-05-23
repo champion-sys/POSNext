@@ -2098,9 +2098,7 @@ watch(
 watch(show, (newVal) => {
 	if (newVal) {
 		// Reset state when dialog opens (but NOT customerBalance - it's pre-fetched)
-		remarks.value = ""
-		console.log("Resetting payment entries and custom amount", remarks.value)
-		console.log("Resetting payment entries and custom", remarks)
+		remarks.value = props.remarks || ""
 		paymentEntries.value = []
 		customAmount.value = ""
 		autoFillNumpad()
@@ -2518,7 +2516,7 @@ function addCreditAccountPayment() {
 		is_credit_sale: true, // Mark as credit sale
 		paid_amount: 0,
 		outstanding_amount: props.grandTotal,
-		remarks: props.remarks || "",
+		remarks: remarks.value,
 	}
 
 	log.debug(
