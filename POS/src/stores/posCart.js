@@ -182,6 +182,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			)
 			const totalQty = (existing ? existing.quantity : 0) + qty
 			const warehouse = item.warehouse || currentProfile.warehouse
+			const remarks = item.remarks || currentProfile.remarks
 
 			const check = checkStockAvailability(item, totalQty, warehouse)
 			if (!check.available) {
@@ -330,6 +331,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				rate: item.rate,
 				uom: item.uom,
 				warehouse: item.warehouse,
+				remarks: item.remarks,
 				conversion_factor: item.conversion_factor || 1,
 				price_list_rate: item.price_list_rate || item.rate,
 				discount_percentage: item.discount_percentage || 0,
@@ -440,6 +442,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 					is_free_item: 1,
 					free_qty: freeQty,
 					pricing_rules: freeItem.pricing_rules || null,
+					warehouse: freeItem.warehouse || cartItem?.warehouse,
+					remarks: freeItem.remarks || cartItem?.remarks,
 				})
 			}
 		}
@@ -1022,14 +1026,50 @@ export const usePOSCartStore = defineStore("posCart", () => {
 					}
 				}
 
-				if (freeItemsToGive > 0 && (!item.free_qty || item.free_qty === 0)) {
-					item.free_qty = freeItemsToGive
-					item.pricing_rules = item.pricing_rules || []
-					if (!item.pricing_rules.includes(offer.name)) {
-						item.pricing_rules.push(offer.name)
-					}
-					applied = true
+				if (freeItemsToGive <= 0) {
+					continue
 				}
+				const uomKey = item.uom || item.stock_uom
+				const existingFreeRow = invoiceItems.value.find(
+					(r) =>
+						r.is_free_item &&
+						r.item_code === item.item_code &&
+						(r.uom || r.stock_uom) === uomKey,
+				)
+				if (existingFreeRow) {
+					existingFreeRow.quantity = freeItemsToGive
+					existingFreeRow.free_qty = freeItemsToGive
+					const pr = existingFreeRow.pricing_rules
+					const prArr = Array.isArray(pr)
+						? [...pr]
+						: pr
+							? String(pr).split(',').map((s) => s.trim()).filter(Boolean)
+							: []
+					if (!prArr.includes(offer.name)) prArr.push(offer.name)
+					existingFreeRow.pricing_rules = prArr
+				} else {
+					invoiceItems.value.push({
+						item_code: item.item_code,
+						item_name: item.item_name || item.item_code,
+						rate: 0,
+						price_list_rate: 0,
+						quantity: freeItemsToGive,
+						discount_amount: 0,
+						discount_percentage: 0,
+						tax_amount: 0,
+						amount: 0,
+						stock_qty: 0,
+						uom: uomKey,
+						stock_uom: item.stock_uom || uomKey,
+						conversion_factor: item.conversion_factor || 1,
+						is_free_item: 1,
+						free_qty: freeItemsToGive,
+						pricing_rules: [offer.name],
+						warehouse: item.warehouse,
+						remarks: item.remarks,
+					})
+				}
+				applied = true
 			}
 		} else if (freeItemCode) {
 			// Free item is a specific different item
@@ -1263,6 +1303,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			// Apply other updates
 			if (updates.quantity !== undefined) cartItem.quantity = updates.quantity
 			if (updates.warehouse !== undefined) cartItem.warehouse = updates.warehouse
+			if (updates.remarks !== undefined) cartItem.remarks = updates.remarks
 			if (updates.discount_percentage !== undefined) cartItem.discount_percentage = updates.discount_percentage
 			if (updates.discount_amount !== undefined) cartItem.discount_amount = updates.discount_amount
 			if (updates.rate !== undefined) cartItem.rate = updates.rate

@@ -238,6 +238,19 @@
 												</div>
 											</div>
 
+											<!-- Item Remarks Section -->
+											<div class="border-t border-gray-200 pt-4">
+												<label class="block text-sm font-medium text-gray-700 mb-2 text-start">
+													{{ __('Remarks') }}
+												</label>
+												<textarea
+													v-model="localRemarks"
+													rows="2"
+													:placeholder="__('Add notes or special requests for this item...')"
+													class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white placeholder-gray-400"
+												></textarea>
+												</div>
+
 											<!-- Totals -->
 											<div class="bg-gray-50 rounded-lg p-4 flex flex-col gap-2">
 												<div class="flex items-center justify-between text-sm">
@@ -316,6 +329,7 @@ const localQuantity = ref(1)
 const localUom = ref("")
 const localRate = ref(0)
 const localWarehouse = ref("")
+const localRemarks = ref("")
 const discountType = ref("percentage")
 const discountValue = ref(0)
 const calculatedSubtotal = ref(0)
@@ -402,54 +416,94 @@ const discountTypeOptions = computed(() => [
 
 // Initialize local state when item changes
 watch(
-	() => props.item,
-	(newItem) => {
-		if (newItem) {
-			isInitializingItem.value = true
-			localItem.value = { ...newItem }
-			localQuantity.value = newItem.quantity || 1
-			localUom.value = newItem.uom || newItem.stock_uom || __("Nos")
-			localRate.value = newItem.rate || 0
-			// Store original price_list_rate for rate edit validation
-			originalPriceListRate.value = newItem.price_list_rate || newItem.rate || 0
-			localWarehouse.value =
-				newItem.warehouse || props.warehouses[0]?.name || ""
+	() => [props.item, props.modelValue],
+	([newItem, isOpen]) => {
 
-			// Initialize serial numbers
+		if (newItem && isOpen) {
+
+			isInitializingItem.value = true
+
+			localItem.value = { ...newItem }
+
+			localQuantity.value = newItem.quantity || 1
+
+			localUom.value =
+				newItem.uom ||
+				newItem.stock_uom ||
+				__("Nos")
+
+			localRate.value = newItem.rate || 0
+
+			originalPriceListRate.value =
+				newItem.price_list_rate ||
+				newItem.rate ||
+				0
+
+			localWarehouse.value =
+				newItem.warehouse ||
+				props.warehouses[0]?.name ||
+				""
+
+			// IMPORTANT
+			localRemarks.value = newItem.remarks || ""
+
+			// Serials
 			if (newItem.has_serial_no && newItem.serial_no) {
-				const serials = newItem.serial_no.split('\n').filter(s => s.trim())
+
+				const serials = newItem.serial_no
+					.split("\n")
+					.filter(s => s.trim())
+
 				localSerials.value = [...serials]
-				originalSerials.value = [...serials] // Keep original for cancel
-				removedSerials.value = [] // Reset removed serials tracker
-				// For serial items, quantity must match serial count
+				originalSerials.value = [...serials]
+				removedSerials.value = []
+
 				localQuantity.value = serials.length
+
 			} else {
+
 				localSerials.value = []
 				originalSerials.value = []
 				removedSerials.value = []
 			}
 
-			// Initialize discount
-			if (newItem.discount_percentage && newItem.discount_percentage > 0) {
+			// Discounts
+			if (
+				newItem.discount_percentage &&
+				newItem.discount_percentage > 0
+			) {
+
 				discountType.value = "percentage"
-				discountValue.value = newItem.discount_percentage
-			} else if (newItem.discount_amount && newItem.discount_amount > 0) {
+				discountValue.value =
+					newItem.discount_percentage
+
+			} else if (
+				newItem.discount_amount &&
+				newItem.discount_amount > 0
+			) {
+
 				discountType.value = "amount"
-				discountValue.value = newItem.discount_amount
+				discountValue.value =
+					newItem.discount_amount
+
 			} else {
+
 				discountType.value = "percentage"
 				discountValue.value = 0
 			}
 
-			// Reset stock check state
 			hasStock.value = true
 			isCheckingStock.value = false
 
 			calculateTotals()
+
 			isInitializingItem.value = false
 		}
 	},
-	{ immediate: true },
+	{
+		immediate: true,
+		deep: true
+	}
 )
 
 watch(localUom, (newUom, oldUom) => {
@@ -459,37 +513,21 @@ watch(localUom, (newUom, oldUom) => {
 
 /**
  * Intelligently determine the step size based on current quantity
- * - Whole numbers (1, 2, 3): step by 1
- * - Multiples of 0.5 (1.5, 2.5): step by 0.5
- * - Multiples of 0.25 (0.25, 0.75): step by 0.25
- * - Multiples of 0.1 (0.1, 0.3): step by 0.1
- * - Other decimals: step by 0.01
  */
 function getSmartStep(quantity) {
-	// Check if it's a whole number
 	if (quantity === Math.floor(quantity)) {
 		return 1
 	}
-
-	// Round to 4 decimal places to avoid floating point errors
 	const rounded = Math.round(quantity * 10000) / 10000
-
-	// Check if it's a multiple of 0.5
 	if (Math.abs((rounded % 0.5)) < 0.0001) {
 		return 0.5
 	}
-
-	// Check if it's a multiple of 0.25
 	if (Math.abs((rounded % 0.25)) < 0.0001) {
 		return 0.25
 	}
-
-	// Check if it's a multiple of 0.1
 	if (Math.abs((rounded % 0.1)) < 0.0001) {
 		return 0.1
 	}
-
-	// For other decimals, use 0.01 for fine control
 	return 0.01
 }
 
@@ -510,20 +548,15 @@ function decrementQuantity() {
 }
 
 function handleQuantityInput() {
-	// Allow any value during typing, just recalculate totals
-	// Don't validate or reset - let user type freely
 	if (localQuantity.value > 0 && !isNaN(localQuantity.value)) {
 		calculateTotals()
 	}
 }
 
 function handleQuantityBlur() {
-	// Validate and fix the quantity when user is done editing (leaves the field)
 	if (!localQuantity.value || localQuantity.value <= 0 || isNaN(localQuantity.value)) {
-		// If invalid, reset to 1
 		localQuantity.value = 1
 	} else {
-		// Round to 4 decimal places for consistency
 		localQuantity.value = Math.round(localQuantity.value * 10000) / 10000
 	}
 	calculateTotals()
@@ -539,7 +572,6 @@ function getConversionFactorForUom(uom) {
 async function getRateForUom(uom) {
 	if (!localItem.value) return 0
 
-	// Primary source: fetch exact price_list_rate for selected UOM from backend.
 	const posProfile = settingsStore.settings?.pos_profile || localItem.value.pos_profile
 	if (localItem.value.item_code && posProfile) {
 		try {
@@ -558,12 +590,10 @@ async function getRateForUom(uom) {
 		}
 	}
 
-	// Secondary source: preloaded UOM prices on item payload.
 	if (localItem.value.uom_prices?.[uom] !== undefined) {
 		return Number(localItem.value.uom_prices[uom]) || 0
 	}
 
-	// Final fallback: keep current known item rate (no conversion-based pricing).
 	return Number(localItem.value.price_list_rate || localItem.value.rate || localRate.value || 0)
 }
 
@@ -576,13 +606,11 @@ async function handleUomChange(newUom) {
 
 	const requestId = ++uomRateRequestId.value
 	const fetchedRate = await getRateForUom(selectedUom)
-	// Ignore stale responses if user changes UOM repeatedly.
 	if (requestId !== uomRateRequestId.value) return
 
 	const newRate = roundCurrency(fetchedRate)
 	const newConversionFactor = getConversionFactorForUom(selectedUom)
 
-	// Keep local state consistent so update payload has correct UOM pricing metadata.
 	localRate.value = newRate
 	originalPriceListRate.value = newRate
 	localItem.value.uom = selectedUom
@@ -598,7 +626,6 @@ async function handleWarehouseChange() {
 
 	isCheckingStock.value = true
 	try {
-		// Check stock availability in the new warehouse
 		const availableStock = await getItemStock(
 			localItem.value.item_code,
 			localWarehouse.value,
@@ -628,32 +655,28 @@ async function handleWarehouseChange() {
 		}
 	} catch (error) {
 		console.error("Error checking warehouse stock:", error)
-		hasStock.value = true // Allow update if stock check fails
+		hasStock.value = true
 	} finally {
 		isCheckingStock.value = false
 	}
 }
 
 function handleDiscountTypeChange() {
-	// Reset discount value when type changes
 	discountValue.value = 0
 	calculateTotals()
 }
 
 function calculateDiscount() {
-	// Round to currency precision to prevent floating point precision issues (e.g., 10.000000000000002)
 	if (discountValue.value !== null && discountValue.value !== undefined && !isNaN(discountValue.value)) {
 		discountValue.value = roundCurrency(discountValue.value)
 	}
 
 	if (discountType.value === "percentage") {
-		// Ensure percentage doesn't exceed 100
 		if (discountValue.value > 100) {
 			discountValue.value = 100
 		}
 		calculatedDiscount.value = roundCurrency((calculatedSubtotal.value * discountValue.value) / 100)
 	} else {
-		// Ensure amount doesn't exceed subtotal
 		if (discountValue.value > calculatedSubtotal.value) {
 			discountValue.value = roundCurrency(calculatedSubtotal.value)
 		}
@@ -668,13 +691,10 @@ function calculateTotals() {
 }
 
 function removeSerial(serialNo) {
-	// Remove from local list
 	const index = localSerials.value.indexOf(serialNo)
 	if (index > -1) {
 		localSerials.value.splice(index, 1)
-		// Track removed serial (will be returned to cache on confirm)
 		removedSerials.value.push(serialNo)
-		// Update quantity to match serial count
 		localQuantity.value = localSerials.value.length
 		calculateTotals()
 	}
@@ -685,20 +705,14 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
-	// Check if rate was manually edited
 	const isRateManuallyEdited = localRate.value !== originalPriceListRate.value
 
-	// ========================================================================
-	// RATE EDIT VALIDATION
-	// ========================================================================
 	if (settingsStore.allowUserToEditRate && isRateManuallyEdited) {
-		// Validate rate is positive
 		if (localRate.value <= 0) {
 			showError(__('Rate must be greater than zero'))
 			return
 		}
 
-		// Validate against max discount if rate was reduced
 		const maxDiscount = settingsStore.maxDiscountAllowed
 		if (maxDiscount > 0 && localRate.value < originalPriceListRate.value) {
 			const discountPercent = ((originalPriceListRate.value - localRate.value) / originalPriceListRate.value) * 100
@@ -721,24 +735,21 @@ function updateItem() {
 		quantity: localQuantity.value,
 		uom: localUom.value,
 		rate: localRate.value,
-		// Preserve price_list_rate for reference (original price before any manual edits)
 		price_list_rate: originalPriceListRate.value,
 		warehouse: localWarehouse.value,
+		remarks: localRemarks.value,
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
 		discount_amount:
 			discountType.value === "amount" ? discountValue.value : 0,
-		// Track manual rate edits for audit logging
 		is_rate_manually_edited: isRateManuallyEdited ? 1 : 0,
 		original_rate: isRateManuallyEdited ? originalPriceListRate.value : null,
 	}
 
-	// Update serial numbers if item has serials
 	if (localItem.value.has_serial_no) {
 		updatedItem.serial_no = localSerials.value.join('\n')
 		updatedItem.quantity = localSerials.value.length
 
-		// Return removed serials to cache now that update is confirmed
 		if (removedSerials.value.length > 0) {
 			serialStore.returnSerials(localItem.value.item_code, removedSerials.value)
 		}
@@ -754,7 +765,6 @@ function cancel() {
 </script>
 
 <style scoped>
-/* Hide number input spinners */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
 	appearance: none;
@@ -767,7 +777,6 @@ input[type="number"] {
 	-moz-appearance: textfield;
 }
 
-/* Use CSS custom properties from index.css for consistent z-index layering */
 .z-dialog-overlay {
 	z-index: var(--z-dialog-overlay, 400);
 }

@@ -277,6 +277,7 @@ export function useInvoice() {
 				stock_uom: item.stock_uom,
 				conversion_factor: item.conversion_factor || 1,
 				warehouse: item.warehouse,
+				remarks: item.remarks,
 				actual_batch_qty: item.actual_batch_qty || 0,
 				has_batch_no: item.has_batch_no || 0,
 				has_serial_no: item.has_serial_no || 0,
@@ -739,11 +740,15 @@ export function useInvoice() {
 	 * Format cart items for server submission.
 	 * Used by both online and offline flows for consistent formatting.
 	 *
+	 * Legacy carts could mark same-item BOGO only via `free_qty` on the paid line.
+	 * Sales Invoice Item has no `free_qty` field — ERPNext expects a second row with
+	 * is_free_item=1. When there is no matching dedicated free row, synthesize one.
+	 *
 	 * @param {Array} items - Raw cart items
 	 * @returns {Array} Items formatted for ERPNext Sales Invoice
 	 */
 	function formatItemsForSubmission(items) {
-		return items.map((item) => ({
+		const mapRow = (item) => ({
 			item_code: item.item_code,
 			item_name: item.item_name,
 			qty: item.quantity || item.qty || 1,
@@ -751,8 +756,10 @@ export function useInvoice() {
 			price_list_rate: item.is_free_item ? 0 : roundCurrency(item.price_list_rate || item.rate),
 			uom: item.uom,
 			warehouse: item.warehouse,
+			remarks: item.remarks,
 			batch_no: item.batch_no,
 			serial_no: item.serial_no,
+			use_serial_batch_fields: item.batch_no || item.serial_no ? 1 : 0,
 			conversion_factor: item.conversion_factor || 1,
 			discount_percentage: roundCurrency(item.discount_percentage || 0),
 			discount_amount: roundCurrency(item.discount_amount || 0),
@@ -761,7 +768,45 @@ export function useInvoice() {
 			is_rate_manually_edited: item.is_rate_manually_edited || 0,
 			original_rate: item.original_rate || null,
 			is_free_item: item.is_free_item || 0,
-		}))
+		})
+
+		const out = []
+		for (const item of items) {
+			out.push(mapRow(item))
+			const fq = Number.parseFloat(item.free_qty) || 0
+			if (!item.is_free_item && fq > 0) {
+				const u = item.uom || item.stock_uom
+				const hasDedicatedFree = items.some(
+					(i) =>
+						i.is_free_item &&
+						i.item_code === item.item_code &&
+						(i.uom || i.stock_uom) === u,
+				)
+				if (!hasDedicatedFree) {
+					out.push({
+						item_code: item.item_code,
+						item_name: item.item_name,
+						qty: fq,
+						rate: 0,
+						price_list_rate: 0,
+						uom: item.uom,
+						warehouse: item.warehouse,
+						remarks: item.remarks,
+						batch_no: item.batch_no,
+						serial_no: item.serial_no,
+						use_serial_batch_fields: item.batch_no || item.serial_no ? 1 : 0,
+						conversion_factor: item.conversion_factor || 1,
+						discount_percentage: 0,
+						discount_amount: 0,
+						pricing_rules: stringifyPricingRules(item.pricing_rules),
+						is_rate_manually_edited: 0,
+						original_rate: null,
+						is_free_item: 1,
+					})
+				}
+			}
+		}
+		return out
 	}
 
 	function addPayment(payment) {
@@ -808,6 +853,7 @@ export function useInvoice() {
 			item_code: item.item_code,
 			qty: item.quantity,
 			warehouse: item.warehouse,
+			remarks: item.remarks,
 			conversion_factor: item.conversion_factor || 1,
 			stock_qty: item.quantity * (item.conversion_factor || 1),
 			is_stock_item: item.is_stock_item !== false, // default to true
@@ -962,6 +1008,7 @@ export function useInvoice() {
 				// Step 1: Create invoice draft
 				// Use toRaw() to ensure we get current, non-reactive values (prevents stale cached quantities)
 				const rawItems = toRaw(invoiceItems.value)
+				// console.log("Submitting invoice with items:", rawItems)
 				const rawPayments = toRaw(payments.value)
 				const rawSalesTeam = toRaw(salesTeam.value)
 				const {

@@ -246,6 +246,7 @@
 									</button>
 								</div>
 								<!-- Clear all button -->
+
 								<button
 									v-if="selectedSalesPersons.length > 1"
 									@click="clearSalesPersons"
@@ -295,6 +296,58 @@
 							</div>
 						</div>
 
+						<!-- Promotional offers & coupons (same entry points as cart — usable while paying) -->
+						<div class="px-3 py-2 border-b border-gray-100 bg-gray-50/80 shrink-0">
+							<div class="flex gap-2">
+								<button
+									type="button"
+									@click="emit('show-offers')"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 hover:border-green-400 hover:from-green-100 hover:to-emerald-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
+									:aria-label="__('View all available offers')"
+								>
+									<svg
+										class="w-3.5 h-3.5 text-green-600 flex-shrink-0"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
+										/>
+									</svg>
+									<span class="text-[11px] font-bold text-green-700">{{ __('Offers') }}</span>
+									<span
+										v-if="appliedOfferCount > 0"
+										class="bg-green-600 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
+									>
+										{{ appliedOfferCount }}
+									</span>
+								</button>
+								<button
+									type="button"
+									@click="emit('show-coupon')"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 hover:border-purple-400 hover:from-purple-100 hover:to-violet-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
+									:aria-label="__('Apply coupon or gift card')"
+								>
+									<svg
+										class="w-3.5 h-3.5 text-purple-600 flex-shrink-0"
+										fill="currentColor"
+										viewBox="0 0 20 20"
+									>
+										<path
+											fill-rule="evenodd"
+											d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4zm1 14a1 1 0 100-2 1 1 0 000 2zm5-1.757l4.9-4.9a2 2 0 000-2.828L13.485 5.1a2 2 0 00-2.828 0L10 5.757v8.486zM16 18H9.071l6-6H16a2 2 0 012 2v2a2 2 0 01-2 2z"
+											clip-rule="evenodd"
+										/>
+									</svg>
+									<span class="text-[11px] font-bold text-purple-700">{{ __('Coupon') }}</span>
+								</button>
+							</div>
+						</div>
+
 						<!-- Items List (scrollable, takes available space) -->
 						<div v-if="items.length > 0" class="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0">
 							<div
@@ -338,7 +391,47 @@
 							{{ __('No items') }}
 						</div>
 
+						<div v-if="paymentEntries.length > 0" :class="isSmallMobile ? 'mb-1 mt-2' : 'mb-1.5 mt-3 lg:mb-3'">
+						<div :class="['text-start font-semibold text-gray-500 uppercase tracking-wide flex justify-between', isSmallMobile ? 'text-[10px] mb-1' : 'text-xs mb-1.5']">
+							<span>{{ __('Applied Payments') }}</span>
+						</div>
+						<div class="space-y-1.5 overflow-y-auto max-h-32 pr-1">
+							<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white p-1.5 lg:p-2 rounded-lg border border-gray-200 shadow-sm">
+								<div class="text-xs lg:text-sm font-medium text-gray-700 flex items-center gap-1.5 truncate">
+									<span>{{ isWalletPaymentMethod(entry.mode_of_payment) ? '🎁' : getPaymentIcon(entry.type) }}</span>
+									<span class="truncate">{{ __(entry.mode_of_payment) }}</span>
+								</div>
+								<div class="flex items-center gap-1.5 shrink-0">
+									<span class="text-xs text-gray-500">{{ currencySymbol }}</span>
+									<input
+										type="number"
+										v-model.number="entry.amount"
+										min="0"
+										step="0.01"
+										class="w-20 lg:w-24 px-1.5 py-1 text-xs lg:text-sm font-semibold text-right border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
+										@change="handlePaymentEntryChange(entry)"
+										@focus="$event.target.select()"
+									/>
+									<button @click="removePaymentEntry(index)" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded transition-colors" :title="__('Remove')">
+										<svg class="w-4 h-4 lg:w-4 lg:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+										</svg>
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+
 						<!-- Amounts Breakdown -->
+						<div class="border-t border-gray-200 bg-white px-3 py-2">
+							<label class="text-xs font-medium text-gray-600 mb-1 block">{{ __('Remarks') }}</label>
+							<textarea
+								v-model="remarks"
+								rows="2"
+								class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
+								:placeholder="__('Add invoice remarks here...')"
+							></textarea>
+						</div>
 						<div class="border-t border-gray-200 bg-gray-50 px-3 py-2 space-y-1">
 							<!-- Additional Discount Row -->
 							<div v-if="settingsStore.allowAdditionalDiscount" class="pb-1.5 mb-1 border-b border-dashed border-orange-200">
@@ -1054,6 +1147,10 @@ const props = defineProps({
 		type: [String, Object],
 		default: null,
 	},
+	remarks: {
+		type: String,
+		default: "",
+	},
 	items: {
 		type: Array,
 		default: () => [],
@@ -1090,12 +1187,19 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
+	/** Count of pricing rules / offers currently applied (for badge). */
+	appliedOfferCount: {
+		type: Number,
+		default: 0,
+	},
 })
 
 const emit = defineEmits([
 	"update:modelValue",
 	"payment-completed",
 	"update-additional-discount",
+	"show-offers",
+	"show-coupon",
 ])
 
 const show = computed({
@@ -1107,6 +1211,22 @@ const paymentMethods = ref([])
 const loadingPaymentMethods = ref(false)
 const lastSelectedMethod = ref(null)
 const customAmount = ref("")
+
+const remarks = ref("")
+
+function removePaymentEntry(index) {
+	paymentEntries.value.splice(index, 1)
+	autoFillNumpad()
+}
+
+function handlePaymentEntryChange(entry) {
+	// Prevent negative or invalid values
+	if (entry.amount < 0 || isNaN(entry.amount) || !entry.amount) {
+		entry.amount = 0
+	}
+	entry.amount = roundCurrency(entry.amount)
+	autoFillNumpad() // Recalculate remaining change and adjust the UI
+}
 const paymentEntries = ref([])
 const customerCredit = ref([])
 const customerBalance = ref({
@@ -1215,7 +1335,7 @@ function addMobileCustomPayment() {
 function numpadAddPayment() {
 	if (numpadValue.value > 0 && lastSelectedMethod.value) {
 		addCustomPayment(lastSelectedMethod.value, numpadValue.value)
-		numpadClear()
+		// numpadClear()
 	}
 }
 
@@ -1236,13 +1356,13 @@ const paymentMethodsResource = createResource({
 	auto: false,
 	onSuccess(data) {
 		paymentMethods.value = data?.message || data || []
-		// Set first method as last selected for quick amounts
 		if (paymentMethods.value.length > 0) {
 			const defaultMethod = paymentMethods.value.find((m) => m.default)
 			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
 		}
-		// Identify wallet payment methods
 		identifyWalletPaymentMethods()
+		
+		autoFillNumpad() 
 	},
 })
 
@@ -1612,7 +1732,6 @@ async function loadPaymentMethods() {
 
 	try {
 		if (props.isOffline) {
-			// Load from cache when offline using worker
 			const cached = await offlineWorker.getCachedPaymentMethods(
 				props.posProfile,
 			)
@@ -1622,6 +1741,7 @@ async function loadPaymentMethods() {
 					const defaultMethod = paymentMethods.value.find((m) => m.default)
 					lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
 				}
+				autoFillNumpad() 
 			}
 		} else {
 			// Load from server when online
@@ -1908,6 +2028,24 @@ const isLastMethodCash = computed(() => {
 })
 const { quickAmounts } = useQuickAmounts(remainingAmount, isLastMethodCash)
 
+// --- ADD THIS HELPER FUNCTION ---
+function autoFillNumpad() {
+	nextTick(() => {
+		if (remainingAmount.value <= 0) {
+			numpadClear()
+			mobileCustomAmount.value = ""
+		} else {
+			// Use the first quickAmount, fallback to raw remaining amount
+			const amountToFill = (quickAmounts.value && quickAmounts.value.length > 0)
+				? quickAmounts.value[0]
+				: remainingAmount.value
+				
+			setNumpadValue(amountToFill)
+			mobileCustomAmount.value = amountToFill.toFixed(2)
+		}
+	})
+}
+// --------------------------------
 // Whether a quick amount button should be disabled in exact-amount mode
 // Non-cash methods can only pay the exact remaining — no rounding allowed
 function isQuickAmountDisabled(amount) {
@@ -1960,13 +2098,26 @@ watch(
 watch(show, (newVal) => {
 	if (newVal) {
 		// Reset state when dialog opens (but NOT customerBalance - it's pre-fetched)
+		remarks.value = ""
+		console.log("Resetting payment entries and custom amount", remarks.value)
+		console.log("Resetting payment entries and custom", remarks)
 		paymentEntries.value = []
 		customAmount.value = ""
-		numpadClear()
+		autoFillNumpad()
 		mobileCustomAmount.value = ""
 		lastSelectedMethod.value = null
 		customerCredit.value = []
-		// Note: Don't reset customerBalance here - it's pre-fetched when customer changes
+		// Refetch credit sources every time the dialog opens. The pre-fetch
+		// watcher only fires when customer/company changes, so reopening the
+		// dialog for the same customer would otherwise leave credit_details
+		// empty and break "Apply Customer Credit" with an allocation error.
+		// customerBalance is also refetched so the displayed balance reflects
+		// any redemptions made by other cashiers since the last open.
+		const creditEnabled = props.allowCreditSale || props.allowCustomerCreditPayment
+		if (creditEnabled && props.customer && props.company) {
+			customerBalanceResource.fetch()
+			customerCreditResource.fetch()
+		}
 		selectedSalesPersons.value = []
 		salesPersonSearch.value = ""
 		applyWriteOff.value = false // Reset write-off state
@@ -1990,11 +2141,8 @@ watch(show, (newVal) => {
 			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
 		}
 
-		// Customer credit and balance is pre-fetched when customer changes (see watcher above)
-		// Just log for debugging
-		const creditEnabled = props.allowCreditSale || props.allowCustomerCreditPayment
 		if (creditEnabled) {
-			log.debug("[PaymentDialog] Customer credit/balance should be pre-loaded, current balance:", customerBalance.value)
+			log.debug("[PaymentDialog] Customer credit/balance refetch triggered, current balance:", customerBalance.value)
 		}
 
 		// Load wallet info if customer is selected
@@ -2023,6 +2171,7 @@ watch(show, (newVal) => {
 function selectPaymentMethod(method) {
 	lastSelectedMethod.value = method
 	log.debug("[PaymentDialog] Selected payment method:", method.mode_of_payment)
+	autoFillNumpad()
 }
 
 // Helper to get default non-wallet payment method
@@ -2313,6 +2462,8 @@ async function addCustomPayment(method, amount) {
 		nextTick(() => {
 			switchToNextPaymentMethod(amt)
 		})
+	} else {
+		autoFillNumpad()
 	}
 }
 
@@ -2367,6 +2518,7 @@ function addCreditAccountPayment() {
 		is_credit_sale: true, // Mark as credit sale
 		paid_amount: 0,
 		outstanding_amount: props.grandTotal,
+		remarks: props.remarks || "",
 	}
 
 	log.debug(
@@ -2380,6 +2532,7 @@ function addCreditAccountPayment() {
 function clearAll() {
 	paymentEntries.value = []
 	customAmount.value = ""
+	autoFillNumpad()
 }
 
 function completePayment() {
@@ -2420,6 +2573,7 @@ function completePayment() {
 		// Write-off data
 		write_off_amount: writeOffAmount.value,
 		is_write_off: writeOffAmount.value > 0,
+		remarks: remarks.value,
 	}
 
 	log.debug("[PaymentDialog] Emitting payment-completed:", paymentData)

@@ -146,6 +146,10 @@ const RECEIPT_STYLES = `
 		text-align: center; font-size: 11px; font-weight: bold;
 		border: 1px dashed #000; padding: 4px; margin-bottom: 10px;
 	}
+	.page-break {
+		page-break-after: always;
+		break-after: page;
+	}
 	.footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 2px dashed #000; font-size: 11px; }
 	@media print {
 		@page { size: 80mm auto; margin: 0; }
@@ -235,6 +239,11 @@ function buildReceiptDocumentHTML(invoiceData, { includeControls = false } = {})
 				<button onclick="window.close()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; margin-left: 10px;">${__("Close")}</button>
 			</div>`
 		: ""
+
+	// Default fallback: builds a dual copy split directly by a page-break element container
+	const singleLayout = buildReceiptHTML(invoiceData)
+	const dualSplitLayout = `${singleLayout}<div class="page-break"></div>${singleLayout}`
+
 	return `
 		<!DOCTYPE html>
 		<html>
@@ -244,15 +253,50 @@ function buildReceiptDocumentHTML(invoiceData, { includeControls = false } = {})
 			<style>${RECEIPT_STYLES}</style>
 		</head>
 		<body>
-			${buildReceiptHTML(invoiceData)}
+			${dualSplitLayout}
 			${controls}
 		</body>
 		</html>`
 }
 
 /**
+ * Parse single combined layouts matching page-breaks elements into isolated documents
+ * to guarantee automated mechanical cuts over silent printing hardware frameworks.
+ */
+async function processAndExecuteSilentPrint(fullHTML, injectedStyles = "") {
+	// Regular expression matching structural target nodes: <div class="page-break"></div> or with variants/spacing/inner attributes
+	const splitRegex = /<div[^>]*class=["'][^"']*page-break[^"']*["'][^>]*>\s*<\/div>/gi
+
+	// Extract everything inside body if it's an absolute document, or utilize raw strings
+	let innerContent = fullHTML
+	const bodyMatch = fullHTML.match(/<body[^>]*>([\s\S]*?)<\/body>/i)
+	if (bodyMatch) {
+		innerContent = bodyMatch[1]
+	}
+
+	const sections = innerContent.split(splitRegex)
+	
+	// Print every isolated block as an individual complete sub-document handle
+	for (const sectionContent of sections) {
+		if (!sectionContent.trim()) continue
+
+		const isolatedDocument = `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<style>${RECEIPT_STYLES}\n${injectedStyles}</style>
+</head>
+<body>
+	${sectionContent}
+</body>
+</html>`
+
+		await qzPrintHTML(isolatedDocument)
+	}
+}
+
+/**
  * Resolve print format & letterhead from a POS Profile.
- * Returns defaults when the profile lookup fails so callers always get a value.
  */
 async function resolvePrintSettings(posProfile, printFormat, letterhead) {
 	if (printFormat) return { printFormat, letterhead }
@@ -282,9 +326,8 @@ async function resolvePrintSettings(posProfile, printFormat, letterhead) {
 // ============================================================================
 
 /**
- * Open Frappe's /printview in a new browser window.
- * The page includes trigger_print=1 so the OS print dialog appears automatically.
- * Falls back to the hardcoded receipt template if the popup is blocked.
+ * Open Frappe's /printview containing combined data nodes in a single browser window.
+ * Natively segmented during rendering through internal CSS rules.
  */
 export async function printInvoice(invoiceData, printFormat = null, letterhead = null) {
 	try {
@@ -362,12 +405,7 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 // ============================================================================
 
 /**
- * Fetch the server-rendered print HTML and send it to a thermal printer
- * via QZ Tray. Uses Frappe's get_html_and_style API which returns the
- * print format HTML + its inline styles (standard.css, print style, custom CSS).
- * Note: print.bundle.css (Bootstrap grid/tables) is NOT included — print
- * formats that rely on Bootstrap layout classes may render differently.
- * Paper size and margins are controlled by the QZ Tray config in qzTray.js.
+ * Fetch server content and intercept page-break targets to cleanly isolate print records.
  */
 export async function silentPrintInvoice(invoiceName, printFormat = null) {
 	if (isLocalOnlyInvoiceName(invoiceName)) {
@@ -392,32 +430,28 @@ export async function silentPrintInvoice(invoiceName, printFormat = null) {
 	const style = result?.style || result?.message?.style || ""
 	if (!html) throw new Error("Failed to get print HTML from server")
 
-	const fullHTML = `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><style>${style}</style></head>
-<body>${html}</body>
-</html>`
-
-	await qzPrintHTML(fullHTML)
-	log.info(`Silent print sent for ${invoiceName}`)
+	// Parse markup dynamically down to independent prints if split containers are targeted
+	await processAndExecuteSilentPrint(html, style)
+	
+	log.info(`Silent print processed with dynamic layout validation for ${invoiceName}`)
 	return true
 }
 
 /**
- * Silent-print a full invoice dict using the same HTML as the offline receipt fallback.
+ * Silent-print local offline markup objects using automated layout splits.
  */
 export async function silentPrintInvoiceFromDoc(invoiceData) {
-	const fullHTML = buildReceiptDocumentHTML(invoiceData, { includeControls: false })
-	await qzPrintHTML(fullHTML)
-	log.info(`Silent print (local receipt) for ${invoiceData?.name}`)
+	const combinedHTML = buildReceiptDocumentHTML(invoiceData, { includeControls: false })
+	
+	await processAndExecuteSilentPrint(combinedHTML, "")
+	
+	log.info(`Silent print split execution sequence successfully completed for local doc: ${invoiceData?.name}`)
 	flagOfflineInvoicePrinted(invoiceData?.name)
 	return true
 }
 
 /**
  * Try silent print, fall back to browser print on failure.
- * silentPrintInvoice → qzPrintHTML → connect() handles auto-reconnect
- * internally, so no separate connection logic is needed here.
  */
 export async function printWithSilentFallback(invoiceData, printFormat = null) {
 	invoiceData = await hydrateLocalOnlyInvoice(invoiceData)
@@ -464,8 +498,7 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 // ============================================================================
 
 /**
- * Renders the receipt locally in a popup window. Used offline, for pending
- * local-only invoices, and as the fallback when /printview is unavailable.
+ * Renders the single unified print format inside a local popup template layout view.
  */
 export function printInvoiceCustom(invoiceData) {
 	const printWindow = window.open("", "_blank", "width=350,height=600")
