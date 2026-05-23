@@ -42,6 +42,7 @@ POS_SETTINGS_FIELDS = [
 	"show_variants_as_items",
 	"custom_show_offers",
 	"custom_show_coupon",
+	"default_card_view"
 ]
 
 # Default POS Settings values
@@ -74,4 +75,5 @@ DEFAULT_POS_SETTINGS = {
 	"show_variants_as_items": 0,
 	"custom_show_offers": 0,
 	"custom_show_coupon": 0,
+	"default_card_view": 0,
 }
