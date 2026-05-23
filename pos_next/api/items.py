@@ -1805,7 +1805,7 @@ def get_item_groups(pos_profile):
 		if not configured_groups:
 			result = (
 				frappe.qb.from_(ItemGroup)
-				.select(ItemGroup.name.as_("item_group"), ItemGroup.item_group_name)
+				.select(ItemGroup.name.as_("item_group"), ItemGroup.item_group_name.as_("item_group_name"))
 				.where(ItemGroup.is_group == 0)
 				.orderby(ItemGroup.name)
 				.limit(50)
@@ -1819,6 +1819,7 @@ def get_item_groups(pos_profile):
 			descendants = _get_item_group_with_descendants(group_name)
 			result.append({
 				"item_group": group_name,
+				"item_group_name": frappe.db.get_value("Item Group", group_name, "item_group_name") or group_name,
 				"is_group": len(descendants) > 1,
 				"child_groups": descendants[1:] if len(descendants) > 1 else [],
 			})
