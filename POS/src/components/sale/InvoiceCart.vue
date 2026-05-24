@@ -1464,15 +1464,21 @@ const orderTypeModel = computed({
 
 // Table selector visibility (only when order type supports tables + profile allows it)
 const currentOrderTypeOption = computed(() => {
-	const opts = orderTypesStore.orderTypeOptions?.value ?? []
+	const opts = orderTypesStore.orderTypeOptions ?? []
 	return opts.find((o) => o.value === orderTypeModel.value)
 })
 const showTableSelector = computed(() => {
-	return (
-		props.showPosOrderType &&
-		props.showPosTableNo &&
-		currentOrderTypeOption.value?.has_tables
-	)
+	// Must have order type feature enabled + table feature enabled on profile
+	if (!props.showPosOrderType || !props.showPosTableNo) return false
+
+	// Must have a selected order type
+	if (!orderTypeModel.value) return false
+
+	// Look up the currently selected order type in the loaded list
+	const opt = currentOrderTypeOption.value
+
+	// Only show the table picker if the selected order type actually supports tables
+	return !!opt?.has_tables
 })
 
 const tableModel = ref(null) // TODO: wire to cartStore / invoice state later
