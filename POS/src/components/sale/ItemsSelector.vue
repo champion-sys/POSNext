@@ -122,7 +122,7 @@
 						@click="setViewMode('grid')"
 						:class="[
 							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
-							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
+							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('Grid View')"
 						:aria-label="__('Switch to grid view')"
@@ -135,13 +135,13 @@
 						@click="setViewMode('list')"
 						:class="[
 							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
-							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
+							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('List View')"
 						:aria-label="__('Switch to list view')"
 					>
 						<svg class="w-4 h-4 sm:w-4.5 sm:h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16"/>
 						</svg>
 					</button>
 				</div>
