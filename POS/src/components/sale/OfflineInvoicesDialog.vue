@@ -120,6 +120,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
+							v-if="settingsStore.allowPrintPreviousInvoices"
 									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 								>
@@ -247,6 +248,8 @@
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { Button, Dialog } from "frappe-ui"
 import { computed, ref, watch } from "vue"
+import { usePOSSettingsStore } from "@/stores/posSettings"
+import { useToast } from "@/composables/useToast"
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -281,6 +284,9 @@ const show = computed({
 	get: () => props.modelValue,
 	set: (val) => emit("update:modelValue", val),
 })
+
+const settingsStore = usePOSSettingsStore()
+const { showWarning } = useToast()
 
 const loading = ref(false)
 const invoices = ref([])
@@ -344,6 +350,11 @@ function editInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
+	if (!settingsStore.allowPrintPreviousInvoices) {
+		showWarning(__("Printing previous invoices is disabled in POS Settings"))
+		return
+	}
+
 	// Emit the offline_id — the parent's handlePrintInvoice hydrates from
 	// sessionStorage first, then IndexedDB, so reprinting works across reloads.
 	emit("print-invoice", { name: invoice.offline_id })

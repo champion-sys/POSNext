@@ -395,6 +395,7 @@
 											</button>
 											<button
 												@click="$emit('print-invoice', invoice)"
+									v-if="settingsStore.allowPrintPreviousInvoices"
 												class="px-3 py-2 text-xs font-semibold text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors flex items-center gap-1"
 												:title="__('Print')"
 											>
@@ -520,6 +521,7 @@
 													</button>
 													<button
 														@click="$emit('print-invoice', invoice)"
+									v-if="settingsStore.allowPrintPreviousInvoices"
 														class="p-1.5 hover:bg-green-50 rounded transition-colors"
 														:title="__('Print')"
 													>
@@ -560,6 +562,7 @@ import InvoiceFilters from "@/components/invoices/InvoiceFilters.vue"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
 import { useInvoiceFilters } from "@/composables/useInvoiceFilters"
 import { useInvoiceFiltersStore } from "@/stores/invoiceFilters"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import { useFormatters } from "@/composables/useFormatters"
@@ -578,6 +581,8 @@ import { logger } from "@/utils/logger"
 const log = logger.create("InvoiceManagement")
 const { showSuccess, showError } = useToast()
 const { formatDate, formatDateTime, formatTime } = useFormatters()
+const settingsStore = usePOSSettingsStore()
+
 
 const props = defineProps({
 	modelValue: Boolean,

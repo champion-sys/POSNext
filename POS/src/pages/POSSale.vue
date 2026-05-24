@@ -921,6 +921,7 @@
 						<Button
 							variant="solid"
 							theme="blue"
+								v-if="posSettingsStore.allowPrintLastInvoice"
 							@click="
 								() => {
 									handlePrintInvoice({ name: uiStore.lastInvoiceName });
@@ -2159,7 +2160,7 @@ async function handlePaymentCompleted(paymentData) {
 				draftsStore.deleteDraft(draftIdToDelete);
 			}
 
-			if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
+			if (posSettingsStore.allowPrintLastInvoice && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
 				try {
 					await handlePrintInvoice({ name: offlineReceiptName });
 					showSuccess(
@@ -2230,7 +2231,7 @@ async function handlePaymentCompleted(paymentData) {
 					log.debug("Background invoice cache refresh failed:", err)
 				);
 
-				if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
+			if (posSettingsStore.allowPrintLastInvoice && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
 					try {
 						await handlePrintInvoice({ name: invoiceName });
 						showSuccess(__("Invoice {0} created and sent to printer", [invoiceName]));
@@ -2965,6 +2966,21 @@ async function handlePrintInvoice(invoiceData) {
 		) {
 			invoiceData = offlineSnapshot;
 		}
+
+			const invoiceName = invoiceData?.name;
+			const lastInvoiceName = uiStore.lastInvoiceName;
+			const isLastInvoice = Boolean(
+				invoiceName && lastInvoiceName && invoiceName === lastInvoiceName,
+			);
+
+			if (isLastInvoice && !posSettingsStore.allowPrintLastInvoice) {
+				showWarning(__("Printing the last invoice is disabled in POS Settings"));
+				return;
+			}
+			if (!isLastInvoice && !posSettingsStore.allowPrintPreviousInvoices) {
+				showWarning(__("Printing previous invoices is disabled in POS Settings"));
+				return;
+			}
 
 		// Silent print path — send directly to thermal printer via QZ Tray
 		if (posSettingsStore.silentPrint) {
