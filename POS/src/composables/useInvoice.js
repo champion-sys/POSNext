@@ -1326,7 +1326,7 @@ export function useInvoice() {
 	}
 
 	function resetPosOrderType(defaultOrderType = null) {
-		posOrderType.value = defaultOrderType || null
+		// posOrderType.value = defaultOrderType || null
 	}
 
 	return {
@@ -1342,7 +1342,7 @@ export function useInvoice() {
 		couponCode,
 		taxRules,
 		taxInclusive,
-	posOrderType,
+		posOrderType,
 		isSubmitting,
 
 		// Computed

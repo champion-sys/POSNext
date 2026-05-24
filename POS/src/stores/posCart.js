@@ -262,6 +262,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			isPosOrderTypeEnabled.value ? defaultPosOrderType.value : null,
 		)
 
+		console.log("isPosOrderTypeEnabled.value", isPosOrderTypeEnabled.value)
+		console.log("defaultPosOrderType.value", defaultPosOrderType.value)
 		// Reset offer processing state
 		offerProcessingState.value.lastCartHash = ""
 		offerProcessingState.value.error = null
