@@ -224,8 +224,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	function updateItemQuantity(itemCode, quantity, uom = null) {
 		const item = uom
 			? invoiceItems.value.find(
-					(i) => i.item_code === itemCode && i.uom === uom,
-				)
+				(i) => i.item_code === itemCode && i.uom === uom,
+			)
 			: invoiceItems.value.find((i) => i.item_code === itemCode)
 
 		if (!item) return baseUpdateItemQuantity(itemCode, quantity, uom)
@@ -377,7 +377,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				rate: item.rate,
 				uom: item.uom,
 				warehouse: item.warehouse,
-				custom_remarks: item.remarks || "",
+				remarks: item.remarks || "",
 				conversion_factor: item.conversion_factor || 1,
 				price_list_rate: item.price_list_rate || item.rate,
 				discount_percentage: item.discount_percentage || 0,
@@ -1112,9 +1112,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 						? [...pr]
 						: pr
 							? String(pr)
-									.split(",")
-									.map((s) => s.trim())
-									.filter(Boolean)
+								.split(",")
+								.map((s) => s.trim())
+								.filter(Boolean)
 							: []
 					if (!prArr.includes(offer.name)) prArr.push(offer.name)
 					existingFreeRow.pricing_rules = prArr
