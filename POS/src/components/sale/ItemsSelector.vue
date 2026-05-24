@@ -743,24 +743,6 @@
 			</div>
 		</div>
 
-		<!-- Keyboard Shortcuts Bar -->
-		<div class="shortcuts-bar">
-			<!-- Gradient Fades to suggest horizontal scrollability -->
-			<div class="fade-overlay fade-left"></div>
-			<div class="fade-overlay fade-right"></div>
-			
-			<div class="shortcuts-wrapper scrollbar-hide">
-				<div class="shortcuts-list">
-					<div v-for="(shortcut, idx) in KEYBOARD_SHORTCUTS" :key="idx" class="shortcut-item">
-						<template v-for="(key, keyIdx) in shortcut.keys" :key="keyIdx">
-							<kbd class="shortcut-key">{{ key }}</kbd>
-							<span v-if="keyIdx < shortcut.keys.length - 1" class="shortcut-join">{{ shortcut.join || '+' }}</span>
-						</template>
-						<span class="shortcut-label">{{ shortcut.label }}</span>
-					</div>
-				</div>
-			</div>
-		</div>
 	</div>
 
 	<!-- Warehouse Availability Dialog -->
@@ -923,18 +905,6 @@ const SEARCH_PLACEHOLDERS = Object.freeze({
 	default: __("Search by item code, name, item group or scan barcode"),
 })
 
-const KEYBOARD_SHORTCUTS = Object.freeze([
-	{ keys: ["Alt", "S"], join: "+", label: __("Search") },
-	{ keys: ["Alt", "I"], join: "+", label: __("Focus Items") },
-	{ keys: ["Arrow Keys"], label: __("Navigate") },
-	{ keys: ["Enter"], label: __("Add/Select") },
-	{ keys: ["+", "-"], join: "/", label: __("Qty +/-") },
-	{ keys: ["[", "]"], join: "/", label: __("Group Prev/Next") },
-	{ keys: ["Alt", "B"], join: "+", label: __("Scanner") },
-	{ keys: ["Alt", "A"], join: "+", label: __("Auto-Add") },
-	{ keys: ["Alt", "V"], join: "+", label: __("Grid/List") },
-	{ keys: ["Alt", "O"], join: "+", label: __("Sort") },
-])
 
 // Sort configuration
 const BASE_SORT_OPTIONS = Object.freeze([
@@ -2026,118 +1996,4 @@ tbody tr:not(:hover):not(:active) {
 	will-change: auto;
 }
 
-/* Keyboard Shortcuts Bar Styling - Enhancing with beautiful dark graphite colors & 3D keycaps */
-.shortcuts-bar {
-	position: relative;
-	background-color: #0f172a; /* Slate 900 */
-	border-top: 1px solid #1e293b; /* Slate 800 */
-	color: #94a3b8; /* Slate 400 */
-	padding: 0 1.25rem;
-	flex-shrink: 0;
-	user-select: none;
-	overflow: hidden;
-}
-
-/* Gradient Fades for horizontal scrolling indicator */
-.fade-overlay {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	width: 2.5rem;
-	pointer-events: none;
-	z-index: 10;
-}
-.fade-left {
-	left: 0;
-	background: linear-gradient(to right, #0f172a 10%, rgba(15, 23, 42, 0));
-}
-.fade-right {
-	right: 0;
-	background: linear-gradient(to left, #0f172a 10%, rgba(15, 23, 42, 0));
-}
-
-.shortcuts-wrapper {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	overflow-x: auto;
-	user-select: none;
-	white-space: nowrap;
-}
-
-.shortcuts-title {
-	display: flex;
-	align-items: center;
-	gap: 0.375rem;
-	font-weight: 900;
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-	color: #38bdf8; /* Sky 400 accent */
-	margin-right: 1.25rem;
-	font-size: 10px;
-}
-@media (min-width: 640px) {
-	.shortcuts-title {
-		font-size: 11px;
-	}
-}
-
-.shortcuts-list {
-	display: flex;
-	align-items: center;
-	gap: 1.5rem;
-	padding: 0.5rem 0;
-}
-
-.shortcut-item {
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-/* Premium 3D keyboard keys */
-.shortcut-key {
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-	font-size: 10px;
-	font-weight: 800;
-	padding: 0.2rem 0.45rem;
-	border-radius: 4px;
-	background: linear-gradient(to bottom, #1e293b, #0f172a);
-	color: #f8fafc; /* Slate 50 */
-	border: 1px solid #334155; /* Slate 700 */
-	border-bottom: 3px solid #020617; /* Darker bottom border for 3D depth */
-	box-shadow: 
-		inset 0 1px 0 rgba(255, 255, 255, 0.15),
-		0 2px 4px rgba(0, 0, 0, 0.4);
-	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
-	line-height: 1;
-	display: inline-block;
-}
-@media (min-width: 640px) {
-	.shortcut-key {
-		font-size: 11px;
-	}
-}
-
-/* Joiner character like plus (+) or slash (/) */
-.shortcut-join {
-	color: #64748b; /* Slate 500 */
-	font-weight: 700;
-	font-family: monospace;
-	font-size: 11px;
-}
-
-/* Action Label description */
-.shortcut-label {
-	color: #e2e8f0; /* Slate 200 */
-	font-weight: 500;
-	letter-spacing: 0.025em;
-	font-size: 10px;
-	margin-left: 0.25rem;
-}
-@media (min-width: 640px) {
-	.shortcut-label {
-		font-size: 11px;
-	}
-}
 </style>
