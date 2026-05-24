@@ -592,9 +592,6 @@
 					<p class="text-[10px] sm:text-xs text-gray-500">
 						{{ __("Select items to start or choose a quick action") }}
 					</p>
-					<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-500 bg-gray-100 rounded border border-gray-200 uppercase tracking-widest shadow-sm">
-						Alt + Q
-					</span>
 				</div>
 
 				<!-- Quick Actions Grid -->
@@ -633,7 +630,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("View Shift")
 						}}</span>
-						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+W</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-blue-500 bg-blue-50/70 border border-blue-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-blue-600 group-hover:bg-blue-100 group-hover:border-blue-200 group-hover:shadow-sm">Alt+W</kbd>
 					</button>
 
 					<!-- Draft Invoices -->
@@ -664,7 +661,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Draft Invoices")
 						}}</span>
-						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+D</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-purple-500 bg-purple-50/70 border border-purple-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-purple-600 group-hover:bg-purple-100 group-hover:border-purple-200 group-hover:shadow-sm">Alt+D</kbd>
 					</button>
 
 					<!-- Invoice History -->
@@ -695,7 +692,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Invoice History")
 						}}</span>
-						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+H</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-slate-500 bg-slate-50/70 border border-slate-200 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-slate-600 group-hover:bg-slate-100 group-hover:border-slate-300 group-hover:shadow-sm">Alt+H</kbd>
 					</button>
 
 					<!-- Return Invoice -->
@@ -726,7 +723,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Return Invoice")
 						}}</span>
-						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+R</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-red-500 bg-red-50/70 border border-red-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-red-600 group-hover:bg-red-100 group-hover:border-red-200 group-hover:shadow-sm">Alt+R</kbd>
 					</button>
 
 					<!-- Close Shift -->

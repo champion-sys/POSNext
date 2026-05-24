@@ -1407,6 +1407,11 @@ function handleNavigationKeys(event) {
 function handleGlobalKeyDown(event) {
 	if (isAnyDialogOpen.value) return
 
+	// Alt + Q or F4: Reset focused items selection when moving to Quick Actions
+	if ((event.altKey && event.key.toLowerCase() === "q") || event.key === "F4") {
+		focusedItemIndex.value = -1
+	}
+
 	if (showSortDropdown.value) {
 		const totalOptions = 1 + sortOptions.value.length
 		if (event.key === "ArrowDown") {
@@ -1462,6 +1467,11 @@ function handleGlobalKeyDown(event) {
 		event.preventDefault()
 		if (displayedItems.value.length > 0) {
 			focusedItemIndex.value = 0
+			// Blur active quick action if any
+			const currentActive = document.activeElement
+			if (currentActive && currentActive.getAttribute("data-nav") === "quick-action") {
+				currentActive.blur()
+			}
 			scrollFocusedItemIntoView()
 			if (isSearchFocused && searchInputRef.value) {
 				searchInputRef.value.blur()
@@ -1656,6 +1666,11 @@ onMounted(() => {
 
 	// Add global keydown listener for keyboard shortcuts
 	window.addEventListener("keydown", handleGlobalKeyDown)
+
+	// Reset focused item index when any quick action card gets focus or is clicked
+	document.addEventListener("focusin", handleQuickActionFocus)
+	document.addEventListener("mousedown", handleQuickActionFocus)
+
 	// Autofocus item search on POS load
 	nextTick(() => {
 		if (!isAnyDialogOpen.value) focusSearchInput()
@@ -1687,6 +1702,10 @@ onUnmounted(() => {
 
 	// Remove global keydown listener
 	window.removeEventListener("keydown", handleGlobalKeyDown)
+
+	// Remove global quick action listeners
+	document.removeEventListener("focusin", handleQuickActionFocus)
+	document.removeEventListener("mousedown", handleQuickActionFocus)
 })
 
 // Create optimized click handlers for better touch response
@@ -1711,9 +1730,21 @@ function getOptimizedClickHandler(item) {
 function focusItemForKeyboard(index) {
 	focusedItemIndex.value = index
 	if (searchInputRef.value) searchInputRef.value.blur()
+	// Blur active quick action if any
+	const currentActive = document.activeElement
+	if (currentActive && currentActive.getAttribute("data-nav") === "quick-action") {
+		currentActive.blur()
+	}
 	nextTick(() => {
 		scrollFocusedItemIntoView()
 	})
+}
+
+function handleQuickActionFocus(event) {
+	const activeEl = event.target
+	if (activeEl && activeEl.getAttribute && activeEl.getAttribute("data-nav") === "quick-action") {
+		focusedItemIndex.value = -1
+	}
 }
 
 

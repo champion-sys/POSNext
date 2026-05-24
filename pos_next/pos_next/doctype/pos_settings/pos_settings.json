@@ -18,6 +18,7 @@
   "auto_create_wallet",
   "loyalty_to_wallet",
   "section_break_general",
+  "role_allowed_to_access_settings_in_pos",
   "allow_user_to_edit_additional_discount",
   "allow_user_to_edit_item_discount",
   "allow_user_to_edit_rate",
@@ -561,11 +562,17 @@
    "fieldname": "post_change_gl_entries",
    "fieldtype": "Check",
    "label": "Post Change GL Entries "
+  },
+  {
+   "fieldname": "role_allowed_to_access_settings_in_pos",
+   "fieldtype": "Link",
+   "label": "Role Allowed to Access Settings in POS",
+   "options": "Role"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-24 23:42:37.262053",
+ "modified": "2026-05-24 23:45:43.716510",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",
