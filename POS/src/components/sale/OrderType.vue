@@ -3,9 +3,10 @@
         class="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-xl p-1.5 shadow-sm"
         role="group"
         :aria-label="label"
+		v-if="normalizedOptions.length"
     >
         <p class="text-[11px] font-semibold text-gray-600 select-none px-1.5">
-            {{ label }}
+            {{ __(label) }}
         </p>
 
         <div class="flex items-center bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
@@ -22,7 +23,7 @@
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"
             >
-                {{ opt.label }}
+                {{ __(opt.label) }}
             </button>
         </div>
     </div>
@@ -106,6 +107,7 @@ const normalizedOptions = computed(() => {
             label: String(o.label),
             value: String(o.value),
             default: Number(o.default || 0),
+			has_tables: Boolean(o.has_tables || 0),
         }))
 })
 </script>
