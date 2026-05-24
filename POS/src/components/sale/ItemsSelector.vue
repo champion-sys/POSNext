@@ -1,18 +1,18 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="px-1.5 sm:px-3 pt-1.5 sm:pt-3 pb-1.5 sm:pb-2 bg-white border-b border-gray-200 max-h-[130px] overflow-y-auto">
-			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
+		<div class="bg-gray-300 border-b border-gray-400 max-h-[135px] overflow-y-auto">
+			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-none text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
-							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
-							: 'bg-white text-gray-900 border border-gray-400 hover:bg-gray-50 active:bg-gray-100',
+							? 'bg-black text-white border-none'
+							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
 					]"
 				>
-					<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
 					</svg>
 					<span class="truncate">{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
@@ -22,10 +22,10 @@
 					:key="option.value"
 					@click="handleFilterClick(option.value)"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-none text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						activeFilterValue === option.value
-							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
-							: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 active:bg-gray-100',
+							? 'bg-black text-white border-none'
+							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
 					]"
 				>
 					<span class="truncate">{{ __(option.label) }}</span>
@@ -73,12 +73,12 @@
 						type="text"
 						:placeholder="searchPlaceholder"
 						:class="[
-							'w-full text-[11px] sm:text-sm border rounded-lg px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all',
+							'w-full text-[11px] sm:text-sm border-2 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all rounded-none',
 							autoAddEnabled
-								? 'border-blue-400 bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+								? 'border-blue-600 bg-blue-50 focus:border-blue-700'
 								: scannerEnabled
-								? 'border-green-400 bg-green-50 focus:ring-2 focus:ring-green-500 focus:border-transparent'
-								: 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+								? 'border-green-600 bg-green-50 focus:border-green-700'
+								: 'border-black focus:border-blue-600'
 						]"
 						:aria-label="__('Search items')"
 					/>
@@ -87,9 +87,9 @@
 						<button
 							@click="toggleBarcodeScanner"
 							:class="[
-								'p-1 sm:p-1.5 rounded transition-[background-color] duration-75 touch-manipulation',
+								'p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation',
 								scannerEnabled
-									? 'bg-green-100 hover:bg-green-200 active:bg-green-300 text-green-700'
+									? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
 							]"
 							:title="scannerEnabled ? __('Barcode Scanner: ON (Click to disable)') : __('Barcode Scanner: OFF (Click to enable)')"
@@ -102,9 +102,9 @@
 						<button
 							@click="toggleAutoAdd"
 							:class="[
-								'p-1 sm:p-1.5 rounded transition-[background-color] duration-75 flex items-center gap-0.5 text-[9px] sm:text-xs font-medium px-1 sm:px-2 touch-manipulation',
+								'p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation',
 								autoAddEnabled
-									? 'bg-blue-100 hover:bg-blue-200 active:bg-blue-300 text-blue-700'
+									? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
 							]"
 							:title="autoAddEnabled ? __('Auto-Add: ON - Press Enter to add items to cart') : __('Auto-Add: OFF - Click to enable automatic cart addition on Enter')"
@@ -117,12 +117,12 @@
 						</button>
 					</div>
 				</div>
-				<div class="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
+				<div class="flex items-center gap-0.5 bg-gray-200 border border-gray-400 p-0.5 flex-shrink-0">
 					<button
 						@click="setViewMode('grid')"
 						:class="[
-							'p-1.5 sm:p-2 rounded transition-[background-color,box-shadow] duration-75 touch-manipulation',
-							viewMode === 'grid' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 active:bg-gray-300'
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation',
+							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('Grid View')"
 						:aria-label="__('Switch to grid view')"
@@ -134,8 +134,8 @@
 					<button
 						@click="setViewMode('list')"
 						:class="[
-							'p-1.5 sm:p-2 rounded transition-[background-color,box-shadow] duration-75 touch-manipulation',
-							viewMode === 'list' ? 'bg-white shadow-sm' : 'hover:bg-gray-200 active:bg-gray-300'
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation',
+							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('List View')"
 						:aria-label="__('Switch to list view')"
@@ -145,17 +145,17 @@
 						</svg>
 					</button>
 				</div>
-
+ 
 				<!-- Sort Dropdown -->
 				<div class="relative z-50">
 					<button
 						@click="toggleSortDropdown"
 						data-sort-button
 						:class="[
-							'p-1.5 sm:p-2 rounded-lg transition-[background-color,box-shadow] duration-75 touch-manipulation border',
+							'p-1.5 sm:p-2 rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-2',
 							sortBy
-								? 'bg-blue-50 border-blue-400 text-blue-700 shadow-sm'
-								: 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50 active:bg-gray-100'
+								? 'bg-blue-50 border-blue-600 text-blue-700 shadow-none'
+								: 'bg-white border-black text-gray-700 hover:bg-gray-100 active:bg-gray-200'
 						]"
 						:title="sortBy
 							? (sortOrder === 'asc'
@@ -168,12 +168,12 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/>
 						</svg>
 					</button>
-
+ 
 					<!-- Dropdown Menu -->
 					<div
 						v-if="showSortDropdown"
 						@click.stop
-						class="absolute end-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 z-[9999]"
+						class="absolute end-0 mt-1 w-56 bg-white rounded-none shadow-md border-2 border-black z-[9999]"
 						style="box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);"
 					>
 						<div class="py-2">
@@ -273,10 +273,10 @@
 		<div v-if="viewMode === 'grid'" key="grid" class="flex-1 flex flex-col overflow-hidden min-h-0">
 			<div
 				ref="gridScrollContainer"
-				class="flex-1 overflow-y-auto p-1.5 sm:p-3"
+				class="flex-1 overflow-y-auto bg-gray-200"
 				style="min-height: 0;"
 			>
-				<div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-1.5 sm:gap-2.5">
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-[1px]">
 					<div
 						v-for="item in displayedItems"
 						:key="item.item_code"
@@ -285,7 +285,7 @@
 						@touchend.passive="getOptimizedClickHandler(item).touchend"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white border border-gray-200 rounded-lg p-1.5 sm:p-2.5 touch-manipulation transition-[border-color,box-shadow] duration-100 cursor-pointer hover:border-blue-400 hover:shadow-md',
+							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50',
 						]"
 					>
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -296,10 +296,8 @@
 							@pointercancel="clearLongPress"
 							@pointerleave="clearLongPress"
 							:class="[
-								'absolute -top-1.5 -end-1.5 sm:-top-2 sm:-end-2 rounded-md shadow-lg z-10',
-								'px-2 sm:px-2.5 py-1 sm:py-1 text-[10px] sm:text-xs font-bold',
-								'border-2 border-white cursor-pointer select-none',
-								'hover:scale-110 hover:shadow-xl transition-all duration-200',
+								'absolute top-0 end-0 z-10 rounded-none border-b border-l border-gray-200',
+								'px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono font-bold cursor-pointer select-none',
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 							]"
@@ -307,9 +305,9 @@
 						>
 							{{ Math.floor((item.actual_qty ?? item.stock_qty ?? 0)) }}
 						</div>
-
+ 
 						<!-- Item Image -->
-						<div class="relative aspect-square bg-gray-100 rounded-md mb-1.5 sm:mb-2 overflow-hidden">
+						<div class="relative aspect-[4/3] bg-gray-100 rounded-none mb-1 overflow-hidden border-b border-gray-100">
 							<!-- Image with conditional blur on hover -->
 							<div :class="[
 								'w-full h-full transition-all duration-300',
@@ -355,7 +353,7 @@
 									</svg>
 								</div>
 							</div>
-
+ 
 							<!-- Info Icon Overlay - Tap to select, long press to show warehouse availability -->
 							<div
 								v-if="(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0"
@@ -366,29 +364,28 @@
 								class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 cursor-pointer select-none"
 								:title="__('Check availability in other warehouses')"
 							>
-								<div class="p-2.5 bg-white/80 backdrop-blur-sm rounded-full pointer-events-none">
+								<div class="p-2 bg-white/95 rounded-none border border-gray-300 pointer-events-none">
 									<svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
 									</svg>
 								</div>
 							</div>
 						</div>
-
+ 
 						<!-- Item Details -->
-						<div class="min-w-0">
-							<h3 class="text-[10px] sm:text-xs font-semibold text-gray-900 truncate mb-0.5 leading-tight">
-								{{ item.item_name }}
-							</h3>
-							<p v-if="item.item_code" class="text-[8px] sm:text-[9px] font-bold text-gray-700 truncate leading-tight my-1">
-								{{ item.item_code }}
-							</p>
-							<p v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
-								{{ Object.values(item.attributes).join(' / ') }}
-							</p>
-							<p class="text-[9px] sm:text-[10px] text-gray-500 leading-tight">
-									<span class="font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
-									<span class="text-gray-400">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
-							</p>
+						<div class="min-w-0 flex flex-col justify-between pt-0.5">
+							<div>
+								<h3 class="text-[9px] sm:text-[11px] font-bold uppercase tracking-tight text-gray-900 truncate leading-tight">
+									{{ item.item_name }}
+								</h3>
+								<p v-if="item.item_code" class="text-[8px] sm:text-[9px] font-mono text-gray-500 truncate leading-none mt-0.5">
+									{{ item.item_code }}
+								</p>
+							</div>
+							<div class="mt-1 flex items-baseline justify-between gap-1 flex-wrap">
+								<span class="text-[9px] sm:text-[11px] font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
+								<span class="text-[8px] sm:text-[9px] font-medium text-gray-400 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -420,15 +417,15 @@
 							paginationTotal
 						]) }}
 					</div>
-					<div class="flex items-center gap-1 order-1 sm:order-2">
+					<div class="flex items-center gap-0.5 order-1 sm:order-2">
 						<button
 							@click="goToPage(1)"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to first page')"
 						>
@@ -439,26 +436,26 @@
 							@click="previousPage"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to previous page')"
 						>
 							<span class="hidden xs:inline">{{ __('Previous') }}</span>
 							<span class="xs:hidden">&lsaquo;</span>
 						</button>
-						<div class="flex items-center gap-0.5 sm:gap-1">
+						<div class="flex items-center gap-0.5">
 							<button
 								v-for="page in getPaginationRange()"
 								:key="page"
 								@click="goToPage(page)"
 								:class="[
-									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color,border-color] duration-75 touch-manipulation',
+									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
-										? 'bg-blue-600 text-white border-blue-600'
-										: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+										? 'bg-black text-white border-black'
+										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 								]"
 								:aria-label="__('Go to page {0}', [page])"
 							>
@@ -469,10 +466,10 @@
 							@click="nextPage"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to next page')"
 						>
@@ -483,10 +480,10 @@
 							@click="goToPage(totalPages)"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to last page')"
 						>
@@ -527,7 +524,7 @@
 							class="group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-[background-color,box-shadow] duration-100 touch-manipulation active:bg-blue-100"
 						>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[50px] sm:w-[60px]">
-								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
 									<LazyImage
 										v-if="item.image"
 										:src="item.image"
@@ -548,7 +545,7 @@
 								</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">
-								<div class="text-xs sm:text-sm font-medium text-gray-900 truncate" :title="item.item_name">
+								<div class="text-xs sm:text-sm font-bold uppercase tracking-tight text-gray-900 truncate" :title="item.item_name">
 									{{ item.item_name }}
 								</div>
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
@@ -556,10 +553,10 @@
 								</div>
 							</td>
 							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]">
-								<div class="text-xs sm:text-sm text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
+								<div class="text-xs sm:text-sm font-mono text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
-								<div class="text-xs sm:text-sm font-semibold text-blue-600">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
+								<div class="text-xs sm:text-sm font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">
 								<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -570,9 +567,7 @@
 									@pointercancel="clearLongPress"
 									@pointerleave="clearLongPress"
 									:class="[
-										'inline-block px-1.5 sm:px-3 py-0.5 sm:py-1.5 rounded-md shadow-sm',
-										'text-[10px] sm:text-sm font-bold cursor-pointer select-none',
-										'hover:scale-105 hover:shadow-md transition-all duration-200',
+										'inline-block px-1.5 sm:px-2.5 py-0.5 rounded-none border border-gray-300 font-mono font-bold cursor-pointer select-none',
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 									]"
@@ -628,15 +623,15 @@
 							paginationTotal
 						]) }}
 					</div>
-					<div class="flex items-center gap-1 order-1 sm:order-2">
+					<div class="flex items-center gap-0.5 order-1 sm:order-2">
 						<button
 							@click="goToPage(1)"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to first page')"
 						>
@@ -647,26 +642,26 @@
 							@click="previousPage"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to previous page')"
 						>
 							<span class="hidden xs:inline">{{ __('Previous') }}</span>
 							<span class="xs:hidden">&lsaquo;</span>
 						</button>
-						<div class="flex items-center gap-0.5 sm:gap-1">
+						<div class="flex items-center gap-0.5">
 							<button
 								v-for="page in getPaginationRange()"
 								:key="page"
 								@click="goToPage(page)"
 								:class="[
-									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color,border-color] duration-75 touch-manipulation',
+									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
-										? 'bg-blue-600 text-white border-blue-600'
-										: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+										? 'bg-black text-white border-black'
+										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 								]"
 								:aria-label="__('Go to page {0}', [page])"
 							>
@@ -677,10 +672,10 @@
 							@click="nextPage"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to next page')"
 						>
@@ -691,10 +686,10 @@
 							@click="goToPage(totalPages)"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg border transition-[background-color] duration-75 touch-manipulation',
+								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 active:bg-gray-100'
+									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to last page')"
 						>
