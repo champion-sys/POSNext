@@ -193,8 +193,9 @@
 								<button
 									@click="handleSortToggle(null)"
 									:class="[
-										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group',
-										!sortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group outline-none',
+										!sortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
+										focusedSortIndex === 0 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
 								>
 									<span class="flex items-center gap-2.5">
@@ -209,12 +210,13 @@
 
 								<!-- Sort Options Loop -->
 								<button
-									v-for="option in sortOptions"
+									v-for="(option, index) in sortOptions"
 									:key="option.field"
 									@click="handleSortToggle(option.field)"
 									:class="[
-										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group',
-										sortBy === option.field ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group outline-none',
+										sortBy === option.field ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
+										focusedSortIndex === index + 1 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
 								>
 									<span class="flex items-center gap-2.5">
@@ -854,6 +856,7 @@ const itemThreshold = ref(50) // Threshold for auto-switching to list view
 const userManuallySetView = ref(false) // Track if user manually changed view mode
 const lastAutoSwitchCount = ref(0)
 const showSortDropdown = ref(false) // Sort dropdown visibility
+const focusedSortIndex = ref(-1) // Tracks keyboard navigation index in sort dropdown
 const skipPageReset = ref(false) // Skip page reset when navigating via pagination
 
 // Warehouse availability dialog state
@@ -1123,7 +1126,7 @@ function adjustFocusedItemQty(adjustment) {
 		const newQty = Math.max(0, currentQty + adjustment)
 		if (newQty === 0) {
 			cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-			playNotificationSound("add")
+			playNotificationSound("keypress")
 		} else {
 			try {
 				cartStore.updateItemQuantity(
@@ -1131,7 +1134,7 @@ function adjustFocusedItemQty(adjustment) {
 					newQty,
 					cartItem.uom,
 				)
-				playNotificationSound("add")
+				playNotificationSound("keypress")
 			} catch (error) {
 				showError(error.message || __("Failed to update quantity"))
 				playNotificationSound("error")
@@ -1224,6 +1227,24 @@ function playNotificationSound(type) {
 
 			osc.start()
 			osc.stop(ctx.currentTime + 0.15)
+		} else if (type === "keypress") {
+			const osc = ctx.createOscillator()
+			const gain = ctx.createGain()
+
+			// Short mechanical key-click style beep
+			osc.type = "square"
+			const base = 1600 + Math.random() * 200
+			osc.frequency.setValueAtTime(base, ctx.currentTime)
+			osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.02)
+
+			gain.gain.setValueAtTime(0.03, ctx.currentTime)
+			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03)
+
+			osc.connect(gain)
+			gain.connect(ctx.destination)
+
+			osc.start()
+			osc.stop(ctx.currentTime + 0.03)
 		} else if (type === "error") {
 			const osc = ctx.createOscillator()
 			const gain = ctx.createGain()
@@ -1253,7 +1274,7 @@ function removeFocusedItemFromCart() {
 	if (!cartItem) return
 
 	cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-	playNotificationSound("add")
+	playNotificationSound("keypress")
 }
 
 function setFocusedItemQty(qty) {
@@ -1270,7 +1291,7 @@ function setFocusedItemQty(qty) {
 				qty,
 				cartItem.uom,
 			)
-			playNotificationSound("add")
+			playNotificationSound("keypress")
 		} catch (error) {
 			showError(error.message || __("Failed to update quantity"))
 			playNotificationSound("error")
@@ -1278,7 +1299,7 @@ function setFocusedItemQty(qty) {
 	} else {
 		// Route through the same flow as mouse click (POSSale.handleItemSelected)
 		emit("item-selected", focusedItem, false, qty)
-		playNotificationSound("add")
+		playNotificationSound("keypress")
 	}
 }
 
@@ -1385,6 +1406,40 @@ function handleNavigationKeys(event) {
 
 function handleGlobalKeyDown(event) {
 	if (isAnyDialogOpen.value) return
+
+	if (showSortDropdown.value) {
+		const totalOptions = 1 + sortOptions.value.length
+		if (event.key === "ArrowDown") {
+			event.preventDefault()
+			focusedSortIndex.value = (focusedSortIndex.value + 1) % totalOptions
+			return
+		}
+		if (event.key === "ArrowUp") {
+			event.preventDefault()
+			focusedSortIndex.value = (focusedSortIndex.value - 1 + totalOptions) % totalOptions
+			return
+		}
+		if (event.key === "Escape") {
+			event.preventDefault()
+			showSortDropdown.value = false
+			focusSearchInput()
+			return
+		}
+		if (event.key === "Enter") {
+			event.preventDefault()
+			const idx = focusedSortIndex.value
+			if (idx === 0) {
+				handleSortToggle(null)
+			} else if (idx > 0 && idx <= sortOptions.value.length) {
+				handleSortToggle(sortOptions.value[idx - 1].field)
+			}
+			return
+		}
+		if (event.key === "Tab") {
+			showSortDropdown.value = false
+			return
+		}
+	}
 
 	const activeEl = document.activeElement
 	const isSearchFocused = activeEl && activeEl.id === "item-search"
@@ -1878,6 +1933,19 @@ function getPaginationRange() {
 function toggleSortDropdown() {
 	showSortDropdown.value = !showSortDropdown.value
 }
+
+watch(showSortDropdown, (isOpen) => {
+	if (isOpen) {
+		if (!sortBy.value) {
+			focusedSortIndex.value = 0
+		} else {
+			const idx = sortOptions.value.findIndex((opt) => opt.field === sortBy.value)
+			focusedSortIndex.value = idx !== -1 ? idx + 1 : 0
+		}
+	} else {
+		focusedSortIndex.value = -1
+	}
+})
 
 function handleSortToggle(field) {
 	if (!field) {
