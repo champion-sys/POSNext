@@ -120,7 +120,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
-							v-if="settingsStore.allowPrintPreviousInvoices"
+									v-if="settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName)"
 									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 								>
@@ -249,6 +249,7 @@ import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/
 import { Button, Dialog } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSUIStore } from "@/stores/posUI"
 import { useToast } from "@/composables/useToast"
 
 const props = defineProps({
@@ -286,6 +287,7 @@ const show = computed({
 })
 
 const settingsStore = usePOSSettingsStore()
+const uiStore = usePOSUIStore()
 const { showWarning } = useToast()
 
 const loading = ref(false)
@@ -350,7 +352,11 @@ function editInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
-	if (!settingsStore.allowPrintPreviousInvoices) {
+	const isLastInvoice = invoice.offline_id && uiStore.lastInvoiceName && invoice.offline_id === uiStore.lastInvoiceName
+	const canPrint = settingsStore.allowPrintPreviousInvoices || 
+	                 (settingsStore.allowPrintLastInvoice && isLastInvoice)
+
+	if (!canPrint) {
 		showWarning(__("Printing previous invoices is disabled in POS Settings"))
 		return
 	}

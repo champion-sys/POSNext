@@ -588,9 +588,14 @@
 				<p class="text-xs sm:text-sm font-semibold text-gray-900 mb-1">
 					{{ __("Your cart is empty") }}
 				</p>
-				<p class="text-[10px] sm:text-xs text-gray-500 mb-5 sm:mb-6">
-					{{ __("Select items to start or choose a quick action") }}
-				</p>
+				<div class="flex flex-col items-center gap-1.5 mb-5 sm:mb-6">
+					<p class="text-[10px] sm:text-xs text-gray-500">
+						{{ __("Select items to start or choose a quick action") }}
+					</p>
+					<span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-500 bg-gray-100 rounded border border-gray-200 uppercase tracking-widest shadow-sm">
+						Alt + Q
+					</span>
+				</div>
 
 				<!-- Quick Actions Grid -->
 				<div class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-lg">
@@ -598,6 +603,7 @@
 					<button
 						type="button"
 						@click="$emit('view-shift')"
+						data-nav="quick-action"
 						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View current shift details')"
 					>
@@ -627,12 +633,14 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("View Shift")
 						}}</span>
+						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+W</kbd>
 					</button>
 
 					<!-- Draft Invoices -->
 					<button
 						type="button"
 						@click="$emit('show-drafts')"
+						data-nav="quick-action"
 						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View draft invoices')"
 					>
@@ -656,12 +664,14 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Draft Invoices")
 						}}</span>
+						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+D</kbd>
 					</button>
 
 					<!-- Invoice History -->
 					<button
 						type="button"
 						@click="$emit('show-history')"
+						data-nav="quick-action"
 						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View invoice history')"
 					>
@@ -685,12 +695,14 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Invoice History")
 						}}</span>
+						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+H</kbd>
 					</button>
 
 					<!-- Return Invoice -->
 					<button
 						type="button"
 						@click="$emit('show-return')"
+						data-nav="quick-action"
 						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 active:bg-red-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('Process return invoice')"
 					>
@@ -714,6 +726,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Return Invoice")
 						}}</span>
+						<kbd class="mt-1.5 px-1.5 py-0.5 text-[9px] font-mono font-bold text-gray-400 bg-gray-50 border border-gray-200 rounded uppercase shadow-xs">Alt+R</kbd>
 					</button>
 
 					<!-- Close Shift -->
@@ -2145,23 +2158,118 @@ function handleOutsideClick(event) {
 	}
 }
 
+function getQuickActionButtons() {
+	return Array.from(document.querySelectorAll('[data-nav="quick-action"]'))
+}
+
+function handleQuickActionKeyDown(event) {
+	if (event.key === "Escape") {
+		const activeEl = document.activeElement
+		if (activeEl && activeEl.getAttribute("data-nav") === "quick-action") {
+			event.preventDefault()
+			const searchInput = document.getElementById("item-search")
+			searchInput?.focus()
+		}
+		return
+	}
+
+	if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return
+
+	const activeEl = document.activeElement
+	if (!activeEl || activeEl.getAttribute("data-nav") !== "quick-action") return
+
+	const buttons = getQuickActionButtons()
+	const index = buttons.indexOf(activeEl)
+	if (index === -1) return
+
+	event.preventDefault()
+	event.stopPropagation()
+
+	let nextIndex = index
+	if (event.key === "ArrowRight") {
+		nextIndex = index % 2 === 0 ? index + 1 : index - 1
+	} else if (event.key === "ArrowLeft") {
+		nextIndex = index % 2 === 1 ? index - 1 : index + 1
+	} else if (event.key === "ArrowDown") {
+		nextIndex = index < 2 ? index + 2 : index - 2
+	} else if (event.key === "ArrowUp") {
+		nextIndex = index >= 2 ? index - 2 : index + 2
+	}
+
+	buttons[nextIndex]?.focus()
+}
+
+function handleGlobalShortcutKeyDown(event) {
+	const activeEl = document.activeElement
+	const isTyping =
+		activeEl &&
+		(activeEl.tagName === "TEXTAREA" ||
+			activeEl.isContentEditable ||
+			(activeEl.tagName === "INPUT" &&
+				activeEl.id !== "cart-customer-search" &&
+				activeEl.id !== "item-search"))
+
+	if (isTyping) return
+
+	// Only trigger when cart is empty
+	if (props.items && props.items.length === 0) {
+		if (event.altKey) {
+			const key = event.key.toLowerCase()
+			if (key === "q") {
+				event.preventDefault()
+				const buttons = getQuickActionButtons()
+				buttons[0]?.focus()
+				return
+			}
+			if (key === "w") {
+				event.preventDefault()
+				emit("view-shift")
+				return
+			}
+			if (key === "d") {
+				event.preventDefault()
+				emit("show-drafts")
+				return
+			}
+			if (key === "h") {
+				event.preventDefault()
+				emit("show-history")
+				return
+			}
+			if (key === "r") {
+				event.preventDefault()
+				emit("show-return")
+				return
+			}
+		} else if (event.key === "F4") {
+			event.preventDefault()
+			const buttons = getQuickActionButtons()
+			buttons[0]?.focus()
+			return
+		}
+	}
+
+	// Arrow keys navigation when quick action button is focused
+	handleQuickActionKeyDown(event)
+}
+
 /**
- * Component mounted - register global click listener.
- * Used for click-outside detection on dropdowns.
+ * Component mounted - register global listeners.
  */
 onMounted(() => {
 	if (typeof document === "undefined") return
 	// Use mousedown instead of click to catch events before they are swallowed by other handlers
 	document.addEventListener("mousedown", handleOutsideClick)
+	window.addEventListener("keydown", handleGlobalShortcutKeyDown)
 })
 
 /**
- * Component unmounting - cleanup global click listener.
- * Prevents memory leaks by removing event listener.
+ * Component unmounting - cleanup global listeners.
  */
 onBeforeUnmount(() => {
 	if (typeof document === "undefined") return
 	document.removeEventListener("mousedown", handleOutsideClick)
+	window.removeEventListener("keydown", handleGlobalShortcutKeyDown)
 })
 </script>
 ```

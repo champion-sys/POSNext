@@ -2150,6 +2150,7 @@ async function handlePaymentCompleted(paymentData) {
 			};
 			uiStore.setLastOfflinePrintDoc(offlinePrintDoc);
 			cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
+			uiStore.lastInvoiceName = offlineReceiptName;
 			uiStore.showPaymentDialog = false;
 			cartStore.clearCart();
 			// Reset cart hash after successful payment

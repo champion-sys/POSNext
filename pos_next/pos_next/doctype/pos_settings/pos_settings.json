@@ -5,9 +5,11 @@
  "engine": "InnoDB",
  "field_order": [
   "pos_profile",
+  "invoice_type",
   "enabled",
   "section_break_localization",
   "allowed_locales",
+  "post_change_gl_entries",
   "section_break_wallet",
   "enable_loyalty_program",
   "default_loyalty_program",
@@ -231,10 +233,10 @@
   },
   {
    "default": "0",
+   "description": "When enabled, non-cash payments (card, bank transfer) require exact amount. Cash payments can still have change. Cannot be used with Credit Sale or Partial Payment.",
    "fieldname": "use_exact_amount",
    "fieldtype": "Check",
-   "label": "Use Exact Amount for Non-Cash",
-   "description": "When enabled, non-cash payments (card, bank transfer) require exact amount. Cash payments can still have change. Cannot be used with Credit Sale or Partial Payment."
+   "label": "Use Exact Amount for Non-Cash"
   },
   {
    "default": "Disabled",
@@ -343,11 +345,11 @@
   },
   {
    "default": "0",
+   "depends_on": "allow_return",
+   "description": "Number of days allowed for invoice returns. Set to 0 for unlimited returns.",
    "fieldname": "return_validity_days",
    "fieldtype": "Int",
-   "label": "Return Validity Days",
-   "description": "Number of days allowed for invoice returns. Set to 0 for unlimited returns.",
-   "depends_on": "allow_return"
+   "label": "Return Validity Days"
   },
   {
    "default": "0",
@@ -374,7 +376,7 @@
    "fieldname": "decimal_precision",
    "fieldtype": "Select",
    "label": "Decimal Precision",
-   "options": "2\n3\n4\n5\n6"
+   "options": "\n2\n3\n4\n5\n6"
   },
   {
    "default": "0",
@@ -546,11 +548,24 @@
    "fieldtype": "Table",
    "label": "Barcode Rules",
    "options": "POS Barcode Rules"
+  },
+  {
+   "fieldname": "invoice_type",
+   "fieldtype": "Select",
+   "label": "Invoice Type",
+   "options": "Sales Invoice\nPOS Invoice",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "post_change_gl_entries",
+   "fieldtype": "Check",
+   "label": "Post Change GL Entries "
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-11 16:52:08.009217",
+ "modified": "2026-05-24 23:42:37.262053",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

@@ -75,6 +75,36 @@ const sections = computed(() => [
 				keys: ["?"],
 				usage: __("Press Shift + /."),
 			},
+			{
+				action: __("Focus Quick Actions"),
+				keys: ["Alt", "Q"],
+				join: "+",
+				usage: __("Focuses the empty cart's quick action buttons (also works with F4)."),
+			},
+			{
+				action: __("View Shift"),
+				keys: ["Alt", "W"],
+				join: "+",
+				usage: __("Opens the current shift details when the cart is empty."),
+			},
+			{
+				action: __("Draft Invoices"),
+				keys: ["Alt", "D"],
+				join: "+",
+				usage: __("Opens draft invoices dialog when the cart is empty."),
+			},
+			{
+				action: __("Invoice History"),
+				keys: ["Alt", "H"],
+				join: "+",
+				usage: __("Opens invoice history dialog when the cart is empty."),
+			},
+			{
+				action: __("Return Invoice"),
+				keys: ["Alt", "R"],
+				join: "+",
+				usage: __("Opens return invoice dialog when the cart is empty."),
+			},
 		],
 	},
 	{
@@ -177,6 +207,11 @@ const sections = computed(() => [
 				action: __("Focus items list"),
 				keys: ["F3"],
 				usage: __("Alternative to Alt+I."),
+			},
+			{
+				action: __("Focus Quick Actions"),
+				keys: ["F4"],
+				usage: __("Alternative to Alt+Q."),
 			},
 		],
 	},

@@ -33,9 +33,9 @@ class POSSettings(Document):
 					"Please disable Partial Payment first."
 				)
 
-	def on_update(self):
-		"""Sync allow_negative_stock with Stock Settings"""
-		self.sync_negative_stock_setting()
+	# def on_update(self):
+	# 	"""Sync allow_negative_stock with Stock Settings"""
+	# 	self.sync_negative_stock_setting()
 
 	def sync_negative_stock_setting(self):
 		"""

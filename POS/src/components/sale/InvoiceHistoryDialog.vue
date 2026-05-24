@@ -98,7 +98,7 @@
 										</svg>
 									</button>
 									<button
-										v-if="settingsStore.allowPrintPreviousInvoices"
+										v-if="settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.name && invoice.name === uiStore.lastInvoiceName)"
 										@click="printInvoice(invoice)"
 										class="p-1.5 hover:bg-green-50 rounded transition-colors"
 										:title="__('Print')"
@@ -157,9 +157,11 @@ import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import ReturnInvoiceDialog from "./ReturnInvoiceDialog.vue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSUIStore } from "@/stores/posUI"
 
 const { showError } = useToast()
 const settingsStore = usePOSSettingsStore()
+const uiStore = usePOSUIStore()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -301,7 +303,11 @@ function viewInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
-	if(!settingsStore.allowPrintPreviousInvoices) return;
+	const isLastInvoice = invoice.name && uiStore.lastInvoiceName && invoice.name === uiStore.lastInvoiceName
+	const canPrint = settingsStore.allowPrintPreviousInvoices || 
+	                 (settingsStore.allowPrintLastInvoice && isLastInvoice)
+
+	if (!canPrint) return
 	emit("print-invoice", invoice)
 }
 
