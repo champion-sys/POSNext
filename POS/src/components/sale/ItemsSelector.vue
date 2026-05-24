@@ -155,7 +155,7 @@
 							'p-1.5 sm:p-1.5 h-[40px] w-[40px] rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
 							sortBy
 								? 'bg-blue-50 border-blue-600 text-blue-700 shadow-none'
-								: 'bg-white border-black text-gray-700 hover:bg-gray-100 active:bg-gray-200'
+								: 'bg-white border-black text-gray-800 hover:bg-gray-100 active:bg-gray-200'
 						]"
 						:title="sortBy
 							? (sortOrder === 'asc'
