@@ -296,6 +296,9 @@ scheduler_events = {
 # }
 
 
-fixtures = [{"dt": "Custom Field", "filters": [["module", "=" ,"POS Next"]]} ]
+fixtures = [{"dt": "Custom Field", "filters": {
+	"module": ["in",["POS Next"]]
+}}]
+
 
 website_route_rules = [{'from_route': '/pos/<path:app_path>', 'to_route': 'pos'},]
