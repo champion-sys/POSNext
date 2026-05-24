@@ -393,15 +393,15 @@
 						<!-- Item Details -->
 						<div class="min-w-0 flex flex-col justify-between pt-0.5">
 							<div>
-								<h3 class="text-[9px] sm:text-[12px] font-bold text-gray-900 truncate leading-tight">
+								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 truncate leading-tight">
 									{{ item.item_name }}
 								</h3>
-								<p v-if="item.item_code" class="text-[8px] sm:text-[11px] font-mono text-gray-700 truncate leading-none mt-0.5">
+								<p v-if="item.item_code" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
 									{{ item.item_code }}
 								</p>
 							</div>
 							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
-								<span class="text-[9px] sm:text-[11px] font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
+								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
 								<span class="text-[8px] sm:text-[9px] font-medium text-gray-400 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</div>
 						</div>
