@@ -321,7 +321,7 @@
 							]"
 							:title="__('Check availability in other warehouses')"
 						>
-							{{ Math.floor((item.actual_qty ?? item.stock_qty ?? 0)) }}
+							{{ Math.floor(getStockQtyToShow(item)) }}
 						</div>
  
 						<!-- Item Image -->
@@ -608,7 +608,7 @@
 									]"
 									:title="__('Check availability in other warehouses')"
 								>
-									{{ Math.floor((item.actual_qty ?? item.stock_qty ?? 0)) }}
+									{{ Math.floor(getStockQtyToShow(item)) }}
 								</div>
 								<span
 									v-else
@@ -818,6 +818,12 @@ const cartStore = usePOSCartStore()
 const { showError, showWarning } = useToast()
 const { isAnyDialogOpen } = useDialogState()
 const focusedItemIndex = ref(-1)
+
+function getStockQtyToShow(item) {
+	// `item.actual_qty` / `item.stock_qty` is "display stock" (server stock minus cart reservations).
+	// For the selector badge we want to show the actual warehouse stock as-is.
+	return item?.original_stock ?? item?.actual_qty ?? item?.stock_qty ?? 0
+}
 
 // Use Pinia store
 const itemStore = useItemSearchStore()
