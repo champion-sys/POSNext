@@ -27,7 +27,7 @@
 					v-if="modelValue"
 					class="font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full text-[12px] shadow-sm animate-fade-in"
 				>
-					#{{ modelValue }}
+					{{ modelValue }}
 				</span>
 				<span
 					v-else
@@ -35,7 +35,7 @@
 				>
 					{{ __('Select') }}
 				</span>
-				<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 text-gray-700 flex-shrink-0" />
+				<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 text-gray-900 flex-shrink-0" />
 			</span>
 		</button>
 	</div>
