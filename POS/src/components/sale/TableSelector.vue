@@ -25,7 +25,7 @@
 			<span class="flex items-center gap-1">
 				<span
 					v-if="modelValue"
-					class="font-black bg-amber-500 text-white px-2 py-0.5 rounded-full text-[10px] shadow-sm animate-fade-in"
+					class="font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full text-[12px] shadow-sm animate-fade-in"
 				>
 					#{{ modelValue }}
 				</span>
