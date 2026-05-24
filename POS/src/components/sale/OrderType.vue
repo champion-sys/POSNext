@@ -5,9 +5,9 @@
         role="group"
         :aria-label="label"
     >
-        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none px-2 py-1 sm:py-0 whitespace-nowrap shrink-0">
+        <!-- <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none px-2 py-1 sm:py-0 whitespace-nowrap shrink-0">
             {{ __(label) }}
-        </p>
+        </p> -->
 
         <div class="flex items-stretch bg-gray-50 rounded-lg p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden border border-gray-100">
             <button
@@ -17,14 +17,14 @@
                 class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all duration-150 touch-manipulation snap-center flex items-center justify-center gap-1.5 active:scale-[0.97]"
                 :class="
                     opt.value === modelValue
-                        ? 'bg-blue-600 text-white shadow-sm font-extrabold'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/80 active:bg-gray-100'
+                        ? 'bg-blue-600 text-white shadow-sm font-bold'
+                        : 'text-gray-900 hover:text-gray-900 hover:bg-white/80 active:bg-gray-100'
                 "
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"
             >
                 <!-- Dynamic SVG Icons based on Order Type -->
-                <span class="flex-shrink-0" :class="opt.value === modelValue ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'">
+                <span class="flex-shrink-0" :class="opt.value === modelValue ? 'text-white' : 'text-gray-700 group-hover:text-gray-600'">
                     <!-- Dine In / In Store -->
                     <svg v-if="getIconType(opt.value) === 'dine-in'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />

@@ -719,9 +719,13 @@
 					<!-- Close Shift -->
 					<button
 						type="button"
-						@click="$emit('close-shift')"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-orange-300 hover:bg-orange-50 active:bg-orange-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
-						:title="__('Close current shift')"
+						@click="isCloseShiftAllowed ? $emit('close-shift') : null"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg transition-colors shadow-sm hover:shadow touch-manipulation group"
+						:class="isCloseShiftAllowed
+							? 'hover:border-orange-300 hover:bg-orange-50 active:bg-orange-100 cursor-pointer'
+							: 'opacity-40 cursor-not-allowed'
+						"
+						:title="isCloseShiftAllowed ? __('Close current shift') : __('Close shift restricted to authorized roles')"
 					>
 						<div
 							class="w-9 h-9 sm:w-10 sm:h-10 bg-orange-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-orange-100 transition-colors"
@@ -1299,6 +1303,7 @@ import { usePOSOrderTypesStore } from "@/stores/posOrderTypes"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { useCustomerSearchStore } from "@/stores/customerSearch"
+import { usePOSShiftStore } from "@/stores/posShift"
 import {
 	DEFAULT_CURRENCY,
 	formatCurrency as formatCurrencyUtil,
@@ -1327,6 +1332,7 @@ const orderTypesStore = usePOSOrderTypesStore() // to know has_tables of current
 const settingsStore = usePOSSettingsStore() // Pinia store for POS settings
 const offersStore = usePOSOffersStore() // Pinia store for offers/promotions
 const customerSearchStore = useCustomerSearchStore() // Pinia store for customer search
+const shiftStore = usePOSShiftStore() // Pinia store for shift details
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
 
 function handleProceedToPayment() {
@@ -1493,6 +1499,14 @@ const showTableSelector = computed(() => {
 const tableModel = computed({
 	get: () => cartStore.posTableNo,
 	set: (val) => cartStore.setPosTableNo(val),
+})
+
+const isCloseShiftAllowed = computed(() => {
+	const allowedRole = shiftStore.currentProfile?.role_allowed_to_closing_shift
+	if (!allowedRole) return true
+
+	const userRoles = window.frappe?.boot?.user?.roles || []
+	return userRoles.includes(allowedRole)
 })
 
 // Clear table when the selected order type no longer supports tables

@@ -148,10 +148,18 @@ def get_closing_shift_data(opening_shift):
 	"""Get data for closing shift"""
 	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import make_closing_shift_from_opening
 
-	try:
-		# Get the opening shift document
-		opening_shift_doc = frappe.get_doc("POS Opening Shift", opening_shift)
+	# Check if the current user has permission to close the shift based on POS Profile
+	opening_shift_doc = frappe.get_doc("POS Opening Shift", opening_shift)
+	pos_profile_name = opening_shift_doc.pos_profile
+	if pos_profile_name:
+		allowed_role = frappe.db.get_value("POS Profile", pos_profile_name, "role_allowed_to_closing_shift")
+		if allowed_role and allowed_role not in frappe.get_roles(frappe.session.user):
+			frappe.throw(
+				_("You are not allowed to close this shift. Only users with role '{0}' can close it.").format(allowed_role),
+				frappe.PermissionError
+			)
 
+	try:
 		# Convert to dict with proper datetime serialization
 		opening_shift_dict = opening_shift_doc.as_dict()
 		opening_shift_json = json.dumps(opening_shift_dict, default=str)

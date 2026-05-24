@@ -190,7 +190,7 @@
 				</template>
 				<template #additional-actions>
 					<button
-						v-if="canAccessShiftActions"
+						v-if="canAccessShiftActions && canCloseShift"
 						@click="handleCloseShift()"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 transition-colors"
 					>
@@ -751,9 +751,14 @@
 							<h3 class="text-lg font-bold text-red-600 mb-2">
 								{{ __("Your Shift is Still Open!") }}
 							</h3>
-							<p class="text-sm text-gray-600 max-w-sm mx-auto">
+							<p class="text-sm text-gray-600 max-w-sm mx-auto" v-if="canCloseShift">
 								{{
 									__("Close your shift first to save all transactions properly")
+								}}
+							</p>
+							<p class="text-sm text-gray-600 max-w-sm mx-auto font-medium" v-else>
+								{{
+									__("Your shift is still open. Only users with role '{0}' are allowed to close this shift.", [shiftStore.currentProfile?.role_allowed_to_closing_shift])
 								}}
 							</p>
 						</div>
@@ -762,6 +767,7 @@
 						<div class="space-y-3 max-w-md mx-auto">
 							<!-- Recommended Action - BLUE -->
 							<button
+								v-if="canCloseShift"
 								@click="logoutWithCloseShift"
 								:disabled="session.logout.loading"
 								class="w-full flex items-center justify-center px-5 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg shadow-lg hover:shadow-blue-500/30 transition-[background,box-shadow,opacity,transform] duration-200 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
@@ -788,8 +794,9 @@
 									@click="confirmLogout"
 									:disabled="session.logout.loading"
 									class="px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-semibold text-sm rounded-lg shadow-md hover:shadow-red-500/30 transition-[background,box-shadow,opacity] duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+									:class="!canCloseShift ? 'col-span-2 py-4 text-base' : ''"
 								>
-									{{ __("Skip & Sign Out") }}
+									{{ canCloseShift ? __("Skip & Sign Out") : __("Sign Out Only") }}
 								</button>
 								<button
 									@click="uiStore.showLogoutDialog = false"
@@ -1216,6 +1223,14 @@ const profileWarehouses = computed(() => {
 });
 
 const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
+const canCloseShift = computed(() => {
+	if (!shiftStore.hasOpenShift) return false;
+	const allowedRole = shiftStore.currentProfile?.role_allowed_to_closing_shift;
+	if (!allowedRole) return true;
+
+	const userRoles = window.frappe?.boot?.user?.roles || [];
+	return userRoles.includes(allowedRole);
+});
 
 /** Desk link only for users with the Nexus POS Manager role (from bootstrap API). */
 const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_to_desk));
@@ -2352,6 +2367,10 @@ async function handleOptionSelected(option) {
 
 function handleCloseShift() {
 	if (!canAccessShiftActions.value) {
+		return;
+	}
+	if (!canCloseShift.value) {
+		showError(__("You do not have the required role to close this shift."));
 		return;
 	}
 

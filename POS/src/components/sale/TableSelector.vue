@@ -12,14 +12,14 @@
 		>
 			<span class="flex items-center gap-1.5">
 				<!-- Custom table vector icon -->
-				<svg class="h-4 w-4 flex-shrink-0" :class="modelValue ? 'text-amber-500' : 'text-gray-400'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+				<svg class="h-4 w-4 flex-shrink-0" :class="modelValue ? 'text-amber-500' : 'text-gray-700'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 					<path d="M3 3h18v4H3z" />
 					<path d="M5 7v14" />
 					<path d="M19 7v14" />
 					<path d="M9 7v8" />
 					<path d="M15 7v8" />
 				</svg>
-				<span :class="modelValue ? 'text-amber-800' : 'text-gray-500'">{{ __('Table') }}</span>
+				<span :class="modelValue ? 'text-amber-800' : 'text-gray-900'">{{ __('Table') }}</span>
 			</span>
 			
 			<span class="flex items-center gap-1">
@@ -31,11 +31,11 @@
 				</span>
 				<span
 					v-else
-					class="text-gray-400 font-medium"
+					class="text-gray-700 font-medium"
 				>
 					{{ __('Select') }}
 				</span>
-				<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+				<FeatherIcon name="chevron-down" class="h-3.5 w-3.5 text-gray-700 flex-shrink-0" />
 			</span>
 		</button>
 	</div>
@@ -58,7 +58,7 @@
 							type="text"
 							v-model="searchQuery"
 							:placeholder="__('Search table number or zone...')"
-							class="w-full h-9 ps-9 pe-3 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
+							class="w-full h-9 ps-9 pe-3 text-xs border border-gray-400 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
 						/>
 					</div>
 					
@@ -77,7 +77,7 @@
 					</button>
 				</div>
 
-				<div class="mb-3 text-[11px] font-medium text-gray-500 uppercase tracking-wider flex items-center gap-1">
+				<div class="mb-3 text-[11px] font-medium text-gray-900 uppercase tracking-wider flex items-center gap-1">
 					<span>{{ __('Tables for') }}</span>
 					<span class="text-gray-800 font-bold bg-gray-100 px-1.5 py-0.5 rounded">{{ orderType }}</span>
 				</div>
@@ -89,7 +89,7 @@
 
 				<div
 					v-else-if="tables.length === 0"
-					class="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-500 flex flex-col items-center justify-center gap-1.5"
+					class="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-700 flex flex-col items-center justify-center gap-1.5"
 				>
 					<svg class="w-8 h-8 text-gray-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M3 3h18v4H3z" />
@@ -101,7 +101,7 @@
 
 				<div
 					v-else-if="filteredTables.length === 0"
-					class="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-500 flex flex-col items-center justify-center"
+					class="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-700 flex flex-col items-center justify-center"
 				>
 					<span class="font-medium text-gray-600">{{ __('No matches found for "{0}"', [searchQuery]) }}</span>
 				</div>
@@ -133,7 +133,7 @@
 							<!-- Table Icon representation -->
 							<div 
 								class="w-7 h-7 rounded-xl flex items-center justify-center transition-colors"
-								:class="modelValue === table.table_no ? 'bg-amber-500 text-white' : 'bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-500'"
+								:class="modelValue === table.table_no ? 'bg-amber-500 text-white' : 'bg-gray-50 text-gray-700 group-hover:bg-blue-50 group-hover:text-blue-500'"
 							>
 								<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 									<path d="M3 3h18v4H3z" />
@@ -147,13 +147,13 @@
 								class="text-xs font-black transition-colors mt-2"
 								:class="modelValue === table.table_no ? 'text-amber-950 font-black' : 'text-gray-800 font-bold'"
 							>
-								#{{ table.table_no }}
+								{{ table.table_no }}
 							</div>
 							
 							<!-- Subtitle (Cleaned Warehouse) -->
 							<div 
-								class="text-[9px] truncate w-full text-center mt-1"
-								:class="modelValue === table.table_no ? 'text-amber-800/80 font-semibold' : 'text-gray-400'"
+								class="text-[10px] truncate w-full text-center mt-1"
+								:class="modelValue === table.table_no ? 'text-amber-800/80 font-semibold' : 'text-gray-800'"
 								:title="table.warehouse"
 							>
 								{{ formatWarehouse(table.warehouse) }}

@@ -94,6 +94,7 @@
                       theme="red"
                       @click="openCloseShiftDialog"
                       class="flex-1"
+                      :disabled="!canCloseShift"
                     >
                       {{ __('Close Shift') }}
                     </Button>
@@ -205,8 +206,8 @@
           >
             {{ __('Cancel') }}
           </Button>
-          <Button
-            v-if="hasOpenShift"
+           <Button
+            v-if="hasOpenShift && canCloseShift"
             theme="blue"
             variant="solid"
             @click="logoutWithCloseShift"
@@ -244,7 +245,7 @@
 <script setup>
 import { Dialog } from "frappe-ui"
 import { createResource } from "frappe-ui"
-import { onMounted, ref } from "vue"
+import { onMounted, ref, computed } from "vue"
 import { useRouter } from "vue-router"
 import ShiftClosingDialog from "../components/ShiftClosingDialog.vue"
 import ShiftOpeningDialog from "../components/ShiftOpeningDialog.vue"
@@ -261,6 +262,15 @@ const {
 	currentCompany,
 	checkOpeningShift,
 } = useShift()
+
+const canCloseShift = computed(() => {
+	if (!hasOpenShift.value) return false
+	const allowedRole = currentProfile.value?.role_allowed_to_closing_shift
+	if (!allowedRole) return true
+
+	const userRoles = window.frappe?.boot?.user?.roles || []
+	return userRoles.includes(allowedRole)
+})
 
 const ping = createResource({
 	url: "pos_next.api.ping",
@@ -329,6 +339,13 @@ function formatDateTime(datetime) {
 }
 
 function openCloseShiftDialog() {
+	if (!canCloseShift.value) {
+		window.frappe?.show_alert?.({
+			message: __("You do not have the required role to close this shift."),
+			indicator: "red"
+		})
+		return
+	}
 	logoutAfterClose.value = false
 	showCloseShiftDialog.value = true
 }

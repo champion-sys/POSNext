@@ -40,6 +40,19 @@ def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
 
 class POSClosingShift(Document):
     def validate(self):
+        # Check if the user is allowed to close shift based on POS Profile settings
+        pos_profile = self.pos_profile
+        if not pos_profile and self.pos_opening_shift:
+            pos_profile = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_profile")
+            
+        if pos_profile:
+            allowed_role = frappe.db.get_value("POS Profile", pos_profile, "role_allowed_to_closing_shift")
+            if allowed_role and allowed_role not in frappe.get_roles(self.user or frappe.session.user):
+                frappe.throw(
+                    _("You are not allowed to close this shift. Only users with role '{0}' are allowed.").format(allowed_role),
+                    frappe.PermissionError
+                )
+
         user = frappe.get_all(
             "POS Closing Shift",
             filters={
