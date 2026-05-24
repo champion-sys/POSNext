@@ -70,9 +70,9 @@ def setup_default_print_format(quiet=False):
 	"""
 	try:
 		# Check if the print format exists
-		if not frappe.db.exists("Print Format", "POS Next Receipt"):
+		if not frappe.db.exists("Print Format", "POS Next Receipt SND"):
 			if not quiet:
-				log_message("POS Next Receipt print format not found, skipping default setup", level="warning")
+				log_message("POS Next Receipt SND print format not found, skipping default setup", level="warning")
 			return
 
 		# Get all POS Profiles without a print format
@@ -90,7 +90,7 @@ def setup_default_print_format(quiet=False):
 						"POS Profile",
 						profile.name,
 						"print_format",
-						"POS Next Receipt",
+						"POS Next Receipt SND",
 						update_modified=False
 					)
 					if not quiet:
