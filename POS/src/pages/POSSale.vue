@@ -74,7 +74,7 @@
 						<span>{{ __("Draft Invoices") }}</span>
 						<span
 							v-if="draftsStore.draftsCount > 0"
-							class="ms-auto text-xs bg-purple-600 text-white px-1.5 py-0.5 rounded-full"
+							class="ms-auto text-[10px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-none border border-purple-700"
 						>
 							{{ draftsStore.draftsCount }}
 						</span>
@@ -122,7 +122,7 @@
 						</svg>
 						<span>{{ __("Offline Invoices") }}</span>
 						<span
-							class="ms-auto text-xs bg-orange-600 text-white px-1.5 py-0.5 rounded-full"
+							class="ms-auto text-[10px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-none border border-orange-700"
 						>
 							{{ offlineStore.pendingInvoicesCount }}
 						</span>
@@ -231,14 +231,14 @@
 				>
 					<!-- Mobile Tab Navigation -->
 					<div
-						class="lg:hidden bg-white border-b border-gray-200 flex shadow-sm sticky top-0 z-[100]"
+						class="lg:hidden bg-white border-b-2 border-black flex sticky top-0 z-[100]"
 					>
 						<button
 							@click="handleTabSwitch('items')"
 							:class="[
-								'flex-1 px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color] duration-100 relative touch-manipulation',
+								'flex-1 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none border-r border-gray-200',
 								uiStore.mobileActiveTab === 'items'
-									? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+									? 'text-black bg-gray-100 border-b-4 border-black'
 									: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100',
 							]"
 							:aria-label="__('View items')"
@@ -265,9 +265,9 @@
 						<button
 							@click="handleTabSwitch('cart')"
 							:class="[
-								'flex-1 px-3 py-3 text-sm font-semibold transition-[color,background-color,border-color] duration-100 relative touch-manipulation',
+								'flex-1 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none',
 								uiStore.mobileActiveTab === 'cart'
-									? 'text-blue-600 border-b-3 border-blue-600 bg-blue-50'
+									? 'text-black bg-gray-100 border-b-4 border-black'
 									: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100',
 							]"
 							:aria-label="__('View cart')"
@@ -291,7 +291,7 @@
 								<span>{{ __("Cart") }}</span>
 								<span
 									v-if="cartStore.itemCount > 0"
-									class="bg-blue-600 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center shadow-sm"
+									class="bg-blue-600 text-white text-[10px] font-bold rounded-none min-w-[20px] h-5 px-1.5 flex items-center justify-center border border-blue-700"
 								>
 									{{ cartStore.itemCount }}
 								</span>
@@ -341,12 +341,12 @@
 							style="cursor: col-resize"
 						></div>
 						<div
-							class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-400 rounded-full"
+							class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1.5 h-12 bg-gray-500 rounded-none border border-gray-600"
 							:class="{
 								'bg-blue-600': uiStore.isResizing,
 								'bg-blue-500': !uiStore.isResizing,
 							}"
-							style="transition: background-color 0.1s ease; opacity: 0.8"
+							style="transition: background-color 0.1s ease; opacity: 0.9"
 						></div>
 					</div>
 
@@ -413,7 +413,7 @@
 							cartStore.itemCount > 0
 						"
 						@click="uiStore.setMobileTab('cart')"
-						class="lg:hidden fixed bottom-20 end-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-full p-4 shadow-2xl hover:shadow-3xl hover:from-blue-700 hover:to-blue-800 active:from-blue-800 active:to-blue-900 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95 ring-4 ring-blue-100"
+						class="lg:hidden fixed bottom-20 end-4 bg-blue-600 text-white border-2 border-black rounded-none p-4 shadow-md hover:bg-blue-700 active:bg-blue-800 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95"
 						:aria-label="__('View cart with {0} items', [cartStore.itemCount])"
 					>
 						<div class="relative">
@@ -431,7 +431,7 @@
 								/>
 							</svg>
 							<span
-								class="absolute -top-2 -end-2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] px-1 flex items-center justify-center shadow-lg animate-pulse"
+								class="absolute -top-2 -end-2 bg-red-600 text-white text-xs font-bold rounded-none min-w-[22px] h-[22px] px-1 flex items-center justify-center border border-black shadow-md"
 							>
 								{{ cartStore.itemCount }}
 							</span>
@@ -451,7 +451,7 @@
 			>
 				<div class="text-center">
 					<div
-						class="mx-auto flex items-center justify-center h-24 w-24 rounded-full bg-blue-100"
+						class="mx-auto flex items-center justify-center h-24 w-24 rounded-none border-2 border-dashed border-blue-300 bg-blue-50"
 					>
 						<svg
 							class="h-12 w-12 text-blue-600"

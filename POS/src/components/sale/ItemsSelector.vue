@@ -1,7 +1,7 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="bg-gray-300 border-b border-gray-400 max-h-[135px] overflow-y-auto">
+		<div class="bg-gray-200 border-b border-gray-400 max-h-[135px] overflow-y-auto">
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
@@ -87,30 +87,30 @@
 						<button
 							@click="toggleBarcodeScanner"
 							:class="[
-								'p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation',
+								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation',
 								scannerEnabled
 									? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
-									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
+									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
 							]"
 							:title="scannerEnabled ? __('Barcode Scanner: ON (Click to disable)') : __('Barcode Scanner: OFF (Click to enable)')"
 							:aria-label="scannerEnabled ? __('Disable barcode scanner') : __('Enable barcode scanner')"
 						>
-							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-3.5 h-3.5 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
 							</svg>
 						</button>
 						<button
 							@click="toggleAutoAdd"
 							:class="[
-								'p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation',
+								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation',
 								autoAddEnabled
 									? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
-									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-600'
+									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
 							]"
 							:title="autoAddEnabled ? __('Auto-Add: ON - Press Enter to add items to cart') : __('Auto-Add: OFF - Click to enable automatic cart addition on Enter')"
 							:aria-label="autoAddEnabled ? __('Disable auto-add') : __('Enable auto-add')"
 						>
-							<svg class="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<svg class="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
 							</svg>
 							<span class="hidden xs:inline">{{ __('Auto') }}</span>
@@ -276,7 +276,7 @@
 				class="flex-1 overflow-y-auto bg-gray-200"
 				style="min-height: 0;"
 			>
-				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-[1px]">
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-[2px]">
 					<div
 						v-for="item in displayedItems"
 						:key="item.item_code"
