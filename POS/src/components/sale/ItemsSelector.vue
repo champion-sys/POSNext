@@ -715,61 +715,12 @@
 			
 			<div class="shortcuts-wrapper scrollbar-hide">
 				<div class="shortcuts-list">
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">S</kbd>
-						<span class="shortcut-label">{{ __('Search') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">I</kbd>
-						<span class="shortcut-label">{{ __('Focus Items') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Arrow Keys</kbd>
-						<span class="shortcut-label">{{ __('Navigate') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Enter</kbd>
-						<span class="shortcut-label">{{ __('Add/Select') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">+</kbd>
-						<span class="shortcut-join">/</span>
-						<kbd class="shortcut-key">-</kbd>
-						<span class="shortcut-label">{{ __('Qty +/-') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">[</kbd>
-						<span class="shortcut-join">/</span>
-						<kbd class="shortcut-key">]</kbd>
-						<span class="shortcut-label">{{ __('Group Prev/Next') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">B</kbd>
-						<span class="shortcut-label">{{ __('Scanner') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">A</kbd>
-						<span class="shortcut-label">{{ __('Auto-Add') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">V</kbd>
-						<span class="shortcut-label">{{ __('Grid/List') }}</span>
-					</div>
-					<div class="shortcut-item">
-						<kbd class="shortcut-key">Alt</kbd>
-						<span class="shortcut-join">+</span>
-						<kbd class="shortcut-key">O</kbd>
-						<span class="shortcut-label">{{ __('Sort') }}</span>
+					<div v-for="(shortcut, idx) in KEYBOARD_SHORTCUTS" :key="idx" class="shortcut-item">
+						<template v-for="(key, keyIdx) in shortcut.keys" :key="keyIdx">
+							<kbd class="shortcut-key">{{ key }}</kbd>
+							<span v-if="keyIdx < shortcut.keys.length - 1" class="shortcut-join">{{ shortcut.join || '+' }}</span>
+						</template>
+						<span class="shortcut-label">{{ shortcut.label }}</span>
 					</div>
 				</div>
 			</div>
@@ -929,6 +880,19 @@ const SEARCH_PLACEHOLDERS = Object.freeze({
 	scanner: __("Scanner ON - Enable Auto for automatic addition"),
 	default: __("Search by item code, name, item group or scan barcode"),
 })
+
+const KEYBOARD_SHORTCUTS = Object.freeze([
+	{ keys: ["Alt", "S"], join: "+", label: __("Search") },
+	{ keys: ["Alt", "I"], join: "+", label: __("Focus Items") },
+	{ keys: ["Arrow Keys"], label: __("Navigate") },
+	{ keys: ["Enter"], label: __("Add/Select") },
+	{ keys: ["+", "-"], join: "/", label: __("Qty +/-") },
+	{ keys: ["[", "]"], join: "/", label: __("Group Prev/Next") },
+	{ keys: ["Alt", "B"], join: "+", label: __("Scanner") },
+	{ keys: ["Alt", "A"], join: "+", label: __("Auto-Add") },
+	{ keys: ["Alt", "V"], join: "+", label: __("Grid/List") },
+	{ keys: ["Alt", "O"], join: "+", label: __("Sort") },
+])
 
 // Sort configuration
 const BASE_SORT_OPTIONS = Object.freeze([
