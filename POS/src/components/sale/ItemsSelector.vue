@@ -68,7 +68,7 @@
 						ref="searchInputRef"
 						:value="searchTerm"
 						@input="handleSearchInput"
-						@keydown="handleKeyDown"
+						@keydown="handleInputKeyDown"
 						@click="handleSearchClick"
 						type="text"
 						:placeholder="searchPlaceholder"
@@ -278,14 +278,16 @@
 			>
 				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-[2px]">
 					<div
-						v-for="item in displayedItems"
+						v-for="(item, index) in displayedItems"
 						:key="item.item_code"
+						:data-item-index="index"
 						@touchstart.passive="getOptimizedClickHandler(item).touchstart"
 						@touchmove.passive="getOptimizedClickHandler(item).touchmove"
 						@touchend.passive="getOptimizedClickHandler(item).touchend"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50',
+							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50',
+							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20 shadow-md' : ''
 						]"
 					>
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -515,13 +517,17 @@
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
 						<tr
-							v-for="item in displayedItems"
+							v-for="(item, index) in displayedItems"
 							:key="item.item_code"
+							:data-item-index="index"
 							@touchstart.passive="getOptimizedClickHandler(item).touchstart"
 							@touchmove.passive="getOptimizedClickHandler(item).touchmove"
 							@touchend.passive="getOptimizedClickHandler(item).touchend"
 							@click="getOptimizedClickHandler(item).click"
-							class="group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-[background-color,box-shadow] duration-100 touch-manipulation active:bg-blue-100"
+							:class="[
+								'group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-[background-color,box-shadow,outline] duration-100 touch-manipulation active:bg-blue-100',
+								focusedItemIndex === index ? 'bg-blue-50 ring-2 ring-blue-600 ring-inset' : ''
+							]"
 						>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[50px] sm:w-[60px]">
 								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
@@ -700,6 +706,34 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- Keyboard Shortcuts Bar -->
+		<div class="relative bg-slate-900 border-t border-slate-800 text-slate-300 py-2.5 px-4 text-[10px] sm:text-xs font-medium flex-shrink-0 select-none overflow-hidden">
+			<!-- Gradient Fades to suggest horizontal scrollability -->
+			<div class="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-900 to-transparent pointer-events-none z-10"></div>
+			<div class="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10"></div>
+			
+			<div class="flex items-center gap-1 overflow-x-auto scrollbar-hide select-none whitespace-nowrap">
+				<span class="flex items-center gap-1 font-bold uppercase tracking-wider text-slate-400 me-4">
+					<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+					</svg>
+					{{ __('Shortcuts:') }}
+				</span>
+				<div class="flex items-center gap-5">
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + S</kbd> <span class="text-slate-400">{{ __('Search') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + I</kbd> <span class="text-slate-400">{{ __('Focus Items') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Arrow Keys</kbd> <span class="text-slate-400">{{ __('Navigate') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Enter</kbd> <span class="text-slate-400">{{ __('Add/Select') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">+</kbd>/<kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">-</kbd> <span class="text-slate-400">{{ __('Qty +/-') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">[</kbd>/<kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">]</kbd> <span class="text-slate-400">{{ __('Group Prev/Next') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + B</kbd> <span class="text-slate-400">{{ __('Scanner') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + A</kbd> <span class="text-slate-400">{{ __('Auto-Add') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + V</kbd> <span class="text-slate-400">{{ __('Grid/List') }}</span></div>
+					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + O</kbd> <span class="text-slate-400">{{ __('Sort') }}</span></div>
+				</div>
+			</div>
+		</div>
 	</div>
 
 	<!-- Warehouse Availability Dialog -->
@@ -718,10 +752,14 @@ import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSCartStore } from "@/stores/posCart"
 import { useStock } from "@/composables/useStock"
 import { useDialogState } from "@/composables/useDialogState"
 import { useSearchInput } from "@/composables/useSearchInput"
-import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import {
+	DEFAULT_CURRENCY,
+	formatCurrency as formatCurrencyUtil,
+} from "@/utils/currency"
 import { useToast } from "@/composables/useToast"
 import { storeToRefs } from "pinia"
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
@@ -729,7 +767,7 @@ import {
 	createOptimizedClickHandler,
 	throttleRAF,
 	addPassiveListener,
-	runWhenIdle
+	runWhenIdle,
 } from "@/utils/lowEndOptimizations"
 import { performanceConfig } from "@/utils/performanceConfig"
 import { shouldValidateItemStock } from "@/utils/stockValidator"
@@ -751,8 +789,10 @@ const emit = defineEmits(["item-selected"])
 // Use composables
 const { getStockStatus } = useStock()
 const settingsStore = usePOSSettingsStore()
+const cartStore = usePOSCartStore()
 const { showError, showWarning } = useToast()
 const { isAnyDialogOpen } = useDialogState()
+const focusedItemIndex = ref(-1)
 
 // Use Pinia store
 const itemStore = useItemSearchStore()
@@ -775,14 +815,22 @@ const {
 
 // Search input composable — owns search/scanner state, timers, concurrency
 const {
-	searchInputRef, scannerEnabled, autoAddEnabled,
-	handleSearchInput, handleKeyDown, handleSearchClick,
-	toggleBarcodeScanner, toggleAutoAdd, focusSearchInput,
+	searchInputRef,
+	scannerEnabled,
+	autoAddEnabled,
+	handleSearchInput,
+	handleKeyDown,
+	handleSearchClick,
+	toggleBarcodeScanner,
+	toggleAutoAdd,
+	focusSearchInput,
 	clearSearchAndResetInput,
 	cleanup: cleanupSearchInput,
 } = useSearchInput({
-	itemStore, onItemFound: selectItem,
-	showWarning, isAnyDialogOpen,
+	itemStore,
+	onItemFound: selectItem,
+	showWarning,
+	isAnyDialogOpen,
 })
 
 // Local state
@@ -806,7 +854,7 @@ const scrollCleanupFns = ref([])
 
 // Pagination state (for client-side display)
 const currentPage = ref(1)
-const itemsPerPage = ref(performanceConfig.get('itemsPerPage') || 100)
+const itemsPerPage = ref(performanceConfig.get("itemsPerPage") || 100)
 const lastFilterSignature = ref("")
 
 // Computed paginated items — server fetches one page at a time,
@@ -845,44 +893,44 @@ const SEARCH_PLACEHOLDERS = Object.freeze({
 // Sort configuration
 const BASE_SORT_OPTIONS = Object.freeze([
 	{
-		field: 'name',
-		label: __('Name'),
-		icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z'
+		field: "name",
+		label: __("Name"),
+		icon: "M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z",
 	},
 	{
-		field: 'quantity',
-		label: __('Quantity'),
-		icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4'
+		field: "quantity",
+		label: __("Quantity"),
+		icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
 	},
 	{
-		field: 'price',
-		label: __('Price'),
-		icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+		field: "price",
+		label: __("Price"),
+		icon: "M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
 	},
 	{
-		field: 'item_code',
-		label: __('Item Code'),
-		icon: 'M7 20l4-16m2 16l4-16M6 9h14M4 15h14'
-	}
+		field: "item_code",
+		label: __("Item Code"),
+		icon: "M7 20l4-16m2 16l4-16M6 9h14M4 15h14",
+	},
 ])
 
 const CONTEXT_SORT_OPTIONS = Object.freeze({
 	brand: {
-		field: 'brand',
-		label: __('Brand'),
-		icon: 'M20 13V7a2 2 0 00-2-2h-4V3H10v2H6a2 2 0 00-2 2v6M8 21h8a2 2 0 002-2v-5H6v5a2 2 0 002 2z'
+		field: "brand",
+		label: __("Brand"),
+		icon: "M20 13V7a2 2 0 00-2-2h-4V3H10v2H6a2 2 0 00-2 2v6M8 21h8a2 2 0 002-2v-5H6v5a2 2 0 002 2z",
 	},
 	item_group: {
-		field: 'item_group',
-		label: __('Item Group'),
-		icon: 'M9 12l2 2 4-4m5.586 1.414l-6.172 6.172a2 2 0 01-2.828 0L3.414 9.414a2 2 0 010-2.828l6.172-6.172a2 2 0 012.828 0l8.172 8.172a2 2 0 010 2.828z'
+		field: "item_group",
+		label: __("Item Group"),
+		icon: "M9 12l2 2 4-4m5.586 1.414l-6.172 6.172a2 2 0 01-2.828 0L3.414 9.414a2 2 0 010-2.828l6.172-6.172a2 2 0 012.828 0l8.172 8.172a2 2 0 010 2.828z",
 	},
 })
 
 const SORT_ICONS = Object.freeze({
-	ascending: 'M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12',
-	descending: 'M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4',
-	inactive: 'M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4'
+	ascending: "M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12",
+	descending: "M3 4h13M3 8h9m-9 4h9m5-4v12m0 0l-4-4m4 4l4-4",
+	inactive: "M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4",
 })
 
 const searchMode = computed(() => {
@@ -898,7 +946,7 @@ const searchMode = computed(() => {
 })
 
 const searchPlaceholder = computed(() => SEARCH_PLACEHOLDERS[searchMode.value])
-const isBrandSortActive = computed(() => sortBy.value === 'brand')
+const isBrandSortActive = computed(() => sortBy.value === "brand")
 const sortOptions = computed(() => {
 	// Context switcher:
 	// - In Item Group mode, offer Brand.
@@ -915,15 +963,20 @@ const sortOptions = computed(() => {
 		BASE_SORT_OPTIONS[3],
 	]
 })
-const activeFilterValue = computed(() => (
-	isBrandSortActive.value ? selectedBrand.value : selectedItemGroup.value
-))
-const activeFilterOptions = computed(() => (
+const activeFilterValue = computed(() =>
+	isBrandSortActive.value ? selectedBrand.value : selectedItemGroup.value,
+)
+const activeFilterOptions = computed(() =>
 	isBrandSortActive.value
 		? (brands.value || []).map((b) => ({ value: b.brand, label: b.brand }))
-		: (itemGroups.value || []).map((g) => ({ value: g.item_group, label: g.item_group_name || g.item_group }))
-))
-const selectedFilterLabel = computed(() => selectedBrand.value || selectedItemGroup.value || null)
+		: (itemGroups.value || []).map((g) => ({
+				value: g.item_group,
+				label: g.item_group_name || g.item_group,
+			})),
+)
+const selectedFilterLabel = computed(
+	() => selectedBrand.value || selectedItemGroup.value || null,
+)
 
 // Watch for cart items and pos profile changes (optimized - uses length + hash instead of deep watch)
 // Tracks: length, item_code, quantity, and amount to detect all cart changes including array replacements
@@ -933,7 +986,7 @@ watch(
 	() => {
 		itemStore.setCartItems(props.cartItems)
 	},
-	{ immediate: true, flush: 'sync' }, // Synchronous to ensure immediate stock updates
+	{ immediate: true, flush: "sync" }, // Synchronous to ensure immediate stock updates
 )
 
 watch(
@@ -951,6 +1004,7 @@ watch(
 watch(
 	filteredItems,
 	(newItems) => {
+		focusedItemIndex.value = -1
 		if (!newItems) return
 
 		// Skip page reset for pagination-driven changes
@@ -1004,32 +1058,294 @@ function handleScroll(event) {
 	handleScrollRAF(event)
 }
 
+const getColumnsCount = () => {
+	const width = window.innerWidth
+	if (width < 640) return 2
+	if (width < 768) return 3
+	if (width < 1024) return 3
+	if (width < 1280) return 4
+	return 5
+}
+
+const scrollFocusedItemIntoView = () => {
+	nextTick(() => {
+		const container =
+			viewMode.value === "grid"
+				? gridScrollContainer.value
+				: listScrollContainer.value
+		if (!container) return
+
+		const itemElement = container.querySelector(
+			`[data-item-index="${focusedItemIndex.value}"]`,
+		)
+		if (!itemElement) return
+
+		const containerRect = container.getBoundingClientRect()
+		const itemRect = itemElement.getBoundingClientRect()
+
+		if (itemRect.bottom > containerRect.bottom) {
+			container.scrollTop += itemRect.bottom - containerRect.bottom + 10
+		} else if (itemRect.top < containerRect.top) {
+			container.scrollTop -= containerRect.top - itemRect.top + 10
+		}
+	})
+}
+
+function adjustFocusedItemQty(adjustment) {
+	const focusedItem = displayedItems.value[focusedItemIndex.value]
+	if (!focusedItem) return
+
+	const cartItem = props.cartItems.find(
+		(i) => i.item_code === focusedItem.item_code,
+	)
+	if (cartItem) {
+		const currentQty = cartItem.qty || cartItem.quantity || 0
+		const newQty = Math.max(0, currentQty + adjustment)
+		if (newQty === 0) {
+			cartStore.removeItem(focusedItem.item_code, cartItem.uom)
+		} else {
+			try {
+				cartStore.updateItemQuantity(
+					focusedItem.item_code,
+					newQty,
+					cartItem.uom,
+				)
+			} catch (error) {
+				showError(error.message || __("Failed to update quantity"))
+			}
+		}
+	} else if (adjustment > 0) {
+		selectItem(focusedItem)
+	}
+}
+
+function navigateItemGroups(direction) {
+	const totalOptions = activeFilterOptions.value.length
+	let currentIndex = -1 // -1 represents 'All'
+
+	if (activeFilterValue.value) {
+		currentIndex = activeFilterOptions.value.findIndex(
+			(opt) => opt.value === activeFilterValue.value,
+		)
+	}
+
+	let nextIndex = currentIndex + direction
+	if (nextIndex < -1) {
+		nextIndex = totalOptions - 1
+	} else if (nextIndex >= totalOptions) {
+		nextIndex = -1
+	}
+
+	if (nextIndex === -1) {
+		handleAllFilterClick()
+	} else {
+		handleFilterClick(activeFilterOptions.value[nextIndex].value)
+	}
+
+	// Reset focus when group changes
+	focusedItemIndex.value = -1
+}
+
+function handleInputKeyDown(event) {
+	if (event.key === "ArrowDown") {
+		event.preventDefault()
+		if (displayedItems.value.length > 0) {
+			focusedItemIndex.value = 0
+			scrollFocusedItemIntoView()
+			if (searchInputRef.value) {
+				searchInputRef.value.blur()
+			}
+		}
+		return
+	}
+
+	if (event.key === "Escape") {
+		event.preventDefault()
+		clearSearchAndResetInput()
+		focusedItemIndex.value = -1
+		return
+	}
+
+	handleKeyDown(event)
+}
+
+function handleGlobalKeyDown(event) {
+	if (isAnyDialogOpen.value) return
+
+	const activeEl = document.activeElement
+	const isSearchFocused = activeEl && activeEl.id === "item-search"
+	const isTyping =
+		activeEl &&
+		((activeEl.tagName === "INPUT" && !isSearchFocused) ||
+			activeEl.tagName === "TEXTAREA" ||
+			activeEl.isContentEditable)
+
+	// Alt + S or F2: Focus Search input
+	if ((event.altKey && event.key.toLowerCase() === "s") || event.key === "F2") {
+		event.preventDefault()
+		focusedItemIndex.value = -1
+		focusSearchInput()
+		return
+	}
+
+	// Alt + I or F3: Focus items
+	if ((event.altKey && event.key.toLowerCase() === "i") || event.key === "F3") {
+		event.preventDefault()
+		if (displayedItems.value.length > 0) {
+			focusedItemIndex.value = 0
+			scrollFocusedItemIntoView()
+			if (isSearchFocused && searchInputRef.value) {
+				searchInputRef.value.blur()
+			}
+		}
+		return
+	}
+
+	// Alt + B: Toggle barcode scanner
+	if (event.altKey && event.key.toLowerCase() === "b") {
+		event.preventDefault()
+		toggleBarcodeScanner()
+		return
+	}
+
+	// Alt + A: Toggle auto-add
+	if (event.altKey && event.key.toLowerCase() === "a") {
+		event.preventDefault()
+		toggleAutoAdd()
+		return
+	}
+
+	// Alt + V: Toggle view mode
+	if (event.altKey && event.key.toLowerCase() === "v") {
+		event.preventDefault()
+		setViewMode(viewMode.value === "grid" ? "list" : "grid")
+		return
+	}
+
+	// Alt + O: Toggle sort dropdown
+	if (event.altKey && event.key.toLowerCase() === "o") {
+		event.preventDefault()
+		toggleSortDropdown()
+		return
+	}
+
+	// Escape: Blur items focus and focus search
+	if (event.key === "Escape") {
+		if (focusedItemIndex.value >= 0) {
+			event.preventDefault()
+			focusedItemIndex.value = -1
+			focusSearchInput()
+		}
+		return
+	}
+
+	// If typing in another input, do not intercept following keys
+	if (isTyping) return
+
+	// Navigation keys when item results are navigated:
+	if (focusedItemIndex.value >= 0) {
+		if (
+			["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)
+		) {
+			if (isSearchFocused) return
+
+			event.preventDefault()
+			const len = displayedItems.value.length
+			if (len === 0) return
+
+			if (viewMode.value === "list") {
+				if (event.key === "ArrowDown") {
+					focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+				} else if (event.key === "ArrowUp") {
+					if (focusedItemIndex.value === 0) {
+						focusedItemIndex.value = -1
+						focusSearchInput()
+					} else {
+						focusedItemIndex.value = Math.max(0, focusedItemIndex.value - 1)
+					}
+				}
+			} else {
+				const cols = getColumnsCount()
+				if (event.key === "ArrowRight") {
+					focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+				} else if (event.key === "ArrowLeft") {
+					focusedItemIndex.value = Math.max(0, focusedItemIndex.value - 1)
+				} else if (event.key === "ArrowDown") {
+					focusedItemIndex.value = Math.min(
+						len - 1,
+						focusedItemIndex.value + cols,
+					)
+				} else if (event.key === "ArrowUp") {
+					if (focusedItemIndex.value - cols < 0) {
+						focusedItemIndex.value = -1
+						focusSearchInput()
+					} else {
+						focusedItemIndex.value = Math.max(0, focusedItemIndex.value - cols)
+					}
+				}
+			}
+			scrollFocusedItemIntoView()
+			return
+		}
+
+		if (event.key === "Enter") {
+			event.preventDefault()
+			const item = displayedItems.value[focusedItemIndex.value]
+			if (item) {
+				selectItem(item)
+			}
+			return
+		}
+
+		if (event.key === "+" || event.key === "=") {
+			event.preventDefault()
+			adjustFocusedItemQty(1)
+			return
+		}
+		if (event.key === "-") {
+			event.preventDefault()
+			adjustFocusedItemQty(-1)
+			return
+		}
+	}
+
+	if (event.key === "[" || event.key === "]") {
+		if (!isSearchFocused) {
+			event.preventDefault()
+			navigateItemGroups(event.key === "]" ? 1 : -1)
+		}
+	}
+}
+
 onMounted(() => {
 	// Items are now loaded automatically by setPosProfile() in the watcher
 	// This ensures item group filters are loaded BEFORE fetching items
 
 	// Add passive scroll listeners for better performance
 	// Only bind to the currently active view
-	if (viewMode.value === 'grid' && gridScrollContainer.value) {
+	if (viewMode.value === "grid" && gridScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			gridScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
-	} else if (viewMode.value === 'list' && listScrollContainer.value) {
+	} else if (viewMode.value === "list" && listScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			listScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
 	}
 
 	// Add click outside listener for sort dropdown
-	document.addEventListener('click', handleClickOutside)
+	document.addEventListener("click", handleClickOutside)
+
+	// Add global keydown listener for keyboard shortcuts
+	window.addEventListener("keydown", handleGlobalKeyDown)
 })
 
 onUnmounted(() => {
@@ -1043,7 +1359,7 @@ onUnmounted(() => {
 	}
 
 	// Cleanup passive listeners
-	scrollCleanupFns.value.forEach(cleanup => cleanup())
+	scrollCleanupFns.value.forEach((cleanup) => cleanup())
 	scrollCleanupFns.value = []
 
 	// Clear handlers and timers
@@ -1052,7 +1368,10 @@ onUnmounted(() => {
 	cleanupSearchInput()
 
 	// Remove click outside listener for sort dropdown
-	document.removeEventListener('click', handleClickOutside)
+	document.removeEventListener("click", handleClickOutside)
+
+	// Remove global keydown listener
+	window.removeEventListener("keydown", handleGlobalKeyDown)
 })
 
 // Create optimized click handlers for better touch response
@@ -1061,11 +1380,14 @@ const optimizedClickHandlers = new Map()
 function getOptimizedClickHandler(item) {
 	const key = item.item_code
 	if (!optimizedClickHandlers.has(key)) {
-		const handler = createOptimizedClickHandler(() => {
-			handleItemClick(item.item_code)
-		}, {
-			feedback: true
-		})
+		const handler = createOptimizedClickHandler(
+			() => {
+				handleItemClick(item.item_code)
+			},
+			{
+				feedback: true,
+			},
+		)
 		optimizedClickHandlers.set(key, handler)
 	}
 	return optimizedClickHandlers.get(key)
@@ -1118,10 +1440,19 @@ function selectItem(item, autoAdd = false) {
 	if (!item) return false
 
 	// Early out-of-stock guard — full qty validation happens in cartStore.addItem()
-	if (!item.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
+	if (
+		!item.has_variants &&
+		settingsStore.shouldEnforceStockValidation() &&
+		shouldValidateItemStock(item)
+	) {
 		const qty = item.actual_qty ?? item.stock_qty ?? 0
 		if (qty <= 0) {
-			showError(__('"{0}" is out of stock in warehouse "{1}".', [item.item_name, item.warehouse || '']))
+			showError(
+				__('"{0}" is out of stock in warehouse "{1}".', [
+					item.item_name,
+					item.warehouse || "",
+				]),
+			)
 			return false
 		}
 	}
@@ -1136,7 +1467,7 @@ function handleItemClick(itemCode) {
 		itemHandledByLongPress = false
 		return
 	}
-	const item = filteredItems.value.find(i => i.item_code === itemCode)
+	const item = filteredItems.value.find((i) => i.item_code === itemCode)
 	selectItem(item)
 }
 
@@ -1149,8 +1480,8 @@ function showWarehouseAvailability(item) {
 	warehouseDialogItem.value = {
 		itemCode: item.item_code,
 		itemName: item.item_name,
-		uom: item.uom || item.stock_uom || 'Nos',
-		company: settingsStore.company
+		uom: item.uom || item.stock_uom || "Nos",
+		company: settingsStore.company,
 	}
 	showWarehouseDialog.value = true
 }
@@ -1169,24 +1500,24 @@ watch(viewMode, async () => {
 	await nextTick()
 
 	// Clean up existing listeners
-	scrollCleanupFns.value.forEach(cleanup => cleanup())
+	scrollCleanupFns.value.forEach((cleanup) => cleanup())
 	scrollCleanupFns.value = []
 
 	// Rebind listeners to the new active container
-	if (viewMode.value === 'grid' && gridScrollContainer.value) {
+	if (viewMode.value === "grid" && gridScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			gridScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
-	} else if (viewMode.value === 'list' && listScrollContainer.value) {
+	} else if (viewMode.value === "list" && listScrollContainer.value) {
 		const cleanup = addPassiveListener(
 			listScrollContainer.value,
-			'scroll',
+			"scroll",
 			handleScroll,
-			{ passive: true }
+			{ passive: true },
 		)
 		scrollCleanupFns.value.push(cleanup)
 	}
@@ -1285,16 +1616,16 @@ function handleSortToggle(field) {
 
 	// If clicking the same field, toggle between asc/desc
 	if (sortBy.value === field) {
-		const newOrder = sortOrder.value === 'asc' ? 'desc' : 'asc'
+		const newOrder = sortOrder.value === "asc" ? "desc" : "asc"
 		itemStore.setSortFilter(field, newOrder)
 	} else {
 		// New field - start with ascending
-		itemStore.setSortFilter(field, 'asc')
+		itemStore.setSortFilter(field, "asc")
 	}
 }
 
 watch(sortBy, async (newSortBy, oldSortBy) => {
-	if (newSortBy === 'brand') {
+	if (newSortBy === "brand") {
 		await itemStore.loadBrands()
 		if (selectedItemGroup.value) {
 			await itemStore.setSelectedItemGroup(null)
@@ -1302,27 +1633,34 @@ watch(sortBy, async (newSortBy, oldSortBy) => {
 		return
 	}
 
-	if (oldSortBy === 'brand' && selectedBrand.value) {
+	if (oldSortBy === "brand" && selectedBrand.value) {
 		await itemStore.setSelectedBrand(null)
 	}
 })
 
 function getSortLabel(sortByValue) {
-	return CONTEXT_SORT_OPTIONS[sortByValue]?.label
-		|| BASE_SORT_OPTIONS.find(opt => opt.field === sortByValue)?.label
-		|| sortByValue
+	return (
+		CONTEXT_SORT_OPTIONS[sortByValue]?.label ||
+		BASE_SORT_OPTIONS.find((opt) => opt.field === sortByValue)?.label ||
+		sortByValue
+	)
 }
 
 function getSortIconState(field) {
-	if (sortBy.value !== field) return 'inactive'
-	return sortOrder.value === 'asc' ? 'ascending' : 'descending'
+	if (sortBy.value !== field) return "inactive"
+	return sortOrder.value === "asc" ? "ascending" : "descending"
 }
 
 // Close dropdown when clicking outside
 function handleClickOutside(event) {
 	if (showSortDropdown.value) {
-		const dropdown = event.target.closest('.relative')
-		if (!dropdown || !dropdown.querySelector('button[data-sort-button]')?.contains(event.target)) {
+		const dropdown = event.target.closest(".relative")
+		if (
+			!dropdown ||
+			!dropdown
+				.querySelector("button[data-sort-button]")
+				?.contains(event.target)
+		) {
 			showSortDropdown.value = false
 		}
 	}
