@@ -297,8 +297,8 @@
 						@mousedown="focusItemForKeyboard(index)"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50 aspect-square',
-							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20' : ''
+							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50 aspect-square',
+							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset transform scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
 						<!-- In-Cart Quantity Badge -->
@@ -550,7 +550,7 @@
 							@mousedown="focusItemForKeyboard(index)"
 							@click="getOptimizedClickHandler(item).click"
 							:class="[
-								'group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-[background-color,box-shadow,outline] duration-100 touch-manipulation active:bg-blue-100',
+								'group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-colors duration-75 touch-manipulation active:bg-blue-100',
 								focusedItemIndex === index ? 'bg-blue-50 ring-2 ring-blue-600 ring-inset' : ''
 							]"
 						>
@@ -1028,8 +1028,10 @@ watch(
 			return
 		}
 
-		// Calculate signature of item codes to detect actual list changes
-		const signature = newItems.map((item) => item.item_code).join("|")
+		// Lightweight signature to detect actual list changes (avoid O(n) join on every update)
+		const firstCode = newItems[0]?.item_code || ""
+		const lastCode = newItems[newItems.length - 1]?.item_code || ""
+		const signature = `${newItems.length}:${firstCode}:${lastCode}`
 		const hasListChanged = signature !== lastFilterSignature.value
 
 		if (hasListChanged || skipPageReset.value) {
@@ -1090,37 +1092,34 @@ const getColumnsCount = () => {
 	return 5
 }
 
-const scrollFocusedItemIntoView = () => {
-	nextTick(() => {
-		const container =
-			viewMode.value === "grid"
-				? gridScrollContainer.value
-				: listScrollContainer.value
-		if (!container) return
+const scrollFocusedItemIntoView = (() => {
+	let rafId = null
+	return () => {
+		nextTick(() => {
+			if (rafId) cancelAnimationFrame(rafId)
+			rafId = requestAnimationFrame(() => {
+				const container =
+					viewMode.value === "grid"
+						? gridScrollContainer.value
+						: listScrollContainer.value
+				if (!container) return
 
-		const itemElement = container.querySelector(
-			`[data-item-index="${focusedItemIndex.value}"]`,
-		)
-		if (!itemElement) return
+				const itemElement = container.querySelector(
+					`[data-item-index="${focusedItemIndex.value}"]`,
+				)
+				if (!itemElement) return
 
-		const containerRect = container.getBoundingClientRect()
-		const itemRect = itemElement.getBoundingClientRect()
-
-		if (itemRect.bottom > containerRect.bottom) {
-			container.scrollTop += itemRect.bottom - containerRect.bottom + 10
-		} else if (itemRect.top < containerRect.top) {
-			container.scrollTop -= containerRect.top - itemRect.top + 10
-		}
-	})
-}
+				itemElement.scrollIntoView({ block: "nearest", inline: "nearest" })
+			})
+		})
+	}
+})()
 
 function adjustFocusedItemQty(adjustment) {
 	const focusedItem = displayedItems.value[focusedItemIndex.value]
 	if (!focusedItem) return
 
-	const cartItem = props.cartItems.find(
-		(i) => i.item_code === focusedItem.item_code,
-	)
+	const cartItem = cartItemMap.value.get(focusedItem.item_code)
 	if (cartItem) {
 		const currentQty = cartItem.qty || cartItem.quantity || 0
 		const newQty = Math.max(0, currentQty + adjustment)
@@ -1170,6 +1169,14 @@ function navigateItemGroups(direction) {
 
 	// Reset focus when group changes
 	focusedItemIndex.value = -1
+
+	// Scroll active item group button into view smoothly
+	nextTick(() => {
+		requestAnimationFrame(() => {
+			const activeBtn = document.querySelector('button[data-nav="filter"].bg-black')
+			activeBtn?.scrollIntoView({ block: "nearest", inline: "nearest" })
+		})
+	})
 }
 
 function handleInputKeyDown(event) {
@@ -1197,18 +1204,26 @@ function handleInputKeyDown(event) {
 	handleKeyDown(event)
 }
 
+const cartItemMap = computed(() => {
+	const map = new Map()
+	if (props.cartItems) {
+		for (const item of props.cartItems) {
+			map.set(item.item_code, item)
+		}
+	}
+	return map
+})
+
 function getCartItemQty(itemCode) {
-	if (!props.cartItems) return 0
-	const cartItem = props.cartItems.find((i) => i.item_code === itemCode)
-	if (!cartItem) return 0
-	return cartItem.qty || cartItem.quantity || 0
+	const item = cartItemMap.value.get(itemCode)
+	return item ? (item.qty || item.quantity || 0) : 0
 }
 
 function removeFocusedItemFromCart() {
 	const focusedItem = displayedItems.value[focusedItemIndex.value]
 	if (!focusedItem) return
 
-	const cartItem = props.cartItems?.find((i) => i.item_code === focusedItem.item_code)
+	const cartItem = cartItemMap.value.get(focusedItem.item_code)
 	if (!cartItem) return
 
 	cartStore.removeItem(focusedItem.item_code, cartItem.uom)
@@ -1219,9 +1234,7 @@ function setFocusedItemQty(qty) {
 	const focusedItem = displayedItems.value[focusedItemIndex.value]
 	if (!focusedItem) return
 
-	const cartItem = props.cartItems.find(
-		(i) => i.item_code === focusedItem.item_code,
-	)
+	const cartItem = cartItemMap.value.get(focusedItem.item_code)
 	if (cartItem) {
 		try {
 			cartStore.updateItemQuantity(
