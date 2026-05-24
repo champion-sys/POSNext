@@ -568,7 +568,7 @@
 				class="flex flex-col items-center justify-center h-full px-3 sm:px-4 py-6"
 			>
 				<!-- Empty Cart Icon & Message -->
-				<div
+				<!-- <div
 					class="w-14 h-14 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3"
 				>
 					<svg
@@ -584,7 +584,7 @@
 							d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
 						/>
 					</svg>
-				</div>
+				</div> -->
 				<p class="text-xs sm:text-sm font-semibold text-gray-900 mb-1">
 					{{ __("Your cart is empty") }}
 				</p>

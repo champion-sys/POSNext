@@ -1126,7 +1126,7 @@ function adjustFocusedItemQty(adjustment) {
 		const newQty = Math.max(0, currentQty + adjustment)
 		if (newQty === 0) {
 			cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-			playNotificationSound("keypress")
+			
 		} else {
 			try {
 				cartStore.updateItemQuantity(
@@ -1134,10 +1134,10 @@ function adjustFocusedItemQty(adjustment) {
 					newQty,
 					cartItem.uom,
 				)
-				playNotificationSound("keypress")
+				
 			} catch (error) {
 				showError(error.message || __("Failed to update quantity"))
-				playNotificationSound("error")
+				
 			}
 		}
 	} else if (adjustment > 0) {
@@ -1204,68 +1204,6 @@ function getCartItemQty(itemCode) {
 	return cartItem.qty || cartItem.quantity || 0
 }
 
-function playNotificationSound(type) {
-	try {
-		const AudioContextClass = window.AudioContext || window.webkitAudioContext
-		if (!AudioContextClass) return
-
-		const ctx = new AudioContextClass()
-
-		if (type === "add") {
-			const osc = ctx.createOscillator()
-			const gain = ctx.createGain()
-
-			osc.type = "sine"
-			osc.frequency.setValueAtTime(880, ctx.currentTime)
-			osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1)
-
-			gain.gain.setValueAtTime(0.05, ctx.currentTime)
-			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
-
-			osc.connect(gain)
-			gain.connect(ctx.destination)
-
-			osc.start()
-			osc.stop(ctx.currentTime + 0.15)
-		} else if (type === "keypress") {
-			const osc = ctx.createOscillator()
-			const gain = ctx.createGain()
-
-			// Short mechanical key-click style beep
-			osc.type = "square"
-			const base = 1600 + Math.random() * 200
-			osc.frequency.setValueAtTime(base, ctx.currentTime)
-			osc.frequency.exponentialRampToValueAtTime(900, ctx.currentTime + 0.02)
-
-			gain.gain.setValueAtTime(0.03, ctx.currentTime)
-			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03)
-
-			osc.connect(gain)
-			gain.connect(ctx.destination)
-
-			osc.start()
-			osc.stop(ctx.currentTime + 0.03)
-		} else if (type === "error") {
-			const osc = ctx.createOscillator()
-			const gain = ctx.createGain()
-
-			osc.type = "sawtooth"
-			osc.frequency.setValueAtTime(150, ctx.currentTime)
-
-			gain.gain.setValueAtTime(0.08, ctx.currentTime)
-			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
-
-			osc.connect(gain)
-			gain.connect(ctx.destination)
-
-			osc.start()
-			osc.stop(ctx.currentTime + 0.3)
-		}
-	} catch (e) {
-		console.warn("AudioContext failed to play sound:", e)
-	}
-}
-
 function removeFocusedItemFromCart() {
 	const focusedItem = displayedItems.value[focusedItemIndex.value]
 	if (!focusedItem) return
@@ -1274,7 +1212,7 @@ function removeFocusedItemFromCart() {
 	if (!cartItem) return
 
 	cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-	playNotificationSound("keypress")
+
 }
 
 function setFocusedItemQty(qty) {
@@ -1291,15 +1229,15 @@ function setFocusedItemQty(qty) {
 				qty,
 				cartItem.uom,
 			)
-			playNotificationSound("keypress")
+			
 		} catch (error) {
 			showError(error.message || __("Failed to update quantity"))
-			playNotificationSound("error")
+			
 		}
 	} else {
 		// Route through the same flow as mouse click (POSSale.handleItemSelected)
 		emit("item-selected", focusedItem, false, qty)
-		playNotificationSound("keypress")
+		
 	}
 }
 
@@ -1810,13 +1748,13 @@ function selectItem(item, autoAdd = false) {
 					item.warehouse || "",
 				]),
 			)
-			playNotificationSound("error")
+			
 			return false
 		}
 	}
 
 	emit("item-selected", item, autoAdd)
-	playNotificationSound("add")
+	
 	return true
 }
 
