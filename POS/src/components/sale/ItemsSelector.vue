@@ -83,13 +83,13 @@
 						:aria-label="__('Search items')"
 					/>
 					<!-- Barcode Scan Icon and Auto-Add Toggle -->
-					<div class="absolute inset-y-0 end-0 pe-1 sm:pe-2 flex items-center gap-0.5">
+					<div class="absolute inset-y-0 end-0 pe-0 sm:pe-0 flex items-center gap-0">
 						<button
 							@click="toggleBarcodeScanner"
 							:class="[
-								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation',
+								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
 								scannerEnabled
-									? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
+									? 'bg-green-500 hover:bg-green-700 text-white border-green-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
 							]"
 							:title="scannerEnabled ? __('Barcode Scanner: ON (Click to disable)') : __('Barcode Scanner: OFF (Click to enable)')"
@@ -102,9 +102,9 @@
 						<button
 							@click="toggleAutoAdd"
 							:class="[
-								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation',
+								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
 								autoAddEnabled
-									? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
+									? 'bg-blue-500 hover:bg-blue-500 text-white border-blue-500 text-blue-500'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
 							]"
 							:title="autoAddEnabled ? __('Auto-Add: ON - Press Enter to add items to cart') : __('Auto-Add: OFF - Click to enable automatic cart addition on Enter')"
