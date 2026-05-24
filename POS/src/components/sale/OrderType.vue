@@ -14,12 +14,12 @@
           min-w-0 allows the flex-child to shrink and trigger the scrollbar 
           instead of pushing outside the parent boundary.
         -->
-        <div class="flex items-stretch bg-gray-100/80 rounded-xl p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex items-stretch bg-gray-100 rounded-lg p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 touch-manipulation snap-center "
+                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 touch-manipulation snap-center"
                 :class="
                     opt.value === modelValue
                         ? 'bg-blue-600 text-white shadow-sm'
@@ -69,33 +69,37 @@ const selectOption = (value) => {
     emit("update:modelValue", value)
 }
 
-// Fetch order types when posProfile is available (forces refetch on reload)
-let isInitialMount = true
+// Fetch order types when posProfile is available.
+// Store handles deduping and offline.
 watch(
     () => props.posProfile,
     (profile) => {
         if (profile) {
-            orderTypesStore.loadOrderTypes(profile, isInitialMount)
-            isInitialMount = false
+            orderTypesStore.loadOrderTypes(profile)
         }
     },
     { immediate: true },
 )
 
-// Sync Parent -> Store (handles initial fallback props or external resets)
+// Safe accessors (protects against HMR / transient store state during dev)
+// FIX: Removed .value because Pinia automatically unwraps refs on the store instance
+const selectedOrderTypeValue = computed(() => orderTypesStore.selectedOrderType ?? null)
+const orderTypeOptions = computed(() => orderTypesStore.orderTypeOptions ?? [])
+
+// Sync Parent -> Store
 watch(
     () => props.modelValue,
     (newVal) => {
-        if (newVal && newVal !== orderTypesStore.selectedOrderType) {
+        if (newVal && newVal !== selectedOrderTypeValue.value) {
             orderTypesStore.setSelectedOrderType(newVal)
         }
     },
     { immediate: true }
 )
 
-// Sync Store -> Parent (forces update when API finishes fetching the true default)
+// Sync Store -> Parent (push explicit default from profile)
 watch(
-    () => orderTypesStore.selectedOrderType,
+    selectedOrderTypeValue,
     (storeSel) => {
         if (storeSel && storeSel !== props.modelValue) {
             emit("update:modelValue", storeSel)
@@ -104,12 +108,11 @@ watch(
 )
 
 const normalizedOptions = computed(() => {
-    const storeOpts = orderTypesStore.orderTypeOptions
     const source =
-        Array.isArray(storeOpts) && storeOpts.length > 0
-            ? storeOpts
+        Array.isArray(orderTypeOptions.value) && orderTypeOptions.value.length > 0
+            ? orderTypeOptions.value
             : props.options || []
-            
+
     return source
         .filter((o) => o && (o.value || o.value === "") && o.label)
         .map((o) => ({

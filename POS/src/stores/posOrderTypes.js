@@ -78,7 +78,8 @@ export const usePOSOrderTypesStore = defineStore("posOrderTypes", () => {
             } catch (error) {
                 console.error("Failed to load POS order types:", error)
                 orderTypeOptions.value = []
-                isLoaded.value = true
+                // Do NOT set isLoaded=true on error, so we can retry later
+                // (prevents permanent empty list after transient failure)
                 return false
             } finally {
                 isLoading.value = false

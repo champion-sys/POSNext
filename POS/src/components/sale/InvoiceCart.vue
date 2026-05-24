@@ -370,6 +370,15 @@
 						v-model="orderTypeModel"
 					/>
 				</div>
+
+				<!-- Table Selector (shown only when selected order type has tables + profile setting) -->
+				<div v-if="showTableSelector" class="mt-2">
+					<TableSelector
+						v-model="tableModel"
+						:order-type="orderTypeModel"
+						:disabled="!orderTypeModel"
+					/>
+				</div>
 			</div>
 		</div>
 
@@ -1277,6 +1286,7 @@
  * ============================================================================
  */
 import { usePOSCartStore } from "@/stores/posCart"
+import { usePOSOrderTypesStore } from "@/stores/posOrderTypes"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { useCustomerSearchStore } from "@/stores/customerSearch"
@@ -1296,6 +1306,7 @@ import { createResource } from "frappe-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue"
 import EditItemDialog from "./EditItemDialog.vue"
 import OrderType from "./OrderType.vue"
+import TableSelector from "./TableSelector.vue"
 
 /**
  * ============================================================================
@@ -1303,6 +1314,7 @@ import OrderType from "./OrderType.vue"
  * ============================================================================
  */
 const cartStore = usePOSCartStore() // Pinia store for cart state management
+const orderTypesStore = usePOSOrderTypesStore() // to know has_tables of current order type
 const settingsStore = usePOSSettingsStore() // Pinia store for POS settings
 const offersStore = usePOSOffersStore() // Pinia store for offers/promotions
 const customerSearchStore = useCustomerSearchStore() // Pinia store for customer search
@@ -1369,6 +1381,10 @@ const props = defineProps({
 	defaultPosOrderType: {
 		type: String,
 		default: "Dine In",
+	},
+	showPosTableNo: {
+		type: Boolean,
+		default: false,
 	},
 })
 
@@ -1444,6 +1460,28 @@ const openUomDropdown = ref(null)
 const orderTypeModel = computed({
 	get: () => cartStore.posOrderType,
 	set: (val) => cartStore.setPosOrderType(val),
+})
+
+// Table selector visibility (only when order type supports tables + profile allows it)
+const currentOrderTypeOption = computed(() => {
+	const opts = orderTypesStore.orderTypeOptions?.value ?? []
+	return opts.find((o) => o.value === orderTypeModel.value)
+})
+const showTableSelector = computed(() => {
+	return (
+		props.showPosOrderType &&
+		props.showPosTableNo &&
+		currentOrderTypeOption.value?.has_tables
+	)
+})
+
+const tableModel = ref(null) // TODO: wire to cartStore / invoice state later
+
+// Clear table when the selected order type no longer supports tables
+watch(currentOrderTypeOption, (opt) => {
+    if (!opt?.has_tables) {
+        tableModel.value = null
+    }
 })
 
 // Keep default order type when showPosOrderType is enabled (user selection not overridden)

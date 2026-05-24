@@ -373,6 +373,7 @@
 								:warehouses="profileWarehouses"
 								:show-pos-order-type="Boolean(shiftStore.currentProfile?.show_pos_order_type)"
 								:default-pos-order-type="shiftStore.currentProfile?.pos_default_order_type"
+								:show-pos-table-no="Boolean(shiftStore.currentProfile?.show_pos_table_no)"
 								@update-quantity="cartStore.updateItemQuantity"
 								@remove-item="
 									(itemCode, uom) => cartStore.removeItem(itemCode, uom)
