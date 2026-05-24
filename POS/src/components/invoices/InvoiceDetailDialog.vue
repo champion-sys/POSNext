@@ -262,7 +262,7 @@
 				<Button variant="subtle" @click="show = false">
 					{{ __('Close') }}
 				</Button>
-				<Button @click="handlePrint">
+				<Button @click="handlePrint" v-if="settingsStore.allowPrintPreviousInvoices">
 					<template #prefix>
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
@@ -283,6 +283,8 @@ import { logger } from "@/utils/logger"
 import { hydrateLocalOnlyInvoice, isLocalOnlyInvoiceName } from "@/utils/printInvoice"
 import { Button, Dialog, call } from "frappe-ui"
 import { ref, watch, nextTick, computed } from "vue"
+import { usePOSSettingsStore } from "@/stores/posSettings"
+const settingsStore = usePOSSettingsStore()
 
 const log = logger.create('InvoiceDetailDialog')
 const { formatDate, formatTime } = useFormatters()
@@ -408,6 +410,7 @@ async function loadInvoiceDetails() {
 
 function handlePrint() {
 	if (!invoiceData.value) return
+	if(!settingsStore.allowPrintPreviousInvoices) return;
 	emit("print-invoice", invoiceData.value)
 }
 </script>

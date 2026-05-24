@@ -70,7 +70,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Security
 		enable_session_lock: 0,
 		session_lock_timeout: 5,
-		custom_hide_stock_quantity: 0
+		custom_hide_stock_quantity: 0,
+		allow_print_previous_invoices: 0,
+		allow_print_last_invoice: 0
 	})
 
 	const isLoading = ref(false)
@@ -145,6 +147,10 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 	const hideQuantity = computed(() =>
 		Boolean(settings.value.custom_hide_stock_quantity),
+	)
+
+	const allowPrintPreviousInvoices = computed(() =>
+		Boolean(settings.value.allow_print_previous_invoices),
 	)
 	const showCoupon = computed(() =>
 		Boolean(settings.value.custom_show_coupon),
@@ -472,6 +478,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 
 		// Computed - Printing
 		allowPrintLastInvoice,
+		allowPrintPreviousInvoices,
 		silentPrint,
 
 		// Computed - Delivery

@@ -98,6 +98,7 @@
 										</svg>
 									</button>
 									<button
+										v-if="settingsStore.allowPrintPreviousInvoices"
 										@click="printInvoice(invoice)"
 										class="p-1.5 hover:bg-green-50 rounded transition-colors"
 										:title="__('Print')"
@@ -155,8 +156,10 @@ import { getInvoiceStatusColor } from "@/utils/invoice"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import ReturnInvoiceDialog from "./ReturnInvoiceDialog.vue"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 
 const { showError } = useToast()
+const settingsStore = usePOSSettingsStore()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -298,6 +301,7 @@ function viewInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
+	if(!settingsStore.allowPrintPreviousInvoices) return;
 	emit("print-invoice", invoice)
 }
 
