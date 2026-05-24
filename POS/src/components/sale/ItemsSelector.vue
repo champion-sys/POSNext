@@ -6,7 +6,7 @@
 				<button
 					@click="handleAllFilterClick"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-none text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
 							: 'bg-white text-gray-900 border border-gray-400 hover:bg-gray-50 active:bg-gray-100',
@@ -22,10 +22,10 @@
 					:key="option.value"
 					@click="handleFilterClick(option.value)"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-none text-[10px] sm:text-[12px] font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
-							: 'bg-white text-gray-900 border border-gray-600 hover:bg-gray-50 active:bg-gray-100',
+							: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50 active:bg-gray-100',
 					]"
 				>
 					<span class="truncate">{{ __(option.label) }}</span>
