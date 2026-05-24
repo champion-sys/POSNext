@@ -2,41 +2,41 @@
 	<div
 		class="bg-white shadow-sm sticky top-0 z-[200]"
 	>
-		<div class="flex py-2 sm:py-3">
+		<div class="flex py-1 sm:py-1 items-center">
 			<!-- POS Icon - Aligned with Management Sidebar (64px) -->
-			<div class="w-16 flex-shrink-0 flex items-center justify-center">
+			<div class="w-12 sm:w-16 flex-shrink-0 flex items-center justify-center">
 				<button
-					class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all"
+					class="w-8 h-8 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all"
 					:aria-label="'POS Next'"
 					:title="__('POS Next')"
 				>
-					<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+					<svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
 						<path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
 					</svg>
 				</button>
 			</div>
 
 			<!-- Main Header Content -->
-			<div class="flex-1 flex justify-between items-center gap-1 sm:gap-2 px-2 sm:px-4 md:px-6">
+			<div class="flex-1 flex justify-between items-center gap-1 px-2 sm:px-4">
 				<!-- Left Side: Brand Info -->
-				<div class="flex items-center gap-1 sm:gap-4 min-w-0 flex-1 overflow-hidden">
+				<div class="flex items-center gap-1 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
 					<div class="min-w-0 flex-shrink overflow-hidden">
-						<div class="flex items-center gap-1 sm:gap-2">
-							<h1 class="text-xs sm:text-base font-bold text-gray-900 truncate flex-shrink">{{ 'POS Next' }}</h1>
-							<span class="hidden sm:inline-flex relative items-center px-1 sm:px-2 py-0.5 text-[8px] sm:text-[10px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md shadow-sm hover:shadow-md transition-shadow flex-shrink-0">
+						<div class="flex items-center gap-1 sm:gap-1.5">
+							<h1 class="text-xs sm:text-sm font-extrabold text-gray-900 truncate flex-shrink">{{ 'POS Next' }}</h1>
+							<span class="hidden sm:inline-flex relative items-center px-1 sm:px-1.5 py-px text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md shadow-sm hover:shadow-md transition-shadow flex-shrink-0">
 								<span class="absolute inset-0 bg-white/20 rounded-md animate-pulse"></span>
 								<span class="relative">v{{ appVersion }}</span>
 							</span>
 						</div>
-						<p v-if="profileName" class="text-[9px] sm:text-xs text-gray-500 truncate hidden sm:block mt-0.5">{{ profileName }}</p>
+						<p v-if="profileName" class="text-[8px] sm:text-[10px] text-gray-500 truncate hidden sm:block mt-0.5">{{ profileName }}</p>
 					</div>
 
 					<!-- Time and Shift Duration - Compact on mobile -->
-					<div class="hidden lg:flex items-center gap-4 ms-6 flex-shrink-0">
+					<div class="hidden lg:flex items-center gap-1.5 ms-3 flex-shrink-0">
 						<!-- Current Time -->
 						<StatusBadge
 							variant="blue"
-							size="sm"
+							size="xs"
 							:icon="timeIcon"
 							:text="currentTime"
 						/>
@@ -59,12 +59,12 @@
 				</div>
 
 				<!-- Right Side: Controls -->
-				<div class="flex items-center gap-0.5 sm:gap-1 md:gap-2 flex-shrink-0">
+				<div class="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
 					<!-- WiFi/Offline Status -->
 					<button
 						@click="$emit('sync-click')"
 						:class="[
-							'p-1.5 sm:p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative group touch-manipulation',
+							'p-1 sm:p-1.5 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative group touch-manipulation',
 							isSyncing ? 'animate-pulse' : ''
 						]"
 						:title="isOffline ? __('Offline ({0} pending)', [pendingInvoicesCount]) : __('Online - Click to sync')"
@@ -89,7 +89,7 @@
 						</svg>
 						<span
 							v-if="pendingInvoicesCount > 0"
-							class="absolute -top-1 -end-1 bg-orange-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center shadow-md"
+							class="absolute -top-1 -end-1 bg-orange-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm"
 						>
 							{{ pendingInvoicesCount }}
 						</span>
@@ -100,11 +100,11 @@
 						<button
 							@click="showCacheTooltip = !showCacheTooltip"
 							@blur="handleBlur"
-							class="p-1.5 sm:p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative touch-manipulation"
+							class="p-1 sm:p-1.5 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative touch-manipulation"
 							:aria-label="getCacheAriaLabel()"
 						>
 							<svg
-								class="w-4 h-4 sm:w-5 sm:h-5 transition-colors"
+								class="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors"
 								:class="getCacheIconColor()"
 								fill="currentColor"
 								viewBox="0 0 24 24"
@@ -113,7 +113,7 @@
 							</svg>
 							<svg
 								v-if="cacheSyncing || isRefreshing"
-								class="w-4 h-4 sm:w-5 sm:h-5 absolute top-2 start-2 animate-spin opacity-70"
+								class="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute top-1.5 start-1.5 animate-spin opacity-70"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -125,7 +125,7 @@
 							<!-- Sync progress badge (visible during sync) -->
 							<span
 								v-if="cacheSyncing && cacheStats?.items > 0"
-								class="absolute -bottom-1 -end-1 bg-orange-500 text-white text-[8px] font-bold rounded-full px-1 min-w-[20px] h-4 flex items-center justify-center shadow-md animate-pulse"
+								class="absolute -bottom-0.5 -end-0.5 bg-orange-500 text-white text-[7px] font-black rounded-full px-0.5 min-w-[14px] h-3.5 flex items-center justify-center shadow-md animate-pulse"
 								:title="__('Syncing: {0} items', [formatNumber(cacheStats.items)])"
 							>
 								{{ formatCompactNumber(cacheStats.items) }}
@@ -220,10 +220,11 @@
 							:icon="printerIcon"
 							:title="silentPrintEnabled ? (qzConnected ? __('Silent Print: Connected') : __('Silent Print: Disconnected')) : __('Print Invoice')"
 							@click="$emit('printer-click')"
+							size="sm"
 						/>
 						<span
 							v-if="silentPrintEnabled"
-							class="absolute top-0.5 end-0.5 w-2 h-2 rounded-full border border-white"
+							class="absolute top-1 end-1 w-1.5 h-1.5 rounded-full border border-white"
 							:class="qzConnected ? 'bg-green-500' : 'bg-red-500'"
 						></span>
 					</div>
@@ -234,20 +235,21 @@
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
 						:class="[
-							'touch-manipulation p-1 sm:p-2',
+							'touch-manipulation p-1 sm:p-1.5',
 							isRefreshing ? 'animate-spin' : ''
 						]"
+						size="sm"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
 					/>
 
-					<div class="w-px h-4 sm:h-6 bg-gray-200 hidden md:block"></div>
+					<div class="w-px h-3 sm:h-4 bg-gray-200 hidden md:block"></div>
 
 					<!-- Language Switcher - Hidden on mobile, shown in UserMenu instead -->
 					<div class="hidden md:block">
 						<LanguageSwitcher />
 					</div>
 
-					<div class="w-px h-4 sm:h-6 bg-gray-200"></div>
+					<div class="w-px h-3 sm:h-4 bg-gray-200"></div>
 
 					<!-- User Menu -->
 					<UserMenu

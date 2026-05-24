@@ -128,7 +128,7 @@ import { useLocale } from "@/composables/useLocale"
 
 // Avatar Sub-component
 const Avatar = (props) => {
-	const sizeClass = props.size === 'sm' ? 'w-9 h-9' : 'w-10 h-10'
+	const sizeClass = props.size === 'sm' ? 'w-8 h-8' : 'w-9 h-9'
 	const bgClass = props.image ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-500 to-blue-600'
 
 	return h('div', {
