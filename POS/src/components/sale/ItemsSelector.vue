@@ -2,33 +2,33 @@
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
 		<div class="px-1.5 sm:px-3 pt-1.5 sm:pt-3 pb-1.5 sm:pb-2 bg-white border-b border-gray-200">
-			<div class="flex flex-wrap items-center gap-1 sm:gap-1.5">
+			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
 				<button
 					@click="handleAllFilterClick"
 					:class="[
-						'flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-[background-color,border-color] duration-75 touch-manipulation',
+						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
-							: 'bg-white text-gray-900 border border-gray-600 hover:bg-gray-50 active:bg-gray-100',
+							: 'bg-white text-gray-900 border border-gray-400 hover:bg-gray-50 active:bg-gray-100',
 					]"
 				>
-					<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-current" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
 					</svg>
-					<span>{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
+					<span class="truncate">{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
 				</button>
 				<button
 					v-for="option in activeFilterOptions"
 					:key="option.value"
 					@click="handleFilterClick(option.value)"
 					:class="[
-						'flex items-center px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-[background-color,border-color] duration-75 touch-manipulation',
+						'flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-[background-color,border-color] duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm'
 							: 'bg-white text-gray-900 border border-gray-600 hover:bg-gray-50 active:bg-gray-100',
 					]"
 				>
-					<span>{{ __(option.label) }}</span>
+					<span class="truncate">{{ __(option.label) }}</span>
 				</button>
 			</div>
 		</div>
@@ -48,7 +48,7 @@
 					<!-- Search Icon -->
 					<div class="absolute inset-y-0 start-0 ps-2 sm:ps-3 flex items-center pointer-events-none">
 						<svg
-							class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400"
+							class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-600"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
