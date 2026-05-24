@@ -1,7 +1,7 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="px-1.5 sm:px-3 pt-1.5 sm:pt-3 pb-1.5 sm:pb-2 bg-white border-b border-gray-200">
+		<div class="px-1.5 sm:px-3 pt-1.5 sm:pt-3 pb-1.5 sm:pb-2 bg-white border-b border-gray-200 max-h-[130px] overflow-y-auto">
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-1.5">
 				<button
 					@click="handleAllFilterClick"
