@@ -296,6 +296,7 @@ export function useInvoice() {
 				// Resolved barcode flag - prevents editing qty/uom/rate for weighted/priced barcodes
 				is_resolved_barcode: item.is_resolved_barcode || false,
 				// Stock validation fields — needed for qty increase checks in cart
+				original_stock: item.original_stock ?? item.actual_qty ?? item.stock_qty ?? 0,
 				actual_qty: item.actual_qty ?? 0,
 				is_stock_item: item.is_stock_item ?? 1,
 				is_bundle: item.is_bundle || false,

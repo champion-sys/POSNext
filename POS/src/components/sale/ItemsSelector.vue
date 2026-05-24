@@ -330,7 +330,7 @@
 							<!-- Image with conditional blur on hover -->
 							<div :class="[
 								'w-full h-full transition-all duration-300',
-								(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0 ? 'group-hover:blur-sm group-hover:brightness-75' : ''
+								(item.is_stock_item || item.is_bundle) && (item.actual_qty ?? item.stock_qty ?? 0) <= 0 ? ' group-hover:brightness-75' : ''
 							]">
 								<LazyImage
 									v-if="item.image"
@@ -1275,6 +1275,17 @@ function playNotificationSound(type) {
 	}
 }
 
+function removeFocusedItemFromCart() {
+	const focusedItem = displayedItems.value[focusedItemIndex.value]
+	if (!focusedItem) return
+
+	const cartItem = props.cartItems?.find((i) => i.item_code === focusedItem.item_code)
+	if (!cartItem) return
+
+	cartStore.removeItem(focusedItem.item_code, cartItem.uom)
+	playNotificationSound("add")
+}
+
 function setFocusedItemQty(qty) {
 	const focusedItem = displayedItems.value[focusedItemIndex.value]
 	if (!focusedItem) return
@@ -1295,13 +1306,9 @@ function setFocusedItemQty(qty) {
 			playNotificationSound("error")
 		}
 	} else {
-		try {
-			cartStore.addItem(focusedItem, qty, false, settingsStore.posProfile)
-			playNotificationSound("add")
-		} catch (error) {
-			showError(error.message || __("Failed to add item"))
-			playNotificationSound("error")
-		}
+		// Route through the same flow as mouse click (POSSale.handleItemSelected)
+		emit("item-selected", focusedItem, false, qty)
+		playNotificationSound("add")
 	}
 }
 
@@ -1557,6 +1564,12 @@ function handleGlobalKeyDown(event) {
 			event.preventDefault()
 			const qty = parseInt(event.key, 10)
 			setFocusedItemQty(qty)
+			return
+		}
+
+		if (event.key === "0") {
+			event.preventDefault()
+			removeFocusedItemFromCart()
 			return
 		}
 

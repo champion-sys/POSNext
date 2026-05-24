@@ -1863,7 +1863,9 @@ async function handleShiftClosed() {
 	}
 }
 
-function handleItemSelected(item, autoAdd = false) {
+function handleItemSelected(item, autoAdd = false, qtyOverride = null) {
+	const baseQty = qtyOverride != null ? Number.parseFloat(qtyOverride) || 1 : 1
+
 	// Auto-add mode
 	if (autoAdd) {
 		try {
@@ -1880,9 +1882,9 @@ function handleItemSelected(item, autoAdd = false) {
 					price_list_rate: unitRate,
 					is_resolved_barcode: true, // Mark as readonly
 				};
-				cartStore.addItem(resolvedItem, item.resolved_qty, true, shiftStore.currentProfile);
+				cartStore.addItem(resolvedItem, qtyOverride != null ? baseQty : item.resolved_qty, true, shiftStore.currentProfile);
 			} else {
-				cartStore.addItem(item, 1, true, shiftStore.currentProfile);
+				cartStore.addItem(item, baseQty, true, shiftStore.currentProfile);
 			}
 		} catch (error) {
 			uiStore.showError(
@@ -1897,7 +1899,7 @@ function handleItemSelected(item, autoAdd = false) {
 	// Early out-of-stock guard — prevent opening dialogs for zero-stock items
 	// Full qty validation happens in cartStore.addItem()
 	if (!item.has_variants && settingsStore.shouldEnforceStockValidation() && shouldValidateItemStock(item)) {
-		const actualQty = item.actual_qty ?? item.stock_qty ?? 0;
+		const actualQty = item.original_stock ?? item.actual_qty ?? item.stock_qty ?? 0;
 		if (actualQty <= 0) {
 			uiStore.showError(
 				__("Insufficient Stock"),
@@ -1913,28 +1915,28 @@ function handleItemSelected(item, autoAdd = false) {
 
 	// Check for variants
 	if (item.has_variants) {
-		cartStore.setPendingItem(item, 1, "variant");
+		cartStore.setPendingItem(item, baseQty, "variant");
 		uiStore.showItemSelectionDialog = true;
 		return;
 	}
 
 	// Check for UOMs
 	if (item.item_uoms && item.item_uoms.length > 0) {
-		cartStore.setPendingItem(item, 1, "uom");
+		cartStore.setPendingItem(item, baseQty, "uom");
 		uiStore.showItemSelectionDialog = true;
 		return;
 	}
 
 	// Check for batch/serial
 	if (item.has_batch_no || item.has_serial_no) {
-		cartStore.setPendingItem(item, 1);
+		cartStore.setPendingItem(item, baseQty);
 		uiStore.showBatchSerialDialog = true;
 		return;
 	}
 
 	// Add to cart
 	try {
-		cartStore.addItem(item, 1, false, shiftStore.currentProfile);
+		cartStore.addItem(item, baseQty, false, shiftStore.currentProfile);
 	} catch (error) {
 		uiStore.showError(
 			__("Insufficient Stock"),
