@@ -1,34 +1,67 @@
 <template>
     <div
         v-if="normalizedOptions.length"
-        class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 bg-white border border-gray-200/70 rounded-xl p-1.5 shadow-sm w-full"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white border border-gray-150 rounded-xl p-1 shadow-sm w-full transition-all duration-200"
         role="group"
         :aria-label="label"
     >
-        <p class="text-[11px] font-semibold text-gray-600 select-none px-1.5 sm:pl-2 sm:pr-1 whitespace-nowrap shrink-0">
+        <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none px-2 py-1 sm:py-0 whitespace-nowrap shrink-0">
             {{ __(label) }}
         </p>
 
-        <!-- 
-          Added min-w-0, overflow-x-auto, and scrollbar hiding classes.
-          min-w-0 allows the flex-child to shrink and trigger the scrollbar 
-          instead of pushing outside the parent boundary.
-        -->
-        <div class="flex items-stretch bg-gray-100 rounded-lg p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex items-stretch bg-gray-50 rounded-lg p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden border border-gray-100">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 touch-manipulation snap-center"
+                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all duration-150 touch-manipulation snap-center flex items-center justify-center gap-1.5 active:scale-[0.97]"
                 :class="
                     opt.value === modelValue
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-white/70'
+                        ? 'bg-blue-600 text-white shadow-sm font-extrabold'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/80 active:bg-gray-100'
                 "
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"
             >
-                {{ __(opt.label) }}
+                <!-- Dynamic SVG Icons based on Order Type -->
+                <span class="flex-shrink-0" :class="opt.value === modelValue ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'">
+                    <!-- Dine In / In Store -->
+                    <svg v-if="getIconType(opt.value) === 'dine-in'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2" />
+                        <path d="M7 2v20" />
+                        <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7" />
+                    </svg>
+                    
+                    <!-- Takeaway / Pickup -->
+                    <svg v-else-if="getIconType(opt.value) === 'takeaway'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <path d="M16 10a4 4 0 0 1-8 0" />
+                    </svg>
+                    
+                    <!-- Delivery -->
+                    <svg v-else-if="getIconType(opt.value) === 'delivery'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="1" y="3" width="15" height="13" rx="2" ry="2" />
+                        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                        <circle cx="5.5" cy="18.5" r="2" />
+                        <circle cx="18.5" cy="18.5" r="2" />
+                    </svg>
+                    
+                    <!-- Room Service / Hospitality -->
+                    <svg v-else-if="getIconType(opt.value) === 'room-service'" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 17h20" />
+                        <path d="M6 17a6 6 0 0 1 12 0" />
+                        <path d="M12 11V8" />
+                        <path d="M10 8h4" />
+                    </svg>
+                    
+                    <!-- Default fallback -->
+                    <svg v-else class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                </span>
+                
+                <span>{{ __(opt.label) }}</span>
             </button>
         </div>
     </div>
@@ -63,6 +96,21 @@ const props = defineProps({
 const emit = defineEmits(["update:modelValue"])
 const orderTypesStore = usePOSOrderTypesStore()
 
+// Helper to determine the icon type based on order type option value
+const getIconType = (value) => {
+    const val = String(value || "").toLowerCase()
+    if (val.includes("dine") || val.includes("table") || val.includes("in")) {
+        return "dine-in"
+    } else if (val.includes("take") || val.includes("pick") || val.includes("bag") || val.includes("out")) {
+        return "takeaway"
+    } else if (val.includes("deliv") || val.includes("ship") || val.includes("truck") || val.includes("bike")) {
+        return "delivery"
+    } else if (val.includes("room") || val.includes("tray") || val.includes("service")) {
+        return "room-service"
+    }
+    return "default"
+}
+
 // Update both v-model and the store when an option is clicked manually
 const selectOption = (value) => {
     orderTypesStore.setSelectedOrderType(value)
@@ -70,7 +118,6 @@ const selectOption = (value) => {
 }
 
 // Fetch order types when posProfile is available.
-// Store handles deduping and offline.
 watch(
     () => props.posProfile,
     (profile) => {
@@ -81,8 +128,6 @@ watch(
     { immediate: true },
 )
 
-// Safe accessors (protects against HMR / transient store state during dev)
-// FIX: Removed .value because Pinia automatically unwraps refs on the store instance
 const selectedOrderTypeValue = computed(() => orderTypesStore.selectedOrderType ?? null)
 const orderTypeOptions = computed(() => orderTypesStore.orderTypeOptions ?? [])
 

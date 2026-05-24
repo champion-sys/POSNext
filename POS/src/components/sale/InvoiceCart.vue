@@ -361,23 +361,32 @@
 					</button>
 				</div>
 
-				<!-- Order Type Toggle (from POS Profile) -->
-				<div v-if="showPosOrderType" class="mt-2">
-					<OrderType
-						data-testid="pos-order-type-no-customer"
-						:label="__('Order Type')"
-						:pos-profile="posProfile"
-						v-model="orderTypeModel"
-					/>
-				</div>
-
-				<!-- Table Selector (shown only when selected order type has tables + profile setting) -->
-				<div v-if="showTableSelector" class="mt-2">
-					<TableSelector
-						v-model="tableModel"
-						:order-type="orderTypeModel"
-						:disabled="!orderTypeModel"
-					/>
+				<!-- Unified Service Control Panel: Order Type + Table Selector -->
+				<div v-if="showPosOrderType" class="mt-2.5 flex items-center gap-2 w-full">
+					<div class="flex-1 min-w-0">
+						<OrderType
+							data-testid="pos-order-type-no-customer"
+							:label="__('Order Type')"
+							:pos-profile="posProfile"
+							v-model="orderTypeModel"
+						/>
+					</div>
+					<transition
+						enter-active-class="transition-all duration-300 ease-out"
+						enter-from-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+						enter-to-class="transform translate-x-0 opacity-100 max-w-[200px]"
+						leave-active-class="transition-all duration-200 ease-in"
+						leave-from-class="transform translate-x-0 opacity-100 max-w-[200px]"
+						leave-to-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+					>
+						<div v-if="showTableSelector" class="w-48 shrink-0 overflow-hidden">
+							<TableSelector
+								v-model="tableModel"
+								:order-type="orderTypeModel"
+								:disabled="!orderTypeModel"
+							/>
+						</div>
+					</transition>
 				</div>
 			</div>
 		</div>
@@ -1481,7 +1490,10 @@ const showTableSelector = computed(() => {
 	return !!opt?.has_tables
 })
 
-const tableModel = ref(null) // TODO: wire to cartStore / invoice state later
+const tableModel = computed({
+	get: () => cartStore.posTableNo,
+	set: (val) => cartStore.setPosTableNo(val),
+})
 
 // Clear table when the selected order type no longer supports tables
 watch(currentOrderTypeOption, (opt) => {

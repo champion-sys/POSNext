@@ -106,6 +106,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		setInvoiceRemarks,
 		setPosOrderType,
 		resetPosOrderType,
+		posTableNo,
+		setPosTableNo,
+		resetPosTableNo,
 		setDefaultCustomer,
 		applyDiscount,
 		removeDiscount,
@@ -261,6 +264,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		resetPosOrderType(
 			isPosOrderTypeEnabled.value ? defaultPosOrderType.value : null,
 		)
+
+		// Reset table selection (table is tied to a specific order type)
+		resetPosTableNo()
 
 		console.log("isPosOrderTypeEnabled.value", isPosOrderTypeEnabled.value)
 		console.log("defaultPosOrderType.value", defaultPosOrderType.value)
@@ -1874,6 +1880,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		posProfile,
 		posOpeningShift,
 		posOrderType,
+		posTableNo,
 		payments,
 		salesTeam,
 		additionalDiscount,
@@ -1908,6 +1915,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		setInvoiceRemarks,
 		setPosOrderType,
 		resetPosOrderType,
+		setPosTableNo,
+		resetPosTableNo,
 		submitInvoice,
 		applyDiscountToCart,
 		removeDiscountFromCart,
