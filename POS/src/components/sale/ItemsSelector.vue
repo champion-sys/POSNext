@@ -287,7 +287,7 @@
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
 							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50',
-							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20 shadow-md' : ''
+							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -708,71 +708,68 @@
 		</div>
 
 		<!-- Keyboard Shortcuts Bar -->
-		<div class="relative bg-white border-t border-neutral-900 text-neutral-300 py-0 px-5 flex-shrink-0 select-none overflow-hidden">
+		<div class="shortcuts-bar">
 			<!-- Gradient Fades to suggest horizontal scrollability -->
-			<div class="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-neutral-950 to-transparent pointer-events-none z-10"></div>
-			<div class="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-neutral-950 to-transparent pointer-events-none z-10"></div>
+			<div class="fade-overlay fade-left"></div>
+			<div class="fade-overlay fade-right"></div>
 			
-			<div class="flex items-center gap-2 overflow-x-auto scrollbar-hide select-none whitespace-nowrap">
-				<span class="flex items-center gap-1.5 font-black uppercase tracking-widest text-neutral-400 me-5 text-[10px] sm:text-xs">
-					{{ __('Shortcuts:') }}
-				</span>
-				<div class="flex items-center gap-6 py-2">
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">S</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Search') }}</span>
+			<div class="shortcuts-wrapper scrollbar-hide">
+				<div class="shortcuts-list">
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">S</kbd>
+						<span class="shortcut-label">{{ __('Search') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">I</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Focus Items') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">I</kbd>
+						<span class="shortcut-label">{{ __('Focus Items') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Arrow Keys</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Navigate') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Arrow Keys</kbd>
+						<span class="shortcut-label">{{ __('Navigate') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Enter</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Add/Select') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Enter</kbd>
+						<span class="shortcut-label">{{ __('Add/Select') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">+</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">/</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">-</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Qty +/-') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">+</kbd>
+						<span class="shortcut-join">/</span>
+						<kbd class="shortcut-key">-</kbd>
+						<span class="shortcut-label">{{ __('Qty +/-') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">[</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">/</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">]</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Group Prev/Next') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">[</kbd>
+						<span class="shortcut-join">/</span>
+						<kbd class="shortcut-key">]</kbd>
+						<span class="shortcut-label">{{ __('Group Prev/Next') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">B</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Scanner') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">B</kbd>
+						<span class="shortcut-label">{{ __('Scanner') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">A</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Auto-Add') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">A</kbd>
+						<span class="shortcut-label">{{ __('Auto-Add') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">V</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Grid/List') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">V</kbd>
+						<span class="shortcut-label">{{ __('Grid/List') }}</span>
 					</div>
-					<div class="flex items-center gap-2">
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
-						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
-						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">O</kbd>
-						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Sort') }}</span>
+					<div class="shortcut-item">
+						<kbd class="shortcut-key">Alt</kbd>
+						<span class="shortcut-join">+</span>
+						<kbd class="shortcut-key">O</kbd>
+						<span class="shortcut-label">{{ __('Sort') }}</span>
 					</div>
 				</div>
 			</div>
@@ -1773,5 +1770,120 @@ tbody tr {
 /* Remove will-change when not hovering to save resources */
 tbody tr:not(:hover):not(:active) {
 	will-change: auto;
+}
+
+/* Keyboard Shortcuts Bar Styling - Enhancing with beautiful dark graphite colors & 3D keycaps */
+.shortcuts-bar {
+	position: relative;
+	background-color: #0f172a; /* Slate 900 */
+	border-top: 1px solid #1e293b; /* Slate 800 */
+	color: #94a3b8; /* Slate 400 */
+	padding: 0 1.25rem;
+	flex-shrink: 0;
+	user-select: none;
+	overflow: hidden;
+}
+
+/* Gradient Fades for horizontal scrolling indicator */
+.fade-overlay {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 2.5rem;
+	pointer-events: none;
+	z-index: 10;
+}
+.fade-left {
+	left: 0;
+	background: linear-gradient(to right, #0f172a 10%, rgba(15, 23, 42, 0));
+}
+.fade-right {
+	right: 0;
+	background: linear-gradient(to left, #0f172a 10%, rgba(15, 23, 42, 0));
+}
+
+.shortcuts-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	overflow-x: auto;
+	user-select: none;
+	white-space: nowrap;
+}
+
+.shortcuts-title {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	font-weight: 900;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #38bdf8; /* Sky 400 accent */
+	margin-right: 1.25rem;
+	font-size: 10px;
+}
+@media (min-width: 640px) {
+	.shortcuts-title {
+		font-size: 11px;
+	}
+}
+
+.shortcuts-list {
+	display: flex;
+	align-items: center;
+	gap: 1.5rem;
+	padding: 0.5rem 0;
+}
+
+.shortcut-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+/* Premium 3D keyboard keys */
+.shortcut-key {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+	font-size: 10px;
+	font-weight: 800;
+	padding: 0.2rem 0.45rem;
+	border-radius: 4px;
+	background: linear-gradient(to bottom, #1e293b, #0f172a);
+	color: #f8fafc; /* Slate 50 */
+	border: 1px solid #334155; /* Slate 700 */
+	border-bottom: 3px solid #020617; /* Darker bottom border for 3D depth */
+	box-shadow: 
+		inset 0 1px 0 rgba(255, 255, 255, 0.15),
+		0 2px 4px rgba(0, 0, 0, 0.4);
+	text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.5);
+	line-height: 1;
+	display: inline-block;
+}
+@media (min-width: 640px) {
+	.shortcut-key {
+		font-size: 11px;
+	}
+}
+
+/* Joiner character like plus (+) or slash (/) */
+.shortcut-join {
+	color: #64748b; /* Slate 500 */
+	font-weight: 700;
+	font-family: monospace;
+	font-size: 11px;
+}
+
+/* Action Label description */
+.shortcut-label {
+	color: #e2e8f0; /* Slate 200 */
+	font-weight: 500;
+	letter-spacing: 0.025em;
+	font-size: 10px;
+	margin-left: 0.25rem;
+}
+@media (min-width: 640px) {
+	.shortcut-label {
+		font-size: 11px;
+	}
 }
 </style>
