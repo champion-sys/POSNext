@@ -5,6 +5,7 @@
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
+					data-nav="filter"
 					:class="[
 						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
@@ -21,6 +22,7 @@
 					v-for="option in activeFilterOptions"
 					:key="option.value"
 					@click="handleFilterClick(option.value)"
+					data-nav="filter"
 					:class="[
 						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						activeFilterValue === option.value
@@ -65,6 +67,7 @@
 					<input
 						id="item-search"
 						name="item-search"
+						data-nav="search-bar"
 						ref="searchInputRef"
 						:value="searchTerm"
 						@input="handleSearchInput"
@@ -86,6 +89,7 @@
 					<div class="absolute inset-y-0 end-0 pe-0 sm:pe-0 flex items-center gap-0">
 						<button
 							@click="toggleBarcodeScanner"
+							data-nav="search-bar"
 							:class="[
 								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
 								scannerEnabled
@@ -101,6 +105,7 @@
 						</button>
 						<button
 							@click="toggleAutoAdd"
+							data-nav="search-bar"
 							:class="[
 								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
 								autoAddEnabled
@@ -120,6 +125,7 @@
 				<div class="flex items-center gap-0.5 border-r border-l border-gray-400 flex-shrink-0">
 					<button
 						@click="setViewMode('grid')"
+						data-nav="search-bar"
 						:class="[
 							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
 							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
@@ -133,6 +139,7 @@
 					</button>
 					<button
 						@click="setViewMode('list')"
+						data-nav="search-bar"
 						:class="[
 							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
 							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
@@ -151,6 +158,7 @@
 					<button
 						@click="toggleSortDropdown"
 						data-sort-button
+						data-nav="search-bar"
 						:class="[
 							'p-1.5 sm:p-1.5 h-[40px] w-[40px] rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
 							sortBy
@@ -422,6 +430,7 @@
 					<div class="flex items-center gap-0.5 order-1 sm:order-2">
 						<button
 							@click="goToPage(1)"
+							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -436,6 +445,7 @@
 						</button>
 						<button
 							@click="previousPage"
+							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -453,6 +463,7 @@
 								v-for="page in getPaginationRange()"
 								:key="page"
 								@click="goToPage(page)"
+								data-nav="pagination"
 								:class="[
 									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
@@ -466,6 +477,7 @@
 						</div>
 						<button
 							@click="nextPage"
+							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -480,6 +492,7 @@
 						</button>
 						<button
 							@click="goToPage(totalPages)"
+							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -632,6 +645,7 @@
 					<div class="flex items-center gap-0.5 order-1 sm:order-2">
 						<button
 							@click="goToPage(1)"
+							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -646,6 +660,7 @@
 						</button>
 						<button
 							@click="previousPage"
+							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -663,6 +678,7 @@
 								v-for="page in getPaginationRange()"
 								:key="page"
 								@click="goToPage(page)"
+								data-nav="pagination"
 								:class="[
 									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
@@ -676,6 +692,7 @@
 						</div>
 						<button
 							@click="nextPage"
+							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -690,6 +707,7 @@
 						</button>
 						<button
 							@click="goToPage(totalPages)"
+							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
@@ -1157,6 +1175,7 @@ function navigateItemGroups(direction) {
 function handleInputKeyDown(event) {
 	if (event.key === "ArrowDown") {
 		event.preventDefault()
+		event.stopPropagation()
 		if (displayedItems.value.length > 0) {
 			focusedItemIndex.value = 0
 			scrollFocusedItemIntoView()
@@ -1169,12 +1188,114 @@ function handleInputKeyDown(event) {
 
 	if (event.key === "Escape") {
 		event.preventDefault()
+		event.stopPropagation()
 		clearSearchAndResetInput()
 		focusedItemIndex.value = -1
 		return
 	}
 
 	handleKeyDown(event)
+}
+
+function getNavElements(type) {
+	return Array.from(document.querySelectorAll(`[data-nav="${type}"]`)).filter(
+		(el) => !el.disabled && el.offsetParent !== null,
+	)
+}
+
+function handleNavigationKeys(event) {
+	const activeEl = document.activeElement
+	if (!activeEl) return
+
+	const navType = activeEl.getAttribute("data-nav")
+
+	// 1. FILTERS ZONE
+	if (navType === "filter") {
+		const elements = getNavElements("filter")
+		const index = elements.indexOf(activeEl)
+
+		if (event.key === "ArrowRight") {
+			event.preventDefault()
+			const nextEl = elements[index + 1] || elements[0]
+			nextEl?.focus()
+		} else if (event.key === "ArrowLeft") {
+			event.preventDefault()
+			const prevEl = elements[index - 1] || elements[elements.length - 1]
+			prevEl?.focus()
+		} else if (event.key === "ArrowDown") {
+			event.preventDefault()
+			// Focus search input
+			const searchInput = document.getElementById("item-search")
+			searchInput?.focus()
+		}
+		return
+	}
+
+	// 2. SEARCH BAR ZONE
+	if (navType === "search-bar") {
+		const elements = getNavElements("search-bar")
+		const index = elements.indexOf(activeEl)
+
+		if (event.key === "ArrowRight") {
+			// If in search input, only move focus if cursor is at the end
+			if (activeEl.id === "item-search") {
+				const isAtEnd = activeEl.selectionEnd === activeEl.value.length
+				if (!isAtEnd) return
+			}
+			event.preventDefault()
+			const nextEl = elements[index + 1]
+			nextEl?.focus()
+		} else if (event.key === "ArrowLeft") {
+			// If in search input, only move focus if cursor is at the start
+			if (activeEl.id === "item-search") {
+				const isAtStart = activeEl.selectionStart === 0
+				if (!isAtStart) return
+			}
+			event.preventDefault()
+			const prevEl = elements[index - 1]
+			prevEl?.focus()
+		} else if (event.key === "ArrowUp") {
+			event.preventDefault()
+			// Focus active or first filter tab
+			const filters = getNavElements("filter")
+			const activeFilter = filters.find((el) => el.classList.contains("bg-black")) || filters[0]
+			activeFilter?.focus()
+		} else if (event.key === "ArrowDown") {
+			event.preventDefault()
+			// Move focus to items list if available
+			if (displayedItems.value.length > 0) {
+				focusedItemIndex.value = 0
+				scrollFocusedItemIntoView()
+				activeEl.blur()
+			}
+		}
+		return
+	}
+
+	// 3. PAGINATION ZONE
+	if (navType === "pagination") {
+		const elements = getNavElements("pagination")
+		const index = elements.indexOf(activeEl)
+
+		if (event.key === "ArrowRight") {
+			event.preventDefault()
+			const nextEl = elements[index + 1] || elements[0]
+			nextEl?.focus()
+		} else if (event.key === "ArrowLeft") {
+			event.preventDefault()
+			const prevEl = elements[index - 1] || elements[elements.length - 1]
+			prevEl?.focus()
+		} else if (event.key === "ArrowUp") {
+			event.preventDefault()
+			// Focus the bottom item in the list
+			if (displayedItems.value.length > 0) {
+				focusedItemIndex.value = displayedItems.value.length - 1
+				scrollFocusedItemIntoView()
+				activeEl.blur()
+			}
+		}
+		return
+	}
 }
 
 function handleGlobalKeyDown(event) {
@@ -1250,6 +1371,16 @@ function handleGlobalKeyDown(event) {
 	// If typing in another input, do not intercept following keys
 	if (isTyping) return
 
+	// Spatial navigation for filter buttons, search bar buttons, and pagination buttons
+	if (
+		["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key) &&
+		activeEl &&
+		activeEl.getAttribute("data-nav")
+	) {
+		handleNavigationKeys(event)
+		return
+	}
+
 	// Navigation keys when item results are navigated:
 	if (focusedItemIndex.value >= 0) {
 		if (
@@ -1263,7 +1394,16 @@ function handleGlobalKeyDown(event) {
 
 			if (viewMode.value === "list") {
 				if (event.key === "ArrowDown") {
-					focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+					if (focusedItemIndex.value === len - 1) {
+						// Focus pagination if available
+						const paginationBtns = getNavElements("pagination")
+						if (paginationBtns.length > 0) {
+							focusedItemIndex.value = -1
+							paginationBtns[0].focus()
+						}
+					} else {
+						focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+					}
 				} else if (event.key === "ArrowUp") {
 					if (focusedItemIndex.value === 0) {
 						focusedItemIndex.value = -1
@@ -1279,10 +1419,19 @@ function handleGlobalKeyDown(event) {
 				} else if (event.key === "ArrowLeft") {
 					focusedItemIndex.value = Math.max(0, focusedItemIndex.value - 1)
 				} else if (event.key === "ArrowDown") {
-					focusedItemIndex.value = Math.min(
-						len - 1,
-						focusedItemIndex.value + cols,
-					)
+					if (focusedItemIndex.value + cols >= len) {
+						// Focus pagination if available
+						const paginationBtns = getNavElements("pagination")
+						if (paginationBtns.length > 0) {
+							focusedItemIndex.value = -1
+							paginationBtns[0].focus()
+						}
+					} else {
+						focusedItemIndex.value = Math.min(
+							len - 1,
+							focusedItemIndex.value + cols,
+						)
+					}
 				} else if (event.key === "ArrowUp") {
 					if (focusedItemIndex.value - cols < 0) {
 						focusedItemIndex.value = -1
