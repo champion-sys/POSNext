@@ -292,6 +292,7 @@
 						@touchstart.passive="getOptimizedClickHandler(item).touchstart"
 						@touchmove.passive="getOptimizedClickHandler(item).touchmove"
 						@touchend.passive="getOptimizedClickHandler(item).touchend"
+						@mousedown="focusItemForKeyboard(index)"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
 							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50 aspect-square',
@@ -544,6 +545,7 @@
 							@touchstart.passive="getOptimizedClickHandler(item).touchstart"
 							@touchmove.passive="getOptimizedClickHandler(item).touchmove"
 							@touchend.passive="getOptimizedClickHandler(item).touchend"
+							@mousedown="focusItemForKeyboard(index)"
 							@click="getOptimizedClickHandler(item).click"
 							:class="[
 								'group cursor-pointer hover:bg-blue-50 hover:shadow-md transition-[background-color,box-shadow,outline] duration-100 touch-manipulation active:bg-blue-100',
@@ -1662,6 +1664,17 @@ function getOptimizedClickHandler(item) {
 	}
 	return optimizedClickHandlers.get(key)
 }
+
+function focusItemForKeyboard(index) {
+	focusedItemIndex.value = index
+	if (searchInputRef.value) searchInputRef.value.blur()
+	nextTick(() => {
+		scrollFocusedItemIntoView()
+	})
+}
+
+
+
 
 // Long press handler for stock badge/info icon
 // Short tap = select item (with validation), Long press = show warehouse availability
