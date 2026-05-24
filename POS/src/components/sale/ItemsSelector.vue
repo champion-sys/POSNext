@@ -34,7 +34,7 @@
 		</div>
 
 		<!-- Cache Sync Indicator -->
-		<div v-if="cacheSyncing" class="px-1.5 sm:px-3 py-1 bg-blue-50 border-b border-blue-200">
+		<div v-if="cacheSyncing" class="px-0 sm:px-0 py-1 bg-blue-50 border-b border-blue-200">
 			<div class="flex items-center justify-center gap-2 text-[10px] sm:text-xs text-blue-700">
 				<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
 				<span>{{ __('Syncing catalog in background... {0} items cached', [cacheStats.items]) }}</span>
@@ -42,13 +42,13 @@
 		</div>
 
 		<!-- Search Bar with Barcode Scanner and View Controls -->
-		<div class="px-1.5 sm:px-3 py-1.5 sm:py-2 bg-white border-b border-gray-400">
-			<div class="flex items-center gap-1 sm:gap-2">
+		<div class="px-0 sm:px-0 py-0 sm:py-0 bg-white border-b border-gray-400">
+			<div class="flex items-center gap-0 sm:gap-0">
 				<div class="flex-1 relative min-w-0">
 					<!-- Search Icon -->
 					<div class="absolute inset-y-0 start-0 ps-2 sm:ps-3 flex items-center pointer-events-none">
 						<svg
-							class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-600"
+							class="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-500"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -73,7 +73,7 @@
 						type="text"
 						:placeholder="searchPlaceholder"
 						:class="[
-							'w-full text-[11px] sm:text-sm border-2 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all rounded-none',
+							'w-full text-[11px] h-[40px] sm:text-sm border-1 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all rounded-none border-white',
 							autoAddEnabled
 								? 'border-blue-600 bg-blue-50 focus:border-blue-700'
 								: scannerEnabled
@@ -117,11 +117,11 @@
 						</button>
 					</div>
 				</div>
-				<div class="flex items-center gap-0.5 bg-gray-200 border border-gray-400 p-0.5 flex-shrink-0">
+				<div class="flex items-center gap-0.5 border-r border-l border-gray-400 flex-shrink-0">
 					<button
 						@click="setViewMode('grid')"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
 							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('Grid View')"
@@ -134,7 +134,7 @@
 					<button
 						@click="setViewMode('list')"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
 							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-600 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('List View')"
@@ -152,7 +152,7 @@
 						@click="toggleSortDropdown"
 						data-sort-button
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-2',
+							'p-1.5 sm:p-1.5 h-[40px] w-[40px] rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
 							sortBy
 								? 'bg-blue-50 border-blue-600 text-blue-700 shadow-none'
 								: 'bg-white border-black text-gray-700 hover:bg-gray-100 active:bg-gray-200'
@@ -173,10 +173,10 @@
 					<div
 						v-if="showSortDropdown"
 						@click.stop
-						class="absolute end-0 mt-1 w-56 bg-white rounded-none shadow-md border-2 border-black z-[9999]"
+						class="absolute end-0 mt-1 w-56 bg-white rounded-none shadow-md border-1 border-black z-[9999]"
 						style="box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);"
 					>
-						<div class="py-2">
+						<div class="">
 							<div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
 								{{ __('Sort Items') }}
 							</div>
@@ -375,14 +375,14 @@
 						<!-- Item Details -->
 						<div class="min-w-0 flex flex-col justify-between pt-0.5">
 							<div>
-								<h3 class="text-[9px] sm:text-[11px] font-bold uppercase tracking-tight text-gray-900 truncate leading-tight">
+								<h3 class="text-[9px] sm:text-[12px] font-bold text-gray-900 truncate leading-tight">
 									{{ item.item_name }}
 								</h3>
-								<p v-if="item.item_code" class="text-[8px] sm:text-[9px] font-mono text-gray-500 truncate leading-none mt-0.5">
+								<p v-if="item.item_code" class="text-[8px] sm:text-[11px] font-mono text-gray-700 truncate leading-none mt-0.5">
 									{{ item.item_code }}
 								</p>
 							</div>
-							<div class="mt-1 flex items-baseline justify-between gap-1 flex-wrap">
+							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
 								<span class="text-[9px] sm:text-[11px] font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
 								<span class="text-[8px] sm:text-[9px] font-medium text-gray-400 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</div>
