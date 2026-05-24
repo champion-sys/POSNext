@@ -301,7 +301,7 @@
 						<!-- In-Cart Quantity Badge -->
 						<div
 							v-if="getCartItemQty(item.item_code) > 0"
-							class="absolute top-1.5 start-1.5 z-10 rounded-none bg-blue-600 text-white px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold shadow-[0_2px_4px_rgba(0,0,0,0.3)]"
+							class="absolute top-1.5 start-1.5 z-10 rounded-none bg-blue-600 text-white px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold "
 						>
 							x{{ Math.floor(getCartItemQty(item.item_code)) }}
 						</div>
@@ -578,7 +578,7 @@
 									</span>
 									<span
 										v-if="getCartItemQty(item.item_code) > 0"
-										class="bg-blue-600 text-white px-1 py-0.5 rounded-none font-mono font-bold text-[9px] sm:text-[10px]"
+										class="bg-blue-600 text-white px-1 py-0.5 rounded-[6px] font-mono font-bold text-[9px] sm:text-[12px] px-[6px]"
 									>
 										x{{ Math.floor(getCartItemQty(item.item_code)) }}
 									</span>
@@ -602,7 +602,7 @@
 									@pointercancel="clearLongPress"
 									@pointerleave="clearLongPress"
 									:class="[
-										'inline-block px-1.5 sm:px-2.5 py-0.5 rounded-none border border-gray-300 font-mono font-bold cursor-pointer select-none',
+										'inline-block px-1.5 sm:px-2.5 py-0.5 rounded-[6px] border border-gray-300 font-mono font-bold cursor-pointer select-none text-[14px]',
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 									]"
