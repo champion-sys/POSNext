@@ -592,6 +592,9 @@
 					<p class="text-[10px] sm:text-xs text-gray-500">
 						{{ __("Select items to start or choose a quick action") }}
 					</p>
+					<!-- <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[12px] font-mono font-bold text-gray-500 bg-gray-100 rounded border border-gray-200 uppercase tracking-widest shadow-sm">
+						Alt + Q
+					</span> -->
 				</div>
 
 				<!-- Quick Actions Grid -->
