@@ -1,20 +1,25 @@
 <template>
     <div
         v-if="normalizedOptions.length"
-        class="flex items-center justify-between gap-3 bg-white border border-gray-200/70 rounded-xl p-1 shadow-sm"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 bg-white border border-gray-200/70 rounded-xl p-1.5 shadow-sm w-full"
         role="group"
         :aria-label="label"
     >
-        <p class="text-[11px] font-semibold text-gray-600  select-none pl-2 pr-1 whitespace-nowrap">
+        <p class="text-[11px] font-semibold text-gray-600 select-none px-1.5 sm:pl-2 sm:pr-1 whitespace-nowrap shrink-0">
             {{ __(label) }}
         </p>
 
-        <div class="flex items-stretch bg-gray-100/80 rounded-xl p-0.5 flex-shrink-0 shadow-inner">
+        <!-- 
+          Added min-w-0, overflow-x-auto, and scrollbar hiding classes.
+          min-w-0 allows the flex-child to shrink and trigger the scrollbar 
+          instead of pushing outside the parent boundary.
+        -->
+        <div class="flex items-stretch bg-gray-100/80 rounded-xl p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="flex-1 min-w-[68px] px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 active:scale-[0.97] touch-manipulation"
+                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 touch-manipulation snap-center "
                 :class="
                     opt.value === modelValue
                         ? 'bg-blue-600 text-white shadow-sm'
@@ -81,7 +86,6 @@ watch(
 watch(
     () => props.modelValue,
     (newVal) => {
-        // FIX: Removed .value (Pinia auto-unwraps refs)
         if (newVal && newVal !== orderTypesStore.selectedOrderType) {
             orderTypesStore.setSelectedOrderType(newVal)
         }
@@ -91,7 +95,6 @@ watch(
 
 // Sync Store -> Parent (forces update when API finishes fetching the true default)
 watch(
-    // FIX: Must use a getter function () => ... to watch a primitive value in Pinia
     () => orderTypesStore.selectedOrderType,
     (storeSel) => {
         if (storeSel && storeSel !== props.modelValue) {
@@ -101,7 +104,6 @@ watch(
 )
 
 const normalizedOptions = computed(() => {
-    // FIX: Removed .value (Pinia auto-unwraps refs)
     const storeOpts = orderTypesStore.orderTypeOptions
     const source =
         Array.isArray(storeOpts) && storeOpts.length > 0

@@ -272,15 +272,7 @@
 					</div>
 				</div>
 
-				<!-- Order Type Toggle (from POS Profile) -->
-				<div v-if="showPosOrderType" class="mt-2">
-					<OrderType
-						data-testid="pos-order-type-no-customer"
-						:label="__('Order Type')"
-						:pos-profile="posProfile"
-						v-model="orderTypeModel"
-					/>
-				</div>
+
 
 				<!-- Customer Dropdown -->
 				<div
@@ -367,6 +359,16 @@
 							<p class="text-[9px] text-green-600">"{{ customerSearch }}"</p>
 						</div>
 					</button>
+				</div>
+
+				<!-- Order Type Toggle (from POS Profile) -->
+				<div v-if="showPosOrderType" class="mt-2">
+					<OrderType
+						data-testid="pos-order-type-no-customer"
+						:label="__('Order Type')"
+						:pos-profile="posProfile"
+						v-model="orderTypeModel"
+					/>
 				</div>
 			</div>
 		</div>
