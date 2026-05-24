@@ -306,8 +306,8 @@
 							@pointercancel="clearLongPress"
 							@pointerleave="clearLongPress"
 							:class="[
-								'absolute top-0 end-0 z-10 rounded-none border-b border-l border-gray-200',
-								'px-1.5 py-0.5 text-[9px] sm:text-[10px] font-mono font-bold cursor-pointer select-none',
+								'absolute top-1.5 end-1.5 z-10 rounded-none',
+								'px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold cursor-pointer select-none',
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 							]"
