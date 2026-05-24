@@ -9,7 +9,6 @@
   "enabled",
   "section_break_localization",
   "allowed_locales",
-  "post_change_gl_entries",
   "section_break_wallet",
   "enable_loyalty_program",
   "default_loyalty_program",
@@ -24,6 +23,7 @@
   "allow_user_to_edit_rate",
   "use_percentage_discount",
   "max_discount_allowed",
+  "post_change_gl_entries",
   "column_break_general",
   "allow_credit_sale",
   "allow_customer_credit_payment",
@@ -69,6 +69,7 @@
   "allow_submissions_in_background_job",
   "allow_delete_offline_invoice",
   "allow_change_posting_date",
+  "closing_to_mode_of_payment",
   "section_break_misc",
   "input_qty",
   "allow_negative_stock",
@@ -568,11 +569,17 @@
    "fieldtype": "Link",
    "label": "Role Allowed to Access Settings in POS",
    "options": "Role"
+  },
+  {
+   "fieldname": "closing_to_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Closing to Mode of Payment",
+   "options": "Mode of Payment"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-24 23:45:43.716510",
+ "modified": "2026-05-25 00:05:27.344384",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

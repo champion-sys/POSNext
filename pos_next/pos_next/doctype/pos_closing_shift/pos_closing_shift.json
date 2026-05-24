@@ -14,6 +14,7 @@
   "pos_opening_shift",
   "section_break_5",
   "company",
+  "closing_to_mode_of_payment",
   "column_break_7",
   "pos_profile",
   "user",
@@ -196,15 +197,21 @@
   {
    "fieldname": "section_break_if3m1",
    "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "closing_to_mode_of_payment",
+   "fieldtype": "Link",
+   "label": "Closing to Mode of Payment",
+   "options": "Mode of Payment"
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2023-06-12 03:01:49.146706",
+ "modified": "2026-05-25 00:02:09.211546",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Closing Shift",
- "naming_rule": "Expression (old style)",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
@@ -261,6 +268,7 @@
    "write": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

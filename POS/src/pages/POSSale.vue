@@ -1235,7 +1235,15 @@ const canCloseShift = computed(() => {
 
 /** Desk link only for users with the Nexus POS Manager role (from bootstrap API). */
 const canSwitchToDesk = computed(() => Boolean(bootstrapStore.data?.can_switch_to_desk));
-const canAccessPOSSettings = computed(() => Boolean(bootstrapStore.data?.is_system_manager));
+
+const canAccessPOSSettings = computed(() => {
+	const allowedRole = posSettingsStore.roleAllowedToAccessSettingsInPos;
+	if (allowedRole) {
+		const userRoles = bootstrapStore.getPreloadedRoles();
+		return userRoles.includes(allowedRole) || Boolean(bootstrapStore.data?.is_system_manager);
+	}
+	return Boolean(bootstrapStore.data?.is_system_manager);
+});
 
 // Resize state
 let resizeState = null;

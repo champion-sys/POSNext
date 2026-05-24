@@ -72,7 +72,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		session_lock_timeout: 5,
 		custom_hide_stock_quantity: 0,
 		allow_print_previous_invoices: 0,
-		allow_print_last_invoice: 0
+		allow_print_last_invoice: 0,
+		role_allowed_to_access_settings_in_pos: null
 	})
 
 	const isLoading = ref(false)
@@ -147,6 +148,10 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 	const hideQuantity = computed(() =>
 		Boolean(settings.value.custom_hide_stock_quantity),
+	)
+
+	const roleAllowedToAccessSettingsInPos = computed(() =>
+		settings.value.role_allowed_to_access_settings_in_pos,
 	)
 
 	const allowPrintPreviousInvoices = computed(() =>
@@ -505,6 +510,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Computed - Security
 		enableSessionLock,
 		sessionLockTimeout,
+		roleAllowedToAccessSettingsInPos,
 
 		// Actions
 		loadSettings,

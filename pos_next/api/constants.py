@@ -45,7 +45,8 @@ POS_SETTINGS_FIELDS = [
 	"default_card_view",
 	"custom_hide_stock_quantity",
 	"allow_print_last_invoice",
-	"allow_print_previous_invoices"
+	"allow_print_previous_invoices",
+	"role_allowed_to_access_settings_in_pos"
 ]
 
 # Default POS Settings values
@@ -81,5 +82,6 @@ DEFAULT_POS_SETTINGS = {
 	"default_card_view": 0,
 	"custom_hide_stock_quantity": 0,
 	"allow_print_last_invoice": 0,
-	"allow_print_previous_invoices": 0
+	"allow_print_previous_invoices": 0,
+	"role_allowed_to_access_settings_in_pos": None
 }
