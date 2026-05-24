@@ -1,6 +1,6 @@
 <template>
 	<!-- Icon-Only Sidebar - Hidden on Mobile, Visible on Desktop -->
-	<div class="hidden lg:flex w-16 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-4 flex flex-col gap-2">
+	<div class="hidden lg:flex w-14 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-4 flex flex-col gap-2">
 		<!-- Promotions -->
 		<button
 			@click="handleMenuClick('promotions')"
