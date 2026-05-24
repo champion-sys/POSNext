@@ -48,6 +48,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 		nextTick(() => {
 			if (searchInputRef.value) {
 				searchInputRef.value.focus()
+				searchInputRef.value.select()
 			}
 		})
 	}

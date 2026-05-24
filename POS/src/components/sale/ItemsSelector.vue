@@ -298,6 +298,14 @@
 							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
+						<!-- In-Cart Quantity Badge -->
+						<div
+							v-if="getCartItemQty(item.item_code) > 0"
+							class="absolute top-1.5 start-1.5 z-10 rounded-none bg-blue-600 text-white px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold shadow-[0_2px_4px_rgba(0,0,0,0.3)]"
+						>
+							x{{ Math.floor(getCartItemQty(item.item_code)) }}
+						</div>
+
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
 						<div
 							v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants && !settingsStore.hideQuantity"
@@ -564,8 +572,16 @@
 								</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">
-								<div class="text-xs sm:text-sm font-bold uppercase tracking-tight text-gray-900 truncate" :title="item.item_name">
-									{{ item.item_name }}
+								<div class="flex items-center gap-1.5">
+									<span class="text-xs sm:text-sm font-bold uppercase tracking-tight text-gray-900 truncate" :title="item.item_name">
+										{{ item.item_name }}
+									</span>
+									<span
+										v-if="getCartItemQty(item.item_code) > 0"
+										class="bg-blue-600 text-white px-1 py-0.5 rounded-none font-mono font-bold text-[9px] sm:text-[10px]"
+									>
+										x{{ Math.floor(getCartItemQty(item.item_code)) }}
+									</span>
 								</div>
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
 									{{ Object.values(item.attributes).join(' / ') }}
@@ -1129,6 +1145,7 @@ function adjustFocusedItemQty(adjustment) {
 		const newQty = Math.max(0, currentQty + adjustment)
 		if (newQty === 0) {
 			cartStore.removeItem(focusedItem.item_code, cartItem.uom)
+			playNotificationSound("add")
 		} else {
 			try {
 				cartStore.updateItemQuantity(
@@ -1136,8 +1153,10 @@ function adjustFocusedItemQty(adjustment) {
 					newQty,
 					cartItem.uom,
 				)
+				playNotificationSound("add")
 			} catch (error) {
 				showError(error.message || __("Failed to update quantity"))
+				playNotificationSound("error")
 			}
 		}
 	} else if (adjustment > 0) {
@@ -1195,6 +1214,87 @@ function handleInputKeyDown(event) {
 	}
 
 	handleKeyDown(event)
+}
+
+function getCartItemQty(itemCode) {
+	if (!props.cartItems) return 0
+	const cartItem = props.cartItems.find((i) => i.item_code === itemCode)
+	if (!cartItem) return 0
+	return cartItem.qty || cartItem.quantity || 0
+}
+
+function playNotificationSound(type) {
+	try {
+		const AudioContextClass = window.AudioContext || window.webkitAudioContext
+		if (!AudioContextClass) return
+
+		const ctx = new AudioContextClass()
+
+		if (type === "add") {
+			const osc = ctx.createOscillator()
+			const gain = ctx.createGain()
+
+			osc.type = "sine"
+			osc.frequency.setValueAtTime(880, ctx.currentTime)
+			osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1)
+
+			gain.gain.setValueAtTime(0.05, ctx.currentTime)
+			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15)
+
+			osc.connect(gain)
+			gain.connect(ctx.destination)
+
+			osc.start()
+			osc.stop(ctx.currentTime + 0.15)
+		} else if (type === "error") {
+			const osc = ctx.createOscillator()
+			const gain = ctx.createGain()
+
+			osc.type = "sawtooth"
+			osc.frequency.setValueAtTime(150, ctx.currentTime)
+
+			gain.gain.setValueAtTime(0.08, ctx.currentTime)
+			gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3)
+
+			osc.connect(gain)
+			gain.connect(ctx.destination)
+
+			osc.start()
+			osc.stop(ctx.currentTime + 0.3)
+		}
+	} catch (e) {
+		console.warn("AudioContext failed to play sound:", e)
+	}
+}
+
+function setFocusedItemQty(qty) {
+	const focusedItem = displayedItems.value[focusedItemIndex.value]
+	if (!focusedItem) return
+
+	const cartItem = props.cartItems.find(
+		(i) => i.item_code === focusedItem.item_code,
+	)
+	if (cartItem) {
+		try {
+			cartStore.updateItemQuantity(
+				focusedItem.item_code,
+				qty,
+				cartItem.uom,
+			)
+			playNotificationSound("add")
+		} catch (error) {
+			showError(error.message || __("Failed to update quantity"))
+			playNotificationSound("error")
+		}
+	} else {
+		try {
+			cartStore.addItem(focusedItem, qty, false, settingsStore.posProfile)
+			playNotificationSound("add")
+		} catch (error) {
+			showError(error.message || __("Failed to add item"))
+			playNotificationSound("error")
+		}
+	}
 }
 
 function getNavElements(type) {
@@ -1445,6 +1545,13 @@ function handleGlobalKeyDown(event) {
 			return
 		}
 
+		if (/^[1-9]$/.test(event.key)) {
+			event.preventDefault()
+			const qty = parseInt(event.key, 10)
+			setFocusedItemQty(qty)
+			return
+		}
+
 		if (event.key === "Enter") {
 			event.preventDefault()
 			const item = displayedItems.value[focusedItemIndex.value]
@@ -1610,11 +1717,13 @@ function selectItem(item, autoAdd = false) {
 					item.warehouse || "",
 				]),
 			)
+			playNotificationSound("error")
 			return false
 		}
 	}
 
 	emit("item-selected", item, autoAdd)
+	playNotificationSound("add")
 	return true
 }
 
