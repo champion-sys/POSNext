@@ -1304,6 +1304,7 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { useCustomerSearchStore } from "@/stores/customerSearch"
 import { usePOSShiftStore } from "@/stores/posShift"
+import { useBootstrapStore } from "@/stores/bootstrap"
 import {
 	DEFAULT_CURRENCY,
 	formatCurrency as formatCurrencyUtil,
@@ -1333,6 +1334,7 @@ const settingsStore = usePOSSettingsStore() // Pinia store for POS settings
 const offersStore = usePOSOffersStore() // Pinia store for offers/promotions
 const customerSearchStore = useCustomerSearchStore() // Pinia store for customer search
 const shiftStore = usePOSShiftStore() // Pinia store for shift details
+const bootstrapStore = useBootstrapStore()
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
 
 function handleProceedToPayment() {
@@ -1505,7 +1507,7 @@ const isCloseShiftAllowed = computed(() => {
 	const allowedRole = shiftStore.currentProfile?.role_allowed_to_closing_shift
 	if (!allowedRole) return true
 
-	const userRoles = window.frappe?.boot?.user?.roles || []
+	const userRoles = bootstrapStore.getPreloadedRoles()
 	return userRoles.includes(allowedRole)
 })
 

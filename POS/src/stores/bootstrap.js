@@ -140,6 +140,13 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 	}
 
 	/**
+	 * Get preloaded user roles
+	 */
+	function getPreloadedRoles() {
+		return data.value?.roles || []
+	}
+
+	/**
 	 * Reset bootstrap state (useful for logout/login cycles)
 	 */
 	function reset() {
@@ -164,6 +171,7 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 		getPreloadedPOSSettings,
 		getPreloadedPaymentMethods,
 		getPreloadedPrecision,
+		getPreloadedRoles,
 		hasBootstrapData,
 		reset,
 		getSiteName,

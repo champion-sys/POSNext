@@ -1228,7 +1228,7 @@ const canCloseShift = computed(() => {
 	const allowedRole = shiftStore.currentProfile?.role_allowed_to_closing_shift;
 	if (!allowedRole) return true;
 
-	const userRoles = window.frappe?.boot?.user?.roles || [];
+	const userRoles = bootstrapStore.getPreloadedRoles();
 	return userRoles.includes(allowedRole);
 });
 

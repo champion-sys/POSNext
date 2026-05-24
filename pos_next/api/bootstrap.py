@@ -71,6 +71,7 @@ def get_initial_data():
 		"precision": _get_precision_settings(),
 		"can_switch_to_desk": "Nexus POS Manager" in user_roles,
 		"is_system_manager": "System Manager" in user_roles,
+		"roles": user_roles,
 		"shift": None,
 		"pos_profile": None,
 		"pos_settings": None,

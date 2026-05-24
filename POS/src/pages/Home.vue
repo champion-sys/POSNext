@@ -253,7 +253,10 @@ import { useShift } from "../composables/useShift"
 import { session } from "../data/session"
 import TranslatedHTML from "../components/common/TranslatedHTML.vue"
 
+import { useBootstrapStore } from "../stores/bootstrap"
+
 const router = useRouter()
+const bootstrapStore = useBootstrapStore()
 
 const {
 	hasOpenShift,
@@ -268,7 +271,7 @@ const canCloseShift = computed(() => {
 	const allowedRole = currentProfile.value?.role_allowed_to_closing_shift
 	if (!allowedRole) return true
 
-	const userRoles = window.frappe?.boot?.user?.roles || []
+	const userRoles = bootstrapStore.getPreloadedRoles()
 	return userRoles.includes(allowedRole)
 })
 
