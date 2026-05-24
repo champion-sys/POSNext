@@ -562,7 +562,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			// Get display stock (includes reservations from cart)
 			const displayStock = stockStore.getDisplayStock(item.item_code)
 			// Get original server stock (without reservations)
-			const originalStock = stockStore.server.get(item.item_code)?.qty || 0
+			const originalStock = stockStore.server.get(item.item_code)?.qty ?? (item.actual_qty ?? item.stock_qty ?? 0)
 
 			// Return item with updated stock quantities
 			return {
