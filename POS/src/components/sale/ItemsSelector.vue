@@ -294,7 +294,7 @@
 						@touchend.passive="getOptimizedClickHandler(item).touchend"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50',
+							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-all duration-75 cursor-pointer hover:bg-amber-50/50 aspect-square',
 							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
@@ -382,7 +382,7 @@
 								class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 cursor-pointer select-none"
 								:title="__('Check availability in other warehouses')"
 							>
-								<div class="p-2 bg-white/95 rounded-none border border-gray-300 pointer-events-none">
+								<div class="p-2 bg-white/80 rounded-xl border border-gray-300 pointer-events-none">
 									<svg class="w-6 h-6 sm:w-7 sm:h-7 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
 									</svg>
@@ -393,7 +393,7 @@
 						<!-- Item Details -->
 						<div class="min-w-0 flex flex-col justify-between pt-0.5">
 							<div>
-								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 truncate leading-tight">
+								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight">
 									{{ item.item_name }}
 								</h3>
 								<p v-if="item.item_code" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
@@ -401,7 +401,7 @@
 								</p>
 							</div>
 							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
-								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
+								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700 mt-1">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
 								<span class="text-[8px] sm:text-[9px] font-medium text-gray-400 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</div>
 						</div>
