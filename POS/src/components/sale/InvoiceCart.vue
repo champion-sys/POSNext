@@ -585,7 +585,7 @@
 						/>
 					</svg>
 				</div> -->
-				<p class="text-xs sm:text-sm font-semibold text-gray-900 mb-1">
+				<p class="text-xs sm:text-sm font-bold text-gray-900 mb-1">
 					{{ __("Your cart is empty") }}
 				</p>
 				<div class="flex flex-col items-center gap-1.5 mb-5 sm:mb-6">
