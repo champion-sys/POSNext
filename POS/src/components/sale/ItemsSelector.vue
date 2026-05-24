@@ -708,29 +708,72 @@
 		</div>
 
 		<!-- Keyboard Shortcuts Bar -->
-		<div class="relative bg-slate-900 border-t border-slate-800 text-slate-300 py-2.5 px-4 text-[10px] sm:text-xs font-medium flex-shrink-0 select-none overflow-hidden">
+		<div class="relative bg-white border-t border-neutral-900 text-neutral-300 py-0 px-5 flex-shrink-0 select-none overflow-hidden">
 			<!-- Gradient Fades to suggest horizontal scrollability -->
-			<div class="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-slate-900 to-transparent pointer-events-none z-10"></div>
-			<div class="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-slate-900 to-transparent pointer-events-none z-10"></div>
+			<div class="absolute left-0 top-0 bottom-0 w-10 bg-gradient-to-r from-neutral-950 to-transparent pointer-events-none z-10"></div>
+			<div class="absolute right-0 top-0 bottom-0 w-10 bg-gradient-to-l from-neutral-950 to-transparent pointer-events-none z-10"></div>
 			
-			<div class="flex items-center gap-1 overflow-x-auto scrollbar-hide select-none whitespace-nowrap">
-				<span class="flex items-center gap-1 font-bold uppercase tracking-wider text-slate-400 me-4">
-					<svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-					</svg>
+			<div class="flex items-center gap-2 overflow-x-auto scrollbar-hide select-none whitespace-nowrap">
+				<span class="flex items-center gap-1.5 font-black uppercase tracking-widest text-neutral-400 me-5 text-[10px] sm:text-xs">
 					{{ __('Shortcuts:') }}
 				</span>
-				<div class="flex items-center gap-5">
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + S</kbd> <span class="text-slate-400">{{ __('Search') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + I</kbd> <span class="text-slate-400">{{ __('Focus Items') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Arrow Keys</kbd> <span class="text-slate-400">{{ __('Navigate') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Enter</kbd> <span class="text-slate-400">{{ __('Add/Select') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">+</kbd>/<kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">-</kbd> <span class="text-slate-400">{{ __('Qty +/-') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">[</kbd>/<kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">]</kbd> <span class="text-slate-400">{{ __('Group Prev/Next') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + B</kbd> <span class="text-slate-400">{{ __('Scanner') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + A</kbd> <span class="text-slate-400">{{ __('Auto-Add') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + V</kbd> <span class="text-slate-400">{{ __('Grid/List') }}</span></div>
-					<div class="flex items-center gap-1.5"><kbd class="kbd bg-slate-800 border border-slate-700 text-[10px] px-1 py-0.5 rounded font-mono font-bold text-white shadow-sm">Alt + O</kbd> <span class="text-slate-400">{{ __('Sort') }}</span></div>
+				<div class="flex items-center gap-6 py-2">
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">S</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Search') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">I</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Focus Items') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Arrow Keys</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Navigate') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Enter</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Add/Select') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">+</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">/</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">-</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Qty +/-') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">[</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">/</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-2 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">]</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Group Prev/Next') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">B</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Scanner') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">A</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Auto-Add') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">V</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Grid/List') }}</span>
+					</div>
+					<div class="flex items-center gap-2">
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">Alt</kbd>
+						<span class="text-neutral-500 font-bold font-mono text-[10px]">+</span>
+						<kbd class="font-mono text-[10px] sm:text-[11px] font-extrabold px-1.5 py-0.5 rounded-sm bg-gray-100 text-neutral-100 border border-neutral-700 border-b-2 border-b-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_1.5px_2px_rgba(0,0,0,0.6)]">O</kbd>
+						<span class="text-neutral-400 font-medium tracking-wide text-[10px] sm:text-xs ms-1">{{ __('Sort') }}</span>
+					</div>
 				</div>
 			</div>
 		</div>
