@@ -1047,25 +1047,29 @@ watch(
 watch(
 	filteredItems,
 	(newItems) => {
-		focusedItemIndex.value = -1
-		if (!newItems) return
+		if (!newItems) {
+			focusedItemIndex.value = -1
+			return
+		}
+
+		// Calculate signature of item codes to detect actual list changes
+		const signature = newItems.map((item) => item.item_code).join("|")
+		const hasListChanged = signature !== lastFilterSignature.value
+
+		if (hasListChanged || skipPageReset.value) {
+			focusedItemIndex.value = -1
+		}
 
 		// Skip page reset for pagination-driven changes
 		if (skipPageReset.value) {
 			skipPageReset.value = false
+			lastFilterSignature.value = signature
 			return
 		}
 
 		const itemCount = newItems.length
-		const firstCode = itemCount > 0 ? newItems[0]?.item_code || "" : ""
-		const lastCode =
-			itemCount > 0 ? newItems[itemCount - 1]?.item_code || "" : ""
-		const middleIndex = itemCount > 2 ? Math.floor(itemCount / 2) : -1
-		const middleCode =
-			middleIndex >= 0 ? newItems[middleIndex]?.item_code || "" : ""
-		const signature = `${itemCount}|${firstCode}|${middleCode}|${lastCode}`
 
-		if (signature !== lastFilterSignature.value) {
+		if (hasListChanged) {
 			currentPage.value = 1
 			lastFilterSignature.value = signature
 		}
