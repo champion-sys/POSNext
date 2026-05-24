@@ -1,24 +1,24 @@
 <template>
     <div
-        class="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-xl p-1.5 shadow-sm"
+        v-if="normalizedOptions.length"
+        class="flex items-center justify-between gap-3 bg-white border border-gray-200/70 rounded-xl p-1 shadow-sm"
         role="group"
         :aria-label="label"
-		v-if="normalizedOptions.length"
     >
-        <p class="text-[11px] font-semibold text-gray-600 select-none px-1.5">
+        <p class="text-[11px] font-semibold text-gray-600  select-none pl-2 pr-1 whitespace-nowrap">
             {{ __(label) }}
         </p>
 
-        <div class="flex items-center bg-gray-100 rounded-lg p-0.5 flex-shrink-0">
+        <div class="flex items-stretch bg-gray-100/80 rounded-xl p-0.5 flex-shrink-0 shadow-inner">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="px-2.5 py-1.5 text-[11px] font-semibold rounded-md transition-all duration-200 touch-manipulation"
+                class="flex-1 min-w-[68px] px-3.5 py-1.5 text-[11px] font-semibold rounded-[10px] transition-all duration-150 active:scale-[0.97] touch-manipulation"
                 :class="
                     opt.value === modelValue
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-white/70'
                 "
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"
@@ -64,11 +64,15 @@ const selectOption = (value) => {
     emit("update:modelValue", value)
 }
 
-// Fetch order types when posProfile is available
+// Fetch order types when posProfile is available (forces refetch on reload)
+let isInitialMount = true
 watch(
     () => props.posProfile,
     (profile) => {
-        if (profile) orderTypesStore.loadOrderTypes(profile)
+        if (profile) {
+            orderTypesStore.loadOrderTypes(profile, isInitialMount)
+            isInitialMount = false
+        }
     },
     { immediate: true },
 )
@@ -77,6 +81,7 @@ watch(
 watch(
     () => props.modelValue,
     (newVal) => {
+        // FIX: Removed .value (Pinia auto-unwraps refs)
         if (newVal && newVal !== orderTypesStore.selectedOrderType) {
             orderTypesStore.setSelectedOrderType(newVal)
         }
@@ -86,6 +91,7 @@ watch(
 
 // Sync Store -> Parent (forces update when API finishes fetching the true default)
 watch(
+    // FIX: Must use a getter function () => ... to watch a primitive value in Pinia
     () => orderTypesStore.selectedOrderType,
     (storeSel) => {
         if (storeSel && storeSel !== props.modelValue) {
@@ -95,6 +101,7 @@ watch(
 )
 
 const normalizedOptions = computed(() => {
+    // FIX: Removed .value (Pinia auto-unwraps refs)
     const storeOpts = orderTypesStore.orderTypeOptions
     const source =
         Array.isArray(storeOpts) && storeOpts.length > 0
@@ -107,7 +114,7 @@ const normalizedOptions = computed(() => {
             label: String(o.label),
             value: String(o.value),
             default: Number(o.default || 0),
-			has_tables: Boolean(o.has_tables || 0),
+            has_tables: Boolean(o.has_tables || 0),
         }))
 })
 </script>
