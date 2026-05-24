@@ -1601,6 +1601,11 @@ onMounted(() => {
 
 	// Add global keydown listener for keyboard shortcuts
 	window.addEventListener("keydown", handleGlobalKeyDown)
+	// Autofocus item search on POS load
+	nextTick(() => {
+		if (!isAnyDialogOpen.value) focusSearchInput()
+	})
+
 })
 
 onUnmounted(() => {
