@@ -910,7 +910,7 @@
 						<div :class="['bg-gray-100 rounded-lg', isCompactMode ? 'p-2 mb-2' : 'p-3 mb-3']">
 							<div dir="ltr" :class="['font-bold text-gray-900 text-center flex items-center justify-center gap-2', isCompactMode ? 'text-xl' : 'text-2xl']">
 								<span>{{ currencySymbol }}</span>
-								<span class="font-mono tracking-wider">{{ numpadDisplay || '0.00' }}</span>
+								<span class="font-mono tracking-wider">{{ numpadDisplay || (0).toFixed(settingsStore.decimalPrecision) }}</span>
 							</div>
 						</div>
 
@@ -1321,6 +1321,7 @@ const {
 } = usePaymentNumpad({
 	isEnabled: computed(() => props.modelValue), // Only enabled when dialog is open
 	onEnter: handleNumpadEnter,
+	precision: computed(() => settingsStore.decimalPrecision),
 })
 
 // Mobile custom amount state
@@ -2048,7 +2049,9 @@ function autoFillNumpad() {
 					: remainingAmount.value
 
 			setNumpadValue(amountToFill)
-			mobileCustomAmount.value = amountToFill.toFixed(2)
+			mobileCustomAmount.value = amountToFill.toFixed(
+				settingsStore.decimalPrecision,
+			)
 		}
 	})
 }
@@ -2225,7 +2228,9 @@ function switchToNextPaymentMethod(partialAmount) {
 		if (newRemaining > 0) {
 			setNumpadValue(newRemaining)
 			// Also set mobile custom amount
-			mobileCustomAmount.value = newRemaining.toFixed(2)
+			mobileCustomAmount.value = newRemaining.toFixed(
+				settingsStore.decimalPrecision,
+			)
 		}
 		showInfo(
 			__("Points applied: {0}. Please pay remaining {1} with {2}", [

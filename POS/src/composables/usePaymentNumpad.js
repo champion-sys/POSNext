@@ -23,10 +23,12 @@ export function usePaymentNumpad(options = {}) {
 			return
 		}
 
-		// Limit decimal places to 2
+		// Limit decimal places to precision
 		if (numpadDisplay.value.includes(".")) {
 			const [, decimal] = numpadDisplay.value.split(".")
-			if (decimal && decimal.length >= 2) {
+			const maxDecimals =
+				typeof precision === "function" ? precision() : precision.value
+			if (decimal && decimal.length >= maxDecimals) {
 				return
 			}
 		}
@@ -60,17 +62,16 @@ export function usePaymentNumpad(options = {}) {
 	 */
 	function setNumpadValue(value) {
 		if (typeof value === "number") {
-			numpadDisplay.value = value.toFixed(2)
+			const maxDecimals =
+				typeof precision === "function" ? precision() : precision.value
+			numpadDisplay.value = value.toFixed(maxDecimals)
 		} else {
 			numpadDisplay.value = String(value)
 		}
 	}
 
 	// Keyboard input handling
-	const {
-		isEnabled = ref(true),
-		onEnter = null,
-	} = options
+	const { isEnabled = ref(true), onEnter = null, precision = ref(2) } = options
 
 	/**
 	 * Handle keyboard input for physical keyboard support
@@ -78,16 +79,17 @@ export function usePaymentNumpad(options = {}) {
 	 */
 	function handleKeyboardInput(event) {
 		// Check if keyboard input is enabled (e.g., dialog is open)
-		const enabled = typeof isEnabled === 'function' ? isEnabled() : isEnabled.value
+		const enabled =
+			typeof isEnabled === "function" ? isEnabled() : isEnabled.value
 		if (!enabled) return
 
 		// Don't handle if user is typing in an input field
 		const activeElement = document.activeElement
-		const isInInput = activeElement && (
-			activeElement.tagName === 'INPUT' ||
-			activeElement.tagName === 'TEXTAREA' ||
-			activeElement.isContentEditable
-		)
+		const isInInput =
+			activeElement &&
+			(activeElement.tagName === "INPUT" ||
+				activeElement.tagName === "TEXTAREA" ||
+				activeElement.isContentEditable)
 		if (isInInput) return
 
 		const key = event.key
@@ -100,30 +102,30 @@ export function usePaymentNumpad(options = {}) {
 		}
 
 		// Handle decimal point (. or ,)
-		if (key === '.' || key === ',') {
+		if (key === "." || key === ",") {
 			event.preventDefault()
-			numpadInput('.')
+			numpadInput(".")
 			return
 		}
 
 		// Handle backspace
-		if (key === 'Backspace') {
+		if (key === "Backspace") {
 			event.preventDefault()
 			numpadBackspace()
 			return
 		}
 
 		// Handle Delete or Escape to clear
-		if (key === 'Delete' || key === 'Escape') {
+		if (key === "Delete" || key === "Escape") {
 			event.preventDefault()
 			numpadClear()
 			return
 		}
 
 		// Handle Enter - call custom handler if provided
-		if (key === 'Enter') {
+		if (key === "Enter") {
 			event.preventDefault()
-			if (onEnter && typeof onEnter === 'function') {
+			if (onEnter && typeof onEnter === "function") {
 				onEnter(numpadValue.value)
 			}
 			return
@@ -132,11 +134,11 @@ export function usePaymentNumpad(options = {}) {
 
 	// Set up keyboard event listeners
 	onMounted(() => {
-		window.addEventListener('keydown', handleKeyboardInput)
+		window.addEventListener("keydown", handleKeyboardInput)
 	})
 
 	onUnmounted(() => {
-		window.removeEventListener('keydown', handleKeyboardInput)
+		window.removeEventListener("keydown", handleKeyboardInput)
 	})
 
 	return {
