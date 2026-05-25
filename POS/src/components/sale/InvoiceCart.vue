@@ -2323,6 +2323,7 @@ function handleGlobalShortcutKeyDown(event) {
 		}
 		if (key === "enter") {
 			event.preventDefault()
+			event.stopImmediatePropagation()
 			if (props.items && props.items.length > 0) {
 				handleProceedToPayment()
 			}

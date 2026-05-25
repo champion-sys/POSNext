@@ -2158,6 +2158,7 @@ watch(show, (newVal) => {
 			const defaultMethod = paymentMethods.value.find((m) => m.default)
 			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
 		}
+		autoFillNumpad()
 
 		if (creditEnabled) {
 			log.debug(

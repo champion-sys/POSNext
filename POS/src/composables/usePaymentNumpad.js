@@ -124,6 +124,7 @@ export function usePaymentNumpad(options = {}) {
 
 		// Handle Enter - call custom handler if provided
 		if (key === "Enter") {
+			if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 			event.preventDefault()
 			if (onEnter && typeof onEnter === "function") {
 				onEnter(numpadValue.value)
