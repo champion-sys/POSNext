@@ -64,7 +64,7 @@
 <template>
 	<div class="flex flex-col h-full bg-white">
 		<!-- Header with Customer -->
-		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0.5 flex items-center gap-2 w-full">
+		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0 flex items-center gap-2 w-full">
 			<div class="flex-1 min-w-0">
 				<OrderType
 					data-testid="pos-order-type-no-customer"
@@ -90,7 +90,7 @@
 				</div>
 			</transition>
 		</div>
-		<div class="px-2 py-2 border-b border-gray-400 bg-gray-200">
+		<div class="px-2 py-2 border-b border-gray-200 bg-gray-200 pb-2.5">
 			<!-- Inline Customer Search/Selection -->
 			<div ref="customerSearchContainer" class="relative">
 				<!-- Unified Service Control Panel: Order Type + Table Selector -->
@@ -303,12 +303,12 @@
 				<!-- Customer Dropdown -->
 				<div
 					v-if="customerSearchFocused || customerSearch.trim().length >= 2"
-					class="absolute z-50 mt-0.5 w-full bg-white border border-black rounded-none shadow-md max-h-48 overflow-hidden will-change-transform"
+					class="absolute z-50 mt-0.5 w-full bg-white  rounded-none shadow-md max-h-48 overflow-hidden will-change-transform"
 				>
 					<!-- Frequent Customers Header (when showing suggestions) -->
 					<div
 						v-if="customerSearchFocused && customerSearch.trim().length < 2 && customerResults.length > 0"
-						class="px-2 py-1 bg-gray-100 border-b border-black"
+						class="px-2 py-1 bg-gray-100 border-b border-gray-300"
 					>
 						<span class="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
 							{{ __('Frequent Customers') }}
@@ -324,7 +324,7 @@
 							@mousedown.prevent="selectCustomer(cust)"
 							:class="[
 								'w-full text-start px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 last:border-0 touch-manipulation select-none cursor-pointer active:bg-blue-100',
-								index === selectedIndex ? 'bg-blue-50 text-blue-700' : 'text-gray-900 hover:bg-gray-100 active:bg-gray-200',
+								index === selectedIndex ? 'bg-blue-50 text-blue-700' : 'text-gray-900 hover:bg-gray-50 active:bg-gray-200',
 							]"
 						>
 							<div
@@ -561,57 +561,60 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-50">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100">
 			<div
 				v-if="items.length === 0"
-				class="flex flex-col items-center justify-center h-full px-3 sm:px-4 py-6"
+				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto"
 			>
-				<p class="text-xs sm:text-sm font-bold text-gray-900 mb-1 uppercase tracking-wider">
-					{{ __("Your cart is empty") }}
-				</p>
-				<div class="flex flex-col items-center gap-1.5 mb-5 sm:mb-6">
-					<p class="text-[10px] sm:text-xs text-gray-500">
-						{{ __("Select items to start or choose a quick action") }}
-					</p>
+				<!-- Enhanced Empty Cart Container -->
+				<div class="w-full max-w-lg bg-white p-4 sm:p-4 rounded-none flex flex-row items-center justify-center text-center mb-4 select-none gap-3">
+					<div class="w-12 h-12 flex items-center justify-center bg-gray-100  rounded-none">
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-shopping-cart-exclamation stroke-gray-600"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /><path d="M15 17h-9v-14h-2" /><path d="M6 5l14 1l-.854 5.976m-2.646 1.024h-10.5" /><path d="M19 16v3" /><path d="M19 22v.01" /></svg>
+					</div>
+					<div class="text-start">
+						<h3 class="text-xs sm:text-sm !font-bold uppercase text-gray-900 mb-0">
+						{{ __("Cart is Empty") }}
+						</h3>
+						<p class="text-[10px] sm:text-xs text-gray-500 font-medium max-w-xs leading-relaxed mt-0.5">
+							{{ __("Scan a barcode, search items, or select a quick action below to begin.") }}
+						</p>
+					</div>
 				</div>
 
-				<!-- Quick Actions Grid -->
-				<div class="grid grid-cols-2 gap-2 sm:gap-2.5 w-full max-w-lg">
+				<!-- Quick Actions Grid (Pixel-Sharp Square Cells with 1px border lines) -->
+				<div class="w-full max-w-lg grid grid-cols-3 gap-1 shadow-sm select-none">
 					<!-- View Shift -->
 					<button
 						type="button"
 						@click="$emit('view-shift')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-blue-50/40 active:bg-blue-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('View current shift details')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-blue-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-blue-100 transition-colors"
-						>
+						<kbd class="absolute top-1 right-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-blue-500 bg-blue-50 border border-blue-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+W</kbd>
+						<div class="text-blue-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-blue-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
 								/>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("View Shift")
-						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-blue-500 bg-blue-50/70 border border-blue-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-blue-600 group-hover:bg-blue-100 group-hover:border-blue-200 group-hover:shadow-sm">Alt+W</kbd>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-blue-700 transition-colors">
+							{{ __("View Shift") }}
+						</span>
 					</button>
 
 					<!-- Draft Invoices -->
@@ -619,30 +622,28 @@
 						type="button"
 						@click="$emit('show-drafts')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-purple-50/40 active:bg-purple-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('View draft invoices')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-purple-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-purple-100 transition-colors"
-						>
+						<kbd class="absolute top-1 right-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-purple-500 bg-purple-50 border border-purple-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+D</kbd>
+						<div class="text-purple-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-purple-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Draft Invoices")
-						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-purple-500 bg-purple-50/70 border border-purple-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-purple-600 group-hover:bg-purple-100 group-hover:border-purple-200 group-hover:shadow-sm">Alt+D</kbd>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-purple-700 transition-colors">
+							{{ __("Drafts") }}
+						</span>
 					</button>
 
 					<!-- Invoice History -->
@@ -650,30 +651,28 @@
 						type="button"
 						@click="$emit('show-history')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation group rounded-none"
 						:title="__('View invoice history')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-gray-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-gray-100 transition-colors"
-						>
+						<kbd class="absolute top-1 right-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-gray-500 bg-gray-100 border border-gray-200 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+H</kbd>
+						<div class="text-gray-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-gray-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Invoice History")
-						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-slate-500 bg-slate-50/70 border border-slate-200 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-slate-600 group-hover:bg-slate-100 group-hover:border-slate-300 group-hover:shadow-sm">Alt+H</kbd>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-gray-900 transition-colors">
+							{{ __("History") }}
+						</span>
 					</button>
 
 					<!-- Return Invoice -->
@@ -681,92 +680,86 @@
 						type="button"
 						@click="$emit('show-return')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-red-300 hover:bg-red-50 active:bg-red-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-red-50/40 active:bg-red-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('Process return invoice')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-red-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-red-100 transition-colors"
-						>
+						<kbd class="absolute top-1 right-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-red-500 bg-red-50 border border-red-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+R</kbd>
+						<div class="text-red-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-red-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Return Invoice")
-						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-red-500 bg-red-50/70 border border-red-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-red-600 group-hover:bg-red-100 group-hover:border-red-200 group-hover:shadow-sm">Alt+R</kbd>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-red-700 transition-colors">
+							{{ __("Return") }}
+						</span>
 					</button>
 
 					<!-- Close Shift -->
 					<button
 						type="button"
 						@click="isCloseShiftAllowed ? $emit('close-shift') : null"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white transition-colors touch-manipulation group rounded-none"
 						:class="isCloseShiftAllowed
-							? 'hover:border-orange-300 hover:bg-orange-50 active:bg-orange-100 cursor-pointer'
+							? 'hover:bg-orange-50/40 active:bg-orange-100 cursor-pointer'
 							: 'opacity-40 cursor-not-allowed'
 						"
 						:title="isCloseShiftAllowed ? __('Close current shift') : __('Close shift restricted to authorized roles')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-orange-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-orange-100 transition-colors"
-						>
+						<div class="text-orange-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-orange-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Close Shift")
-						}}</span>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-orange-700 transition-colors">
+							{{ __("Close Shift") }}
+						</span>
 					</button>
 
 					<!-- Create Customer -->
 					<button
 						type="button"
 						@click="$emit('create-customer', '')"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-green-300 hover:bg-green-50 active:bg-green-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('Create new customer')"
 					>
-						<div
-							class="w-9 h-9 sm:w-10 sm:h-10 bg-green-50 rounded-full flex items-center justify-center mb-2 group-hover:bg-green-100 transition-colors"
-						>
+						<div class="text-green-600 mb-1.5 flex justify-center items-center">
 							<svg
-								class="w-5 h-5 text-green-600"
+								class="w-5 h-5"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
+								stroke-width="2"
 							>
 								<path
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									stroke-width="2"
 									d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
 								/>
 							</svg>
 						</div>
-						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
-							__("Create Customer")
-						}}</span>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-green-700 transition-colors">
+							{{ __("New Customer") }}
+						</span>
 					</button>
 				</div>
 			</div>
@@ -1134,7 +1127,7 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div class="p-1.5 sm:p-2 bg-white border-t-2 border-black font-mono">
+		<div class="p-1.5 sm:p-2 bg-white font-mono">
 			<!-- Summary Details -->
 			<div v-if="items.length > 0" class="mb-1.5">
 				<div class="flex items-center justify-between text-xs text-gray-600 mb-0.5 font-mono">
