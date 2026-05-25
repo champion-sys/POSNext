@@ -2427,6 +2427,7 @@ function handleGlobalShortcutKeyDown(event) {
 				return
 			}
 			if (event.key === "Enter") {
+				if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 				event.preventDefault()
 				if (!focusedItem.is_free_item) {
 					openEditDialog(focusedItem)

@@ -1408,6 +1408,7 @@ function handleGlobalKeyDown(event) {
 			return
 		}
 		if (event.key === "Enter") {
+			if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 			event.preventDefault()
 			const idx = focusedSortIndex.value
 			if (idx === 0) {
@@ -1597,6 +1598,7 @@ function handleGlobalKeyDown(event) {
 		}
 
 		if (event.key === "Enter") {
+			if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 			event.preventDefault()
 			const item = displayedItems.value[focusedItemIndex.value]
 			if (item) {

@@ -71,6 +71,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 
 	function handleKeyDown(event) {
 		if (event.key === "Enter") {
+			if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 			event.preventDefault()
 			clearAutoSearchTimer()
 
