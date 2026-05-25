@@ -151,7 +151,11 @@
 
 <script setup>
 import { useToast } from "@/composables/useToast"
-import { DEFAULT_CURRENCY, DEFAULT_LOCALE, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import {
+	DEFAULT_CURRENCY,
+	DEFAULT_LOCALE,
+	formatCurrency as formatCurrencyUtil,
+} from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
@@ -177,7 +181,13 @@ function formatCurrency(amount) {
 	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
 }
 
-const emit = defineEmits(["update:modelValue", "create-return", "view-invoice", "print-invoice", "return-created"])
+const emit = defineEmits([
+	"update:modelValue",
+	"create-return",
+	"view-invoice",
+	"print-invoice",
+	"return-created",
+])
 
 const show = ref(props.modelValue)
 const invoices = ref([])
@@ -303,9 +313,13 @@ function viewInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
-	const isLastInvoice = invoice.name && uiStore.lastInvoiceName && invoice.name === uiStore.lastInvoiceName
-	const canPrint = settingsStore.allowPrintPreviousInvoices || 
-	                 (settingsStore.allowPrintLastInvoice && isLastInvoice)
+	const isLastInvoice =
+		invoice.name &&
+		uiStore.lastInvoiceName &&
+		invoice.name === uiStore.lastInvoiceName
+	const canPrint =
+		settingsStore.allowPrintPreviousInvoices ||
+		(settingsStore.allowPrintLastInvoice && isLastInvoice)
 
 	if (!canPrint) return
 	emit("print-invoice", invoice)
@@ -313,10 +327,15 @@ function printInvoice(invoice) {
 
 function canCreateReturn(invoice) {
 	// Can create return if:
-	// 1. Invoice is submitted (docstatus === 1)
+	// 1. Returns are allowed in settings
 	// 2. Not already a return invoice
 	// 3. Status is not "Credit Note Issued" (already has a return)
-	return invoice.docstatus === 1 && !invoice.is_return && invoice.status !== 'Credit Note Issued'
+	return (
+		settingsStore.allowReturn &&
+		invoice.docstatus === 1 &&
+		!invoice.is_return &&
+		invoice.status !== "Credit Note Issued"
+	)
 }
 
 function openReturnModal(invoice) {

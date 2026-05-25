@@ -1895,6 +1895,20 @@ def check_invoice_return_validity(invoice_name):
 
     # Check return validity period from POS Settings
     if invoice_info.pos_profile:
+        allow_return = cint(
+            frappe.db.get_value(
+                "POS Settings",
+                {"pos_profile": invoice_info.pos_profile, "enabled": 1},
+                "allow_return"
+            )
+        )
+        if not allow_return:
+            return {
+                "valid": False,
+                "error_type": "return_not_allowed",
+                "message": _("Returns are not allowed for this POS profile")
+            }
+
         return_validity_days = cint(
             frappe.db.get_value(
                 "POS Settings",
@@ -1945,6 +1959,16 @@ def get_invoice_for_return(invoice_name):
 
     # Check return validity period from POS Settings
     if invoice_info.pos_profile:
+        allow_return = cint(
+            frappe.db.get_value(
+                "POS Settings",
+                {"pos_profile": invoice_info.pos_profile, "enabled": 1},
+                "allow_return"
+            )
+        )
+        if not allow_return:
+            frappe.throw(_("Returns are not allowed for this POS profile"))
+
         return_validity_days = cint(
             frappe.db.get_value(
                 "POS Settings",
@@ -1960,7 +1984,7 @@ def get_invoice_for_return(invoice_name):
                     _("Return period has expired. Invoice {0} was created {1} days ago. "
                       "Returns are only allowed within {2} days of purchase.").format(
                         invoice_name, days_since_invoice, return_validity_days
-                    )
+                      )
                 )
 
     # Aggregate quantities already returned from previous return invoices.
@@ -2236,6 +2260,16 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
 
     # Check return validity period from POS Settings
     if invoice_info.pos_profile:
+        allow_return = cint(
+            frappe.db.get_value(
+                "POS Settings",
+                {"pos_profile": invoice_info.pos_profile, "enabled": 1},
+                "allow_return"
+            )
+        )
+        if not allow_return:
+            frappe.throw(_("Returns are not allowed for this POS profile"))
+
         return_validity_days = cint(
             frappe.db.get_value(
                 "POS Settings",

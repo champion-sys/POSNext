@@ -55,7 +55,7 @@
 		<!-- Spacer to push settings to bottom -->
 		<div class="flex-1"></div>
 
-		<template v-if="showSettings">
+		<template>
 			<!-- Divider -->
 			<div class="w-8 border-t border-gray-200 my-2"></div>
 
@@ -79,6 +79,7 @@
 			<!-- Settings -->
 			<button
 				@click="handleMenuClick('settings')"
+				v-if="showSettings"
 				:class="[
 					'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
 					activeMenu === 'settings'

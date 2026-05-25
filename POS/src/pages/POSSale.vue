@@ -128,7 +128,7 @@
 						</span>
 					</button>
 					<button
-						v-if="canAccessShiftActions"
+						v-if="canAccessShiftActions && posSettingsStore.allowReturn"
 						@click="openReturnDialog"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
 					>
@@ -1004,8 +1004,8 @@
 // Module-scoped init guard — prevents redundant heavy initialization
 // when component remounts due to translationVersion changes.
 // Tracks the profile+shift key so a user/shift change correctly re-initializes.
-let _initializedKey = null
-let _posInitPromise = null
+const _initializedKey = null
+const _posInitPromise = null
 </script>
 
 <script setup>
@@ -2406,7 +2406,7 @@ function openHistoryDialog() {
 }
 
 function openReturnDialog() {
-	if (!canAccessShiftActions.value) {
+	if (!canAccessShiftActions.value || !posSettingsStore.allowReturn) {
 		return;
 	}
 

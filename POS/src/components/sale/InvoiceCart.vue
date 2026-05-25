@@ -677,6 +677,7 @@
 
 					<!-- Return Invoice -->
 					<button
+						v-if="settingsStore.allowReturn"
 						type="button"
 						@click="$emit('show-return')"
 						data-nav="quick-action"
@@ -2215,7 +2216,7 @@ function handleGlobalShortcutKeyDown(event) {
 				emit("show-history")
 				return
 			}
-			if (key === "r") {
+			if (key === "r" && settingsStore.allowReturn) {
 				event.preventDefault()
 				emit("show-return")
 				return
