@@ -1267,6 +1267,7 @@ function handleNavigationKeys(event) {
 	if (!activeEl) return
 
 	const navType = activeEl.getAttribute("data-nav")
+	const isRtlLayout = typeof document !== "undefined" && document.documentElement.dir === "rtl"
 
 	// 1. FILTERS ZONE
 	if (navType === "filter") {
@@ -1275,11 +1276,15 @@ function handleNavigationKeys(event) {
 
 		if (event.key === "ArrowRight") {
 			event.preventDefault()
-			const nextEl = elements[index + 1] || elements[0]
+			const nextEl = isRtlLayout
+				? (elements[index - 1] || elements[elements.length - 1])
+				: (elements[index + 1] || elements[0])
 			nextEl?.focus()
 		} else if (event.key === "ArrowLeft") {
 			event.preventDefault()
-			const prevEl = elements[index - 1] || elements[elements.length - 1]
+			const prevEl = isRtlLayout
+				? (elements[index + 1] || elements[0])
+				: (elements[index - 1] || elements[elements.length - 1])
 			prevEl?.focus()
 		} else if (event.key === "ArrowDown") {
 			event.preventDefault()
@@ -1296,22 +1301,26 @@ function handleNavigationKeys(event) {
 		const index = elements.indexOf(activeEl)
 
 		if (event.key === "ArrowRight") {
-			// If in search input, only move focus if cursor is at the end
+			// If in search input, only move focus if cursor is at the end (or start in RTL)
 			if (activeEl.id === "item-search") {
-				const isAtEnd = activeEl.selectionEnd === activeEl.value.length
+				const isAtEnd = isRtlLayout
+					? activeEl.selectionStart === 0
+					: activeEl.selectionEnd === activeEl.value.length
 				if (!isAtEnd) return
 			}
 			event.preventDefault()
-			const nextEl = elements[index + 1]
+			const nextEl = isRtlLayout ? elements[index - 1] : elements[index + 1]
 			nextEl?.focus()
 		} else if (event.key === "ArrowLeft") {
-			// If in search input, only move focus if cursor is at the start
+			// If in search input, only move focus if cursor is at the start (or end in RTL)
 			if (activeEl.id === "item-search") {
-				const isAtStart = activeEl.selectionStart === 0
+				const isAtStart = isRtlLayout
+					? activeEl.selectionEnd === activeEl.value.length
+					: activeEl.selectionStart === 0
 				if (!isAtStart) return
 			}
 			event.preventDefault()
-			const prevEl = elements[index - 1]
+			const prevEl = isRtlLayout ? elements[index + 1] : elements[index - 1]
 			prevEl?.focus()
 		} else if (event.key === "ArrowUp") {
 			event.preventDefault()
@@ -1339,11 +1348,15 @@ function handleNavigationKeys(event) {
 
 		if (event.key === "ArrowRight") {
 			event.preventDefault()
-			const nextEl = elements[index + 1] || elements[0]
+			const nextEl = isRtlLayout
+				? (elements[index - 1] || elements[elements.length - 1])
+				: (elements[index + 1] || elements[0])
 			nextEl?.focus()
 		} else if (event.key === "ArrowLeft") {
 			event.preventDefault()
-			const prevEl = elements[index - 1] || elements[elements.length - 1]
+			const prevEl = isRtlLayout
+				? (elements[index + 1] || elements[0])
+				: (elements[index - 1] || elements[elements.length - 1])
 			prevEl?.focus()
 		} else if (event.key === "ArrowUp") {
 			event.preventDefault()
@@ -1530,10 +1543,15 @@ function handleGlobalKeyDown(event) {
 				}
 			} else {
 				const cols = getColumnsCount()
+				const isRtlLayout = typeof document !== "undefined" && document.documentElement.dir === "rtl"
 				if (event.key === "ArrowRight") {
-					focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+					focusedItemIndex.value = isRtlLayout
+						? Math.max(0, focusedItemIndex.value - 1)
+						: Math.min(len - 1, focusedItemIndex.value + 1)
 				} else if (event.key === "ArrowLeft") {
-					focusedItemIndex.value = Math.max(0, focusedItemIndex.value - 1)
+					focusedItemIndex.value = isRtlLayout
+						? Math.min(len - 1, focusedItemIndex.value + 1)
+						: Math.max(0, focusedItemIndex.value - 1)
 				} else if (event.key === "ArrowDown") {
 					if (focusedItemIndex.value + cols >= len) {
 						// Focus pagination if available

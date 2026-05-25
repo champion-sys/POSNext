@@ -2150,18 +2150,36 @@ function handleQuickActionKeyDown(event) {
 	event.preventDefault()
 	event.stopPropagation()
 
-	let nextIndex = index
+	const cols = 3
+	const rows = 2
+	const total = buttons.length
+	const isRtlLayout = typeof document !== "undefined" && document.documentElement.dir === "rtl"
+
+	let row = Math.floor(index / cols)
+	let col = index % cols
+
 	if (event.key === "ArrowRight") {
-		nextIndex = index % 2 === 0 ? index + 1 : index - 1
+		if (isRtlLayout) {
+			col = col > 0 ? col - 1 : cols - 1
+		} else {
+			col = col < cols - 1 ? col + 1 : 0
+		}
 	} else if (event.key === "ArrowLeft") {
-		nextIndex = index % 2 === 1 ? index - 1 : index + 1
+		if (isRtlLayout) {
+			col = col < cols - 1 ? col + 1 : 0
+		} else {
+			col = col > 0 ? col - 1 : cols - 1
+		}
 	} else if (event.key === "ArrowDown") {
-		nextIndex = index < 2 ? index + 2 : index - 2
+		row = row < rows - 1 ? row + 1 : 0
 	} else if (event.key === "ArrowUp") {
-		nextIndex = index >= 2 ? index - 2 : index + 2
+		row = row > 0 ? row - 1 : rows - 1
 	}
 
-	buttons[nextIndex]?.focus()
+	const nextIndex = row * cols + col
+	if (nextIndex >= 0 && nextIndex < total) {
+		buttons[nextIndex]?.focus()
+	}
 }
 
 function scrollFocusedCartItemIntoView() {
