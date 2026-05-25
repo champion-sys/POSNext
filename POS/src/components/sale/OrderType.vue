@@ -1,7 +1,7 @@
 <template>
     <div
         v-if="normalizedOptions.length"
-        class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white border border-gray-150 rounded-xl p-1 shadow-sm w-full transition-all duration-200"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white border border-black rounded-none p-0 shadow-none w-full"
         role="group"
         :aria-label="label"
     >
@@ -9,16 +9,16 @@
             {{ __(label) }}
         </p> -->
 
-        <div class="flex items-stretch bg-gray-50 rounded-lg p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden border border-gray-100">
+        <div class="flex items-stretch bg-gray-0 rounded-none p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-1.5 text-xs font-bold rounded-md transition-all duration-150 touch-manipulation snap-center flex items-center justify-center gap-1.5 active:scale-[0.97]"
+                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-2.5 text-xs font-extrabold uppercase tracking-wider rounded-none transition-all duration-75 touch-manipulation snap-center flex items-center justify-center gap-1.5"
                 :class="
                     opt.value === modelValue
-                        ? 'bg-blue-600 text-white shadow-sm font-bold'
-                        : 'text-gray-900 hover:text-gray-900 hover:bg-white/80 active:bg-gray-100'
+                        ? 'bg-black text-white font-bold'
+                        : 'text-gray-900 bg-white hover:bg-gray-100 border border-transparent'
                 "
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"
@@ -75,25 +75,25 @@ import { computed, watch } from "vue"
 import { usePOSOrderTypesStore } from "@/stores/posOrderTypes"
 
 const props = defineProps({
-    modelValue: {
-        type: String,
-        default: null,
-    },
-    options: {
-        type: Array,
-        default: () => [
-            { label: "Dine In", value: "Dine In" },
-            { label: "Takeaway", value: "Takeaway" },
-        ],
-    },
-    label: {
-        type: String,
-        default: "Order Type",
-    },
-    posProfile: {
-        type: String,
-        default: null,
-    },
+	modelValue: {
+		type: String,
+		default: null,
+	},
+	options: {
+		type: Array,
+		default: () => [
+			{ label: "Dine In", value: "Dine In" },
+			{ label: "Takeaway", value: "Takeaway" },
+		],
+	},
+	label: {
+		type: String,
+		default: "Order Type",
+	},
+	posProfile: {
+		type: String,
+		default: null,
+	},
 })
 
 const emit = defineEmits(["update:modelValue"])
@@ -101,73 +101,86 @@ const orderTypesStore = usePOSOrderTypesStore()
 
 // Helper to determine the icon type based on order type option value
 const getIconType = (value) => {
-    const val = String(value || "").toLowerCase()
-    if (val.includes("dine") || val.includes("table") || val.includes("in")) {
-        return "dine-in"
-    } else if (val.includes("take") || val.includes("pick") || val.includes("bag") || val.includes("out")) {
-        return "takeaway"
-    } else if (val.includes("deliv") || val.includes("ship") || val.includes("truck") || val.includes("bike")) {
-        return "delivery"
-    } else if (val.includes("room") || val.includes("tray") || val.includes("service")) {
-        return "room-service"
-    }
-    return "default"
+	const val = String(value || "").toLowerCase()
+	if (val.includes("dine") || val.includes("table") || val.includes("in")) {
+		return "dine-in"
+	} else if (
+		val.includes("take") ||
+		val.includes("pick") ||
+		val.includes("bag") ||
+		val.includes("out")
+	) {
+		return "takeaway"
+	} else if (
+		val.includes("deliv") ||
+		val.includes("ship") ||
+		val.includes("truck") ||
+		val.includes("bike")
+	) {
+		return "delivery"
+	} else if (
+		val.includes("room") ||
+		val.includes("tray") ||
+		val.includes("service")
+	) {
+		return "room-service"
+	}
+	return "default"
 }
 
 // Update both v-model and the store when an option is clicked manually
 const selectOption = (value) => {
-    orderTypesStore.setSelectedOrderType(value)
-    emit("update:modelValue", value)
+	orderTypesStore.setSelectedOrderType(value)
+	emit("update:modelValue", value)
 }
 
 // Fetch order types when posProfile is available.
 watch(
-    () => props.posProfile,
-    (profile) => {
-        if (profile) {
-            orderTypesStore.loadOrderTypes(profile)
-        }
-    },
-    { immediate: true },
+	() => props.posProfile,
+	(profile) => {
+		if (profile) {
+			orderTypesStore.loadOrderTypes(profile)
+		}
+	},
+	{ immediate: true },
 )
 
-const selectedOrderTypeValue = computed(() => orderTypesStore.selectedOrderType ?? null)
+const selectedOrderTypeValue = computed(
+	() => orderTypesStore.selectedOrderType ?? null,
+)
 const orderTypeOptions = computed(() => orderTypesStore.orderTypeOptions ?? [])
 
 // Sync Parent -> Store
 watch(
-    () => props.modelValue,
-    (newVal) => {
-        if (newVal && newVal !== selectedOrderTypeValue.value) {
-            orderTypesStore.setSelectedOrderType(newVal)
-        }
-    },
-    { immediate: true }
+	() => props.modelValue,
+	(newVal) => {
+		if (newVal && newVal !== selectedOrderTypeValue.value) {
+			orderTypesStore.setSelectedOrderType(newVal)
+		}
+	},
+	{ immediate: true },
 )
 
 // Sync Store -> Parent (push explicit default from profile)
-watch(
-    selectedOrderTypeValue,
-    (storeSel) => {
-        if (storeSel && storeSel !== props.modelValue) {
-            emit("update:modelValue", storeSel)
-        }
-    }
-)
+watch(selectedOrderTypeValue, (storeSel) => {
+	if (storeSel && storeSel !== props.modelValue) {
+		emit("update:modelValue", storeSel)
+	}
+})
 
 const normalizedOptions = computed(() => {
-    const source =
-        Array.isArray(orderTypeOptions.value) && orderTypeOptions.value.length > 0
-            ? orderTypeOptions.value
-            : props.options || []
+	const source =
+		Array.isArray(orderTypeOptions.value) && orderTypeOptions.value.length > 0
+			? orderTypeOptions.value
+			: props.options || []
 
-    return source
-        .filter((o) => o && (o.value || o.value === "") && o.label)
-        .map((o) => ({
-            label: String(o.label),
-            value: String(o.value),
-            default: Number(o.default || 0),
-            has_tables: Boolean(o.has_tables || 0),
-        }))
+	return source
+		.filter((o) => o && (o.value || o.value === "") && o.label)
+		.map((o) => ({
+			label: String(o.label),
+			value: String(o.value),
+			default: Number(o.default || 0),
+			has_tables: Boolean(o.has_tables || 0),
+		}))
 })
 </script>

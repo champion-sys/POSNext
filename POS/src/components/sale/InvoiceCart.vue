@@ -64,26 +64,54 @@
 <template>
 	<div class="flex flex-col h-full bg-white">
 		<!-- Header with Customer -->
-		<div class="px-2.5 py-2 border-b border-gray-200 bg-gray-50">
+		<div class="px-2.5 py-2 border-b border-gray-400 bg-gray-200">
 			<!-- Inline Customer Search/Selection -->
 			<div ref="customerSearchContainer" class="relative">
+				<!-- Unified Service Control Panel: Order Type + Table Selector -->
+				<div v-if="showPosOrderType" class="mb-2.5 flex items-center gap-2 w-full">
+					<div class="flex-1 min-w-0">
+						<OrderType
+							data-testid="pos-order-type-no-customer"
+							:label="__('Order Type')"
+							:pos-profile="posProfile"
+							v-model="orderTypeModel"
+						/>
+					</div>
+					<transition
+						enter-active-class="transition-all duration-300 ease-out"
+						enter-from-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+						enter-to-class="transform translate-x-0 opacity-100 max-w-[200px]"
+						leave-active-class="transition-all duration-200 ease-in"
+						leave-from-class="transform translate-x-0 opacity-100 max-w-[200px]"
+						leave-to-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+					>
+						<div v-if="showTableSelector" class="w-48 shrink-0 overflow-hidden">
+							<TableSelector
+								v-model="tableModel"
+								:order-type="orderTypeModel"
+								:disabled="!orderTypeModel"
+							/>
+						</div>
+					</transition>
+				</div>
+
 				<div v-if="customer">
 					<!-- Two Cards Layout: Customer Card + Document Type Card -->
 					<div class="flex items-stretch gap-2">
 						<!-- Customer Card -->
-						<div class="flex-1 flex items-center gap-1.5 bg-white border border-gray-200 rounded-xl p-1.5 shadow-sm min-w-0">
+						<div class="flex-1 flex items-center gap-1.5 bg-white border border-black rounded-none p-1.5 min-w-0">
 							<!-- Customer Avatar & Info -->
 							<div class="flex items-center gap-2 min-w-0 flex-1 px-1.5 py-1">
-								<div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+								<div class="w-8 h-8 bg-black rounded-none flex items-center justify-center flex-shrink-0">
 									<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 									</svg>
 								</div>
 								<div class="min-w-0 flex-1">
-									<p class="text-xs font-semibold text-gray-900 truncate leading-tight">
+									<p class="text-xs font-bold text-gray-900 truncate leading-tight">
 										{{ customer.customer_name || customer.name }}
 									</p>
-									<p v-if="customer.mobile_no" class="text-[10px] text-gray-500 truncate leading-tight">
+									<p v-if="customer.mobile_no" class="text-[10px] text-gray-600 truncate leading-tight">
 										{{ customer.mobile_no }}
 									</p>
 								</div>
@@ -94,7 +122,7 @@
 								<button
 									type="button"
 									@click.stop="$emit('edit-customer', customer)"
-									class="w-7 h-7 flex items-center justify-center text-blue-500 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-colors touch-manipulation"
+									class="w-7 h-7 flex items-center justify-center text-blue-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Edit customer details')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -104,7 +132,7 @@
 								<button
 									type="button"
 									@click.stop="$emit('create-customer', '')"
-									class="w-7 h-7 flex items-center justify-center text-green-600 hover:bg-green-50 active:bg-green-100 rounded-lg transition-colors touch-manipulation"
+									class="w-7 h-7 flex items-center justify-center text-green-700 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Create new customer')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
@@ -114,7 +142,7 @@
 								<button
 									type="button"
 									@click.stop="removeCustomer"
-									class="w-7 h-7 flex items-center justify-center text-red-500 hover:bg-red-50 active:bg-red-100 rounded-lg transition-colors touch-manipulation"
+									class="w-7 h-7 flex items-center justify-center text-red-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Remove customer')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
@@ -127,16 +155,16 @@
 						<!-- Document Type Card -->
 						<div
 							v-if="settingsStore.allowSalesOrder"
-							class="flex items-center bg-white border border-gray-200 rounded-xl p-1.5 shadow-sm flex-shrink-0"
+							class="flex items-center bg-white border border-black rounded-none p-1 flex-shrink-0"
 						>
-							<div class="flex items-center bg-gray-100 rounded-lg p-0.5">
+							<div class="flex items-center bg-gray-200 rounded-none p-0.5">
 								<button
 									type="button"
 									@click="selectDocType('Sales Invoice')"
-									class="px-2.5 py-1.5 text-[11px] font-semibold rounded-md transition-all duration-200 flex items-center gap-1"
+									class="px-2.5 py-1.5 text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
 									:class="cartStore.targetDoctype === 'Sales Invoice'
-										? 'bg-white text-blue-600 shadow-sm'
-										: 'text-gray-500 hover:text-gray-700'"
+										? 'bg-black text-white'
+										: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
 									:title="__('Sales Invoice')"
 								>
 									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,10 +175,10 @@
 								<button
 									type="button"
 									@click="selectDocType('Sales Order')"
-									class="px-2.5 py-1.5 text-[11px] font-semibold rounded-md transition-all duration-200 flex items-center gap-1"
+									class="px-2.5 py-1.5 text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
 									:class="cartStore.targetDoctype === 'Sales Order'
-										? 'bg-white text-orange-600 shadow-sm'
-										: 'text-gray-500 hover:text-gray-700'"
+										? 'bg-black text-white'
+										: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
 									:title="__('Sales Order')"
 								>
 									<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,10 +189,7 @@
 							</div>
 						</div>
 					</div>
-				
-
 				</div>
-
 
 				<div v-else>
 					<div class="flex gap-1.5">
@@ -204,7 +229,7 @@
 								@blur="handleSearchBlur"
 								type="text"
 								:placeholder="__('Search or add customer...')"
-								class="w-full h-10 ps-9 pe-3 text-xs border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition-shadow"
+								class="w-full h-10 ps-9 pe-3 text-xs border border-black rounded-none bg-white focus:outline-none focus:border-blue-600 shadow-none transition-all"
 								:disabled="!customersLoaded"
 								@keydown="handleKeydown"
 								autocomplete="off"
@@ -216,7 +241,7 @@
 						<button
 							type="button"
 							@click="createNewCustomer"
-							class="flex items-center justify-center w-10 h-10 bg-green-500 hover:bg-green-600 active:bg-green-700 rounded-xl text-white transition-colors shadow-sm hover:shadow touch-manipulation flex-shrink-0"
+							class="flex items-center justify-center w-10 h-10 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-none text-white border border-black transition-colors touch-manipulation flex-shrink-0"
 							:title="__('Create new customer')"
 							:aria-label="__('Create new customer')"
 						>
@@ -238,15 +263,15 @@
 						<!-- Document Type Toggle (Sales Invoice / Sales Order) -->
 						<div
 							v-if="settingsStore.allowSalesOrder"
-							class="flex items-center bg-gray-100 rounded-xl p-0.5 h-10"
+							class="flex items-center bg-gray-200 rounded-none p-0.5 h-10 border border-black"
 						>
 							<button
 								type="button"
 								@click="selectDocType('Sales Invoice')"
-								class="h-full px-2.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center gap-1.5"
+								class="h-full px-2.5 text-xs font-bold rounded-none transition-colors flex items-center gap-1.5"
 								:class="cartStore.targetDoctype === 'Sales Invoice'
-									? 'bg-white text-blue-600 shadow-sm'
-									: 'text-gray-500 hover:text-gray-700'"
+									? 'bg-black text-white'
+									: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
 								:title="__('Sales Invoice')"
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -257,10 +282,10 @@
 							<button
 								type="button"
 								@click="selectDocType('Sales Order')"
-								class="h-full px-2.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center gap-1.5"
+								class="h-full px-2.5 text-xs font-bold rounded-none transition-colors flex items-center gap-1.5"
 								:class="cartStore.targetDoctype === 'Sales Order'
-									? 'bg-white text-orange-600 shadow-sm'
-									: 'text-gray-500 hover:text-gray-700'"
+									? 'bg-black text-white'
+									: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
 								:title="__('Sales Order')"
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,14 +302,14 @@
 				<!-- Customer Dropdown -->
 				<div
 					v-if="customerSearchFocused || customerSearch.trim().length >= 2"
-					class="absolute z-50 mt-0.5 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-hidden will-change-transform"
+					class="absolute z-50 mt-0.5 w-full bg-white border border-black rounded-none shadow-md max-h-48 overflow-hidden will-change-transform"
 				>
 					<!-- Frequent Customers Header (when showing suggestions) -->
 					<div
 						v-if="customerSearchFocused && customerSearch.trim().length < 2 && customerResults.length > 0"
-						class="px-2 py-1 bg-gray-50 border-b border-gray-200"
+						class="px-2 py-1 bg-gray-100 border-b border-black"
 					>
-						<span class="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+						<span class="text-[10px] font-bold text-gray-700 uppercase tracking-wide">
 							{{ __('Frequent Customers') }}
 						</span>
 					</div>
@@ -297,19 +322,19 @@
 							:key="cust.name"
 							@mousedown.prevent="selectCustomer(cust)"
 							:class="[
-								'w-full text-start px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 last:border-0 touch-manipulation select-none cursor-pointer active:bg-blue-200',
-								index === selectedIndex ? 'bg-blue-100' : 'hover:bg-blue-50 active:bg-blue-100',
+								'w-full text-start px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 last:border-0 touch-manipulation select-none cursor-pointer active:bg-blue-100',
+								index === selectedIndex ? 'bg-blue-50 text-blue-700' : 'text-gray-900 hover:bg-gray-100 active:bg-gray-200',
 							]"
 						>
 							<div
-								class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 pointer-events-none"
+								class="w-6 h-6 bg-black rounded-none flex items-center justify-center flex-shrink-0 pointer-events-none"
 							>
-								<span class="text-[10px] font-bold text-blue-600">{{
+								<span class="text-[10px] font-bold text-white">{{
 									getInitials(cust.customer_name)
 								}}</span>
 							</div>
 							<div class="flex-1 min-w-0 pointer-events-none">
-								<p class="text-[11px] font-semibold text-gray-900 truncate">
+								<p class="text-[11px] font-bold text-gray-900 truncate">
 									{{ cust.customer_name }}
 								</p>
 								<p v-if="cust.mobile_no" class="text-[9px] text-gray-600">
@@ -322,7 +347,7 @@
 					<!-- No Results + Create New Option -->
 					<div v-else-if="customerSearch.trim().length >= 2">
 						<div
-							class="px-2 py-1.5 text-center text-[11px] font-medium text-gray-700 border-b border-gray-100"
+							class="px-2 py-1.5 text-center text-[11px] font-bold text-gray-700 border-b border-gray-100"
 						>
 							{{ __('No results for "{0}"', [customerSearch]) }}
 						</div>
@@ -333,13 +358,13 @@
 						type="button"
 						v-if="customerSearch.trim().length >= 2"
 						@mousedown.prevent="createNewCustomer"
-						class="w-full text-start px-2 py-1.5 hover:bg-green-50 active:bg-green-100 flex items-center gap-1.5 border-t border-gray-200 touch-manipulation select-none cursor-pointer"
+						class="w-full text-start px-2 py-1.5 hover:bg-green-50 active:bg-green-100 flex items-center gap-1.5 border-t border-black touch-manipulation select-none cursor-pointer"
 					>
 						<div
-							class="w-5 h-5 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 pointer-events-none"
+							class="w-5 h-5 bg-green-600 text-white rounded-none flex items-center justify-center flex-shrink-0 pointer-events-none"
 						>
 							<svg
-								class="w-3 h-3 text-green-600"
+								class="w-3 h-3 text-white"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -353,7 +378,7 @@
 							</svg>
 						</div>
 						<div class="flex-1 pointer-events-none">
-							<p class="text-[11px] font-medium text-green-700">
+							<p class="text-[11px] font-bold text-green-700">
 								{{ __("Create New Customer") }}
 							</p>
 							<p class="text-[9px] text-green-600">"{{ customerSearch }}"</p>
@@ -361,45 +386,18 @@
 					</button>
 				</div>
 
-				<!-- Unified Service Control Panel: Order Type + Table Selector -->
-				<div v-if="showPosOrderType" class="mt-2.5 flex items-center gap-2 w-full">
-					<div class="flex-1 min-w-0">
-						<OrderType
-							data-testid="pos-order-type-no-customer"
-							:label="__('Order Type')"
-							:pos-profile="posProfile"
-							v-model="orderTypeModel"
-						/>
-					</div>
-					<transition
-						enter-active-class="transition-all duration-300 ease-out"
-						enter-from-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
-						enter-to-class="transform translate-x-0 opacity-100 max-w-[200px]"
-						leave-active-class="transition-all duration-200 ease-in"
-						leave-from-class="transform translate-x-0 opacity-100 max-w-[200px]"
-						leave-to-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
-					>
-						<div v-if="showTableSelector" class="w-48 shrink-0 overflow-hidden">
-							<TableSelector
-								v-model="tableModel"
-								:order-type="orderTypeModel"
-								:disabled="!orderTypeModel"
-							/>
-						</div>
-					</transition>
-				</div>
 			</div>
 		</div>
 
 		<!-- Action Buttons Section -->
-		<div v-if="items.length > 0" class="px-2 py-2 border-b border-gray-200 bg-white">
+		<div v-if="items.length > 0" class="px-2 py-2 border-b border-gray-400 bg-white">
 			<div class="flex items-center justify-between mb-1.5">
-				<h2 class="text-xs font-bold text-gray-900">{{ __("Cart Items") }}</h2>
+				<h2 class="text-xs font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
 				<div class="flex items-center gap-1">
 					<!-- Clear Cart Button -->
 					<button
 						@click="$emit('clear-cart')"
-						class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors touch-manipulation"
+						class="inline-flex items-center gap-1.5 rounded-none border border-red-600 px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-red-600 hover:bg-red-600 hover:text-white transition-colors touch-manipulation"
 						type="button"
 						:title="__('Clear all items')"
 					>
@@ -413,10 +411,10 @@
 						<button
 							@click="toggleCartSortDropdown"
 							:class="[
-								'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors touch-manipulation',
+								'inline-flex items-center gap-1.5 rounded-none border px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors touch-manipulation',
 								cartSortBy
-									? 'text-blue-600 hover:bg-blue-50'
-									: 'text-gray-600 hover:bg-gray-50'
+									? 'text-blue-600 border-blue-600 bg-blue-50 hover:bg-blue-100'
+									: 'text-gray-800 border-black hover:bg-gray-100 bg-white'
 							]"
 							:title="cartSortBy
 								? (cartSortOrder === 'asc'
@@ -436,10 +434,10 @@
 						<div
 							v-if="showCartSortDropdown"
 							@click.stop
-							class="absolute end-0 mt-1 w-52 bg-white rounded-lg shadow-xl border border-gray-200 z-[9999]"
+							class="absolute end-0 mt-1 w-52 bg-white rounded-none shadow-md border-1 border-black z-[9999]"
 						>
 							<div class="py-2">
-								<div class="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
+								<div class="px-3 py-2 text-xs font-bold text-gray-900 uppercase border-b border-black tracking-wider">
 									{{ __('Sort Cart') }}
 								</div>
 								<div class="py-1">
@@ -447,8 +445,8 @@
 									<button
 										@click="handleCartSortToggle(null)"
 										:class="[
-											'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group',
-											!cartSortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+											'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group rounded-none',
+											!cartSortBy ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-100'
 										]"
 										type="button"
 									>
@@ -460,7 +458,7 @@
 										</span>
 									</button>
 
-									<div class="h-px bg-gray-100 my-1"></div>
+									<div class="h-px bg-gray-300 my-1"></div>
 
 									<!-- Sort Options Loop -->
 									<button
@@ -468,8 +466,8 @@
 										:key="option.field"
 										@click="handleCartSortToggle(option.field)"
 										:class="[
-											'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group',
-											cartSortBy === option.field ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'
+											'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group rounded-none',
+											cartSortBy === option.field ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-100'
 										]"
 										type="button"
 									>
@@ -504,7 +502,7 @@
 					type="button"
 					v-if="settingsStore.showOffers"
 					@click="$emit('show-offers')"
-					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 hover:border-green-400 hover:from-green-100 hover:to-emerald-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
+					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-none bg-green-50 border border-black hover:bg-green-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
 					:aria-label="__('View all available offers')"
 				>
 					<svg
@@ -520,12 +518,12 @@
 							d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
 						/>
 					</svg>
-					<span class="text-[11px] font-bold text-green-700">{{ __("Offers") }}</span>
+					<span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-green-700">{{ __("Offers") }}</span>
 					<!-- Badge shows ONLY applied offers count - NOT eligible/pending offers -->
 					<!-- This prevents confusion where offers show as "applied" before backend validation -->
 					<span
 						v-if="appliedOfferCount > 0"
-						class="bg-green-600 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
+						class="bg-green-600 text-white font-mono text-[9px] font-bold rounded-none px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
 					>
 						{{ appliedOfferCount }}
 					</span>
@@ -536,7 +534,7 @@
 					type="button"
 					v-if="settingsStore.showCoupon"
 					@click="$emit('apply-coupon')"
-					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg bg-gradient-to-r from-purple-50 to-violet-50 border border-purple-200 hover:border-purple-400 hover:from-purple-100 hover:to-violet-100 hover:shadow-sm transition-all min-w-0 touch-manipulation active:scale-[0.98]"
+					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-none bg-purple-50 border border-black hover:bg-purple-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
 					:aria-label="__('Apply coupon code')"
 				>
 					<svg
@@ -550,10 +548,10 @@
 							clip-rule="evenodd"
 						/>
 					</svg>
-					<span class="text-[11px] font-bold text-purple-700">{{ __("Coupon") }}</span>
+					<span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-purple-700">{{ __("Coupon") }}</span>
 					<span
 						v-if="availableGiftCards.length > 0"
-						class="bg-purple-600 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
+						class="bg-purple-600 text-white font-mono text-[9px] font-bold rounded-none px-1.5 py-0.5 flex-shrink-0 min-w-[16px] text-center"
 					>
 						{{ availableGiftCards.length }}
 					</span>
@@ -567,34 +565,13 @@
 				v-if="items.length === 0"
 				class="flex flex-col items-center justify-center h-full px-3 sm:px-4 py-6"
 			>
-				<!-- Empty Cart Icon & Message -->
-				<!-- <div
-					class="w-14 h-14 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mb-3"
-				>
-					<svg
-						class="h-7 w-7 sm:h-8 sm:w-8 text-gray-400"
-						fill="none"
-						stroke="currentColor"
-						viewBox="0 0 24 24"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							stroke-width="2"
-							d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-						/>
-					</svg>
-				</div> -->
-				<p class="text-xs sm:text-sm font-bold text-gray-900 mb-1">
+				<p class="text-xs sm:text-sm font-bold text-gray-900 mb-1 uppercase tracking-wider">
 					{{ __("Your cart is empty") }}
 				</p>
 				<div class="flex flex-col items-center gap-1.5 mb-5 sm:mb-6">
 					<p class="text-[10px] sm:text-xs text-gray-500">
 						{{ __("Select items to start or choose a quick action") }}
 					</p>
-					<!-- <span class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[12px] font-mono font-bold text-gray-500 bg-gray-100 rounded border border-gray-200 uppercase tracking-widest shadow-sm">
-						Alt + Q
-					</span> -->
 				</div>
 
 				<!-- Quick Actions Grid -->
@@ -604,7 +581,7 @@
 						type="button"
 						@click="$emit('view-shift')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View current shift details')"
 					>
 						<div
@@ -633,7 +610,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("View Shift")
 						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-blue-500 bg-blue-50/70 border border-blue-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-blue-600 group-hover:bg-blue-100 group-hover:border-blue-200 group-hover:shadow-sm">Alt+W</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-blue-500 bg-blue-50/70 border border-blue-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-blue-600 group-hover:bg-blue-100 group-hover:border-blue-200 group-hover:shadow-sm">Alt+W</kbd>
 					</button>
 
 					<!-- Draft Invoices -->
@@ -641,7 +618,7 @@
 						type="button"
 						@click="$emit('show-drafts')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-purple-300 hover:bg-purple-50 active:bg-purple-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View draft invoices')"
 					>
 						<div
@@ -664,7 +641,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Draft Invoices")
 						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-purple-500 bg-purple-50/70 border border-purple-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-purple-600 group-hover:bg-purple-100 group-hover:border-purple-200 group-hover:shadow-sm">Alt+D</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-purple-500 bg-purple-50/70 border border-purple-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-purple-600 group-hover:bg-purple-100 group-hover:border-purple-200 group-hover:shadow-sm">Alt+D</kbd>
 					</button>
 
 					<!-- Invoice History -->
@@ -672,7 +649,7 @@
 						type="button"
 						@click="$emit('show-history')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('View invoice history')"
 					>
 						<div
@@ -695,7 +672,7 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Invoice History")
 						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-slate-500 bg-slate-50/70 border border-slate-200 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-slate-600 group-hover:bg-slate-100 group-hover:border-slate-300 group-hover:shadow-sm">Alt+H</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-slate-500 bg-slate-50/70 border border-slate-200 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-slate-600 group-hover:bg-slate-100 group-hover:border-slate-300 group-hover:shadow-sm">Alt+H</kbd>
 					</button>
 
 					<!-- Return Invoice -->
@@ -703,7 +680,7 @@
 						type="button"
 						@click="$emit('show-return')"
 						data-nav="quick-action"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-red-300 hover:bg-red-50 active:bg-red-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-red-300 hover:bg-red-50 active:bg-red-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('Process return invoice')"
 					>
 						<div
@@ -726,14 +703,14 @@
 						<span class="text-[11px] sm:text-xs font-semibold text-gray-700">{{
 							__("Return Invoice")
 						}}</span>
-						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-red-500 bg-red-50/70 border border-red-100 rounded-md uppercase shadow-xs transition-all duration-300 group-hover:text-red-600 group-hover:bg-red-100 group-hover:border-red-200 group-hover:shadow-sm">Alt+R</kbd>
+						<kbd class="mt-1.5 px-2 py-0.5 text-[12px] font-mono font-semibold tracking-wider text-red-500 bg-red-50/70 border border-red-100 rounded-none uppercase shadow-xs transition-all duration-300 group-hover:text-red-600 group-hover:bg-red-100 group-hover:border-red-200 group-hover:shadow-sm">Alt+R</kbd>
 					</button>
 
 					<!-- Close Shift -->
 					<button
 						type="button"
 						@click="isCloseShiftAllowed ? $emit('close-shift') : null"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:class="isCloseShiftAllowed
 							? 'hover:border-orange-300 hover:bg-orange-50 active:bg-orange-100 cursor-pointer'
 							: 'opacity-40 cursor-not-allowed'
@@ -766,7 +743,7 @@
 					<button
 						type="button"
 						@click="$emit('create-customer', '')"
-						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 active:bg-green-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
+						class="flex flex-col items-center justify-center p-3 sm:p-4 bg-white border border-gray-200 rounded-none hover:border-green-300 hover:bg-green-50 active:bg-green-100 transition-colors shadow-sm hover:shadow touch-manipulation group"
 						:title="__('Create new customer')"
 					>
 						<div
@@ -793,22 +770,22 @@
 				</div>
 			</div>
 
-			<div v-else class="flex flex-col gap-0.5 sm:gap-1">
+			<div v-else class="flex flex-col gap-1.5 sm:gap-2">
 				<div
 					v-for="(item, index) in sortedItems"
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
 					@click="item.is_free_item ? null : openEditDialog(item)"
 					:class="[
-						'border rounded-md p-1.5 sm:p-2 transition-all duration-200',
+						'border rounded-none p-2 sm:p-2.5 transition-all duration-75',
 						item.is_free_item
-							? 'bg-green-50 border-green-300 cursor-default'
-							: 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-md active:scale-[0.99] cursor-pointer group'
+							? 'bg-green-50 border-green-400 cursor-default'
+							: 'bg-white border-black hover:bg-gray-50 cursor-pointer group'
 					]"
 				>
 					<div class="flex gap-1.5 sm:gap-2">
 						<!-- Item Image Thumbnail -->
 						<div
-							class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
+							class="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-none flex-shrink-0 flex items-center justify-center overflow-hidden border border-black"
 						>
 							<img
 								v-if="item.image"
@@ -854,7 +831,7 @@
 									<!-- Free Item Badge -->
 									<span
 										v-if="item.free_qty && item.free_qty > 0"
-										class="inline-flex items-center px-1.5 py-0.5 bg-green-600 text-white rounded-full text-[9px] font-bold flex-shrink-0"
+										class="inline-flex items-center px-1.5 py-0.5 bg-green-600 text-white rounded-none text-[9px] font-bold flex-shrink-0 font-mono border border-black"
 										:title="item.is_free_item ? __('Free item') : __('{0} free item(s) included', [item.free_qty])"
 									>
 										<svg
@@ -873,7 +850,7 @@
 									<!-- Discount Badge -->
 									<div
 										v-if="item.discount_amount && item.discount_amount > 0"
-										class="inline-flex items-center px-1.5 py-0.5 bg-gradient-to-r from-red-50 to-orange-50 text-red-700 rounded-full text-[9px] font-bold border border-red-200 flex-shrink-0"
+										class="inline-flex items-center px-1.5 py-0.5 bg-red-50 text-red-700 rounded-none text-[9px] font-bold border border-black flex-shrink-0 font-mono"
 									>
 										<svg
 											class="w-2.5 h-2.5 me-0.5"
@@ -924,7 +901,7 @@
 									<!-- For free items, show static quantity badge -->
 									<div
 										v-if="item.is_free_item"
-										class="flex items-center bg-green-100 border border-green-300 rounded px-2 h-6 sm:h-7"
+										class="flex items-center bg-green-100 border border-green-400 rounded-none px-2 h-6 sm:h-7 font-mono"
 									>
 										<span class="text-xs sm:text-sm font-bold text-green-700">{{ item.quantity }}</span>
 									</div>
@@ -936,7 +913,7 @@
 									>
 										<!-- Serial count badge -->
 										<div
-											class="flex items-center bg-blue-50 border border-blue-200 rounded px-1.5 h-6 sm:h-7"
+											class="flex items-center bg-blue-50 border border-black rounded-none px-1.5 h-6 sm:h-7 font-mono"
 										>
 											<FeatherIcon
 												name="hash"
@@ -951,7 +928,7 @@
 										<button
 											type="button"
 											@click="openEditDialog(item)"
-											class="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white rounded transition-colors shadow-sm"
+											class="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-none border border-black transition-colors"
 											:title="__('Edit serials')"
 										>
 											<FeatherIcon name="edit-2" class="w-3 h-3" />
@@ -961,8 +938,8 @@
 									<div
 										v-else
 										:class="[
-											'flex items-center bg-gray-50 border rounded overflow-hidden',
-											item.is_resolved_barcode ? 'border-amber-300 bg-amber-50' : 'border-gray-200'
+											'flex items-center bg-gray-50 border border-black rounded-none overflow-hidden',
+											item.is_resolved_barcode ? 'border-amber-300 bg-amber-50' : 'border-black'
 										]"
 									>
 										<button
@@ -973,7 +950,7 @@
 												'w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center font-bold transition-colors touch-manipulation border-e',
 												item.is_resolved_barcode
 													? 'bg-gray-100 text-gray-400 cursor-not-allowed border-amber-300'
-													: 'bg-white hover:bg-gray-100 active:bg-gray-200 text-gray-700 border-gray-200'
+													: 'bg-white hover:bg-gray-100 text-gray-900 border-black'
 											]"
 											:aria-label="__('Decrease quantity')"
 											:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Decrease quantity')"
@@ -1002,7 +979,7 @@
 											inputmode="decimal"
 											:disabled="item.is_resolved_barcode"
 											:class="[
-												'w-16 sm:w-20 h-6 sm:h-7 text-center border-0 text-xs sm:text-sm font-bold focus:outline-none',
+												'w-16 sm:w-20 h-6 sm:h-7 text-center border-0 text-xs sm:text-sm font-mono font-bold focus:outline-none',
 												item.is_resolved_barcode
 													? 'bg-amber-50 text-amber-700 cursor-not-allowed'
 													: 'bg-white text-gray-900 focus:ring-2 focus:ring-blue-500'
@@ -1018,7 +995,7 @@
 												'w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center font-bold transition-colors touch-manipulation border-s',
 												item.is_resolved_barcode
 													? 'bg-gray-100 text-gray-400 cursor-not-allowed border-amber-300'
-													: 'bg-white hover:bg-gray-100 active:bg-gray-200 text-gray-700 border-gray-200'
+													: 'bg-white hover:bg-gray-100 text-gray-900 border-black'
 											]"
 											:aria-label="__('Increase quantity')"
 											:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Increase quantity')"
@@ -1048,12 +1025,12 @@
 												item.is_resolved_barcode || !item.item_uoms || item.item_uoms.length === 0
 											"
 											:class="[
-												'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
+												'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded-none ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
 												item.is_resolved_barcode
 													? 'bg-amber-100 text-amber-700 border border-amber-300 cursor-not-allowed'
 													: item.item_uoms && item.item_uoms.length > 0
-														? 'bg-blue-500 text-white border border-blue-400 hover:bg-blue-600 active:scale-95 cursor-pointer'
-														: 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed opacity-60',
+														? 'bg-blue-600 text-white border border-black hover:bg-blue-700 cursor-pointer'
+														: 'bg-gray-100 text-gray-500 border border-black cursor-not-allowed opacity-60',
 											]"
 											:title="
 												item.is_resolved_barcode
@@ -1099,16 +1076,16 @@
 												item.item_uoms &&
 												item.item_uoms.length > 0
 											"
-											class="absolute top-full start-0 mt-0.5 bg-white border border-blue-300 rounded shadow-xl z-50 min-w-full overflow-hidden"
+											class="absolute top-full start-0 mt-0.5 bg-white border border-black rounded-none shadow-none z-50 min-w-full overflow-hidden"
 										>
 											<button
 												type="button"
 												@click="selectUom(item, item.stock_uom)"
 												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100',
+													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
 													(item.uom || item.stock_uom) === item.stock_uom
 														? 'bg-blue-50 text-blue-700'
-														: 'text-gray-700 hover:bg-blue-50',
+														: 'text-gray-700 hover:bg-gray-100',
 												]"
 											>
 												{{ item.stock_uom || __("Nos", null, "UOM") }}
@@ -1119,10 +1096,10 @@
 												type="button"
 												@click="selectUom(item, uomData.uom)"
 												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-semibold transition-colors border-b border-gray-100 last:border-0',
+													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
 													(item.uom || item.stock_uom) === uomData.uom
 														? 'bg-blue-50 text-blue-700'
-														: 'text-gray-700 hover:bg-blue-50',
+														: 'text-gray-700 hover:bg-gray-100',
 												]"
 											>
 												{{ uomData.uom }}
@@ -1131,7 +1108,7 @@
 									</div>
 
 									<!-- Price -->
-									<span class="text-[10px] sm:text-xs font-bold text-gray-700">
+									<span class="text-[10px] sm:text-xs font-mono font-bold text-gray-700">
 										{{ formatCurrency(item.rate) }}
 									</span>
 								</div>
@@ -1139,7 +1116,7 @@
 								<!-- Item Total -->
 								<div class="text-end flex-shrink-0">
 									<div
-										class="text-xs sm:text-sm font-bold text-blue-600 leading-none"
+										class="text-xs sm:text-sm font-mono font-bold text-blue-600 leading-none"
 									>
 										{{
 											formatCurrency(
@@ -1156,17 +1133,17 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div class="p-1.5 sm:p-2 bg-white border-t border-gray-200">
+		<div class="p-1.5 sm:p-2 bg-white border-t-2 border-black font-mono">
 			<!-- Summary Details -->
 			<div v-if="items.length > 0" class="mb-1.5">
-				<div class="flex items-center justify-between text-xs text-gray-600 mb-0.5">
-					<span class="font-medium">{{ __("Total Quantity") }}</span>
+				<div class="flex items-center justify-between text-xs text-gray-600 mb-0.5 font-mono">
+					<span class="font-bold uppercase text-gray-700">{{ __("Total Quantity") }}</span>
 					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
 						formatQuantity(totalQuantity)
 					}}</span>
 				</div>
-				<div class="flex items-center justify-between text-xs text-gray-600">
-					<span class="font-medium">{{ __("Subtotal") }}</span>
+				<div class="flex items-center justify-between text-xs text-gray-600 font-mono">
+					<span class="font-bold uppercase text-gray-700">{{ __("Subtotal") }}</span>
 					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
 						formatCurrency(displaySubtotal)
 					}}</span>
@@ -1178,7 +1155,7 @@
 				<!-- Discount Display - Highlighted -->
 				<div
 					v-if="discountAmount > 0"
-					class="flex items-center justify-between mb-0.5 bg-red-50 rounded px-1.5 py-1 -mx-0.5"
+					class="flex items-center justify-between mb-0.5 bg-red-50 border border-black rounded-none px-1.5 py-1 -mx-0.5 font-mono"
 				>
 					<div class="flex items-center gap-1">
 						<svg
@@ -1192,14 +1169,14 @@
 								clip-rule="evenodd"
 							/>
 						</svg>
-						<span class="text-xs font-bold text-red-700">{{ __("Discount") }}</span>
+						<span class="text-xs font-bold text-red-700 uppercase">{{ __("Discount") }}</span>
 					</div>
-					<span class="text-sm font-extrabold text-red-600 text-center min-w-[60px]">{{
+					<span class="text-sm font-extrabold text-red-600 text-center min-w-[60px] font-mono">{{
 						formatCurrency(discountAmount)
 					}}</span>
 				</div>
 
-				<div class="flex items-center justify-between text-xs text-gray-600">
+				<div class="flex items-center justify-between text-xs text-gray-600 font-mono">
 					<div class="flex items-center gap-1">
 						<svg
 							class="w-3.5 h-3.5 text-gray-500"
@@ -1214,22 +1191,22 @@
 								d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
 							/>
 						</svg>
-						<span class="font-medium">{{ __("Tax") }}</span>
+						<span class="font-bold uppercase text-gray-700">{{ __("Tax") }}</span>
 					</div>
-					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
+					<span class="font-bold text-gray-900 text-center min-w-[60px] font-mono">{{
 						formatCurrency(taxAmount)
 					}}</span>
 				</div>
 			</div>
 
 			<!-- Grand Total -->
-			<div class="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-2.5 mb-1.5">
+			<div class="bg-blue-50 border-2 border-black rounded-none p-3 mb-1.5 font-mono">
 				<div class="flex items-center justify-between">
-					<span class="text-sm font-extrabold text-gray-900">{{
+					<span class="text-sm font-extrabold text-gray-900 uppercase tracking-wider">{{
 						__("Grand Total")
 					}}</span>
 					<span
-						class="text-lg sm:text-xl font-extrabold text-blue-600 text-center min-w-[60px]"
+						class="text-lg sm:text-xl font-extrabold text-blue-600 text-center min-w-[60px] font-mono"
 					>
 						{{ formatCurrency(displayGrandTotal) }}
 					</span>
@@ -1244,10 +1221,10 @@
 					@click="handleProceedToPayment"
 					:disabled="items.length === 0"
 					:class="[
-						'flex-1 py-2.5 px-3 rounded-lg font-bold text-xs text-white transition-all flex items-center justify-center touch-manipulation',
+						'flex-1 py-3 px-4 rounded-none font-bold text-xs text-white transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-wider',
 						items.length === 0
-							? 'bg-gray-300 cursor-not-allowed'
-							: 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 shadow-lg hover:shadow-xl active:scale-[0.98]',
+							? 'bg-gray-300 border-gray-400 text-gray-500 cursor-not-allowed shadow-none'
+							: 'bg-black text-white hover:bg-gray-800 active:bg-black',
 					]"
 					:aria-label="__('Proceed to payment')"
 				>
@@ -1272,7 +1249,7 @@
 					type="button"
 					v-if="items.length > 0"
 					@click="$emit('save-draft')"
-					class="flex-1 py-2.5 px-2 rounded-lg font-semibold text-xs text-orange-700 bg-orange-50 hover:bg-orange-100 active:bg-orange-200 transition-all touch-manipulation active:scale-[0.98] flex items-center justify-center"
+					class="flex-1 py-3 px-3 rounded-none font-bold text-xs text-orange-700 bg-orange-50 border border-black hover:bg-orange-100 active:bg-orange-200 transition-all touch-manipulation flex items-center justify-center uppercase tracking-wider"
 					:aria-label="__('Hold order as draft')"
 				>
 					<svg
@@ -1526,9 +1503,9 @@ const isCloseShiftAllowed = computed(() => {
 
 // Clear table when the selected order type no longer supports tables
 watch(currentOrderTypeOption, (opt) => {
-    if (!opt?.has_tables) {
-        tableModel.value = null
-    }
+	if (!opt?.has_tables) {
+		tableModel.value = null
+	}
 })
 
 // Keep default order type when showPosOrderType is enabled (user selection not overridden)
@@ -2173,7 +2150,8 @@ function handleQuickActionKeyDown(event) {
 		return
 	}
 
-	if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return
+	if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key))
+		return
 
 	const activeEl = document.activeElement
 	if (!activeEl || activeEl.getAttribute("data-nav") !== "quick-action") return

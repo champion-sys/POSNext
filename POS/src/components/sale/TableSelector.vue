@@ -2,10 +2,10 @@
 	<div class="flex items-center">
 		<button
 			type="button"
-			class="flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-bold shadow-sm transition-all duration-150 active:scale-[0.97] disabled:opacity-50 touch-manipulation h-10 w-full justify-between"
+			class="flex items-center gap-2 rounded-none border px-3 py-1.5 text-xs font-bold transition-all duration-75 disabled:opacity-50 touch-manipulation h-10 w-full justify-between"
 			:class="modelValue
-				? 'bg-amber-50 border-amber-300 text-amber-900 font-extrabold ring-1 ring-amber-200/50'
-				: 'bg-white border-gray-150 text-gray-700 hover:bg-gray-50'
+				? 'bg-amber-50 border-black text-amber-900 font-extrabold'
+				: 'bg-white border-black text-gray-700 hover:bg-gray-100'
 			"
 			:disabled="disabled"
 			@click="openPicker"
@@ -25,7 +25,7 @@
 			<span class="flex items-center gap-1">
 				<span
 					v-if="modelValue"
-					class="font-bold bg-amber-500 text-white px-2 py-0.5 rounded-full text-[12px] shadow-sm animate-fade-in"
+					class="font-bold bg-amber-500 text-white px-2 py-0.5 rounded-none text-[12px] font-mono border border-black animate-fade-in"
 				>
 					{{ modelValue }}
 				</span>
@@ -167,8 +167,8 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
-import { Dialog, FeatherIcon, call } from 'frappe-ui'
+import { ref, watch, computed } from "vue"
+import { Dialog, FeatherIcon, call } from "frappe-ui"
 
 const props = defineProps({
 	modelValue: {
@@ -185,7 +185,7 @@ const props = defineProps({
 	},
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(["update:modelValue"])
 
 const showDialog = ref(false)
 const tables = ref([])
@@ -197,9 +197,12 @@ const filteredTables = computed(() => {
 	const query = searchQuery.value.trim().toLowerCase()
 	if (!query) return tables.value
 
-	return tables.value.filter(t => 
-		String(t.table_no).toLowerCase().includes(query) ||
-		String(t.warehouse || "").toLowerCase().includes(query)
+	return tables.value.filter(
+		(t) =>
+			String(t.table_no).toLowerCase().includes(query) ||
+			String(t.warehouse || "")
+				.toLowerCase()
+				.includes(query),
 	)
 })
 
@@ -207,7 +210,7 @@ const filteredTables = computed(() => {
 function formatWarehouse(wh) {
 	if (!wh) return ""
 	// Remove pos_order_type and company code suffix if present
-	let cleaned = wh.split(" - ")[0]
+	const cleaned = wh.split(" - ")[0]
 	return cleaned || wh
 }
 
@@ -219,15 +222,15 @@ async function fetchTables(orderType) {
 
 	isLoading.value = true
 	try {
-		const res = await call('frappe.client.get_list', {
-			doctype: 'POS Table',
+		const res = await call("frappe.client.get_list", {
+			doctype: "POS Table",
 			filters: { pos_order_type: orderType },
-			fields: ['table_no', 'warehouse'],
+			fields: ["table_no", "warehouse"],
 			limit_page_length: 100,
 		})
 		tables.value = res?.message || res || []
 	} catch (e) {
-		console.error('Failed to load POS Tables', e)
+		console.error("Failed to load POS Tables", e)
 		tables.value = []
 	} finally {
 		isLoading.value = false
@@ -244,17 +247,20 @@ function openPicker() {
 }
 
 function selectTable(tableNo) {
-	emit('update:modelValue', tableNo)
+	emit("update:modelValue", tableNo)
 	showDialog.value = false
 	// Reset search input after selection
 	searchQuery.value = ""
 }
 
-watch(() => props.orderType, (newType) => {
-	tables.value = []
-	if (showDialog.value) {
-		fetchTables(newType)
-	}
-})
+watch(
+	() => props.orderType,
+	(newType) => {
+		tables.value = []
+		if (showDialog.value) {
+			fetchTables(newType)
+		}
+	},
+)
 </script>
 
