@@ -62,7 +62,7 @@
   ============================================================================
 -->
 <template>
-	<div class="flex flex-col h-full bg-white">
+	<div class="flex flex-col h-full">
 		<!-- Header with Customer -->
 		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0 flex items-center gap-2 w-full">
 			<div class="flex-1 min-w-0">
@@ -391,8 +391,8 @@
 		</div>
 
 		<!-- Action Buttons Section -->
-		<div v-if="items.length > 0" class="px-2 py-2 border-b border-gray-400 bg-white">
-			<div class="flex items-center justify-between mb-1.5">
+		<div v-if="items.length > 0" class="px-3 py-2">
+			<div class="flex items-center justify-between mb-0">
 				<h2 class="text-xs font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
 				<div class="flex items-center gap-1">
 					<!-- Clear Cart Button -->
@@ -415,7 +415,7 @@
 								'inline-flex items-center gap-1.5 rounded-none border px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors touch-manipulation',
 								cartSortBy
 									? 'text-blue-600 border-blue-600 bg-blue-50 hover:bg-blue-100'
-									: 'text-gray-800 border-black hover:bg-gray-100 bg-white'
+									: 'text-gray-800 border-black hover:bg-gray-100'
 							]"
 							:title="cartSortBy
 								? (cartSortOrder === 'asc'
@@ -561,10 +561,10 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100 -mt-[5%]">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100">
 			<div
 				v-if="items.length === 0"
-				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto"
+				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto  -mt-[5%]"
 			>
 				<!-- Enhanced Empty Cart Container -->
 				<div class="w-full max-w-lg bg-white p-4 sm:p-4 rounded-none flex flex-row items-center justify-center text-center mb-4 select-none gap-3">
@@ -2230,4 +2230,4 @@ onBeforeUnmount(() => {
 	window.removeEventListener("keydown", handleGlobalShortcutKeyDown)
 })
 </script>
-```
+
