@@ -1366,6 +1366,11 @@ function handleGlobalKeyDown(event) {
 		focusedItemIndex.value = -1
 	}
 
+	// Alt + G or F7: Reset focused items selection when focusing cart items list
+	if ((event.altKey && event.key.toLowerCase() === "g") || event.key === "F7") {
+		focusedItemIndex.value = -1
+	}
+
 	if (showSortDropdown.value) {
 		const totalOptions = 1 + sortOptions.value.length
 		if (event.key === "ArrowDown") {

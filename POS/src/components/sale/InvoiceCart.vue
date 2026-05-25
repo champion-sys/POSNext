@@ -2187,6 +2187,17 @@ function handleGlobalShortcutKeyDown(event) {
 
 	const key = event.key.toLowerCase()
 
+	// Reset focused cart item selection when moving focus to items panel or quick actions
+	if (event.altKey) {
+		if (key === "i" || key === "s" || key === "q") {
+			focusedCartItemIndex.value = -1
+		}
+	} else {
+		if (event.key === "F2" || event.key === "F3" || event.key === "F4") {
+			focusedCartItemIndex.value = -1
+		}
+	}
+
 	// 1. Global Actions (both empty and non-empty cart)
 	if (event.altKey) {
 		if (key === "c") {
