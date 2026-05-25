@@ -704,6 +704,33 @@
 						</span>
 					</button>
 
+					<!-- Create Customer -->
+					<button
+						type="button"
+						@click="$emit('create-customer', '')"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
+						:title="__('Create new customer')"
+					>
+						<div class="text-green-600 mb-1.5 flex justify-center items-center">
+							<svg
+								class="w-5 h-5"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+								stroke-width="2"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+								/>
+							</svg>
+						</div>
+						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-green-700 transition-colors">
+							{{ __("New Customer") }}
+						</span>
+					</button>
+					
 					<!-- Close Shift -->
 					<button
 						type="button"
@@ -735,32 +762,7 @@
 						</span>
 					</button>
 
-					<!-- Create Customer -->
-					<button
-						type="button"
-						@click="$emit('create-customer', '')"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
-						:title="__('Create new customer')"
-					>
-						<div class="text-green-600 mb-1.5 flex justify-center items-center">
-							<svg
-								class="w-5 h-5"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-								stroke-width="2"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
-								/>
-							</svg>
-						</div>
-						<span class="text-[10px] sm:text-xs !font-medium text-center leading-tight px-0.5 group-hover:text-green-700 transition-colors">
-							{{ __("New Customer") }}
-						</span>
-					</button>
+					
 				</div>
 			</div>
 
