@@ -1795,7 +1795,12 @@ function handleItemClick(itemCode) {
 }
 
 function formatCurrency(amount) {
-	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
+	return formatCurrencyUtil(
+		Number.parseFloat(amount || 0),
+		props.currency,
+		undefined,
+		settingsStore.decimalPrecision,
+	)
 }
 
 // Show warehouse availability dialog

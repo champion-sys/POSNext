@@ -99,17 +99,26 @@ function getFormatter(precision, locale = DEFAULT_LOCALE) {
 }
 
 /** Format value as currency string with symbol */
-export function formatCurrency(value, currency = DEFAULT_CURRENCY, locale = DEFAULT_LOCALE) {
+export function formatCurrency(
+	value,
+	currency = DEFAULT_CURRENCY,
+	locale = DEFAULT_LOCALE,
+	precision = settings.currency,
+) {
 	if (typeof value !== "number" || Number.isNaN(value)) return ""
 	const abs = Math.abs(value)
-	const formatted = `${getSymbol(currency)} ${getFormatter(settings.currency, locale).format(abs)}`
+	const formatted = `${getSymbol(currency)} ${getFormatter(precision, locale).format(abs)}`
 	return value < 0 ? `-${formatted}` : formatted
 }
 
 /** Format value as number string (no symbol) */
-export function formatCurrencyNumber(value, locale = DEFAULT_LOCALE) {
+export function formatCurrencyNumber(
+	value,
+	locale = DEFAULT_LOCALE,
+	precision = settings.currency,
+) {
 	if (typeof value !== "number" || Number.isNaN(value)) return "0.00"
-	return getFormatter(settings.currency, locale).format(value)
+	return getFormatter(precision, locale).format(value)
 }
 
 /** Get CSS class for positive/negative values */

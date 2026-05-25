@@ -1887,7 +1887,12 @@ function getInitials(name) {
  * @returns {String} Formatted currency string (e.g., "$1,234.56")
  */
 function formatCurrency(amount) {
-	return formatCurrencyUtil(Number.parseFloat(amount || 0), props.currency)
+	return formatCurrencyUtil(
+		Number.parseFloat(amount || 0),
+		props.currency,
+		undefined,
+		settingsStore.decimalPrecision,
+	)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
