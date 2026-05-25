@@ -770,360 +770,337 @@
 				</div>
 			</div>
 
-			<div v-else class="flex flex-col gap-1.5 sm:gap-2">
+			<div v-else class="flex flex-col border-t border-black divide-y divide-gray-200">
 				<div
 					v-for="(item, index) in sortedItems"
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
 					@click="item.is_free_item ? null : openEditDialog(item)"
 					:class="[
-						'border rounded-none p-2 sm:p-2.5 transition-all duration-75',
+						'p-3 transition-all duration-75 flex gap-3 cursor-pointer group select-none',
 						item.is_free_item
-							? 'bg-green-50 border-green-400 cursor-default'
-							: 'bg-white border-black hover:bg-gray-50 cursor-pointer group'
+							? 'bg-green-50/30 cursor-default'
+							: 'bg-white hover:bg-gray-50/50'
 					]"
 				>
-					<div class="flex gap-1.5 sm:gap-2">
-						<!-- Item Image Thumbnail -->
-						<div
-							class="w-10 h-10 sm:w-12 sm:h-12 bg-white rounded-none flex-shrink-0 flex items-center justify-center overflow-hidden border border-black"
+					<!-- Item Image Thumbnail -->
+					<div
+						class="w-10 h-10 sm:w-12 sm:h-12 bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
+					>
+						<img
+							v-if="item.image"
+							:src="item.image"
+							:alt="item.item_name"
+							loading="lazy"
+							width="48"
+							height="48"
+							decoding="async"
+							class="w-full h-full object-cover"
+						/>
+						<svg
+							v-else
+							class="h-5 w-5 text-gray-300"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
 						>
-							<img
-								v-if="item.image"
-								:src="item.image"
-								:alt="item.item_name"
-								loading="lazy"
-								width="48"
-								height="48"
-								decoding="async"
-								class="w-full h-full object-cover"
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="1.5"
+								d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
 							/>
-							<svg
-								v-else
-								class="h-5 w-5 sm:h-6 sm:w-6 text-gray-400"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-								/>
-							</svg>
-						</div>
+						</svg>
+					</div>
 
-						<!-- Item Content -->
-						<div class="flex-1 min-w-0 flex flex-col justify-center">
-							<!-- Header: Item Name, Badges & Delete -->
-							<div class="flex items-start justify-between gap-0.5 mb-0.5">
-								<div class="flex items-center gap-1.5 flex-1 min-w-0">
-									<div class="flex gap-1.5 items-center min-w-0">
-										<h4
-										class="text-xs sm:text-sm font-extrabold text-gray-900 truncate leading-tight"
-										>
-											{{ item.item_name }}
-										</h4>
-										<p v-if="item.item_code" class="text-[9px] sm:text-[9px] font-bold text-gray-600 truncate leading-tight">
-											({{ item.item_code }})
-										</p>
-									</div>
+					<!-- Item Content -->
+					<div class="flex-1 min-w-0 flex flex-col justify-between">
+						<!-- Header: Item Name, Badges & Delete -->
+						<div class="flex items-start justify-between gap-2 mb-1">
+							<div class="flex flex-col min-w-0 flex-1">
+								<div class="flex items-baseline gap-1.5 flex-wrap">
+									<h4 class="text-xs sm:text-[13px] font-bold text-gray-900 truncate leading-tight">
+										{{ item.item_name }}
+									</h4>
+									<span v-if="item.item_code" class="text-[9px] font-semibold text-gray-400 font-mono">
+										#{{ item.item_code }}
+									</span>
+								</div>
+								
+								<!-- Badges row below title for cleaner spacing -->
+								<div class="flex items-center gap-1.5 mt-1 flex-wrap">
 									<!-- Free Item Badge -->
 									<span
 										v-if="item.free_qty && item.free_qty > 0"
-										class="inline-flex items-center px-1.5 py-0.5 bg-green-600 text-white rounded-none text-[9px] font-bold flex-shrink-0 font-mono border border-black"
+										class="inline-flex items-center px-1.5 py-0.5 bg-green-50 text-green-700 rounded-none text-[9px] font-bold font-mono border border-green-200"
 										:title="item.is_free_item ? __('Free item') : __('{0} free item(s) included', [item.free_qty])"
 									>
-										<svg
-											class="w-2.5 h-2.5 me-0.5"
-											fill="currentColor"
-											viewBox="0 0 20 20"
-										>
-											<path
-												fill-rule="evenodd"
-												d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
-												clip-rule="evenodd"
-											/>
-										</svg>
 										{{ item.is_free_item ? __("FREE") : __("+{0} FREE", [item.free_qty]) }}
 									</span>
 									<!-- Discount Badge -->
 									<div
 										v-if="item.discount_amount && item.discount_amount > 0"
-										class="inline-flex items-center px-1.5 py-0.5 bg-red-50 text-red-700 rounded-none text-[9px] font-bold border border-black flex-shrink-0 font-mono"
+										class="inline-flex items-center px-1.5 py-0.5 bg-red-50 text-red-700 rounded-none text-[9px] font-bold border border-red-100 font-mono"
 									>
-										<svg
-											class="w-2.5 h-2.5 me-0.5"
-											fill="currentColor"
-											viewBox="0 0 20 20"
-										>
-											<path
-												fill-rule="evenodd"
-												d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z"
-												clip-rule="evenodd"
-											/>
-										</svg>
 										{{
-											__("{0}%", [
+											__("{0}% OFF", [
 												Number(item.discount_percentage).toFixed(0),
 											])
 										}}
 									</div>
 								</div>
-								<button
-									v-if="!item.is_free_item"
-									type="button"
-									@click.stop="$emit('remove-item', item.item_code, item.uom)"
-									class="text-gray-400 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 p-0.5 -m-0.5 touch-manipulation active:scale-90"
-									:aria-label="__('Remove {0}', [item.item_name])"
-									:title="__('Remove item')"
-								>
-									<svg
-										class="h-4 w-4"
-										fill="none"
-										stroke="currentColor"
-										viewBox="0 0 24 24"
-									>
-										<path
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											stroke-width="2"
-											d="M6 18L18 6M6 6l12 12"
-										/>
-									</svg>
-								</button>
 							</div>
 
-							<!-- Single Row: Quantity Counter, UOM, Price & Total -->
-							<div class="flex items-center justify-between gap-1.5">
-								<div class="flex items-center gap-1.5">
-									<!-- Quantity Counter -->
-									<!-- For free items, show static quantity badge -->
-									<div
-										v-if="item.is_free_item"
-										class="flex items-center bg-green-100 border border-green-400 rounded-none px-2 h-6 sm:h-7 font-mono"
-									>
-										<span class="text-xs sm:text-sm font-bold text-green-700">{{ item.quantity }}</span>
-									</div>
-									<!-- For serial items, show serial badge with edit button -->
-									<div
-										v-else-if="item.has_serial_no && item.serial_no"
-										class="flex items-center gap-1"
-										@click.stop
-									>
-										<!-- Serial count badge -->
-										<div
-											class="flex items-center bg-blue-50 border border-black rounded-none px-1.5 h-6 sm:h-7 font-mono"
-										>
-											<FeatherIcon
-												name="hash"
-												class="w-3 h-3 text-blue-500 me-0.5"
-											/>
-											<span
-												class="text-xs sm:text-sm font-bold text-blue-700"
-												>{{ item.quantity }}</span
-											>
-										</div>
-										<!-- Edit button -->
-										<button
-											type="button"
-											@click="openEditDialog(item)"
-											class="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-none border border-black transition-colors"
-											:title="__('Edit serials')"
-										>
-											<FeatherIcon name="edit-2" class="w-3 h-3" />
-										</button>
-									</div>
-									<!-- For non-serial items, show normal quantity controls -->
-									<div
-										v-else
-										:class="[
-											'flex items-center bg-gray-50 border border-black rounded-none overflow-hidden',
-											item.is_resolved_barcode ? 'border-amber-300 bg-amber-50' : 'border-black'
-										]"
-									>
-										<button
-											type="button"
-											@click.stop="decrementQuantity(item)"
-											:disabled="item.is_resolved_barcode"
-											:class="[
-												'w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center font-bold transition-colors touch-manipulation border-e',
-												item.is_resolved_barcode
-													? 'bg-gray-100 text-gray-400 cursor-not-allowed border-amber-300'
-													: 'bg-white hover:bg-gray-100 text-gray-900 border-black'
-											]"
-											:aria-label="__('Decrease quantity')"
-											:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Decrease quantity')"
-										>
-											<svg
-												class="w-3 h-3"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="3"
-													d="M20 12H4"
-												/>
-											</svg>
-										</button>
-										<input
-											:value="formatQuantity(item.quantity)"
-											@click.stop
-											@input="updateQuantity(item, $event.target.value)"
-											@blur="handleQuantityBlur(item)"
-											@keydown.enter="$event.target.blur()"
-											type="text"
-											inputmode="decimal"
-											:disabled="item.is_resolved_barcode"
-											:class="[
-												'w-16 sm:w-20 h-6 sm:h-7 text-center border-0 text-xs sm:text-sm font-mono font-bold focus:outline-none',
-												item.is_resolved_barcode
-													? 'bg-amber-50 text-amber-700 cursor-not-allowed'
-													: 'bg-white text-gray-900 focus:ring-2 focus:ring-blue-500'
-											]"
-											:aria-label="__('Quantity')"
-											:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : ''"
-										/>
-										<button
-											type="button"
-											@click.stop="incrementQuantity(item)"
-											:disabled="item.is_resolved_barcode"
-											:class="[
-												'w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center font-bold transition-colors touch-manipulation border-s',
-												item.is_resolved_barcode
-													? 'bg-gray-100 text-gray-400 cursor-not-allowed border-amber-300'
-													: 'bg-white hover:bg-gray-100 text-gray-900 border-black'
-											]"
-											:aria-label="__('Increase quantity')"
-											:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Increase quantity')"
-										>
-											<svg
-												class="w-3 h-3"
-												fill="none"
-												stroke="currentColor"
-												viewBox="0 0 24 24"
-											>
-												<path
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													stroke-width="3"
-													d="M12 4v16m8-8H4"
-												/>
-											</svg>
-										</button>
-									</div>
+							<!-- Delete Button -->
+							<button
+								v-if="!item.is_free_item"
+								type="button"
+								@click.stop="$emit('remove-item', item.item_code, item.uom)"
+								class="text-gray-400 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 p-0.5 -mt-0.5 touch-manipulation"
+								:aria-label="__('Remove {0}', [item.item_name])"
+								:title="__('Remove item')"
+							>
+								<svg
+									class="h-4 w-4"
+									fill="none"
+									stroke="currentColor"
+									viewBox="0 0 24 24"
+									stroke-width="2"
+								>
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										d="M6 18L18 6M6 6l12 12"
+									/>
+								</svg>
+							</button>
+						</div>
 
-									<!-- UOM Selector Dropdown -->
-									<div class="relative group/uom" @click.stop>
-										<button
-											type="button"
-											@click="toggleUomDropdown(item.item_code, item.uom)"
-											:disabled="
-												item.is_resolved_barcode || !item.item_uoms || item.item_uoms.length === 0
-											"
-											:class="[
-												'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded-none ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
-												item.is_resolved_barcode
-													? 'bg-amber-100 text-amber-700 border border-amber-300 cursor-not-allowed'
-													: item.item_uoms && item.item_uoms.length > 0
-														? 'bg-blue-600 text-white border border-black hover:bg-blue-700 cursor-pointer'
-														: 'bg-gray-100 text-gray-500 border border-black cursor-not-allowed opacity-60',
-											]"
-											:title="
-												item.is_resolved_barcode
-													? __('UOM locked (barcode item)')
-													: item.item_uoms && item.item_uoms.length > 0
-														? __('Click to change unit')
-														: __('Only one unit available')
-											"
-										>
-											{{
-												item.uom ||
-												item.stock_uom ||
-												__("Nos", null, "UOM")
-											}}
-										</button>
+						<!-- Single Row: Quantity Counter, UOM, Price & Total -->
+						<div class="flex items-center justify-between gap-2 mt-1">
+							<div class="flex items-center gap-2 flex-wrap">
+								<!-- Quantity Counter -->
+								<!-- For free items, show static quantity badge -->
+								<div
+									v-if="item.is_free_item"
+									class="flex items-center bg-green-50 border border-green-200 rounded-none px-2 h-6 sm:h-7 font-mono"
+								>
+									<span class="text-xs font-bold text-green-700">{{ item.quantity }}</span>
+								</div>
+								<!-- For serial items, show serial badge with edit button -->
+								<div
+									v-else-if="item.has_serial_no && item.serial_no"
+									class="flex items-center gap-1"
+									@click.stop
+								>
+									<!-- Serial count badge -->
+									<div
+										class="flex items-center bg-gray-50 border border-black rounded-none px-1.5 h-6 sm:h-7 font-mono"
+									>
+										<FeatherIcon
+											name="hash"
+											class="w-3 h-3 text-gray-500 me-0.5"
+										/>
+										<span class="text-xs font-bold text-gray-900">{{ item.quantity }}</span>
+									</div>
+									<!-- Edit button -->
+									<button
+										type="button"
+										@click="openEditDialog(item)"
+										class="flex items-center justify-center w-6 h-6 sm:w-7 sm:h-7 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-900 rounded-none border border-black transition-colors"
+										:title="__('Edit serials')"
+									>
+										<FeatherIcon name="edit-2" class="w-3 h-3" />
+									</button>
+								</div>
+								<!-- For non-serial items, show normal quantity controls -->
+								<div
+									v-else
+									:class="[
+										'flex items-center bg-white border rounded-none overflow-hidden h-6 sm:h-7',
+										item.is_resolved_barcode ? 'border-amber-300' : 'border-black'
+									]"
+								>
+									<button
+										type="button"
+										@click.stop="decrementQuantity(item)"
+										:disabled="item.is_resolved_barcode"
+										:class="[
+											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-black',
+											item.is_resolved_barcode
+												? 'bg-gray-50 text-gray-400 cursor-not-allowed border-amber-200'
+												: 'bg-white hover:bg-gray-100 text-gray-900'
+										]"
+										:aria-label="__('Decrease quantity')"
+										:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Decrease quantity')"
+									>
 										<svg
-											:class="[
-												'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
-												openUomDropdown === `${item.item_code}-${item.uom}`
-													? 'rotate-180'
-													: '',
-												item.is_resolved_barcode
-													? 'text-amber-600'
-													: item.item_uoms && item.item_uoms.length > 0
-														? 'text-white'
-														: 'text-gray-400',
-											]"
+											class="w-3 h-3"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
+											stroke-width="2.5"
 										>
 											<path
 												stroke-linecap="round"
 												stroke-linejoin="round"
-												stroke-width="2.5"
-												d="M19 9l-7 7-7-7"
+												d="M20 12H4"
 											/>
 										</svg>
-										<div
-											v-if="
-												openUomDropdown ===
-													`${item.item_code}-${item.uom}` &&
-												item.item_uoms &&
-												item.item_uoms.length > 0
-											"
-											class="absolute top-full start-0 mt-0.5 bg-white border border-black rounded-none shadow-none z-50 min-w-full overflow-hidden"
+									</button>
+									<input
+										:value="formatQuantity(item.quantity)"
+										@click.stop
+										@input="updateQuantity(item, $event.target.value)"
+										@blur="handleQuantityBlur(item)"
+										@keydown.enter="$event.target.blur()"
+										type="text"
+										inputmode="decimal"
+										:disabled="item.is_resolved_barcode"
+										:class="[
+											'w-12 sm:w-14 h-full text-center border-0 text-xs font-mono font-bold focus:outline-none p-0',
+											item.is_resolved_barcode
+												? 'bg-amber-50/50 text-amber-700 cursor-not-allowed'
+												: 'bg-white text-gray-900'
+										]"
+										:aria-label="__('Quantity')"
+										:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : ''"
+									/>
+									<button
+										type="button"
+										@click.stop="incrementQuantity(item)"
+										:disabled="item.is_resolved_barcode"
+										:class="[
+											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-black',
+											item.is_resolved_barcode
+												? 'bg-gray-50 text-gray-400 cursor-not-allowed border-amber-200'
+												: 'bg-white hover:bg-gray-100 text-gray-900'
+										]"
+										:aria-label="__('Increase quantity')"
+										:title="item.is_resolved_barcode ? __('Quantity locked (barcode item)') : __('Increase quantity')"
+									>
+										<svg
+											class="w-3 h-3"
+											fill="none"
+											stroke="currentColor"
+											viewBox="0 0 24 24"
+											stroke-width="2.5"
 										>
-											<button
-												type="button"
-												@click="selectUom(item, item.stock_uom)"
-												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
-													(item.uom || item.stock_uom) === item.stock_uom
-														? 'bg-blue-50 text-blue-700'
-														: 'text-gray-700 hover:bg-gray-100',
-												]"
-											>
-												{{ item.stock_uom || __("Nos", null, "UOM") }}
-											</button>
-											<button
-												v-for="uomData in item.item_uoms"
-												:key="uomData.uom"
-												type="button"
-												@click="selectUom(item, uomData.uom)"
-												:class="[
-													'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
-													(item.uom || item.stock_uom) === uomData.uom
-														? 'bg-blue-50 text-blue-700'
-														: 'text-gray-700 hover:bg-gray-100',
-												]"
-											>
-												{{ uomData.uom }}
-											</button>
-										</div>
-									</div>
-
-									<!-- Price -->
-									<span class="text-[10px] sm:text-xs font-mono font-bold text-gray-700">
-										{{ formatCurrency(item.rate) }}
-									</span>
+											<path
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												d="M12 4v16m8-8H4"
+											/>
+										</svg>
+									</button>
 								</div>
 
-								<!-- Item Total -->
-								<div class="text-end flex-shrink-0">
-									<div
-										class="text-xs sm:text-sm font-mono font-bold text-blue-600 leading-none"
+								<!-- UOM Selector Dropdown -->
+								<div class="relative group/uom" @click.stop>
+									<button
+										type="button"
+										@click="toggleUomDropdown(item.item_code, item.uom)"
+										:disabled="
+											item.is_resolved_barcode || !item.item_uoms || item.item_uoms.length === 0
+										"
+										:class="[
+											'h-6 sm:h-7 text-[10px] sm:text-xs font-bold rounded-none ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
+											item.is_resolved_barcode
+												? 'bg-amber-50 text-amber-700 border border-amber-300 cursor-not-allowed'
+												: item.item_uoms && item.item_uoms.length > 0
+													? 'bg-white hover:bg-gray-50 text-gray-900 border border-black cursor-pointer'
+													: 'bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60',
+										]"
+										:title="
+											item.is_resolved_barcode
+												? __('UOM locked (barcode item)')
+												: item.item_uoms && item.item_uoms.length > 0
+													? __('Click to change unit')
+													: __('Only one unit available')
+										"
 									>
 										{{
-											formatCurrency(
-												item.amount || item.rate * item.quantity
-											)
+											item.uom ||
+											item.stock_uom ||
+											__("Nos", null, "UOM")
 										}}
+									</button>
+									<svg
+										:class="[
+											'absolute end-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 pointer-events-none transition-transform',
+											openUomDropdown === `${item.item_code}-${item.uom}`
+												? 'rotate-180'
+												: '',
+											item.is_resolved_barcode
+												? 'text-amber-600'
+												: item.item_uoms && item.item_uoms.length > 0
+													? 'text-gray-900'
+													: 'text-gray-400',
+										]"
+										fill="none"
+										stroke="currentColor"
+										viewBox="0 0 24 24"
+										stroke-width="2.5"
+									>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M19 9l-7 7-7-7"
+										/>
+									</svg>
+									<div
+										v-if="
+											openUomDropdown ===
+												`${item.item_code}-${item.uom}` &&
+											item.item_uoms &&
+											item.item_uoms.length > 0
+										"
+										class="absolute top-full start-0 mt-0.5 bg-white border border-black rounded-none shadow-none z-50 min-w-full overflow-hidden"
+									>
+										<button
+											type="button"
+											@click="selectUom(item, item.stock_uom)"
+											:class="[
+												'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
+												(item.uom || item.stock_uom) === item.stock_uom
+													? 'bg-gray-100 text-gray-900 font-extrabold'
+													: 'text-gray-700 hover:bg-gray-100',
+											]"
+										>
+											{{ item.stock_uom || __("Nos", null, "UOM") }}
+										</button>
+										<button
+											v-for="uomData in item.item_uoms"
+											:key="uomData.uom"
+											type="button"
+											@click="selectUom(item, uomData.uom)"
+											:class="[
+												'w-full text-start px-2 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
+												(item.uom || item.stock_uom) === uomData.uom
+													? 'bg-gray-100 text-gray-900 font-extrabold'
+													: 'text-gray-700 hover:bg-gray-100',
+											]"
+										>
+											{{ uomData.uom }}
+										</button>
 									</div>
+								</div>
+
+								<!-- Price -->
+								<span class="text-[10px] sm:text-xs font-mono text-gray-400">
+									@ {{ formatCurrency(item.rate) }}
+								</span>
+							</div>
+
+							<!-- Item Total -->
+							<div class="text-end flex-shrink-0 flex flex-col justify-end">
+								<div
+									class="text-xs sm:text-sm font-mono font-bold text-gray-900 leading-none"
+								>
+									{{
+										formatCurrency(
+											item.amount || item.rate * item.quantity
+										)
+									}}
 								</div>
 							</div>
 						</div>
