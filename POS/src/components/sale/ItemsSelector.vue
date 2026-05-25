@@ -402,6 +402,12 @@
 								<p v-if="item.item_code" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
 									{{ item.item_code }}
 								</p>
+								<div v-if="item.barcode" class="flex items-center gap-0.5 text-[13px] sm:text-[13px] font-mono text-gray-800 mt-1 leading-none truncate" :title="item.barcode">
+									<svg class="w-[15px] h-[15px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
+									</svg>
+									<span>{{ item.barcode }}</span>
+								</div>
 							</div>
 							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
 								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700 mt-1">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
@@ -593,6 +599,12 @@
 							</td>
 							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]">
 								<div class="text-xs sm:text-sm font-mono text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
+								<div v-if="item.barcode" class="flex items-center gap-1 text-[10px] sm:text-xs font-mono text-gray-400 mt-1 leading-none truncate" :title="item.barcode">
+									<svg class="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
+									</svg>
+									<span>{{ item.barcode }}</span>
+								</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<div class="text-xs sm:text-sm font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
@@ -908,7 +920,6 @@ const SEARCH_PLACEHOLDERS = Object.freeze({
 	default: __("Search by item code, name, item group or scan barcode"),
 })
 
-
 // Sort configuration
 const BASE_SORT_OPTIONS = Object.freeze([
 	{
@@ -1125,7 +1136,6 @@ function adjustFocusedItemQty(adjustment) {
 		const newQty = Math.max(0, currentQty + adjustment)
 		if (newQty === 0) {
 			cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-			
 		} else {
 			try {
 				cartStore.updateItemQuantity(
@@ -1133,10 +1143,8 @@ function adjustFocusedItemQty(adjustment) {
 					newQty,
 					cartItem.uom,
 				)
-				
 			} catch (error) {
 				showError(error.message || __("Failed to update quantity"))
-				
 			}
 		}
 	} else if (adjustment > 0) {
@@ -1173,7 +1181,9 @@ function navigateItemGroups(direction) {
 	// Scroll active item group button into view smoothly
 	nextTick(() => {
 		requestAnimationFrame(() => {
-			const activeBtn = document.querySelector('button[data-nav="filter"].bg-black')
+			const activeBtn = document.querySelector(
+				'button[data-nav="filter"].bg-black',
+			)
 			activeBtn?.scrollIntoView({ block: "nearest", inline: "nearest" })
 		})
 	})
@@ -1216,7 +1226,7 @@ const cartItemMap = computed(() => {
 
 function getCartItemQty(itemCode) {
 	const item = cartItemMap.value.get(itemCode)
-	return item ? (item.qty || item.quantity || 0) : 0
+	return item ? item.qty || item.quantity || 0 : 0
 }
 
 function removeFocusedItemFromCart() {
@@ -1227,7 +1237,6 @@ function removeFocusedItemFromCart() {
 	if (!cartItem) return
 
 	cartStore.removeItem(focusedItem.item_code, cartItem.uom)
-
 }
 
 function setFocusedItemQty(qty) {
@@ -1237,20 +1246,13 @@ function setFocusedItemQty(qty) {
 	const cartItem = cartItemMap.value.get(focusedItem.item_code)
 	if (cartItem) {
 		try {
-			cartStore.updateItemQuantity(
-				focusedItem.item_code,
-				qty,
-				cartItem.uom,
-			)
-			
+			cartStore.updateItemQuantity(focusedItem.item_code, qty, cartItem.uom)
 		} catch (error) {
 			showError(error.message || __("Failed to update quantity"))
-			
 		}
 	} else {
 		// Route through the same flow as mouse click (POSSale.handleItemSelected)
 		emit("item-selected", focusedItem, false, qty)
-		
 	}
 }
 
@@ -1315,7 +1317,8 @@ function handleNavigationKeys(event) {
 			event.preventDefault()
 			// Focus active or first filter tab
 			const filters = getNavElements("filter")
-			const activeFilter = filters.find((el) => el.classList.contains("bg-black")) || filters[0]
+			const activeFilter =
+				filters.find((el) => el.classList.contains("bg-black")) || filters[0]
 			activeFilter?.focus()
 		} else if (event.key === "ArrowDown") {
 			event.preventDefault()
@@ -1372,7 +1375,8 @@ function handleGlobalKeyDown(event) {
 		}
 		if (event.key === "ArrowUp") {
 			event.preventDefault()
-			focusedSortIndex.value = (focusedSortIndex.value - 1 + totalOptions) % totalOptions
+			focusedSortIndex.value =
+				(focusedSortIndex.value - 1 + totalOptions) % totalOptions
 			return
 		}
 		if (event.key === "Escape") {
@@ -1420,7 +1424,10 @@ function handleGlobalKeyDown(event) {
 			focusedItemIndex.value = 0
 			// Blur active quick action if any
 			const currentActive = document.activeElement
-			if (currentActive && currentActive.getAttribute("data-nav") === "quick-action") {
+			if (
+				currentActive &&
+				currentActive.getAttribute("data-nav") === "quick-action"
+			) {
 				currentActive.blur()
 			}
 			scrollFocusedItemIntoView()
@@ -1503,7 +1510,10 @@ function handleGlobalKeyDown(event) {
 							paginationBtns[0].focus()
 						}
 					} else {
-						focusedItemIndex.value = Math.min(len - 1, focusedItemIndex.value + 1)
+						focusedItemIndex.value = Math.min(
+							len - 1,
+							focusedItemIndex.value + 1,
+						)
 					}
 				} else if (event.key === "ArrowUp") {
 					if (focusedItemIndex.value === 0) {
@@ -1548,7 +1558,7 @@ function handleGlobalKeyDown(event) {
 
 		if (/^[1-9]$/.test(event.key)) {
 			event.preventDefault()
-			const qty = parseInt(event.key, 10)
+			const qty = Number.parseInt(event.key, 10)
 			setFocusedItemQty(qty)
 			return
 		}
@@ -1626,7 +1636,6 @@ onMounted(() => {
 	nextTick(() => {
 		if (!isAnyDialogOpen.value) focusSearchInput()
 	})
-
 })
 
 onUnmounted(() => {
@@ -1683,7 +1692,10 @@ function focusItemForKeyboard(index) {
 	if (searchInputRef.value) searchInputRef.value.blur()
 	// Blur active quick action if any
 	const currentActive = document.activeElement
-	if (currentActive && currentActive.getAttribute("data-nav") === "quick-action") {
+	if (
+		currentActive &&
+		currentActive.getAttribute("data-nav") === "quick-action"
+	) {
 		currentActive.blur()
 	}
 	nextTick(() => {
@@ -1693,13 +1705,14 @@ function focusItemForKeyboard(index) {
 
 function handleQuickActionFocus(event) {
 	const activeEl = event.target
-	if (activeEl && activeEl.getAttribute && activeEl.getAttribute("data-nav") === "quick-action") {
+	if (
+		activeEl &&
+		activeEl.getAttribute &&
+		activeEl.getAttribute("data-nav") === "quick-action"
+	) {
 		focusedItemIndex.value = -1
 	}
 }
-
-
-
 
 // Long press handler for stock badge/info icon
 // Short tap = select item (with validation), Long press = show warehouse availability
@@ -1761,13 +1774,13 @@ function selectItem(item, autoAdd = false) {
 					item.warehouse || "",
 				]),
 			)
-			
+
 			return false
 		}
 	}
 
 	emit("item-selected", item, autoAdd)
-	
+
 	return true
 }
 
@@ -1921,7 +1934,9 @@ watch(showSortDropdown, (isOpen) => {
 		if (!sortBy.value) {
 			focusedSortIndex.value = 0
 		} else {
-			const idx = sortOptions.value.findIndex((opt) => opt.field === sortBy.value)
+			const idx = sortOptions.value.findIndex(
+				(opt) => opt.field === sortBy.value,
+			)
 			focusedSortIndex.value = idx !== -1 ? idx + 1 : 0
 		}
 	} else {
