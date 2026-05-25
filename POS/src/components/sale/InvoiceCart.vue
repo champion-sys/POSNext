@@ -712,6 +712,7 @@
 					<button
 						type="button"
 						@click="$emit('create-customer', '')"
+						data-nav="quick-action"
 						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('Create new customer')"
 					>
@@ -739,6 +740,7 @@
 					<button
 						type="button"
 						@click="isCloseShiftAllowed ? $emit('close-shift') : null"
+						data-nav="quick-action"
 						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white transition-colors touch-manipulation group rounded-none"
 						:class="isCloseShiftAllowed
 							? 'hover:bg-orange-50/40 active:bg-orange-100 cursor-pointer'
@@ -2311,14 +2313,23 @@ function handleGlobalShortcutKeyDown(event) {
 				}
 				return
 			}
-			if (event.key === "ArrowRight" || event.key === "+") {
+			const isRtlLayout = typeof document !== "undefined" && document.documentElement.dir === "rtl"
+			const isArrowRight = event.key === "ArrowRight"
+			const isArrowLeft = event.key === "ArrowLeft"
+			const isPlus = event.key === "+"
+			const isMinus = event.key === "-"
+
+			const shouldIncrement = (isArrowRight && !isRtlLayout) || (isArrowLeft && isRtlLayout) || isPlus
+			const shouldDecrement = (isArrowLeft && !isRtlLayout) || (isArrowRight && isRtlLayout) || isMinus
+
+			if (shouldIncrement) {
 				event.preventDefault()
 				if (!focusedItem.is_free_item) {
 					incrementQuantity(focusedItem)
 				}
 				return
 			}
-			if (event.key === "ArrowLeft" || event.key === "-") {
+			if (shouldDecrement) {
 				event.preventDefault()
 				if (!focusedItem.is_free_item) {
 					decrementQuantity(focusedItem)
