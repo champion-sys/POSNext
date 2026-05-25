@@ -2,10 +2,10 @@
 	<div class="flex items-center">
 		<button
 			type="button"
-			class="flex items-center gap-2 rounded-none border px-3 py-1.5 text-xs font-bold transition-all duration-75 disabled:opacity-50 touch-manipulation h-10 w-full justify-between"
+			class="flex items-center gap-2 rounded-none border px-3 py-2 text-xs font-bold transition-all duration-75 disabled:opacity-50 touch-manipulation h-10 w-full justify-between"
 			:class="modelValue
-				? 'bg-amber-50 border-black text-amber-900 font-extrabold'
-				: 'bg-white border-black text-gray-700 hover:bg-gray-100'
+				? 'bg-amber-50  text-amber-900 font-extrabold'
+				: 'bg-white text-gray-700 hover:bg-gray-100'
 			"
 			:disabled="disabled"
 			@click="openPicker"

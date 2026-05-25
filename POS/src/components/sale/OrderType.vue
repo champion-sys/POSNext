@@ -1,7 +1,7 @@
 <template>
     <div
         v-if="normalizedOptions.length"
-        class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white border border-black rounded-none p-0 shadow-none w-full"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white rounded-none p-0 shadow-none w-full"
         role="group"
         :aria-label="label"
     >
@@ -9,16 +9,16 @@
             {{ __(label) }}
         </p> -->
 
-        <div class="flex items-stretch bg-gray-0 rounded-none p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div class="flex items-stretch bg-gray-0 rounded-none p-0.5 w-full sm:w-auto min-w-0 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden gap-1.5">
             <button
                 v-for="opt in normalizedOptions"
                 :key="opt.value"
                 type="button"
-                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-2.5 text-xs font-extrabold uppercase tracking-wider rounded-none transition-all duration-75 touch-manipulation snap-center flex items-center justify-center gap-1.5"
+                class="flex-1 shrink-0 min-w-fit whitespace-nowrap px-3.5 py-2.5 text-xs font-bold uppercase tracking-wider transition-all duration-75 touch-manipulation snap-center flex items-center justify-center gap-1.5 rounded-none "
                 :class="
                     opt.value === modelValue
-                        ? 'bg-black text-white font-bold'
-                        : 'text-gray-900 bg-white hover:bg-gray-100 border border-transparent'
+                        ? 'bg-black text-white '
+                        : 'bg-gray-200 text-gray-900 bg-white hover:bg-gray-100 border border-transparent'
                 "
                 :aria-pressed="opt.value === modelValue"
                 @click="selectOption(opt.value)"

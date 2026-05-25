@@ -64,45 +64,46 @@
 <template>
 	<div class="flex flex-col h-full bg-white">
 		<!-- Header with Customer -->
-		<div class="px-2.5 py-2 border-b border-gray-400 bg-gray-200">
+		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0.5 flex items-center gap-2 w-full">
+			<div class="flex-1 min-w-0">
+				<OrderType
+					data-testid="pos-order-type-no-customer"
+					:label="__('Order Type')"
+					:pos-profile="posProfile"
+					v-model="orderTypeModel"
+				/>
+			</div>
+			<transition
+				enter-active-class="transition-all duration-300 ease-out"
+				enter-from-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+				enter-to-class="transform translate-x-0 opacity-100 max-w-[200px]"
+				leave-active-class="transition-all duration-200 ease-in"
+				leave-from-class="transform translate-x-0 opacity-100 max-w-[200px]"
+				leave-to-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
+			>
+				<div v-if="showTableSelector" class="w-48 shrink-0 overflow-hidden">
+					<TableSelector
+						v-model="tableModel"
+						:order-type="orderTypeModel"
+						:disabled="!orderTypeModel"
+					/>
+				</div>
+			</transition>
+		</div>
+		<div class="px-2 py-2 border-b border-gray-400 bg-gray-200">
 			<!-- Inline Customer Search/Selection -->
 			<div ref="customerSearchContainer" class="relative">
 				<!-- Unified Service Control Panel: Order Type + Table Selector -->
-				<div v-if="showPosOrderType" class="mb-2.5 flex items-center gap-2 w-full">
-					<div class="flex-1 min-w-0">
-						<OrderType
-							data-testid="pos-order-type-no-customer"
-							:label="__('Order Type')"
-							:pos-profile="posProfile"
-							v-model="orderTypeModel"
-						/>
-					</div>
-					<transition
-						enter-active-class="transition-all duration-300 ease-out"
-						enter-from-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
-						enter-to-class="transform translate-x-0 opacity-100 max-w-[200px]"
-						leave-active-class="transition-all duration-200 ease-in"
-						leave-from-class="transform translate-x-0 opacity-100 max-w-[200px]"
-						leave-to-class="transform translate-x-4 opacity-0 max-w-0 pointer-events-none"
-					>
-						<div v-if="showTableSelector" class="w-48 shrink-0 overflow-hidden">
-							<TableSelector
-								v-model="tableModel"
-								:order-type="orderTypeModel"
-								:disabled="!orderTypeModel"
-							/>
-						</div>
-					</transition>
-				</div>
+				
 
 				<div v-if="customer">
 					<!-- Two Cards Layout: Customer Card + Document Type Card -->
 					<div class="flex items-stretch gap-2">
 						<!-- Customer Card -->
-						<div class="flex-1 flex items-center gap-1.5 bg-white border border-black rounded-none p-1.5 min-w-0">
+						<div class="flex-1 flex items-center gap-1.5 bg-white  rounded-none p-1.5 min-w-0">
 							<!-- Customer Avatar & Info -->
 							<div class="flex items-center gap-2 min-w-0 flex-1 px-1.5 py-1">
-								<div class="w-8 h-8 bg-black rounded-none flex items-center justify-center flex-shrink-0">
+								<div class="w-8 h-8 bg-black rounded-sm flex items-center justify-center flex-shrink-0">
 									<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 									</svg>
@@ -229,7 +230,7 @@
 								@blur="handleSearchBlur"
 								type="text"
 								:placeholder="__('Search or add customer...')"
-								class="w-full h-10 ps-9 pe-3 text-xs border border-black rounded-none bg-white focus:outline-none focus:border-blue-600 shadow-none transition-all"
+								class="w-full h-[40px] ps-9 pe-3 text-xs rounded-none bg-white focus:outline-none focus:border-blue-600 shadow-none transition-all border border-white"
 								:disabled="!customersLoaded"
 								@keydown="handleKeydown"
 								autocomplete="off"
@@ -241,7 +242,7 @@
 						<button
 							type="button"
 							@click="createNewCustomer"
-							class="flex items-center justify-center w-10 h-10 bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-none text-white border border-black transition-colors touch-manipulation flex-shrink-0"
+							class="flex items-center justify-center w-10 h-10 bg-black hover:bg-black active:bg-black rounded-none text-white border border-black transition-colors touch-manipulation flex-shrink-0"
 							:title="__('Create new customer')"
 							:aria-label="__('Create new customer')"
 						>
@@ -327,9 +328,9 @@
 							]"
 						>
 							<div
-								class="w-6 h-6 bg-black rounded-none flex items-center justify-center flex-shrink-0 pointer-events-none"
+								class="w-6 h-6 bg-black rounded-sm flex items-center justify-center flex-shrink-0 pointer-events-none"
 							>
-								<span class="text-[10px] font-bold text-white">{{
+								<span class="text-[10px] pt-1 font-bold text-white">{{
 									getInitials(cust.customer_name)
 								}}</span>
 							</div>
