@@ -13,6 +13,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 	const allCustomers = ref([])
 	const searchTerm = ref("")
 	const loading = ref(false)
+	const customersLoaded = ref(false)
 	const selectedIndex = ref(-1)
 	const recentSearches = ref([])
 	const frequentCustomers = ref([])
@@ -222,7 +223,10 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 
 			// Step 2: If online, fetch delta from server
 			if (!isOffline()) {
-				const lastSync = forceReload ? null : localStorage.getItem(CUSTOMERS_SYNC_KEY)
+				const shouldFetchFullList = forceReload || allCustomers.value.length === 0
+				const lastSync = shouldFetchFullList
+					? null
+					: localStorage.getItem(CUSTOMERS_SYNC_KEY)
 
 				const response = await call("pos_next.api.customers.get_customers", {
 					pos_profile: posProfile,
@@ -277,6 +281,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 				allCustomers.value = []
 			}
 		} finally {
+			customersLoaded.value = true
 			loading.value = false
 		}
 	}
@@ -401,6 +406,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 		allCustomers,
 		searchTerm,
 		loading,
+		customersLoaded,
 		selectedIndex,
 		recentSearches,
 		frequentCustomers,

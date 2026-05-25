@@ -1266,7 +1266,7 @@ import { FeatherIcon } from "frappe-ui"
 
 const log = logger.create("InvoiceCart")
 import { createResource } from "frappe-ui"
-import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from "vue"
+import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect, nextTick } from "vue"
 import EditItemDialog from "./EditItemDialog.vue"
 import OrderType from "./OrderType.vue"
 import TableSelector from "./TableSelector.vue"
@@ -1407,8 +1407,25 @@ const customerSearchContainer = ref(null) // Ref to search container for click-o
 const customerSearchFocused = ref(false) // Track if search input is focused
 // Use Pinia store for allCustomers (shared with CustomerDialog, synced on customer creation)
 const allCustomers = computed(() => customerSearchStore.allCustomers)
+// Sticky loaded flag: becomes true as soon as customers are available and never
+// resets to false — removing a selected customer must not re-disable the field.
+const _customersEverLoaded = ref(customerSearchStore.allCustomers.length > 0)
+watchEffect(() => {
+	if (
+		customerSearchStore.customersLoaded ||
+		customerSearchStore.allCustomers.length > 0
+	) {
+		_customersEverLoaded.value = true
+	}
+})
+/**
+ * True once the customer list has been populated for the first time.
+ * Used for the search icon/spinner toggle AND for the input disabled state.
+ * Deliberately sticky so that removing a customer never re-shows the spinner
+ * or re-disables the input.
+ */
 const customersLoaded = computed(
-	() => customerSearchStore.allCustomers.length > 0,
+	() => customerSearchStore.customersLoaded || _customersEverLoaded.value,
 )
 const selectedIndex = ref(-1) // Keyboard navigation index for search results
 const availableGiftCards = ref([]) // Available gift cards for current customer
@@ -1506,9 +1523,15 @@ const cartSortContainer = ref(null)
  * New customers are immediately available after creation without page refresh.
  */
 // Load customers via the shared Pinia store (if not already loaded)
-if (props.posProfile) {
-	customerSearchStore.loadAllCustomers(props.posProfile)
-}
+watch(
+	() => props.posProfile,
+	(posProfile) => {
+		if (posProfile) {
+			customerSearchStore.loadAllCustomers(posProfile)
+		}
+	},
+	{ immediate: true },
+)
 
 // Load offers on component init (uses shared store method to prevent duplicate fetches)
 // ensureOffersFetched handles both online/offline cases and caching
@@ -1800,10 +1823,26 @@ async function removeCustomer() {
  */
 async function clearCustomer() {
 	emit("select-customer", null)
+	customerSearch.value = ""
+	selectedIndex.value = -1
+	if (!customerHistoryLoaded.value) {
+		customerSearchStore.loadCustomerHistory()
+		customerHistoryLoaded.value = true
+	}
+
+	// Wait two ticks: first for prop update, second for DOM to switch from
+	// customer-card (v-if="customer") to search-input (v-else) branch.
+	if (props.posProfile && customerSearchStore.allCustomers.length === 0) {
+		customerSearchStore.loadAllCustomers(props.posProfile, true)
+	}
+
 	await nextTick()
+	await nextTick()
+	customerSearchFocused.value = true
 	const searchInput = document.getElementById("cart-customer-search")
 	if (searchInput) {
 		searchInput.focus()
+		searchInput.select()
 	}
 }
 
@@ -2195,6 +2234,34 @@ function scrollFocusedCartItemIntoView() {
 
 function handleGlobalShortcutKeyDown(event) {
 	const activeEl = document.activeElement
+
+	// ── Focus-switching shortcuts must fire even when another input is active ──
+	// Handle Alt+C (focus customer search) and F6 before the isTyping guard so
+	// they always work regardless of which element currently has focus.
+	if (event.altKey && event.key.toLowerCase() === "c") {
+		event.preventDefault()
+		const input = document.getElementById("cart-customer-search")
+		if (input) {
+			input.focus()
+			input.select()
+		} else {
+			// Customer card is displayed — remove customer to reveal search field
+			removeCustomer()
+		}
+		return
+	}
+	if (!event.altKey && event.key === "F6") {
+		event.preventDefault()
+		const input = document.getElementById("cart-customer-search")
+		if (input) {
+			input.focus()
+			input.select()
+		} else {
+			removeCustomer()
+		}
+		return
+	}
+
 	const isTyping =
 		activeEl &&
 		(activeEl.tagName === "TEXTAREA" ||
@@ -2220,14 +2287,9 @@ function handleGlobalShortcutKeyDown(event) {
 
 	// 1. Global Actions (both empty and non-empty cart)
 	if (event.altKey) {
+		// NOTE: Alt+C and F6 are already handled above the isTyping guard
 		if (key === "c") {
-			event.preventDefault()
-			const input = document.getElementById("cart-customer-search")
-			if (input) {
-				input.focus()
-				input.select()
-			}
-			return
+			return // Already handled
 		}
 		if (key === "g") {
 			event.preventDefault()
@@ -2261,13 +2323,7 @@ function handleGlobalShortcutKeyDown(event) {
 	} else {
 		// Function keys
 		if (event.key === "F6") {
-			event.preventDefault()
-			const input = document.getElementById("cart-customer-search")
-			if (input) {
-				input.focus()
-				input.select()
-			}
-			return
+			return // Already handled above the isTyping guard
 		}
 		if (event.key === "F7") {
 			event.preventDefault()
