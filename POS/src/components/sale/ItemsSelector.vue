@@ -604,7 +604,7 @@
 								</div>
 							</td>
 							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]" v-if="settingsStore.displayItemCode">
-								<div class="text-xs sm:text-sm font-mono text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
+								<div class="text-xs sm:text-sm font-mono text-gray-800 truncate" :title="item.item_code">{{ item.item_code }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<div class="text-xs sm:text-sm font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
@@ -634,7 +634,7 @@
 								</span>
 							</td>
 							<td class="hidden md:table-cell px-2 sm:px-3 py-2 whitespace-nowrap md:w-[80px]">
-								<div class="text-xs sm:text-sm text-gray-500">{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</div>
+								<div class="text-xs sm:text-sm text-gray-800">{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</div>
 							</td>
 						</tr>
 						<!-- Loading More Indicator Row -->
