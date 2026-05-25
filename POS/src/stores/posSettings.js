@@ -1,7 +1,8 @@
 import { createResource } from "frappe-ui"
 import { defineStore } from "pinia"
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import { useBootstrapStore } from "./bootstrap"
+import { setCurrencyPrecision } from "@/utils/currency"
 
 export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// State
@@ -74,7 +75,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		custom_hide_stock_quantity: 0,
 		allow_print_previous_invoices: 0,
 		allow_print_last_invoice: 0,
-		role_allowed_to_access_settings_in_pos: null
+		role_allowed_to_access_settings_in_pos: null,
 	})
 
 	const isLoading = ref(false)
@@ -84,12 +85,10 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const enableLoyaltyProgram = computed(() =>
 		Boolean(settings.value.enable_loyalty_program),
 	)
-	const defaultLoyaltyProgram = computed(() =>
-		settings.value.default_loyalty_program || "",
+	const defaultLoyaltyProgram = computed(
+		() => settings.value.default_loyalty_program || "",
 	)
-	const walletAccount = computed(() =>
-		settings.value.wallet_account || "",
-	)
+	const walletAccount = computed(() => settings.value.wallet_account || "")
 	const autoCreateWallet = computed(() =>
 		Boolean(settings.value.auto_create_wallet),
 	)
@@ -138,32 +137,26 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const defaultCardView = computed(() =>
 		Boolean(settings.value.default_card_view),
 	)
-	const displayBarcode = computed(() =>
-		Boolean(settings.value.display_barcode),
-	)
+	const displayBarcode = computed(() => Boolean(settings.value.display_barcode))
 	const displayItemCode = computed(() =>
 		Boolean(settings.value.display_item_code),
 	)
 	const showCustomerBalance = computed(() =>
 		Boolean(settings.value.show_customer_balance),
 	)
-	const showOffers = computed(() =>
-		Boolean(settings.value.custom_show_offers),
-	)
+	const showOffers = computed(() => Boolean(settings.value.custom_show_offers))
 	const hideQuantity = computed(() =>
 		Boolean(settings.value.custom_hide_stock_quantity),
 	)
 
-	const roleAllowedToAccessSettingsInPos = computed(() =>
-		settings.value.role_allowed_to_access_settings_in_pos,
+	const roleAllowedToAccessSettingsInPos = computed(
+		() => settings.value.role_allowed_to_access_settings_in_pos,
 	)
 
 	const allowPrintPreviousInvoices = computed(() =>
 		Boolean(settings.value.allow_print_previous_invoices),
 	)
-	const showCoupon = computed(() =>
-		Boolean(settings.value.custom_show_coupon),
-	)
+	const showCoupon = computed(() => Boolean(settings.value.custom_show_coupon))
 
 	const hideExpectedAmount = computed(() =>
 		Boolean(settings.value.hide_expected_amount),
@@ -201,6 +194,17 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// Computed - Pricing & Display
 	const decimalPrecision = computed(
 		() => Number.parseInt(settings.value.decimal_precision) || 2,
+	)
+
+	// Watch decimalPrecision and update currency precision dynamically in utility
+	watch(
+		decimalPrecision,
+		(newPrecision) => {
+			if (newPrecision !== undefined && newPrecision !== null) {
+				setCurrencyPrecision(newPrecision)
+			}
+		},
+		{ immediate: true },
 	)
 
 	// Computed - Customer Settings
@@ -250,17 +254,17 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 
 	// Computed - Sales Persons
-	const enableSalesPersons = computed(() =>
-		settings.value.enable_sales_persons !== "Disabled"
+	const enableSalesPersons = computed(
+		() => settings.value.enable_sales_persons !== "Disabled",
 	)
-	const salesPersonsMode = computed(() =>
-		settings.value.enable_sales_persons || "Disabled"
+	const salesPersonsMode = computed(
+		() => settings.value.enable_sales_persons || "Disabled",
 	)
-	const isSingleSalesPerson = computed(() =>
-		settings.value.enable_sales_persons === "Single"
+	const isSingleSalesPerson = computed(
+		() => settings.value.enable_sales_persons === "Single",
 	)
-	const isMultipleSalesPersons = computed(() =>
-		settings.value.enable_sales_persons === "Multiple"
+	const isMultipleSalesPersons = computed(
+		() => settings.value.enable_sales_persons === "Multiple",
 	)
 
 	// Computed - Security

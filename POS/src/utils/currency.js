@@ -30,6 +30,15 @@ export function initPrecision(data) {
 	_formatterCache.clear()
 }
 
+/** Set currency precision dynamically */
+export function setCurrencyPrecision(precision) {
+	const parsed = Number.parseInt(precision)
+	if (!Number.isNaN(parsed)) {
+		settings.currency = parsed
+		_formatterCache.clear()
+	}
+}
+
 /** Get current settings */
 export function getPrecision() {
 	return { ...settings }
