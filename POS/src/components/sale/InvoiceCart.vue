@@ -1133,80 +1133,56 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div class="p-1.5 sm:p-2 bg-white font-mono">
-			<!-- Summary Details -->
-			<div v-if="items.length > 0" class="mb-1.5">
-				<div class="flex items-center justify-between text-xs text-gray-600 mb-0.5 font-mono">
-					<span class="font-bold uppercase text-gray-700">{{ __("Total Quantity") }}</span>
-					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
+		<div v-if="items.length > 0" class="p-3 bg-white border-t border-black font-mono select-none">
+			<!-- Summary Details Table -->
+			<div class="flex flex-col gap-1.5 text-[11px] sm:text-xs text-gray-600 mb-3">
+				<!-- Total Qty Row -->
+				<div class="flex items-center justify-between">
+					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Total Qty") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatQuantity(totalQuantity)
 					}}</span>
 				</div>
-				<div class="flex items-center justify-between text-xs text-gray-600 font-mono">
-					<span class="font-bold uppercase text-gray-700">{{ __("Subtotal") }}</span>
-					<span class="font-bold text-gray-900 text-center min-w-[60px]">{{
+				
+				<!-- Subtotal Row -->
+				<div class="flex items-center justify-between">
+					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Subtotal") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatCurrency(displaySubtotal)
 					}}</span>
 				</div>
-			</div>
 
-			<!-- Summary Details (continued) -->
-			<div v-if="items.length > 0" class="mb-1.5">
-				<!-- Discount Display - Highlighted -->
+				<!-- Discount Row (if any) -->
 				<div
 					v-if="discountAmount > 0"
-					class="flex items-center justify-between mb-0.5 bg-red-50 border border-black rounded-none px-1.5 py-1 -mx-0.5 font-mono"
+					class="flex items-center justify-between text-red-600 font-semibold"
 				>
-					<div class="flex items-center gap-1">
-						<svg
-							class="w-3.5 h-3.5 text-red-600"
-							fill="currentColor"
-							viewBox="0 0 20 20"
-						>
-							<path
-								fill-rule="evenodd"
-								d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-						<span class="text-xs font-bold text-red-700 uppercase">{{ __("Discount") }}</span>
-					</div>
-					<span class="text-sm font-extrabold text-red-600 text-center min-w-[60px] font-mono">{{
+					<span class="uppercase tracking-wider flex items-center gap-1">
+						<span class="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse"></span>
+						{{ __("Discount") }}
+					</span>
+					<span class="font-bold text-end font-mono">-{{
 						formatCurrency(discountAmount)
 					}}</span>
 				</div>
 
-				<div class="flex items-center justify-between text-xs text-gray-600 font-mono">
-					<div class="flex items-center gap-1">
-						<svg
-							class="w-3.5 h-3.5 text-gray-500"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								stroke-width="2"
-								d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-							/>
-						</svg>
-						<span class="font-bold uppercase text-gray-700">{{ __("Tax") }}</span>
-					</div>
-					<span class="font-bold text-gray-900 text-center min-w-[60px] font-mono">{{
+				<!-- Tax Row -->
+				<div class="flex items-center justify-between">
+					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Tax") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatCurrency(taxAmount)
 					}}</span>
 				</div>
 			</div>
 
-			<!-- Grand Total -->
-			<div class="bg-blue-50 border-2 border-black rounded-none p-3 mb-1.5 font-mono">
-				<div class="flex items-center justify-between">
-					<span class="text-sm font-extrabold text-gray-900 uppercase tracking-wider">{{
-						__("Grand Total")
+			<!-- Grand Total Line -->
+			<div class="border-t border-black pt-3.5 pb-1 mb-3.5">
+				<div class="flex items-baseline justify-between">
+					<span class="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-widest">{{
+						__("Total to Pay")
 					}}</span>
 					<span
-						class="text-lg sm:text-xl font-extrabold text-blue-600 text-center min-w-[60px] font-mono"
+						class="text-xl sm:text-2xl font-black text-black text-end font-mono tracking-tight"
 					>
 						{{ formatCurrency(displayGrandTotal) }}
 					</span>
@@ -1214,26 +1190,26 @@
 			</div>
 
 			<!-- Action Buttons -->
-			<div class="flex gap-1.5">
-				<!-- Checkout Button (Primary - 50% width) -->
+			<div class="flex gap-2">
+				<!-- Checkout Button (Primary) -->
 				<button
 					type="button"
 					@click="handleProceedToPayment"
 					:disabled="items.length === 0"
 					:class="[
-						'flex-1 py-3 px-4 rounded-none font-bold text-xs text-white transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-wider',
+						'flex-1 py-3.5 px-4 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
 						items.length === 0
-							? 'bg-gray-300 border-gray-400 text-gray-500 cursor-not-allowed shadow-none'
-							: 'bg-black text-white hover:bg-gray-800 active:bg-black',
+							? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed shadow-none'
+							: 'bg-black text-white hover:bg-gray-900 active:bg-black',
 					]"
 					:aria-label="__('Proceed to payment')"
 				>
 					<svg
-						class="w-4 h-4 me-1.5"
+						class="w-4 h-4 me-2 flex-shrink-0"
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
-						stroke-width="2"
+						stroke-width="2.5"
 					>
 						<path
 							stroke-linecap="round"
@@ -1244,20 +1220,19 @@
 					<span>{{ __("Checkout") }}</span>
 				</button>
 
-				<!-- Hold Order Button (Secondary - 50% width) -->
+				<!-- Hold Order Button (Secondary) -->
 				<button
 					type="button"
-					v-if="items.length > 0"
 					@click="$emit('save-draft')"
-					class="flex-1 py-3 px-3 rounded-none font-bold text-xs text-orange-700 bg-orange-50 border border-black hover:bg-orange-100 active:bg-orange-200 transition-all touch-manipulation flex items-center justify-center uppercase tracking-wider"
+					class="flex-1 py-3.5 px-4 rounded-none font-black text-xs text-orange-600 bg-white border border-black hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
 					:aria-label="__('Hold order as draft')"
 				>
 					<svg
-						class="w-4 h-4 me-1.5"
+						class="w-4 h-4 me-2 flex-shrink-0"
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
-						stroke-width="2"
+						stroke-width="2.5"
 					>
 						<path
 							stroke-linecap="round"
@@ -1265,7 +1240,7 @@
 							d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
 						/>
 					</svg>
-					<span>{{ __("Hold", null, "order") }}</span>
+					<span>{{ __("Hold") }}</span>
 				</button>
 			</div>
 		</div>
