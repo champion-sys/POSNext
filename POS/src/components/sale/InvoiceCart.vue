@@ -677,12 +677,15 @@
 
 					<!-- Return Invoice -->
 					<button
-						v-if="settingsStore.allowReturn"
 						type="button"
-						@click="$emit('show-return')"
+						@click="settingsStore.allowReturn ? $emit('show-return') : null"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-red-50/40 active:bg-red-100 transition-colors touch-manipulation group rounded-none"
-						:title="__('Process return invoice')"
+						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white transition-colors touch-manipulation group rounded-none"
+						:class="settingsStore.allowReturn
+							? 'hover:bg-red-50/40 active:bg-red-100 cursor-pointer'
+							: 'opacity-40 cursor-not-allowed'
+						"
+						:title="settingsStore.allowReturn ? __('Process return invoice') : __('Return operations restricted for this profile')"
 					>
 						<kbd class="absolute top-1 right-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-red-500 bg-red-50 border border-red-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+R</kbd>
 						<div class="text-red-600 mb-1.5 flex justify-center items-center">
