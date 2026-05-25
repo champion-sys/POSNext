@@ -202,7 +202,7 @@
 							>
 								<svg
 									v-if="customersLoaded"
-									class="w-4 h-4 text-gray-400"
+									class="w-4 h-4 text-gray-600"
 									fill="none"
 									stroke="currentColor"
 									viewBox="0 0 24 24"
@@ -391,10 +391,10 @@
 		</div>
 
 		<!-- Action Buttons Section -->
-		<div v-if="items.length > 0" class="px-3 py-2">
+		<div v-if="items.length > 0" class="px-3 py-2 bg-gray-200">
 			<div class="flex items-center justify-between mb-0">
 				<h2 class="text-xs font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
-				<div class="flex items-center gap-1">
+				<div class="flex items-center gap-2">
 					<!-- Clear Cart Button -->
 					<button
 						@click="$emit('clear-cart')"
@@ -452,7 +452,7 @@
 										type="button"
 									>
 										<span class="flex items-center gap-2.5">
-											<svg class="w-4 h-4 text-gray-400 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<svg class="w-4 h-4 text-gray-600 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
 											</svg>
 											<span>{{ __('No Sorting') }}</span>
@@ -473,7 +473,7 @@
 										type="button"
 									>
 										<span class="flex items-center gap-2.5">
-											<svg class="w-4 h-4 text-gray-400 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+											<svg class="w-4 h-4 text-gray-600 group-hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="option.icon"/>
 											</svg>
 											<span>{{ option.label }}</span>
@@ -776,7 +776,7 @@
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
 					@click="item.is_free_item ? null : openEditDialog(item)"
 					:class="[
-						'p-3 transition-all duration-75 flex gap-3 cursor-pointer group select-none',
+						'p-3 transition-all items-center duration-75 flex gap-3 cursor-pointer group select-none',
 						item.is_free_item
 							? 'bg-green-50/30 cursor-default'
 							: 'bg-white hover:bg-gray-50/50'
@@ -784,15 +784,15 @@
 				>
 					<!-- Item Image Thumbnail -->
 					<div
-						class="w-10 h-10 sm:w-12 sm:h-12 bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
+						class="w-12 h-12 sm:w-12 sm:h-12 bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
 					>
 						<img
 							v-if="item.image"
 							:src="item.image"
 							:alt="item.item_name"
 							loading="lazy"
-							width="48"
-							height="48"
+							width="52"
+							height="52"
 							decoding="async"
 							class="w-full h-full object-cover"
 						/>
@@ -815,13 +815,13 @@
 					<!-- Item Content -->
 					<div class="flex-1 min-w-0 flex flex-col justify-between">
 						<!-- Header: Item Name, Badges & Delete -->
-						<div class="flex items-start justify-between gap-2 mb-1">
+						<div class="flex items-start justify-between gap-2 mb-0">
 							<div class="flex flex-col min-w-0 flex-1">
 								<div class="flex items-baseline gap-1.5 flex-wrap">
 									<h4 class="text-xs sm:text-[13px] font-bold text-gray-900 truncate leading-tight">
 										{{ item.item_name }}
 									</h4>
-									<span v-if="item.item_code" class="text-[9px] font-semibold text-gray-400 font-mono">
+									<span v-if="item.item_code" class="text-[9px] font-semibold text-gray-600 font-mono">
 										#{{ item.item_code }}
 									</span>
 								</div>
@@ -855,7 +855,7 @@
 								v-if="!item.is_free_item"
 								type="button"
 								@click.stop="$emit('remove-item', item.item_code, item.uom)"
-								class="text-gray-400 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 p-0.5 -mt-0.5 touch-manipulation"
+								class="text-gray-600 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 p-0.5 -mt-0.5 touch-manipulation"
 								:aria-label="__('Remove {0}', [item.item_name])"
 								:title="__('Remove item')"
 							>
@@ -927,7 +927,7 @@
 										:class="[
 											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-black',
 											item.is_resolved_barcode
-												? 'bg-gray-50 text-gray-400 cursor-not-allowed border-amber-200'
+												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
 										]"
 										:aria-label="__('Decrease quantity')"
@@ -972,7 +972,7 @@
 										:class="[
 											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-black',
 											item.is_resolved_barcode
-												? 'bg-gray-50 text-gray-400 cursor-not-allowed border-amber-200'
+												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
 										]"
 										:aria-label="__('Increase quantity')"
@@ -1008,7 +1008,7 @@
 												? 'bg-amber-50 text-amber-700 border border-amber-300 cursor-not-allowed'
 												: item.item_uoms && item.item_uoms.length > 0
 													? 'bg-white hover:bg-gray-50 text-gray-900 border border-black cursor-pointer'
-													: 'bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed opacity-60',
+													: 'bg-gray-50 text-gray-600 border border-gray-200 cursor-not-allowed opacity-60',
 										]"
 										:title="
 											item.is_resolved_barcode
@@ -1034,7 +1034,7 @@
 												? 'text-amber-600'
 												: item.item_uoms && item.item_uoms.length > 0
 													? 'text-gray-900'
-													: 'text-gray-400',
+													: 'text-gray-600',
 										]"
 										fill="none"
 										stroke="currentColor"
@@ -1086,7 +1086,7 @@
 								</div>
 
 								<!-- Price -->
-								<span class="text-[10px] sm:text-xs font-mono text-gray-400">
+								<span class="text-[10px] sm:text-xs font-mono text-gray-600">
 									@ {{ formatCurrency(item.rate) }}
 								</span>
 							</div>
@@ -1094,7 +1094,7 @@
 							<!-- Item Total -->
 							<div class="text-end flex-shrink-0 flex flex-col justify-end">
 								<div
-									class="text-xs sm:text-sm font-mono font-bold text-gray-900 leading-none"
+									class="text-xs sm:text-sm font-mono !font-bold text-gray-900 leading-none"
 								>
 									{{
 										formatCurrency(
@@ -1110,7 +1110,7 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div v-if="items.length > 0" class="p-3 bg-white  font-mono select-none">
+		<div v-if="items.length > 0" class="p-3 bg-white  font-mono select-none border-t border-gray-300">
 			<!-- Summary Details Table -->
 			<div class="flex flex-col gap-1.5 !text-[14px] sm:text-xs text-gray-900 mb-3">
 				<!-- Total Qty Row -->
@@ -1176,7 +1176,7 @@
 					:class="[
 						'flex-1 py-3.5 px-4 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
 						items.length === 0
-							? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed shadow-none'
+							? 'bg-gray-100 border-gray-300 text-gray-600 cursor-not-allowed shadow-none'
 							: 'bg-black text-white hover:bg-gray-900 active:bg-black',
 					]"
 					:aria-label="__('Proceed to payment')"
