@@ -561,7 +561,7 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100 -mt-[5%]">
 			<div
 				v-if="items.length === 0"
 				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto"
@@ -1133,12 +1133,12 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div v-if="items.length > 0" class="p-3 bg-white border-t border-black font-mono select-none">
+		<div v-if="items.length > 0" class="p-3 bg-white  font-mono select-none">
 			<!-- Summary Details Table -->
-			<div class="flex flex-col gap-1.5 text-[11px] sm:text-xs text-gray-600 mb-3">
+			<div class="flex flex-col gap-1.5 !text-[14px] sm:text-xs text-gray-900 mb-3">
 				<!-- Total Qty Row -->
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Total Qty") }}</span>
+					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Total Qty") }}</span>
 					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatQuantity(totalQuantity)
 					}}</span>
@@ -1146,7 +1146,7 @@
 				
 				<!-- Subtotal Row -->
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Subtotal") }}</span>
+					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Subtotal") }}</span>
 					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatCurrency(displaySubtotal)
 					}}</span>
@@ -1168,7 +1168,7 @@
 
 				<!-- Tax Row -->
 				<div class="flex items-center justify-between">
-					<span class="text-gray-500 uppercase tracking-wider font-semibold">{{ __("Tax") }}</span>
+					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Tax") }}</span>
 					<span class="text-gray-900 font-bold text-end font-mono">{{
 						formatCurrency(taxAmount)
 					}}</span>
@@ -1178,11 +1178,11 @@
 			<!-- Grand Total Line -->
 			<div class="border-t border-black pt-3.5 pb-1 mb-3.5">
 				<div class="flex items-baseline justify-between">
-					<span class="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-widest">{{
+					<span class="text-[14px] !font-bold text-gray-900 uppercase tracking-wider font-bold">{{
 						__("Total to Pay")
 					}}</span>
 					<span
-						class="text-xl sm:text-2xl font-black text-black text-end font-mono tracking-tight"
+						class="text-2xl !font-bold text-black text-end font-mono tracking-tight"
 					>
 						{{ formatCurrency(displayGrandTotal) }}
 					</span>
