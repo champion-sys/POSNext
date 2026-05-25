@@ -921,10 +921,9 @@
 						<Button
 							variant="solid"
 							theme="blue"
-								v-if="posSettingsStore.allowPrintLastInvoice"
 							@click="
 								() => {
-									handlePrintInvoice({ name: uiStore.lastInvoiceName });
+									handlePrintInvoice({ name: uiStore.lastInvoiceName }, true);
 									uiStore.showSuccessDialog = false;
 								}
 							"
@@ -2169,9 +2168,9 @@ async function handlePaymentCompleted(paymentData) {
 				draftsStore.deleteDraft(draftIdToDelete);
 			}
 
-			if (posSettingsStore.allowPrintLastInvoice && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
+			if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
 				try {
-					await handlePrintInvoice({ name: offlineReceiptName });
+					await handlePrintInvoice({ name: offlineReceiptName }, true);
 					showSuccess(
 						__("Invoice {0} saved offline and sent to printer — will sync when online", [
 							offlineReceiptName,
@@ -2240,9 +2239,11 @@ async function handlePaymentCompleted(paymentData) {
 					log.debug("Background invoice cache refresh failed:", err)
 				);
 
-			if (posSettingsStore.allowPrintLastInvoice && (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint)) {
+				uiStore.lastInvoiceName = invoiceName;
+
+			if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
 					try {
-						await handlePrintInvoice({ name: invoiceName });
+						await handlePrintInvoice({ name: invoiceName }, true);
 						showSuccess(__("Invoice {0} created and sent to printer", [invoiceName]));
 					} catch (error) {
 						log.error("Auto-print error:", error);
@@ -2964,7 +2965,9 @@ function handleViewInvoice(invoice) {
 }
 
 // Centralized print handler - uses printInvoice.js utilities
-async function handlePrintInvoice(invoiceData) {
+// isCheckout=true bypasses history print restrictions (allowPrintLastInvoice /
+// allowPrintPreviousInvoices) — those settings only apply to history dialogs.
+async function handlePrintInvoice(invoiceData, isCheckout = false) {
 	try {
 		invoiceData = await hydrateLocalOnlyInvoice(invoiceData || {});
 		const offlineSnapshot = uiStore.lastOfflinePrintDoc;
@@ -2982,13 +2985,16 @@ async function handlePrintInvoice(invoiceData) {
 				invoiceName && lastInvoiceName && invoiceName === lastInvoiceName,
 			);
 
-			if (isLastInvoice && !posSettingsStore.allowPrintLastInvoice) {
-				showWarning(__("Printing the last invoice is disabled in POS Settings"));
-				return;
-			}
-			if (!isLastInvoice && !posSettingsStore.allowPrintPreviousInvoices) {
-				showWarning(__("Printing previous invoices is disabled in POS Settings"));
-				return;
+			// History-dialog restrictions — skipped entirely during checkout
+			if (!isCheckout) {
+				if (isLastInvoice && !posSettingsStore.allowPrintLastInvoice) {
+					showWarning(__("Printing the last invoice is disabled in POS Settings"));
+					return;
+				}
+				if (!isLastInvoice && !posSettingsStore.allowPrintPreviousInvoices) {
+					showWarning(__("Printing previous invoices is disabled in POS Settings"));
+					return;
+				}
 			}
 
 		// Silent print path — send directly to thermal printer via QZ Tray
