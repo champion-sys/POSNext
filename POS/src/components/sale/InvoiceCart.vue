@@ -1735,7 +1735,15 @@ const customerHistoryLoaded = ref(false)
 /**
  * Handle search input focus - shows frequent customers dropdown.
  */
+function announceCustomerSearchActive() {
+	focusedCartItemIndex.value = -1
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(new CustomEvent("pos-next:customer-search-active"))
+	}
+}
+
 function handleSearchFocus() {
+	announceCustomerSearchActive()
 	customerSearchFocused.value = true
 	// Load customer history only once per session for faster subsequent focuses
 	if (!customerHistoryLoaded.value) {
@@ -1765,19 +1773,32 @@ function handleSearchBlur() {
  * @param {KeyboardEvent} event - Keyboard event from search input
  */
 function handleKeydown(event) {
-	if (customerResults.value.length === 0) return
+	const customerNavigationKeys = ["ArrowDown", "ArrowUp", "Enter", "Escape"]
+	if (customerNavigationKeys.includes(event.key)) {
+		event.stopPropagation()
+	}
+
+	if (customerResults.value.length === 0) {
+		if (event.key === "Enter") {
+			event.preventDefault()
+		}
+		return
+	}
 
 	if (event.key === "ArrowDown") {
 		event.preventDefault()
+		announceCustomerSearchActive()
 		selectedIndex.value = Math.min(
 			selectedIndex.value + 1,
 			customerResults.value.length - 1,
 		)
 	} else if (event.key === "ArrowUp") {
 		event.preventDefault()
+		announceCustomerSearchActive()
 		selectedIndex.value = Math.max(selectedIndex.value - 1, -1)
 	} else if (event.key === "Enter") {
 		event.preventDefault()
+		announceCustomerSearchActive()
 		if (
 			selectedIndex.value >= 0 &&
 			selectedIndex.value < customerResults.value.length
@@ -1788,6 +1809,7 @@ function handleKeydown(event) {
 			selectCustomer(customerResults.value[0])
 		}
 	} else if (event.key === "Escape") {
+		announceCustomerSearchActive()
 		customerSearch.value = ""
 	}
 }

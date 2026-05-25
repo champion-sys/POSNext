@@ -1371,6 +1371,10 @@ function handleNavigationKeys(event) {
 	}
 }
 
+function handleCustomerSearchActive() {
+	focusedItemIndex.value = -1
+}
+
 function handleGlobalKeyDown(event) {
 	if (isAnyDialogOpen.value) return
 
@@ -1650,6 +1654,7 @@ onMounted(() => {
 
 	// Add global keydown listener for keyboard shortcuts
 	window.addEventListener("keydown", handleGlobalKeyDown)
+	window.addEventListener("pos-next:customer-search-active", handleCustomerSearchActive)
 
 	// Reset focused item index when any quick action card gets focus or is clicked
 	document.addEventListener("focusin", handleQuickActionFocus)
@@ -1685,6 +1690,7 @@ onUnmounted(() => {
 
 	// Remove global keydown listener
 	window.removeEventListener("keydown", handleGlobalKeyDown)
+	window.removeEventListener("pos-next:customer-search-active", handleCustomerSearchActive)
 
 	// Remove global quick action listeners
 	document.removeEventListener("focusin", handleQuickActionFocus)
