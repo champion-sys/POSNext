@@ -91,7 +91,7 @@
 							@click="toggleBarcodeScanner"
 							data-nav="search-bar"
 							:class="[
-								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
+								'w-[39px] h-[39px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
 								scannerEnabled
 									? 'bg-green-500 hover:bg-green-700 text-white border-green-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
@@ -107,7 +107,7 @@
 							@click="toggleAutoAdd"
 							data-nav="search-bar"
 							:class="[
-								'w-[40px] h-[40px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
+								'w-[39px] h-[39px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
 								autoAddEnabled
 									? 'bg-blue-500 hover:bg-blue-500 text-white border-blue-500 text-blue-500'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
