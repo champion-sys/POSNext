@@ -297,7 +297,7 @@
 						@mousedown="focusItemForKeyboard(index)"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50 aspect-square',
+							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50 flex flex-col h-full',
 							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset transform scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
@@ -394,7 +394,7 @@
 						</div>
  
 						<!-- Item Details -->
-						<div class="min-w-0 flex flex-col justify-between pt-0.5">
+						<div class="min-w-0 flex flex-col justify-between pt-0.5 flex-1">
 							<div>
 								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight">
 									{{ item.item_name }}
