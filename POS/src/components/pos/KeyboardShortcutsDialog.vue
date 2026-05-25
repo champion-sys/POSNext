@@ -156,6 +156,56 @@ const sections = computed(() => [
 		],
 	},
 	{
+		title: __("Shopping Cart"),
+		items: [
+			{
+				action: __("Focus customer search"),
+				keys: ["Alt", "C"],
+				join: "+",
+				usage: __("Focuses the customer search input (also works with F6)."),
+			},
+			{
+				action: __("Focus cart items list"),
+				keys: ["Alt", "G"],
+				join: "+",
+				usage: __("Highlights the first cart item to navigate with keys (also works with F7)."),
+			},
+			{
+				action: __("Checkout / Pay"),
+				keys: ["Alt", "Enter"],
+				join: "+",
+				usage: __("Proceeds to checkout payment dialog when items are in the cart (also works with F8)."),
+			},
+			{
+				action: __("Hold order"),
+				keys: ["Alt", "X"],
+				join: "+",
+				usage: __("Holds the current order as draft when items are in the cart (also works with F9)."),
+			},
+			{
+				action: __("Clear cart"),
+				keys: ["Alt", "Backspace"],
+				join: "+",
+				usage: __("Clears all items in the cart (also works with Alt + Delete)."),
+			},
+			{
+				action: __("Navigate cart items"),
+				keys: ["↑", "↓"],
+				usage: __("Moves highlight between cart items when list is focused."),
+			},
+			{
+				action: __("Increase/decrease cart item quantity"),
+				keys: ["→", "←"],
+				usage: __("Increases or decreases quantity for the highlighted cart item (also works with + and -)."),
+			},
+			{
+				action: __("Remove highlighted item"),
+				keys: ["Delete"],
+				usage: __("Removes the highlighted item from the cart (also works with Backspace)."),
+			},
+		],
+	},
+	{
 		title: __("Filters & view"),
 		items: [
 			{
@@ -212,6 +262,26 @@ const sections = computed(() => [
 				action: __("Focus Quick Actions"),
 				keys: ["F4"],
 				usage: __("Alternative to Alt+Q."),
+			},
+			{
+				action: __("Focus customer search"),
+				keys: ["F6"],
+				usage: __("Alternative to Alt+C."),
+			},
+			{
+				action: __("Focus cart items list"),
+				keys: ["F7"],
+				usage: __("Alternative to Alt+G."),
+			},
+			{
+				action: __("Checkout / Pay"),
+				keys: ["F8"],
+				usage: __("Alternative to Alt+Enter."),
+			},
+			{
+				action: __("Hold order"),
+				keys: ["F9"],
+				usage: __("Alternative to Alt+X."),
 			},
 		],
 	},

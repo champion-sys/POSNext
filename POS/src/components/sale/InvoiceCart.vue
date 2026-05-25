@@ -774,9 +774,13 @@
 				<div
 					v-for="(item, index) in sortedItems"
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
-					@click="item.is_free_item ? null : openEditDialog(item)"
+					ref="cartItemRefs"
+					@click.stop="handleCartItemRowClick(item, index)"
 					:class="[
-						'p-3 transition-all items-center duration-75 flex gap-3 cursor-pointer group select-none',
+						'cart-item-row p-3 transition-all items-center duration-75 flex gap-3 cursor-pointer group select-none border-l-4',
+						index === focusedCartItemIndex
+							? 'bg-gray-100/90 border-l-black font-semibold pl-2.5 shadow-sm'
+							: 'border-l-transparent',
 						item.is_free_item
 							? 'bg-green-50/30 cursor-default'
 							: 'bg-white hover:bg-gray-50/50'
@@ -1411,6 +1415,8 @@ const previousCustomer = ref(null) // Store previous customer for restore on blu
 // Edit item dialog state
 const showEditDialog = ref(false) // Controls edit dialog visibility
 const selectedItem = ref(null) // Item being edited
+const focusedCartItemIndex = ref(-1) // Tracks highlighted cart item index for keyboard shortcuts
+const cartItemRefs = ref([]) // Array of DOM element refs for cart item rows
 
 // UOM dropdown state - tracks which item's UOM dropdown is open (by item_code)
 const openUomDropdown = ref(null)
@@ -2014,8 +2020,24 @@ async function selectUom(item, newUom) {
  * @param {Object} item - Cart item to edit
  */
 function openEditDialog(item) {
+	const idx = sortedItems.value.findIndex(
+		(i) => i.item_code === item.item_code && i.uom === item.uom
+	)
+	if (idx !== -1) {
+		focusedCartItemIndex.value = idx
+	}
 	selectedItem.value = { ...item }
 	showEditDialog.value = true
+}
+
+/**
+ * Handle clicking a cart item row: highlights the item and opens edit dialog (unless free).
+ */
+function handleCartItemRowClick(item, index) {
+	focusedCartItemIndex.value = index
+	if (!item.is_free_item) {
+		openEditDialog(item)
+	}
 }
 
 /**
@@ -2090,6 +2112,14 @@ function handleOutsideClick(event) {
 	) {
 		showCartSortDropdown.value = false
 	}
+
+	// Close cart item focus if clicking outside the items list
+	if (focusedCartItemIndex.value !== -1) {
+		const clickedInsideCartItem = target instanceof Element && target.closest(".cart-item-row")
+		if (!clickedInsideCartItem) {
+			focusedCartItemIndex.value = -1
+		}
+	}
 }
 
 function getQuickActionButtons() {
@@ -2134,6 +2164,15 @@ function handleQuickActionKeyDown(event) {
 	buttons[nextIndex]?.focus()
 }
 
+function scrollFocusedCartItemIntoView() {
+	nextTick(() => {
+		const el = cartItemRefs.value[focusedCartItemIndex.value]
+		if (el) {
+			el.scrollIntoView({ block: "nearest", behavior: "smooth" })
+		}
+	})
+}
+
 function handleGlobalShortcutKeyDown(event) {
 	const activeEl = document.activeElement
 	const isTyping =
@@ -2146,7 +2185,151 @@ function handleGlobalShortcutKeyDown(event) {
 
 	if (isTyping) return
 
-	// Only trigger when cart is empty
+	const key = event.key.toLowerCase()
+
+	// 1. Global Actions (both empty and non-empty cart)
+	if (event.altKey) {
+		if (key === "c") {
+			event.preventDefault()
+			const input = document.getElementById("cart-customer-search")
+			if (input) {
+				input.focus()
+				input.select()
+			}
+			return
+		}
+		if (key === "g") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				focusedCartItemIndex.value = 0
+				scrollFocusedCartItemIntoView()
+			}
+			return
+		}
+		if (key === "enter") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				handleProceedToPayment()
+			}
+			return
+		}
+		if (key === "x") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				emit("save-draft")
+			}
+			return
+		}
+		if (key === "backspace" || key === "delete") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				emit("clear-cart")
+			}
+			return
+		}
+	} else {
+		// Function keys
+		if (event.key === "F6") {
+			event.preventDefault()
+			const input = document.getElementById("cart-customer-search")
+			if (input) {
+				input.focus()
+				input.select()
+			}
+			return
+		}
+		if (event.key === "F7") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				focusedCartItemIndex.value = 0
+				scrollFocusedCartItemIntoView()
+			}
+			return
+		}
+		if (event.key === "F8") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				handleProceedToPayment()
+			}
+			return
+		}
+		if (event.key === "F9") {
+			event.preventDefault()
+			if (props.items && props.items.length > 0) {
+				emit("save-draft")
+			}
+			return
+		}
+	}
+
+	// 2. Active highlighted Cart Item Controls
+	if (focusedCartItemIndex.value !== -1 && props.items && props.items.length > 0) {
+		const focusedItem = sortedItems.value[focusedCartItemIndex.value]
+		if (focusedItem) {
+			if (event.key === "ArrowUp") {
+				event.preventDefault()
+				if (focusedCartItemIndex.value > 0) {
+					focusedCartItemIndex.value--
+					scrollFocusedCartItemIntoView()
+				}
+				return
+			}
+			if (event.key === "ArrowDown") {
+				event.preventDefault()
+				if (focusedCartItemIndex.value < sortedItems.value.length - 1) {
+					focusedCartItemIndex.value++
+					scrollFocusedCartItemIntoView()
+				}
+				return
+			}
+			if (event.key === "ArrowRight" || event.key === "+") {
+				event.preventDefault()
+				if (!focusedItem.is_free_item) {
+					incrementQuantity(focusedItem)
+				}
+				return
+			}
+			if (event.key === "ArrowLeft" || event.key === "-") {
+				event.preventDefault()
+				if (!focusedItem.is_free_item) {
+					decrementQuantity(focusedItem)
+				}
+				return
+			}
+			if (event.key === "Delete" || event.key === "Backspace") {
+				event.preventDefault()
+				if (!focusedItem.is_free_item) {
+					emit("remove-item", focusedItem.item_code, focusedItem.uom)
+					// Adjust focus index if removed last item
+					if (focusedCartItemIndex.value >= sortedItems.value.length - 1) {
+						focusedCartItemIndex.value = Math.max(-1, sortedItems.value.length - 2)
+					}
+				}
+				return
+			}
+			if (event.key === "Enter") {
+				event.preventDefault()
+				if (!focusedItem.is_free_item) {
+					openEditDialog(focusedItem)
+				}
+				return
+			}
+			if (event.key.toLowerCase() === "u" || event.key === " ") {
+				event.preventDefault()
+				if (!focusedItem.is_resolved_barcode && focusedItem.item_uoms && focusedItem.item_uoms.length > 0) {
+					toggleUomDropdown(focusedItem.item_code, focusedItem.uom)
+				}
+				return
+			}
+			if (event.key === "Escape") {
+				event.preventDefault()
+				focusedCartItemIndex.value = -1
+				return
+			}
+		}
+	}
+
+	// 3. Only trigger when cart is empty
 	if (props.items && props.items.length === 0) {
 		if (event.altKey) {
 			const key = event.key.toLowerCase()
@@ -2182,10 +2365,10 @@ function handleGlobalShortcutKeyDown(event) {
 			buttons[0]?.focus()
 			return
 		}
-	}
 
-	// Arrow keys navigation when quick action button is focused
-	handleQuickActionKeyDown(event)
+		// Arrow keys navigation when quick action button is focused
+		handleQuickActionKeyDown(event)
+	}
 }
 
 /**
