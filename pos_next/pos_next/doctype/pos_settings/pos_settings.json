@@ -37,6 +37,7 @@
   "show_customer_balance",
   "column_break_display",
   "hide_expected_amount",
+  "display_barcode",
   "display_discount_percentage",
   "display_discount_amount",
   "show_variants_as_items",
@@ -575,11 +576,18 @@
    "fieldtype": "Link",
    "label": "Closing to Mode of Payment",
    "options": "Mode of Payment"
+  },
+  {
+   "default": "0",
+   "description": "Display barcode in UI",
+   "fieldname": "display_barcode",
+   "fieldtype": "Check",
+   "label": "Display Barcode"
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-25 00:05:27.344384",
+ "modified": "2026-05-25 20:02:11.356782",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

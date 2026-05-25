@@ -284,6 +284,7 @@ export const usePOSEventsStore = defineStore('posEvents', () => {
 		// Display settings changes
 		const displayFields = [
 			'default_card_view',
+			'display_barcode',
 			'display_item_code',
 			'show_customer_balance',
 			'hide_expected_amount',

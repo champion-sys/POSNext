@@ -399,10 +399,10 @@
 								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight">
 									{{ item.item_name }}
 								</h3>
-								<p v-if="item.item_code" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
+								<p v-if="item.item_code && settingsStore.displayItemCode" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
 									{{ item.item_code }}
 								</p>
-								<div v-if="item.barcode" class="flex items-center gap-0.5 text-[13px] sm:text-[13px] font-mono text-gray-800 mt-1 leading-none truncate" :title="item.barcode">
+								<div v-if="item.barcode && settingsStore.displayBarcode" class="flex items-center gap-0.5 text-[13px] sm:text-[13px] font-mono text-gray-800 mt-1 leading-none truncate" :title="item.barcode">
 									<svg class="w-[15px] h-[15px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
 									</svg>
@@ -411,7 +411,7 @@
 							</div>
 							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
 								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700 mt-1">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
-								<span class="text-[8px] sm:text-[9px] font-medium text-gray-400 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
+								<span class="text-[8px] sm:text-[9px] font-bold text-gray-700 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</div>
 						</div>
 					</div>
@@ -539,7 +539,7 @@
 						<tr>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[50px] sm:w-[60px]">{{ __('Image') }}</th>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{{ __('Name') }}</th>
-							<th scope="col" class="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]">{{ __('Code') }}</th>
+							<th scope="col" class="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]" v-if="settingsStore.displayItemCode">{{ __('Code') }}</th>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]">{{ __('Rate') }}</th>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">{{ __('Qty') }}</th>
 							<th scope="col" class="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 md:w-[80px]">{{ __('UOM') }}</th>
@@ -596,15 +596,15 @@
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">
 									{{ Object.values(item.attributes).join(' / ') }}
 								</div>
-							</td>
-							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]">
-								<div class="text-xs sm:text-sm font-mono text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
-								<div v-if="item.barcode" class="flex items-center gap-1 text-[10px] sm:text-xs font-mono text-gray-400 mt-1 leading-none truncate" :title="item.barcode">
-									<svg class="w-3 h-3 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+								<div v-if="item.barcode && settingsStore.displayBarcode" class="flex items-center gap-0.5 text-[10px] sm:text-xs font-mono text-gray-800 mt-1 leading-none truncate" :title="item.barcode">
+									<svg class="w-[15px] h-[15px] flex-shrink-0 text-gray-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
 									</svg>
 									<span>{{ item.barcode }}</span>
 								</div>
+							</td>
+							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]" v-if="settingsStore.displayItemCode">
+								<div class="text-xs sm:text-sm font-mono text-gray-500 truncate" :title="item.item_code">{{ item.item_code }}</div>
 							</td>
 							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
 								<div class="text-xs sm:text-sm font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>

@@ -29,6 +29,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		use_exact_amount: 0,
 		// Display Settings
 		default_card_view: 0,
+		display_barcode: 0,
 		display_item_code: 0,
 		show_customer_balance: 0,
 		custom_show_offers: 0,
@@ -136,6 +137,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// Computed - Display Settings
 	const defaultCardView = computed(() =>
 		Boolean(settings.value.default_card_view),
+	)
+	const displayBarcode = computed(() =>
+		Boolean(settings.value.display_barcode),
 	)
 	const displayItemCode = computed(() =>
 		Boolean(settings.value.display_item_code),
@@ -338,6 +342,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_partial_payment: 0,
 			use_exact_amount: 0,
 			default_card_view: 0,
+			display_barcode: 0,
 			display_item_code: 0,
 			show_customer_balance: 0,
 			custom_show_offers: 0,
@@ -455,6 +460,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 
 		// Computed - Display Settings
 		defaultCardView,
+		displayBarcode,
 		displayItemCode,
 		showCustomerBalance,
 		showOffers,
