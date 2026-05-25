@@ -105,8 +105,8 @@ class CustomSalesInvoice(SalesInvoice):
 						self.get_gl_dict(
 							{
 								"account": payment_mode.account,
-								"party_type": party_type,
-								"party": party,
+								"party_type": "Mode of Payment",
+								"party": payment_mode.mode_of_payment,
 								"against": self.customer,
 								"debit": payment_mode.base_amount,
 								"debit_in_account_currency": payment_mode.base_amount
