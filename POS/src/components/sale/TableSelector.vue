@@ -19,7 +19,7 @@
 					<path d="M9 7v8" />
 					<path d="M15 7v8" />
 				</svg>
-				<span :class="modelValue ? 'text-amber-800' : 'text-gray-900'">{{ __('Table') }}</span>
+				<span :class="modelValue ? 'text-amber-800' : 'text-gray-900'">{{ __('Table No') }}</span>
 			</span>
 			
 			<span class="flex items-center gap-1">
