@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="bg-white shadow-sm sticky top-0 z-[200]"
+		class="bg-white border-b border-black sticky top-0 z-[200]"
 	>
 		<div class="flex py-0 h-[40px] sm:py-1 items-center">
 			<!-- Main Header Content -->
@@ -8,13 +8,6 @@
 				<!-- Left Side: Brand Info -->
 				<div class="flex items-center gap-1 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
 					<div class="min-w-0 flex-shrink overflow-hidden">
-						<!-- <div class="flex items-center gap-1 sm:gap-1.5">
-							<h1 class="text-xs sm:text-sm !font-bold text-gray-900 truncate flex-shrink">{{ 'POS Next' }}</h1>
-							<span class="hidden sm:inline-flex relative items-center px-1 sm:px-1.5 py-px text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md shadow-sm hover:shadow-md transition-shadow flex-shrink-0">
-								<span class="absolute inset-0 bg-white/20 rounded-md animate-pulse"></span>
-								<span class="relative">v{{ appVersion }}</span>
-							</span>
-						</div> -->
 						<p v-if="profileName" class="text-[8px] sm:text-[10px] text-gray-600 truncate hidden sm:block mt-0">{{ profileName }}</p>
 					</div>
 
@@ -51,7 +44,7 @@
 					<button
 						@click="$emit('sync-click')"
 						:class="[
-							'p-1 sm:p-1.5 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative group touch-manipulation',
+							'p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors relative group touch-manipulation text-gray-600 hover:text-gray-900',
 							isSyncing ? 'animate-pulse' : ''
 						]"
 						:title="isOffline ? __('Offline ({0} pending)', [pendingInvoicesCount]) : __('Online - Click to sync')"
@@ -76,7 +69,7 @@
 						</svg>
 						<span
 							v-if="pendingInvoicesCount > 0"
-							class="absolute -top-1 -end-1 bg-orange-600 text-white text-[8px] font-bold rounded-full w-4 h-4 flex items-center justify-center shadow-sm"
+							class="absolute -top-1 -end-1 bg-orange-600 text-white text-[8px] font-bold rounded-none w-4 h-4 flex items-center justify-center border border-white"
 						>
 							{{ pendingInvoicesCount }}
 						</span>
@@ -87,7 +80,7 @@
 						<button
 							@click="showCacheTooltip = !showCacheTooltip"
 							@blur="handleBlur"
-							class="p-1 sm:p-1.5 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors relative touch-manipulation"
+							class="p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900"
 							:aria-label="getCacheAriaLabel()"
 						>
 							<svg
@@ -112,7 +105,7 @@
 							<!-- Sync progress badge (visible during sync) -->
 							<span
 								v-if="cacheSyncing && cacheStats?.items > 0"
-								class="absolute -bottom-0.5 -end-0.5 bg-orange-500 text-white text-[7px] font-black rounded-full px-0.5 min-w-[14px] h-3.5 flex items-center justify-center shadow-md animate-pulse"
+								class="absolute -bottom-0.5 -end-0.5 bg-orange-500 text-white text-[7px] font-black rounded-none px-0.5 min-w-[14px] h-3.5 flex items-center justify-center border border-white animate-pulse"
 								:title="__('Syncing: {0} items', [formatNumber(cacheStats.items)])"
 							>
 								{{ formatCompactNumber(cacheStats.items) }}
@@ -123,71 +116,68 @@
 						<div
 							v-if="showCacheTooltip"
 							@mousedown.prevent
-							class="absolute top-full mt-2 z-[999] w-[90vw] max-w-[240px] sm:max-w-[260px]"
+							class="absolute top-full mt-1.5 z-[999] w-[90vw] max-w-[240px] sm:max-w-[260px]"
 							:style="{ left: '50%', transform: 'translateX(-50%)' }"
 						>
-							<div class="bg-gray-900 text-white text-xs rounded-lg shadow-xl py-2 px-2.5 sm:px-3">
+							<div class="bg-white text-gray-900 text-xs rounded-none border border-black shadow-md py-2 px-2.5 sm:px-3">
 								<!-- Arrow -->
 								<div class="absolute bottom-full mb-px left-1/2 -translate-x-1/2"
 								>
-									<div class="border-[5px] sm:border-4 border-transparent border-b-gray-900"></div>
+									<div class="border-[5px] sm:border-4 border-transparent border-b-black"></div>
 								</div>
 
 								<!-- Header -->
-								<div class="flex items-center justify-between mb-1.5 sm:mb-2 pb-1.5 sm:pb-2 border-b border-gray-700">
-									<span class="font-semibold text-[11px] sm:text-xs">{{ __('Cache') }}</span>
-									<span class="px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase" :class="getCacheStatusBadgeClass()">
+								<div class="flex items-center justify-between mb-1.5 sm:mb-2 pb-1.5 sm:pb-2 border-b border-black">
+									<span class="font-bold text-[11px] sm:text-xs uppercase tracking-wider">{{ __('Cache') }}</span>
+									<span class="px-1.5 sm:px-2 py-0.5 rounded-none text-[9px] sm:text-[10px] font-bold uppercase border" :class="getCacheStatusBadgeClass()">
 										{{ getCacheStatus() }}
 									</span>
 								</div>
 
 								<!-- Sync Progress Banner (shown during sync) -->
-								<div v-if="cacheSyncing" class="mb-2 p-2 bg-orange-500/20 rounded-lg">
+								<div v-if="cacheSyncing" class="mb-2 p-2 bg-orange-50 border border-orange-600 text-orange-900">
 									<div class="flex items-center gap-2 mb-1.5">
-										<svg class="w-4 h-4 animate-spin text-orange-400" fill="none" viewBox="0 0 24 24">
+										<svg class="w-4 h-4 animate-spin text-orange-600" fill="none" viewBox="0 0 24 24">
 											<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 											<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 										</svg>
-										<span class="text-orange-300 font-semibold text-[11px]">{{ __('Syncing for offline...') }}</span>
+										<span class="text-orange-800 font-bold text-[11px] uppercase">{{ __('Syncing...') }}</span>
 									</div>
 									<div class="text-center">
-										<span class="text-white font-bold text-lg">{{ formatNumber(cacheStats?.items || 0) }}</span>
-										<span class="text-gray-400 text-[10px] ms-1">{{ __('items cached') }}</span>
-									</div>
-									<div class="mt-1.5 text-[9px] text-gray-400 text-center">
-										{{ __('Barcode scanning works for cached items') }}
+										<span class="text-orange-950 font-bold text-lg">{{ formatNumber(cacheStats?.items || 0) }}</span>
+										<span class="text-orange-800 text-[10px] ms-1">{{ __('items cached') }}</span>
 									</div>
 								</div>
 
 								<!-- Stats -->
 								<div class="flex flex-col gap-1 sm:gap-1.5 text-[10px] sm:text-xs">
 									<div class="flex items-center justify-between">
-										<span class="text-gray-400">{{ __('Items:') }}</span>
-										<span class="font-semibold">{{ formatNumber(cacheStats?.items || 0) }}</span>
+										<span class="text-gray-600">{{ __('Items:') }}</span>
+										<span class="font-bold text-gray-900">{{ formatNumber(cacheStats?.items || 0) }}</span>
 									</div>
 									<div v-if="cacheStats?.lastSync" class="flex items-center justify-between">
-										<span class="text-gray-400">{{ __('Last Sync:') }}</span>
-										<span class="font-semibold text-[9px] sm:text-[10px]">{{ formatLastSync() }}</span>
+										<span class="text-gray-600">{{ __('Last Sync:') }}</span>
+										<span class="font-bold text-gray-900 text-[9px] sm:text-[10px]">{{ formatLastSync() }}</span>
 									</div>
 									<div v-if="!cacheSyncing && stockSyncActive" class="flex items-center justify-between">
-										<span class="text-gray-400">{{ __('Auto-Sync:') }}</span>
-										<span class="text-green-400 font-semibold flex items-center gap-1">
-											<div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+										<span class="text-gray-600">{{ __('Auto-Sync:') }}</span>
+										<span class="text-green-700 font-bold flex items-center gap-1">
+											<div class="w-1.5 h-1.5 bg-green-600 rounded-none animate-pulse"></div>
 											{{ __('Active') }}
 										</span>
 									</div>
 								</div>
 
 								<!-- Clear Cache Button -->
-								<div class="mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-gray-700">
+								<div class="mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-black">
 									<button
 										@click="handleClearCacheClick"
 										:disabled="isOffline"
 										:class="[
-											'w-full px-2 py-1.5 sm:py-2 rounded transition-colors font-semibold text-[10px] sm:text-[11px] flex items-center justify-center gap-1.5',
+											'w-full px-2 py-1.5 sm:py-2 rounded-none transition-colors font-bold text-[10px] sm:text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5',
 											isOffline
-												? 'bg-gray-500/20 text-gray-500 cursor-not-allowed'
-												: 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 active:scale-95'
+												? 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+												: 'border border-red-600 text-red-600 hover:bg-red-600 hover:text-white bg-white active:scale-95'
 										]"
 										:title="isOffline ? __('Cannot clear cache while offline') : __('Clear all cached data')"
 									>
@@ -203,33 +193,37 @@
 
 					<!-- Printer - Visible only while shift is open -->
 					<div v-if="hasOpenShift" class="hidden md:block relative">
-						<ActionButton
-							:icon="printerIcon"
+						<button
 							:title="silentPrintEnabled ? (qzConnected ? __('Silent Print: Connected') : __('Silent Print: Disconnected')) : __('Print Invoice')"
 							@click="$emit('printer-click')"
-							size="sm"
-						/>
+							class="p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors group touch-manipulation text-gray-600 hover:text-gray-900"
+						>
+							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" :d="printerIcon" />
+							</svg>
+						</button>
 						<span
 							v-if="silentPrintEnabled"
-							class="absolute top-1 end-1 w-1.5 h-1.5 rounded-full border border-white"
+							class="absolute top-1 end-1 w-1.5 h-1.5 rounded-none border border-white"
 							:class="qzConnected ? 'bg-green-500' : 'bg-red-500'"
 						></span>
 					</div>
 
 					<!-- Refresh -->
-					<ActionButton
-						:icon="refreshIcon"
+					<button
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
 						:class="[
-							'touch-manipulation p-1 sm:p-1.5',
+							'touch-manipulation p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors text-gray-600 hover:text-gray-900 group',
 							isRefreshing ? 'animate-spin' : ''
 						]"
-						size="sm"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
-					/>
+					>
+						<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" :d="refreshIcon" />
+						</svg>
+					</button>
 
-					<div class="w-px h-3 sm:h-4 bg-gray-200 hidden md:block"></div>
 
 					<div class="hidden md:block">
 						<LanguageSwitcher />
@@ -241,7 +235,6 @@
 </template>
 
 <script setup>
-import ActionButton from "@/components/common/ActionButton.vue"
 import StatusBadge from "@/components/common/StatusBadge.vue"
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.vue"
 import { DEFAULT_LOCALE } from "@/utils/currency"
@@ -355,12 +348,12 @@ function getCacheStatus() {
 
 function getCacheStatusBadgeClass() {
 	if (!props.cacheStats || props.cacheStats.items === 0) {
-		return "bg-red-500/20 text-red-300"
+		return "bg-red-50 border-red-600 text-red-700 font-bold"
 	}
 	if (props.cacheSyncing) {
-		return "bg-orange-500/20 text-orange-300"
+		return "bg-orange-50 border-orange-600 text-orange-700 font-bold"
 	}
-	return "bg-green-500/20 text-green-300"
+	return "bg-green-50 border-green-600 text-green-700 font-bold"
 }
 
 function formatLastSync() {
