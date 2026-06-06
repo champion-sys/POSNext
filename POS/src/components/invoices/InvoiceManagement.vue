@@ -589,6 +589,7 @@ const uiStore = usePOSUIStore()
 const props = defineProps({
 	modelValue: Boolean,
 	posProfile: String,
+	posOpeningShift: String,
 	currency: {
 		type: String,
 		default: DEFAULT_CURRENCY,
@@ -862,6 +863,7 @@ async function loadUnpaidInvoices() {
 			"pos_next.api.partial_payments.get_unpaid_invoices",
 			{
 				pos_profile: props.posProfile,
+				pos_opening_shift: props.posOpeningShift,
 				limit: 100,
 			},
 		)

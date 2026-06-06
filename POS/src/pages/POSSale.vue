@@ -669,6 +669,7 @@
 			<InvoiceManagement
 				v-model="showInvoiceManagement"
 				:pos-profile="shiftStore.profileName"
+				:pos-opening-shift="shiftStore.currentShift?.name"
 				:currency="shiftStore.profileCurrency"
 				:history-invoices="invoiceHistoryData"
 				:draft-invoices="draftsStore.drafts"

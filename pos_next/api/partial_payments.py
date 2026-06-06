@@ -571,7 +571,7 @@ def get_partial_paid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIM
 
 
 @frappe.whitelist()
-def get_unpaid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIMIT) -> List[Dict]:
+def get_unpaid_invoices(pos_profile: str, pos_opening_shift: Optional[str] = None, limit: int = DEFAULT_INVOICE_LIMIT) -> List[Dict]:
     """
     Get all unpaid invoices (partial + fully unpaid) for a POS Profile.
 
@@ -582,6 +582,7 @@ def get_unpaid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIMIT) ->
 
     Args:
         pos_profile: POS Profile name
+        pos_opening_shift: Optional name of the opening shift to filter by
         limit: Maximum invoices to return (default 50, max 500)
 
     Returns:
@@ -609,16 +610,26 @@ def get_unpaid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIMIT) ->
     elif limit > MAX_INVOICE_LIMIT:
         limit = MAX_INVOICE_LIMIT
 
+    # Restrict to current shift if custom_allow_access_to_previous_invoices is 0
+    filters = {
+        "pos_profile": pos_profile,
+        "docstatus": 1,
+        "is_pos": 1,
+        "outstanding_amount": [">", 0],
+        "is_return": 0,
+    }
+
+    allow_access = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "custom_allow_access_to_previous_invoices")
+    if allow_access is None:
+        allow_access = 0
+
+    if cint(allow_access) == 0 and pos_opening_shift:
+        filters["posa_pos_opening_shift"] = pos_opening_shift
+
     # Get all unpaid invoices (any invoice with outstanding > 0)
     invoices = frappe.get_all(
         "Sales Invoice",
-        filters={
-            "pos_profile": pos_profile,
-            "docstatus": 1,
-            "is_pos": 1,
-            "outstanding_amount": [">", 0],
-            "is_return": 0,
-        },
+        filters=filters,
         fields=[
             "name",
             "customer",
