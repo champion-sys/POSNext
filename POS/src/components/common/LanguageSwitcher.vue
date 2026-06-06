@@ -31,8 +31,7 @@
 		>
 			<div
 				v-if="isOpen"
-				class="absolute z-50 mt-1.5 w-32 rounded-lg bg-white shadow-lg border border-gray-100 py-1"
-				:class="isRTL ? 'start-0' : 'end-0'"
+				class="absolute z-50 mt-1.5 w-32 rounded-lg bg-white shadow-lg border border-gray-100 py-1 end-0"
 				role="menu"
 			>
 				<div class="px-1 py-0.5">
