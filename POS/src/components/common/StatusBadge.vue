@@ -1,13 +1,28 @@
 <template>
-	<div class="flex items-center gap-2 px-3 py-1.5 rounded-lg border" :class="badgeClasses">
-		<svg v-if="icon" class="w-4 h-4" :class="iconClasses" :fill="iconFill" stroke="currentColor" viewBox="0 0 24 24">
-			<path :stroke-linecap="strokeLinecap" :stroke-linejoin="strokeLinejoin" :stroke-width="strokeWidth" :d="icon"/>
+	<div
+		class="flex items-center gap-1.5 px-2.5 py-1 rounded-sm border transition-all duration-150"
+		:class="[badgeClasses, sizeClasses]"
+	>
+		<svg
+			v-if="icon"
+			class="w-3.5 h-3.5 flex-shrink-0"
+			:class="iconClasses"
+			:fill="iconFill"
+			stroke="currentColor"
+			viewBox="0 0 24 24"
+		>
+			<path
+				:stroke-linecap="strokeLinecap"
+				:stroke-linejoin="strokeLinejoin"
+				:stroke-width="strokeWidth"
+				:d="icon"
+			/>
 		</svg>
-		<div v-if="label || value" :class="textSize">
-			<span v-if="label" class="text-gray-600">{{ label }}</span>
-			<span v-if="value" class="font-semibold text-gray-900" :class="{ 'ms-1': label }">{{ value }}</span>
+		<div v-if="label || value" :class="[textSize, 'flex items-center gap-1']">
+			<span v-if="label" class="text-gray-500 font-medium">{{ label }}</span>
+			<span v-if="value" class="font-bold text-gray-900">{{ value }}</span>
 		</div>
-		<span v-else class="font-semibold text-gray-900" :class="textSize">{{ text }}</span>
+		<span v-else class="font-bold text-gray-900" :class="textSize">{{ text }}</span>
 	</div>
 </template>
 
@@ -62,11 +77,11 @@ const props = defineProps({
 
 const badgeClasses = computed(() => {
 	const variants = {
-		blue: "bg-blue-50 border-blue-100",
-		green: "bg-green-50 border-green-100",
-		orange: "bg-orange-50 border-orange-100",
-		red: "bg-red-50 border-red-100",
-		gray: "bg-gray-50 border-gray-100",
+		blue: "bg-blue-50/40 border-blue-100/80 text-blue-700",
+		green: "bg-green-50/40 border-green-100/80 text-green-700",
+		orange: "bg-orange-50/40 border-orange-100/80 text-orange-700",
+		red: "bg-red-50/40 border-red-100/80 text-red-700",
+		gray: "bg-gray-50/40 border-gray-150 text-gray-700",
 	}
 	return variants[props.variant] || variants.blue
 })
@@ -77,17 +92,27 @@ const iconClasses = computed(() => {
 		green: "text-green-600",
 		orange: "text-orange-600",
 		red: "text-red-600",
-		gray: "text-gray-600",
+		gray: "text-gray-500",
 	}
 	return variants[props.variant] || variants.blue
 })
 
+const sizeClasses = computed(() => {
+	const sizes = {
+		xs: "px-2 py-0.5",
+		sm: "px-2.5 py-1",
+		md: "px-3 py-1.5",
+	}
+	return sizes[props.size] || sizes.sm
+})
+
 const textSize = computed(() => {
 	const sizes = {
-		xs: "text-xs",
-		sm: "text-sm",
-		md: "text-base",
+		xs: "text-[10px] sm:text-xs",
+		sm: "text-xs sm:text-sm",
+		md: "text-sm sm:text-base",
 	}
 	return sizes[props.size] || sizes.sm
 })
 </script>
+

@@ -2,7 +2,7 @@
 	<div
 		class="bg-white shadow-sm sticky top-0 z-[200]"
 	>
-		<div class="flex py-1 sm:py-1 items-center">
+		<div class="flex py-0 h-[40px] sm:py-1 items-center">
 			<!-- Main Header Content -->
 			<div class="flex-1 flex justify-between items-center gap-1 ps-4 pe-2 sm:ps-5 sm:pe-4">
 				<!-- Left Side: Brand Info -->
