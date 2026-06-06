@@ -246,7 +246,7 @@
 												<textarea
 													v-model="localRemarks"
 													rows="2"
-													:placeholder="__('Add notes or special requests for this item...')"
+													:placeholder="__('Add notes or special requests for this item')"
 													class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white placeholder-gray-400"
 												></textarea>
 												</div>

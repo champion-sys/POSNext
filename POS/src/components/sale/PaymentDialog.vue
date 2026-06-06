@@ -431,7 +431,7 @@
 								v-model="remarks"
 								rows="2"
 								class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition-colors"
-								:placeholder="__('Add invoice remarks here...')"
+								:placeholder="__('Add invoice remarks here')"
 							></textarea>
 						</div>
 						<div class="border-t border-gray-200 bg-gray-50 px-3 py-2 space-y-1">
