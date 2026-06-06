@@ -1533,12 +1533,13 @@ def get_invoice(invoice_name):
 
 
 @frappe.whitelist()
-def get_invoices(pos_profile, limit=100):
+def get_invoices(pos_profile, pos_opening_shift=None, limit=100):
 	"""
 	Get list of invoices for a POS Profile.
 
 	Args:
 		pos_profile: POS Profile name
+		pos_opening_shift: Optional name of the opening shift to filter by
 		limit: Maximum number of invoices to return (default 100)
 
 	Returns:
@@ -1556,8 +1557,23 @@ def get_invoices(pos_profile, limit=100):
 	if not has_access and not frappe.has_permission("Sales Invoice", "read"):
 		frappe.throw(_("You don't have access to this POS Profile"))
 
+	# Check if we should restrict to current shift
+	extra_cond = ""
+	query_args = {
+		"pos_profile": pos_profile,
+		"limit": limit
+	}
+
+	allow_access = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "custom_allow_access_to_previous_invoices")
+	if allow_access is None:
+		allow_access = 0
+
+	if cint(allow_access) == 0 and pos_opening_shift:
+		extra_cond = "AND posa_pos_opening_shift = %(pos_opening_shift)s"
+		query_args["pos_opening_shift"] = pos_opening_shift
+
 	# Query for invoices
-	invoices = frappe.db.sql("""
+	invoices = frappe.db.sql(f"""
 		SELECT
 			name,
 			customer,
@@ -1577,14 +1593,12 @@ def get_invoices(pos_profile, limit=100):
 			pos_profile = %(pos_profile)s
 			AND docstatus = 1
 			AND is_pos = 1
+			{extra_cond}
 		ORDER BY
 			posting_date DESC,
 			posting_time DESC
 		LIMIT %(limit)s
-	""", {
-		"pos_profile": pos_profile,
-		"limit": limit
-	}, as_dict=True)
+	""", query_args, as_dict=True)
 
 	# Load items for each invoice for filtering purposes
 	for invoice in invoices:

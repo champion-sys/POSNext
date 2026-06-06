@@ -212,6 +212,7 @@ const invoicesResource = createResource({
 			filters: {
 				is_pos: 1,
 				...(props.posProfile && { pos_profile: props.posProfile }),
+				...(!settingsStore.allowAccessToPreviousInvoices && props.posOpeningShift && { posa_pos_opening_shift: props.posOpeningShift }),
 			},
 			fields: [
 				"name",

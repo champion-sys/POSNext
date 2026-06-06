@@ -2927,6 +2927,7 @@ async function loadInvoiceHistoryData() {
 		// Use custom API from pos_next.api.invoices
 		const result = await call("pos_next.api.invoices.get_invoices", {
 			pos_profile: shiftStore.profileName,
+			pos_opening_shift: shiftStore.currentShift?.name,
 			limit: 100,
 		});
 

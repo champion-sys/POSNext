@@ -75,6 +75,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		custom_hide_stock_quantity: 0,
 		allow_print_previous_invoices: 0,
 		allow_print_last_invoice: 0,
+		custom_allow_access_to_previous_invoices: 0,
 		role_allowed_to_access_settings_in_pos: null,
 	})
 
@@ -219,6 +220,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// Computed - Printing
 	const allowPrintLastInvoice = computed(() =>
 		Boolean(settings.value.allow_print_last_invoice),
+	)
+	const allowAccessToPreviousInvoices = computed(() =>
+		Boolean(settings.value.custom_allow_access_to_previous_invoices),
 	)
 	const silentPrint = computed(() => Boolean(settings.value.silent_print))
 
@@ -366,6 +370,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			allow_duplicate_customer_names: 0,
 			fetch_coupon: 0,
 			allow_print_last_invoice: 0,
+			custom_allow_access_to_previous_invoices: 0,
 			silent_print: 0,
 			use_delivery_charges: 0,
 			auto_set_delivery_charges: 0,
@@ -494,6 +499,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		// Computed - Printing
 		allowPrintLastInvoice,
 		allowPrintPreviousInvoices,
+		allowAccessToPreviousInvoices,
 		silentPrint,
 
 		// Computed - Delivery
