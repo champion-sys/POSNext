@@ -2,7 +2,7 @@
 	<div ref="dropdownRef" class="relative">
 		<button
 			@click="toggleDropdown"
-			class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-60 disabled:cursor-wait"
+			class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-wait touch-manipulation"
 			:class="{ 'flex-row-reverse': isRTL }"
 			:disabled="isChanging"
 			:title="localeConfig.nativeName"
@@ -11,17 +11,13 @@
 				<LoadingIndicator class="w-4 h-4" />
 			</template>
 			<template v-else>
-				<!-- <img
-					:src="localeConfig.flagUrlSvg"
-					:alt="localeConfig.name"
-					class="w-5 h-3.5 sm:w-6 sm:h-4 object-cover rounded-sm shadow-sm"
-				/> -->
-				<span class="hidden sm:inline text-xs sm:text-sm">{{ localeConfig.nativeName }}</span>
+				<span class="hidden sm:inline">{{ localeConfig.nativeName }}</span>
 				<FeatherIcon
 					name="chevron-down"
-					class="w-3 h-3 sm:w-4 sm:h-4 transition-transform text-gray-500"
+					class="w-3 h-3 sm:w-3.5 sm:h-3.5 transition-transform text-gray-500"
 					:class="{ 'rotate-180': isOpen }"
-				/>
+				>
+				</FeatherIcon>
 			</template>
 		</button>
 
@@ -35,35 +31,29 @@
 		>
 			<div
 				v-if="isOpen"
-				class="absolute z-50 mt-2 w-36 rounded-lg bg-white shadow-lg ring-1 ring-black/5"
+				class="absolute z-50 mt-1.5 w-32 rounded-lg bg-white shadow-lg border border-gray-100 py-1"
 				:class="isRTL ? 'start-0' : 'end-0'"
 				role="menu"
 			>
-				<div class="py-1">
+				<div class="px-1 py-0.5">
 					<button
 						v-for="(config, code) in supportedLocales"
 						:key="code"
 						@click="selectLanguage(code)"
-						class="flex items-center w-full px-4 py-2 text-sm transition-colors"
+						class="flex items-center w-full px-2.5 py-1.5 text-xs rounded-md transition-colors"
 						:class="[
-							locale === code ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100',
+							locale === code ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-50',
 							config.dir === 'rtl' ? 'flex-row-reverse' : ''
 						]"
 						role="menuitem"
 					>
-						<!-- <img
-							:src="config.flagUrlSvg"
-							:alt="config.name"
-							class="w-6 h-4 object-cover rounded-sm shadow-sm"
-							:class="config.dir === 'rtl' ? 'ms-3' : 'me-3'"
-						/> -->
 						<span class="flex-1" :class="config.dir === 'rtl' ? 'text-end' : 'text-start'">
 							{{ config.nativeName }}
 						</span>
 						<FeatherIcon
 							v-if="locale === code"
 							name="check"
-							class="w-4 h-4 text-blue-600"
+							class="w-3.5 h-3.5 text-blue-600"
 						/>
 					</button>
 				</div>
