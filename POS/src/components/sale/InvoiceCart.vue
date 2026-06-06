@@ -2338,6 +2338,8 @@ function handleGlobalShortcutKeyDown(event) {
 		}
 		if (key === "backspace" || key === "delete") {
 			event.preventDefault()
+			event.stopPropagation()
+			event.stopImmediatePropagation()
 			if (props.items && props.items.length > 0) {
 				emit("clear-cart")
 			}
