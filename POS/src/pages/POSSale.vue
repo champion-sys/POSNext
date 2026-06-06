@@ -332,25 +332,33 @@
 						role="separator"
 						aria-orientation="vertical"
 						@pointerdown="startResize"
-						class="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize relative flex-shrink-0 transition-[background-color] duration-100 hidden lg:block"
+						class="w-[2px] bg-gray-200 hover:bg-blue-500 cursor-col-resize relative flex-shrink-0 transition-[background-color,width] duration-150 hidden lg:block group"
 						:class="{
-							'bg-blue-500': uiStore.isResizing,
+							'bg-blue-600 !w-[2px]': uiStore.isResizing,
 							'pointer-events-none opacity-0': uiStore.isAnyDialogOpen,
 							'z-[1]': !uiStore.isAnyDialogOpen,
 						}"
 					>
+						<!-- Hover area expansion -->
 						<div
-							class="absolute inset-y-0 -left-2 -right-2"
+							class="absolute inset-y-0 -left-1.5 -right-1.5 z-10"
 							style="cursor: col-resize"
 						></div>
+						<!-- Sleek Grab Handle with Dots -->
 						<div
-							class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1.5 h-12 bg-gray-500 rounded-none border border-gray-600"
+							class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-9 bg-white border border-gray-200 rounded-sm shadow-sm flex flex-col justify-center items-center gap-[3px] cursor-col-resize transition-all duration-150 group-hover:border-blue-400 group-hover:shadow-md z-20"
 							:class="{
-								'bg-blue-600': uiStore.isResizing,
-								'bg-blue-500': !uiStore.isResizing,
+								'!border-blue-600 !shadow-sm': uiStore.isResizing,
 							}"
-							style="transition: background-color 0.1s ease; opacity: 0.9"
-						></div>
+						>
+							<div class="grid grid-cols-1 gap-[3px] opacity-50 group-hover:opacity-100 transition-opacity">
+								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								
+							</div>
+						</div>
 					</div>
 
 					<!-- Right: Invoice Cart (Desktop) / Tab Content (Mobile) -->
