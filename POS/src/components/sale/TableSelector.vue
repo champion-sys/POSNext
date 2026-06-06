@@ -57,7 +57,7 @@
 						<input
 							type="text"
 							v-model="searchQuery"
-							:placeholder="__('Search table number or zone...')"
+							:placeholder="__('Search table number')"
 							class="w-full h-9 ps-9 pe-3 text-xs border border-gray-400 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
 						/>
 					</div>

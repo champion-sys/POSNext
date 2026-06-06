@@ -1485,6 +1485,8 @@ Points applied: {0}. Please pay remaining {1} with {2},تم خصم النقاط:
 "Scan a barcode, search items, or select a quick action below to begin.","امسح الباركود، ابحث عن الأصناف، أو اختر إجراءً سريعاً أدناه للبدء",""
 "New Customer","عميل جديد",""
 "History","السجل",""
+"Search by item code, name, item group or scan barcode","ابحث برمز الصنف، الاسم، أو مجموعة الأصناف أو امسح الباركود",""
+"Search table number","ابحث برقم الطاولة",""
 "Total to Pay","المبلغ المستحق",""
 "Add invoice remarks here","أدخل ملاحظات الفاتورة",""
 "Clear All Drafts?","مسح جميع المسودات؟",""

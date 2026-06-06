@@ -1116,7 +1116,7 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div v-if="items.length > 0" class="p-3 bg-white  font-mono select-none border-t border-gray-300">
+		<div v-if="items.length > 0" class="p-3 bg-white select-none border-t border-gray-300">
 			<!-- Summary Details Table -->
 			<div class="flex flex-col gap-1.5 !text-[14px] sm:text-xs text-gray-900 mb-3">
 				<!-- Total Qty Row -->
