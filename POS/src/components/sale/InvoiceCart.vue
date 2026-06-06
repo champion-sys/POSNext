@@ -1192,7 +1192,7 @@
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
-						stroke-width="2.5"
+						stroke-width="2"
 					>
 						<path
 							stroke-linecap="round"
@@ -1207,7 +1207,7 @@
 				<button
 					type="button"
 					@click="$emit('save-draft')"
-					class="flex-1 py-3.5 px-4 rounded-none font-black text-xs text-orange-600 bg-white border border-black hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
+					class="flex-1 py-3.5 px-4 rounded-none font-black text-xs text-orange-600 bg-white border border-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
 					:aria-label="__('Hold order as draft')"
 				>
 					<svg
@@ -1215,7 +1215,7 @@
 						fill="none"
 						stroke="currentColor"
 						viewBox="0 0 24 24"
-						stroke-width="2.5"
+						stroke-width="2"
 					>
 						<path
 							stroke-linecap="round"
