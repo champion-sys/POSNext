@@ -224,8 +224,8 @@
             </div>
 
             <div class="p-3 md:p-6">
-              <!-- ENTRY MODE: Simple blind input list (when hideExpectedAmount is enabled and not showing report) -->
-              <div v-if="isInEntryMode" class="flex flex-col gap-3 md:gap-4">
+              <!-- ENTRY MODE: Simple blind input list (when hideExpectedAmount is enabled) -->
+              <div v-if="hideExpectedAmount" class="flex flex-col gap-3 md:gap-4">
                 <div
                   v-for="(payment, idx) in closingData.payment_reconciliation"
                   :key="idx"
@@ -252,7 +252,7 @@
                         step="10"
                         min="0"
                         placeholder="0.00"
-                        :disabled="submitResource.loading"
+                        :disabled="showSuccessReport || submitResource.loading"
                         :aria-label="__('Enter actual amount for {0}', [payment.mode_of_payment])"
                         class="text-base md:text-lg text-center font-semibold"
                       />
@@ -695,7 +695,7 @@ function closeDialog() {
 
 // UI State Computed Properties
 const shouldShowSummary = computed(() =>
-	!hideExpectedAmount.value || showSuccessReport.value
+	!hideExpectedAmount.value
 )
 
 const isInEntryMode = computed(() =>
@@ -703,11 +703,11 @@ const isInEntryMode = computed(() =>
 )
 
 const reconciliationMessage = computed(() => {
-	if (isInEntryMode.value) {
-		return 'Enter the actual counted amounts for each payment method'
-	}
 	if (showSuccessReport.value && hideExpectedAmount.value) {
-		return 'Shift closed successfully - Review the final reconciliation below'
+		return 'Shift closed successfully'
+	}
+	if (hideExpectedAmount.value) {
+		return 'Enter the actual counted amounts for each payment method'
 	}
 	return 'Count your cash and enter actual amounts below'
 })
