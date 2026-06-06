@@ -47,7 +47,8 @@ class POSClosingShift(Document):
             
         if pos_profile:
             allowed_role = frappe.db.get_value("POS Profile", pos_profile, "role_allowed_to_closing_shift")
-            if allowed_role and allowed_role not in frappe.get_roles(self.user or frappe.session.user):
+            user_to_check = self.user or frappe.session.user
+            if user_to_check != "Administrator" and allowed_role and allowed_role not in frappe.get_roles(user_to_check):
                 frappe.throw(
                     _("You are not allowed to close this shift. Only users with role '{0}' are allowed.").format(allowed_role),
                     frappe.PermissionError
@@ -78,6 +79,16 @@ class POSClosingShift(Document):
                 _("Selected POS Opening Shift should be open."),
                 title=_("Invalid Opening Entry"),
             )
+            
+        if pos_profile:
+            if not self.closing_to_mode_of_payment:
+                self.closing_to_mode_of_payment = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "closing_to_mode_of_payment")
+                if not self.closing_to_mode_of_payment:
+                    self.closing_to_mode_of_payment = _get_cash_mode_of_payment(pos_profile)
+            
+            if not self.difference_mode_of_payment_account:
+                self.difference_mode_of_payment_account = frappe.db.get_value("POS Profile", pos_profile, "write_off_account")
+
         self.update_payment_reconciliation()
 
     def update_payment_reconciliation(self):
