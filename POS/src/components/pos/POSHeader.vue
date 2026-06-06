@@ -4,33 +4,41 @@
 	>
 		<div class="flex py-0 h-[40px] items-stretch">
 			<!-- Main Header Content -->
-			<div class="flex-1 flex justify-between items-stretch gap-0 ps-4 pe-0 sm:ps-5">
+			<div class="flex-1 flex justify-between items-stretch gap-0 pe-0">
 				<!-- Left Side: Brand Info -->
 				<div class="flex items-stretch gap-0 min-w-0 flex-1 overflow-hidden">
-					<div class="min-w-0 flex-shrink overflow-hidden flex items-center">
-						<p v-if="profileName" class="text-[8px] sm:text-[10px] text-gray-600 truncate hidden sm:block mt-0">{{ profileName }}</p>
+					<!-- Profile Name -->
+					<div class="hidden sm:flex items-stretch flex-shrink-0">
+						<StatusBadge
+							v-if="profileName"
+							variant="gray"
+							size="xs"
+							icon="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+							:text="profileName"
+							class="!h-full !border-y-0 !border-e !border-s-0 border-gray-300 flex items-center"
+						/>
 					</div>
 
 					<!-- Time and Shift Duration - Compact on mobile -->
 					<div class="hidden lg:flex items-stretch flex-shrink-0">
 						<!-- Current Time -->
 						<StatusBadge
-							variant="blue"
+							variant="gray"
 							size="xs"
 							:icon="timeIcon"
 							:text="currentTime"
-							class="!h-full !border-y-0 !border-e-0 !border-s border-gray-300 flex items-center"
+							class="!h-full !border-y-0 !border-e !border-s-0 border-gray-300 flex items-center"
 						/>
 
 						<!-- Shift Duration -->
 						<StatusBadge
 							v-if="hasOpenShift && shiftDuration"
-							variant="green"
+							variant="gray"
 							size="xs"
 							:icon="shiftIcon"
 							:label="__('Shift Open:')"
 							:value="shiftDuration"
-							class="!h-full !border-y-0 !border-e-0 !border-s border-gray-300 flex items-center"
+							class="!h-full !border-y-0 !border-e !border-s-0 border-gray-300 flex items-center"
 						/>
 					</div>
 

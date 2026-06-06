@@ -1,6 +1,6 @@
 <template>
 	<div
-		class="flex items-center gap-1.5 px-2.5 py-1 rounded-none border transition-all duration-150"
+		class="flex items-center gap-1.5 px-2.5 py-1 rounded-none border-l transition-all duration-150"
 		:class="[badgeClasses, sizeClasses]"
 	>
 		<svg
@@ -77,11 +77,11 @@ const props = defineProps({
 
 const badgeClasses = computed(() => {
 	const variants = {
-		blue: "bg-blue-50 border-blue-600 text-blue-700",
-		green: "bg-green-50 border-green-600 text-green-700",
-		orange: "bg-orange-50 border-orange-600 text-orange-700",
-		red: "bg-red-50 border-red-600 text-red-700",
-		gray: "bg-gray-50 border-gray-400 text-gray-700",
+		blue: "bg-blue-50 border-blue-600/20 text-blue-700",
+		green: "bg-green-50 border-green-600/20 text-green-700",
+		orange: "bg-orange-50 border-orange-600/20 text-orange-700",
+		red: "bg-red-50 border-red-600/20 text-red-700",
+		gray: "bg-white border-gray-300 text-gray-700",
 	}
 	return variants[props.variant] || variants.blue
 })
