@@ -1,24 +1,25 @@
 <template>
 	<div
-		class="bg-white border-b border-black sticky top-0 z-[200]"
+		class="bg-white border-b border-gray-300 sticky top-0 z-[200]"
 	>
-		<div class="flex py-0 h-[40px] sm:py-1 items-center">
+		<div class="flex py-0 h-[40px] items-stretch">
 			<!-- Main Header Content -->
-			<div class="flex-1 flex justify-between items-center gap-1 ps-4 pe-2 sm:ps-5 sm:pe-4">
+			<div class="flex-1 flex justify-between items-stretch gap-0 ps-4 pe-0 sm:ps-5">
 				<!-- Left Side: Brand Info -->
-				<div class="flex items-center gap-1 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
-					<div class="min-w-0 flex-shrink overflow-hidden">
+				<div class="flex items-stretch gap-0 min-w-0 flex-1 overflow-hidden">
+					<div class="min-w-0 flex-shrink overflow-hidden flex items-center">
 						<p v-if="profileName" class="text-[8px] sm:text-[10px] text-gray-600 truncate hidden sm:block mt-0">{{ profileName }}</p>
 					</div>
 
 					<!-- Time and Shift Duration - Compact on mobile -->
-					<div class="hidden lg:flex items-center gap-1.5 ms-3 flex-shrink-0">
+					<div class="hidden lg:flex items-stretch flex-shrink-0">
 						<!-- Current Time -->
 						<StatusBadge
 							variant="blue"
 							size="xs"
 							:icon="timeIcon"
 							:text="currentTime"
+							class="!h-full !border-y-0 !border-e-0 !border-s border-gray-300 flex items-center"
 						/>
 
 						<!-- Shift Duration -->
@@ -29,6 +30,7 @@
 							:icon="shiftIcon"
 							:label="__('Shift Open:')"
 							:value="shiftDuration"
+							class="!h-full !border-y-0 !border-e-0 !border-s border-gray-300 flex items-center"
 						/>
 					</div>
 
@@ -39,12 +41,12 @@
 				</div>
 
 				<!-- Right Side: Controls -->
-				<div class="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
+				<div class="flex items-stretch flex-shrink-0">
 					<!-- WiFi/Offline Status -->
 					<button
 						@click="$emit('sync-click')"
 						:class="[
-							'p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors relative group touch-manipulation text-gray-600 hover:text-gray-900',
+							'px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center',
 							isSyncing ? 'animate-pulse' : ''
 						]"
 						:title="isOffline ? __('Offline ({0} pending)', [pendingInvoicesCount]) : __('Online - Click to sync')"
@@ -69,18 +71,18 @@
 						</svg>
 						<span
 							v-if="pendingInvoicesCount > 0"
-							class="absolute -top-1 -end-1 bg-orange-600 text-white text-[8px] font-bold rounded-none w-4 h-4 flex items-center justify-center border border-white"
+							class="absolute top-1.5 end-1.5 bg-orange-600 text-white text-[8px] font-bold rounded-none w-4 h-4 flex items-center justify-center border border-white"
 						>
 							{{ pendingInvoicesCount }}
 						</span>
 					</button>
 
 					<!-- Cache Status Indicator -->
-					<div class="relative">
+					<div class="relative h-full flex items-center">
 						<button
 							@click="showCacheTooltip = !showCacheTooltip"
 							@blur="handleBlur"
-							class="p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900"
+							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 							:aria-label="getCacheAriaLabel()"
 						>
 							<svg
@@ -93,7 +95,7 @@
 							</svg>
 							<svg
 								v-if="cacheSyncing || isRefreshing"
-								class="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute top-1.5 start-1.5 animate-spin opacity-70"
+								class="w-3.5 h-3.5 sm:w-4 sm:h-4 absolute top-2.5 start-2.5 animate-spin opacity-70"
 								fill="none"
 								stroke="currentColor"
 								viewBox="0 0 24 24"
@@ -105,7 +107,7 @@
 							<!-- Sync progress badge (visible during sync) -->
 							<span
 								v-if="cacheSyncing && cacheStats?.items > 0"
-								class="absolute -bottom-0.5 -end-0.5 bg-orange-500 text-white text-[7px] font-black rounded-none px-0.5 min-w-[14px] h-3.5 flex items-center justify-center border border-white animate-pulse"
+								class="absolute bottom-1 end-1 bg-orange-500 text-white text-[7px] font-black rounded-none px-0.5 min-w-[14px] h-3.5 flex items-center justify-center border border-white animate-pulse"
 								:title="__('Syncing: {0} items', [formatNumber(cacheStats.items)])"
 							>
 								{{ formatCompactNumber(cacheStats.items) }}
@@ -119,15 +121,15 @@
 							class="absolute top-full mt-1.5 z-[999] w-[90vw] max-w-[240px] sm:max-w-[260px]"
 							:style="{ left: '50%', transform: 'translateX(-50%)' }"
 						>
-							<div class="bg-white text-gray-900 text-xs rounded-none border border-black shadow-md py-2 px-2.5 sm:px-3">
+							<div class="bg-white text-gray-900 text-xs rounded-none border border-gray-300 shadow-md py-2 px-2.5 sm:px-3">
 								<!-- Arrow -->
 								<div class="absolute bottom-full mb-px left-1/2 -translate-x-1/2"
 								>
-									<div class="border-[5px] sm:border-4 border-transparent border-b-black"></div>
+									<div class="border-[5px] sm:border-4 border-transparent border-b-gray-300"></div>
 								</div>
 
 								<!-- Header -->
-								<div class="flex items-center justify-between mb-1.5 sm:mb-2 pb-1.5 sm:pb-2 border-b border-black">
+								<div class="flex items-center justify-between mb-1.5 sm:mb-2 pb-1.5 sm:pb-2 border-b border-gray-300">
 									<span class="font-bold text-[11px] sm:text-xs uppercase tracking-wider">{{ __('Cache') }}</span>
 									<span class="px-1.5 sm:px-2 py-0.5 rounded-none text-[9px] sm:text-[10px] font-bold uppercase border" :class="getCacheStatusBadgeClass()">
 										{{ getCacheStatus() }}
@@ -169,7 +171,7 @@
 								</div>
 
 								<!-- Clear Cache Button -->
-								<div class="mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-black">
+								<div class="mt-1.5 sm:mt-2 pt-1.5 sm:pt-2 border-t border-gray-300">
 									<button
 										@click="handleClearCacheClick"
 										:disabled="isOffline"
@@ -192,11 +194,11 @@
 					</div>
 
 					<!-- Printer - Visible only while shift is open -->
-					<div v-if="hasOpenShift" class="hidden md:block relative">
+					<div v-if="hasOpenShift" class="hidden md:block relative h-full">
 						<button
 							:title="silentPrintEnabled ? (qzConnected ? __('Silent Print: Connected') : __('Silent Print: Disconnected')) : __('Print Invoice')"
 							@click="$emit('printer-click')"
-							class="p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors group touch-manipulation text-gray-600 hover:text-gray-900"
+							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 						>
 							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" :d="printerIcon" />
@@ -204,7 +206,7 @@
 						</button>
 						<span
 							v-if="silentPrintEnabled"
-							class="absolute top-1 end-1 w-1.5 h-1.5 rounded-none border border-white"
+							class="absolute top-1.5 end-1.5 w-1.5 h-1.5 rounded-none border border-white"
 							:class="qzConnected ? 'bg-green-500' : 'bg-red-500'"
 						></span>
 					</div>
@@ -214,7 +216,7 @@
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
 						:class="[
-							'touch-manipulation p-1 sm:p-1.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border border-transparent transition-colors text-gray-600 hover:text-gray-900 group',
+							'touch-manipulation px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center',
 							isRefreshing ? 'animate-spin' : ''
 						]"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
@@ -224,8 +226,7 @@
 						</svg>
 					</button>
 
-
-					<div class="hidden md:block">
+					<div class="hidden md:block h-full">
 						<LanguageSwitcher />
 					</div>
 				</div>

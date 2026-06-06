@@ -1,8 +1,8 @@
 <template>
-	<div ref="dropdownRef" class="relative">
+	<div ref="dropdownRef" class="relative h-full">
 		<button
 			@click="toggleDropdown"
-			class="flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-wait touch-manipulation"
+			class="flex items-center gap-1.5 px-3 text-xs sm:text-sm font-semibold text-gray-600 hover:text-gray-900 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors focus:outline-none disabled:opacity-60 disabled:cursor-wait h-full touch-manipulation"
 			:class="{ 'flex-row-reverse': isRTL }"
 			:disabled="isChanging"
 			:title="localeConfig.nativeName"
@@ -31,7 +31,7 @@
 		>
 			<div
 				v-if="isOpen"
-				class="absolute z-50 mt-1.5 w-32 rounded-lg bg-white shadow-lg border border-gray-100 py-1 end-0"
+				class="absolute z-50 mt-1 w-32 rounded-none bg-white shadow-md border border-gray-300 py-1 end-0"
 				role="menu"
 			>
 				<div class="px-1 py-0.5">
@@ -39,7 +39,7 @@
 						v-for="(config, code) in supportedLocales"
 						:key="code"
 						@click="selectLanguage(code)"
-						class="flex items-center w-full px-2.5 py-1.5 text-xs rounded-md transition-colors"
+						class="flex items-center w-full px-2.5 py-1.5 text-xs rounded-none transition-colors"
 						:class="[
 							locale === code ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-50',
 							config.dir === 'rtl' ? 'flex-row-reverse' : ''
