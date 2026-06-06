@@ -106,6 +106,116 @@ class POSClosingShift(Document):
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
+        self.create_journal_entry()
+
+    def create_journal_entry(self):
+        def get_mop_account(mode_of_payment, company):
+            accounts = frappe.get_all(
+                "Mode of Payment Account",
+                filters={
+                    "parent": mode_of_payment,
+                    "company": company
+                },
+                fields=["default_account"],
+                limit=1
+            )
+
+            if not accounts:
+                frappe.throw(_("لا يوجد Default Account لطريقة الدفع {0}").format(mode_of_payment))
+
+            return accounts[0].default_account
+
+        company = self.company
+
+        main_mode_of_payment = self.closing_to_mode_of_payment
+        if not main_mode_of_payment:
+            frappe.throw(_("الرجاء تحديد الصندوق الرئيسي closing_to_mode_of_payment"))
+
+        main_mode_of_payment_account = get_mop_account(main_mode_of_payment, self.company)
+
+        difference_account = self.difference_mode_of_payment_account
+        if not difference_account:
+            frappe.throw(_("الرجاء تحديد حساب الفروقات difference_mode_of_payment_account"))
+
+        je = frappe.new_doc("Journal Entry")
+        je.voucher_type = "Journal Entry"
+        je.company = company
+        je.posting_date = self.posting_date
+        je.user_remark = f"POS Closing Shift - {self.name} of {self.pos_profile} at {self.posting_date}"
+
+        for row in self.payment_reconciliation:
+            mop = row.mode_of_payment
+            if not mop:
+                continue
+
+            mop_account = get_mop_account(mop, company)
+            closing_amount = flt(row.closing_amount)
+            difference = flt(row.difference)
+
+            # تحويل رصيد الكاشير إلى الصندوق الرئيسي
+            if closing_amount:
+                # دائن الكاشير
+                je.append("accounts", {
+                    "account": mop_account,
+                    "party_type": "Mode of Payment",
+                    "party": mop,
+                    "credit_in_account_currency": closing_amount,
+                    "user_remark": f"Closing {self.pos_profile} at {self.posting_date}"
+                })
+
+                # مدين الصندوق الرئيسي
+                je.append("accounts", {
+                    "account": main_mode_of_payment_account,
+                    "party_type": "Mode of Payment",
+                    "party": main_mode_of_payment,
+                    "debit_in_account_currency": closing_amount,
+                    "user_remark": f"Closing {self.pos_profile} at {self.posting_date}"
+                })
+
+            # معالجة الفروقات
+            if difference:
+                if difference > 0:
+                    # مدين حساب طريقة الدفع
+                    je.append("accounts", {
+                        "account": mop_account,
+                        "party_type": "Mode of Payment",
+                        "party": mop,
+                        "debit_in_account_currency": abs(difference),
+                        "user_remark": f"More than Zero Debit {self.pos_profile} at {self.posting_date}"
+                    })
+
+                    # دائن حساب الفروقات
+                    je.append("accounts", {
+                        "account": difference_account,
+                        "party_type": "Mode of Payment",
+                        "party": mop,
+                        "credit_in_account_currency": abs(difference),
+                        "user_remark": f"More than Zero Credit {self.pos_profile} at {self.posting_date}"
+                    })
+                else:
+                    # دائن حساب طريقة الدفع
+                    je.append("accounts", {
+                        "account": mop_account,
+                        "party_type": "Mode of Payment",
+                        "party": mop,
+                        "credit_in_account_currency": abs(difference),
+                        "user_remark": f"Less than Zero Credit {self.pos_profile} at {self.posting_date}"
+                    })
+
+                    # مدين حساب الفروقات
+                    je.append("accounts", {
+                        "account": difference_account,
+                        "party_type": "Mode of Payment",
+                        "party": mop,
+                        "debit_in_account_currency": abs(difference),
+                        "user_remark": f"Less than Zero Debit {self.pos_profile} at {self.posting_date}"
+                    })
+
+        je.insert(ignore_permissions=True)
+        je.submit()
+
+        # ربط القيد بالمستند
+        self.db_set("journal_entry", je.name)
 
     def on_cancel(self):
         if frappe.db.exists("POS Opening Shift", self.pos_opening_shift):
