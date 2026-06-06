@@ -2,28 +2,16 @@
 	<div ref="menuRef" class="relative">
 		<button
 			@click="isOpen = !isOpen"
-			class="flex items-center gap-2.5 px-2.5 py-1.5 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors focus:outline-none touch-manipulation"
+			class="w-11 h-11 flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 rounded-sm transition-colors focus:outline-none touch-manipulation"
 		>
-			<div class="text-end mx-0.5 hidden sm:block">
-				<p class="text-xs sm:text-sm font-semibold text-gray-900">{{ userName }}</p>
-			</div>
-			<!-- <Avatar :image="profileImage" :name="userName" :initials="userInitials" size="sm" /> -->
-			<svg
-				class="w-3.5 h-3.5 text-gray-400 transition-transform duration-200"
-				:class="{ 'rotate-180': isOpen }"
-				fill="none"
-				stroke="currentColor"
-				viewBox="0 0 24 24"
-			>
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-			</svg>
+			<Avatar :image="profileImage" :name="userName" :initials="userInitials" size="sm" />
 		</button>
 
 		<!-- Dropdown Menu -->
 		<div
 			v-if="isOpen"
 			@click="handleMenuItemClick"
-			class="absolute end-0 mt-1.5 w-56 bg-white rounded-lg shadow-lg border border-gray-100 py-1.5 z-[250]"
+			class="absolute start-full bottom-0 ms-2 w-56 bg-white rounded-sm shadow-lg border border-gray-100 py-1.5 z-[250] mb-1.5"
 		>
 			<!-- User Info Header -->
 			<div class="px-3.5 py-2.5 border-b border-gray-100 flex items-center gap-2.5">
@@ -140,17 +128,17 @@
 import { computed, h, onMounted, onUnmounted, ref, watch } from "vue"
 import { useLocale } from "@/composables/useLocale"
 
-// Avatar Sub-component - styled with rounded-lg to match modern app aesthetics
+// Avatar Sub-component - styled with rounded-sm to match modern app aesthetics
 const Avatar = (props) => {
 	const sizeClass = props.size === 'sm' ? 'w-8 h-8' : 'w-9 h-9'
-	const bgClass = props.image ? 'bg-gray-200' : 'bg-gradient-to-br from-blue-500 to-blue-600'
+	const bgClass = props.image ? 'bg-gray-200' : 'bg-[#607d8b]'
 
 	return h('div', {
-		class: `${sizeClass} rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 ${bgClass}`
+		class: `${sizeClass} rounded-sm flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0 ${bgClass}`
 	}, [
 		props.image
 			? h('img', { src: props.image, alt: props.name, class: 'w-full h-full object-cover' })
-			: h('span', { class: 'text-xs sm:text-sm font-bold text-white' }, props.initials)
+			: h('span', { class: 'text-xs sm:text-sm font-bold text-white pt-0.5' }, props.initials)
 	])
 }
 

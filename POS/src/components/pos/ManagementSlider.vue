@@ -103,6 +103,24 @@
 				{{ __('Settings') }}
 			</div>
 		</button>
+
+		<!-- User Menu -->
+		<UserMenu
+			:user-name="userName"
+			:profile-name="profileName"
+			:profile-image="userImage"
+			@logout="$emit('logout')"
+			@menu-opened="$emit('menu-opened')"
+			@menu-closed="$emit('menu-closed')"
+			class="mt-1 mb-1"
+		>
+			<template #menu-items>
+				<slot name="menu-items"></slot>
+			</template>
+			<template #additional-actions>
+				<slot name="additional-actions"></slot>
+			</template>
+		</UserMenu>
 	</div>
 
 	<KeyboardShortcutsDialog v-model="showKeyboardShortcuts" />
@@ -112,15 +130,28 @@
 import { FeatherIcon } from "frappe-ui"
 import { onMounted, onUnmounted, ref } from "vue"
 import KeyboardShortcutsDialog from "@/components/pos/KeyboardShortcutsDialog.vue"
+import UserMenu from "@/components/common/UserMenu.vue"
 
 const props = defineProps({
 	showSettings: {
 		type: Boolean,
 		default: false,
 	},
+	userName: {
+		type: String,
+		required: true,
+	},
+	profileName: {
+		type: String,
+		default: null,
+	},
+	userImage: {
+		type: String,
+		default: null,
+	},
 })
 
-const emit = defineEmits(["menu-clicked"])
+const emit = defineEmits(["menu-clicked", "logout", "menu-opened", "menu-closed"])
 
 const activeMenu = ref("")
 const showKeyboardShortcuts = ref(false)

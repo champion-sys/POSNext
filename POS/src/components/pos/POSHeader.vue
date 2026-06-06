@@ -231,29 +231,9 @@
 
 					<div class="w-px h-3 sm:h-4 bg-gray-200 hidden md:block"></div>
 
-					<!-- Language Switcher - Hidden on mobile, shown in UserMenu instead -->
 					<div class="hidden md:block">
 						<LanguageSwitcher />
 					</div>
-
-					<div class="w-px h-3 sm:h-4 bg-gray-200"></div>
-
-					<!-- User Menu -->
-					<UserMenu
-						:user-name="userName"
-						:profile-name="profileName"
-						:profile-image="userImage"
-						@logout="$emit('logout')"
-						@menu-opened="$emit('menu-opened')"
-						@menu-closed="$emit('menu-closed')"
-					>
-						<template #menu-items>
-							<slot name="menu-items"></slot>
-						</template>
-						<template #additional-actions>
-							<slot name="additional-actions"></slot>
-						</template>
-					</UserMenu>
 				</div>
 			</div>
 		</div>
@@ -263,7 +243,6 @@
 <script setup>
 import ActionButton from "@/components/common/ActionButton.vue"
 import StatusBadge from "@/components/common/StatusBadge.vue"
-import UserMenu from "@/components/common/UserMenu.vue"
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.vue"
 import { DEFAULT_LOCALE } from "@/utils/currency"
 import { ref } from "vue"
@@ -277,9 +256,6 @@ const emit = defineEmits([
 	"printer-click",
 	"refresh-click",
 	"menu-click",
-	"logout",
-	"menu-opened",
-	"menu-closed",
 	"clear-cache",
 ])
 
@@ -311,14 +287,6 @@ const props = defineProps({
 		default: false,
 	},
 	profileName: {
-		type: String,
-		default: null,
-	},
-	userName: {
-		type: String,
-		required: true,
-	},
-	userImage: {
 		type: String,
 		default: null,
 	},

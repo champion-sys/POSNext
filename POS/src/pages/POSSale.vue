@@ -12,8 +12,191 @@
 			<ManagementSlider
 				v-if="shiftStore.hasOpenShift"
 				:show-settings="canAccessPOSSettings"
+				:user-name="userName"
+				:profile-name="shiftStore.profileName"
+				:user-image="userImage"
 				@menu-clicked="handleManagementMenuClick"
-			/>
+				@logout="uiStore.showLogoutDialog = true"
+			>
+				<template #menu-items>
+					<button
+						v-if="shiftStore.hasOpenShift"
+						@click="uiStore.showOpenShiftDialog = true"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-blue-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
+						</svg>
+						<span>{{ __("View Shift") }}</span>
+					</button>
+					<button
+						v-if="canAccessShiftActions"
+						@click="openDraftDialog"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-purple-50 flex items-center gap-3 transition-colors relative"
+					>
+						<svg
+							class="w-5 h-5 text-purple-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+							/>
+						</svg>
+						<span>{{ __("Draft Invoices") }}</span>
+						<span
+							v-if="draftsStore.draftsCount > 0"
+							class="ms-auto text-[10px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-none border border-purple-700"
+						>
+							{{ draftsStore.draftsCount }}
+						</span>
+					</button>
+					<button
+						v-if="canAccessShiftActions"
+						@click="openDraftDialog"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-indigo-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+							/>
+						</svg>
+						<span>{{ __("Invoice History") }}</span>
+					</button>
+					<button
+						v-if="offlineStore.pendingInvoicesCount > 0"
+						@click="
+							uiStore.showOfflineInvoicesDialog = true;
+							offlineStore.loadPendingInvoices();
+						"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 transition-colors relative"
+					>
+						<svg
+							class="w-5 h-5 text-orange-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
+						</svg>
+						<span>{{ __("Offline Invoices") }}</span>
+						<span
+							class="ms-auto text-[10px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-none border border-orange-700"
+						>
+							{{ offlineStore.pendingInvoicesCount }}
+						</span>
+					</button>
+					<button
+						v-if="canAccessShiftActions && posSettingsStore.allowReturn"
+						@click="openReturnDialog"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-red-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+							/>
+						</svg>
+						<span>{{ __("Return Invoice") }}</span>
+					</button>
+					<button
+						v-if="canAccessShiftActions && canSwitchToDesk"
+						@click="switchToDesk"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-emerald-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M3 7h18M3 12h18M3 17h18"
+							/>
+						</svg>
+						<span>{{ __("Switch To Desk") }}</span>
+					</button>
+					<hr class="my-1 border-gray-100"> 
+					<button
+						@click="lockSession()"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-amber-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+							/>
+						</svg>
+						<span>{{ __("Lock Screen") }}</span>
+					</button>
+				</template>
+				<template #additional-actions>
+					<button
+						v-if="canAccessShiftActions && canCloseShift"
+						@click="handleCloseShift()"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 transition-colors"
+					>
+						<svg
+							class="w-5 h-5 text-orange-600"
+							fill="none"
+							stroke="currentColor"
+							viewBox="0 0 24 24"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
+						</svg>
+						<span>{{ __("Close Shift") }}</span>
+					</button>
+				</template>
+			</ManagementSlider>
 
 			<!-- Right Column: Header + Main Content Area -->
 			<div class="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -23,8 +206,6 @@
 					:shift-duration="shiftStore.shiftDuration"
 					:has-open-shift="shiftStore.hasOpenShift"
 					:profile-name="shiftStore.profileName"
-					:user-name="userName"
-					:user-image="userImage"
 					:is-offline="offlineStore.isOffline"
 					:is-syncing="offlineStore.isSyncing"
 					:pending-invoices-count="offlineStore.pendingInvoicesCount"
@@ -39,187 +220,7 @@
 					@printer-click="openHistoryDialog"
 					@refresh-click="handleRefresh"
 					@clear-cache="handleClearCache"
-					@logout="uiStore.showLogoutDialog = true"
-				>
-					<template #menu-items>
-						<button
-							v-if="shiftStore.hasOpenShift"
-							@click="uiStore.showOpenShiftDialog = true"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-blue-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-								/>
-							</svg>
-							<span>{{ __("View Shift") }}</span>
-						</button>
-						<button
-							v-if="canAccessShiftActions"
-							@click="openDraftDialog"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-purple-50 flex items-center gap-3 transition-colors relative"
-						>
-							<svg
-								class="w-5 h-5 text-purple-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-								/>
-							</svg>
-							<span>{{ __("Draft Invoices") }}</span>
-							<span
-								v-if="draftsStore.draftsCount > 0"
-								class="ms-auto text-[10px] font-bold bg-purple-600 text-white px-1.5 py-0.5 rounded-none border border-purple-700"
-							>
-								{{ draftsStore.draftsCount }}
-							</span>
-						</button>
-						<button
-							v-if="canAccessShiftActions"
-							@click="openHistoryDialog"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-indigo-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-								/>
-							</svg>
-							<span>{{ __("Invoice History") }}</span>
-						</button>
-						<button
-							v-if="offlineStore.pendingInvoicesCount > 0"
-							@click="
-								uiStore.showOfflineInvoicesDialog = true;
-								offlineStore.loadPendingInvoices();
-							"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 transition-colors relative"
-						>
-							<svg
-								class="w-5 h-5 text-orange-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-								/>
-							</svg>
-							<span>{{ __("Offline Invoices") }}</span>
-							<span
-								class="ms-auto text-[10px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-none border border-orange-700"
-							>
-								{{ offlineStore.pendingInvoicesCount }}
-							</span>
-						</button>
-						<button
-							v-if="canAccessShiftActions && posSettingsStore.allowReturn"
-							@click="openReturnDialog"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-red-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-red-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-								/>
-							</svg>
-							<span>{{ __("Return Invoice") }}</span>
-						</button>
-						<button
-							v-if="canAccessShiftActions && canSwitchToDesk"
-							@click="switchToDesk"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-emerald-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M3 7h18M3 12h18M3 17h18"
-								/>
-							</svg>
-							<span>{{ __("Switch To Desk") }}</span>
-						</button>
-						<hr class="my-1 border-gray-100"> 
-						<button
-							@click="lockSession()"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-amber-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-amber-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-								/>
-							</svg>
-							<span>{{ __("Lock Screen") }}</span>
-						</button>
-					</template>
-					<template #additional-actions>
-						<button
-							v-if="canAccessShiftActions && canCloseShift"
-							@click="handleCloseShift()"
-							class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-orange-50 flex items-center gap-3 transition-colors"
-						>
-							<svg
-								class="w-5 h-5 text-orange-600"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									stroke-width="2"
-									d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-								/>
-							</svg>
-							<span>{{ __("Close Shift") }}</span>
-						</button>
-					</template>
-				</POSHeader>
+				/>
 
 				<!-- Main Content: Responsive Layout -->
 				<div
