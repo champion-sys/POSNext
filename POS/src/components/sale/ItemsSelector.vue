@@ -1,7 +1,7 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="bg-gray-200 border-b border-gray-400 max-h-[135px] overflow-y-auto">
+		<div class="bg-gray-200 border-b border-gray-300 max-h-[135px] overflow-y-auto">
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
@@ -44,7 +44,7 @@
 		</div>
 
 		<!-- Search Bar with Barcode Scanner and View Controls -->
-		<div class="px-0 sm:px-0 py-0 sm:py-0 bg-white border-b border-gray-400">
+		<div class="px-0 sm:px-0 py-0 sm:py-0 bg-white border-b border-gray-300">
 			<div class="flex items-center gap-0 sm:gap-0">
 				<div class="flex-1 relative min-w-0">
 					<!-- Search Icon -->
@@ -122,7 +122,7 @@
 						</button>
 					</div>
 				</div>
-				<div class="flex items-center gap-0.5 border-r border-l border-gray-400 flex-shrink-0">
+				<div class="flex items-center gap-0 border-r border-l border-gray-300 flex-shrink-0">
 					<button
 						@click="setViewMode('grid')"
 						data-nav="search-bar"

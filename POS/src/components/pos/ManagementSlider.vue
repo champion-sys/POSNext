@@ -1,14 +1,25 @@
 <template>
 	<!-- Icon-Only Sidebar - Hidden on Mobile, Visible on Desktop -->
-	<div class="hidden lg:flex w-14 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-4 flex flex-col gap-2">
+	<div class="hidden lg:flex w-12 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-0 flex flex-col gap-1.5">
+		<!-- Logo / POS Icon -->
+		<button
+			class="w-full h-[41px] flex items-center justify-center flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all mb-0 mt-0 border-b border-gray-200"
+			:aria-label="'POS Next'"
+			:title="__('POS Next')"
+		>
+			<svg class="w-5 h-5 text-black -mt-0.5" fill="currentColor" viewBox="0 0 24 24">
+				<path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+			</svg>
+		</button>
+
 		<!-- Promotions -->
 		<button
 			@click="handleMenuClick('promotions')"
 			:class="[
-				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
+				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'promotions'
 					? 'bg-green-100 text-green-600'
-					: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+					: 'text-gray-600 hover:text-gray-900'
 			]"
 			:title="__('Promotions')"
 		>
@@ -22,10 +33,10 @@
 		<button
 			@click="handleMenuClick('products')"
 			:class="[
-				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
+				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'products'
 					? 'bg-purple-100 text-purple-600'
-					: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+					: 'text-gray-600 hover:text-gray-900'
 			]"
 			:title="__('Products')"
 		>
@@ -39,10 +50,10 @@
 		<button
 			@click="handleMenuClick('invoices')"
 			:class="[
-				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
+				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'invoices'
 					? 'bg-indigo-100 text-indigo-600'
-					: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+					: 'text-gray-600 hover:text-gray-900'
 			]"
 			:title="__('Invoice Management')"
 		>
@@ -62,10 +73,10 @@
 		<button
 			@click="openKeyboardShortcuts"
 			:class="[
-				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
+				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
 				showKeyboardShortcuts
 					? 'bg-gray-100 text-gray-900'
-					: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+					: 'text-gray-600 hover:text-gray-900'
 			]"
 			:title="__('Keyboard Shortcuts')"
 		>
@@ -80,10 +91,10 @@
 			@click="handleMenuClick('settings')"
 			v-if="showSettings"
 			:class="[
-				'w-12 h-12 rounded-lg flex items-center justify-center transition-all relative group',
+				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'settings'
 					? 'bg-gray-100 text-gray-900'
-					: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+					: 'text-gray-600 hover:text-gray-900'
 			]"
 			:title="__('Settings')"
 		>

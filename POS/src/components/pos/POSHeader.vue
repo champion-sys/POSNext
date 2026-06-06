@@ -3,31 +3,18 @@
 		class="bg-white shadow-sm sticky top-0 z-[200]"
 	>
 		<div class="flex py-1 sm:py-1 items-center">
-			<!-- POS Icon - Aligned with Management Sidebar (64px) -->
-			<div class="w-12 sm:w-14 flex-shrink-0 flex items-center justify-center">
-				<button
-					class="w-8 h-8 sm:w-8 sm:h-8 bg-black rounded-sm flex items-center justify-center shadow-sm flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all"
-					:aria-label="'POS Next'"
-					:title="__('POS Next')"
-				>
-					<svg class="w-5 h-5 text-white -mt-0.5" fill="currentColor" viewBox="0 0 24 24">
-						<path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-					</svg>
-				</button>
-			</div>
-
 			<!-- Main Header Content -->
-			<div class="flex-1 flex justify-between items-center gap-1 pe-2 sm:pe-4">
+			<div class="flex-1 flex justify-between items-center gap-1 ps-4 pe-2 sm:ps-5 sm:pe-4">
 				<!-- Left Side: Brand Info -->
 				<div class="flex items-center gap-1 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
 					<div class="min-w-0 flex-shrink overflow-hidden">
-						<div class="flex items-center gap-1 sm:gap-1.5">
+						<!-- <div class="flex items-center gap-1 sm:gap-1.5">
 							<h1 class="text-xs sm:text-sm !font-bold text-gray-900 truncate flex-shrink">{{ 'POS Next' }}</h1>
-							<!-- <span class="hidden sm:inline-flex relative items-center px-1 sm:px-1.5 py-px text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md shadow-sm hover:shadow-md transition-shadow flex-shrink-0">
+							<span class="hidden sm:inline-flex relative items-center px-1 sm:px-1.5 py-px text-[8px] sm:text-[9px] font-bold bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-md shadow-sm hover:shadow-md transition-shadow flex-shrink-0">
 								<span class="absolute inset-0 bg-white/20 rounded-md animate-pulse"></span>
 								<span class="relative">v{{ appVersion }}</span>
-							</span> -->
-						</div>
+							</span>
+						</div> -->
 						<p v-if="profileName" class="text-[8px] sm:text-[10px] text-gray-600 truncate hidden sm:block mt-0">{{ profileName }}</p>
 					</div>
 
