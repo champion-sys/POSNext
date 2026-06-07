@@ -22,7 +22,7 @@
 					<span class="truncate">{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
 				</button>
 				<button
-					v-for="option in activeFilterOptions"
+					v-for="(option, optionIndex) in activeFilterOptions"
 					:key="option.value"
 					@click="handleFilterClick(option.value)"
 					data-nav="filter"
@@ -30,8 +30,13 @@
 						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-black text-white border-none'
-							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
+							: 'border-none hover:brightness-90 active:brightness-75',
 					]"
+					:style="activeFilterValue === option.value
+						? {}
+						: getGroupColor(optionIndex)
+							? { backgroundColor: getGroupColor(optionIndex).bg, color: getGroupColor(optionIndex).text }
+							: { backgroundColor: '#ffffff', color: '#111827' }"
 				>
 					<span class="">{{ __(option.label) }}</span>
 				</button>
@@ -855,6 +860,34 @@ function getStockQtyToShow(item) {
 	// `item.actual_qty` / `item.stock_qty` is "display stock" (server stock minus cart reservations).
 	// For the selector badge we want to show the actual warehouse stock as-is.
 	return item?.original_stock ?? item?.actual_qty ?? item?.stock_qty ?? 0
+}
+
+// High-contrast color palette for item group tabs
+// 16 distinct solid colors with white text — spread across the hue wheel
+// All combinations pass WCAG AA for bold text at 11-12px
+const GROUP_COLOR_PALETTE = [
+	{ bg: '#b91c1c', text: '#ffffff' }, // red-700
+	{ bg: '#1d4ed8', text: '#ffffff' }, // blue-700
+	{ bg: '#15803d', text: '#ffffff' }, // green-700
+	{ bg: '#a16207', text: '#ffffff' }, // yellow-700
+	{ bg: '#7c3aed', text: '#ffffff' }, // violet-600
+	{ bg: '#0f766e', text: '#ffffff' }, // teal-700
+	{ bg: '#c2410c', text: '#ffffff' }, // orange-700
+	{ bg: '#be185d', text: '#ffffff' }, // pink-700
+	{ bg: '#0369a1', text: '#ffffff' }, // sky-700
+	{ bg: '#4338ca', text: '#ffffff' }, // indigo-700
+	{ bg: '#047857', text: '#ffffff' }, // emerald-700
+	{ bg: '#b45309', text: '#ffffff' }, // amber-700
+	{ bg: '#6d28d9', text: '#ffffff' }, // purple-700
+	{ bg: '#0e7490', text: '#ffffff' }, // cyan-700
+	{ bg: '#be123c', text: '#ffffff' }, // rose-700
+	{ bg: '#4d7c0f', text: '#ffffff' }, // lime-700
+]
+
+// Index-based assignment ensures no two adjacent groups share a color
+function getGroupColor(index) {
+	if (!settingsStore.coloredItemGroups) return null
+	return GROUP_COLOR_PALETTE[index % GROUP_COLOR_PALETTE.length]
 }
 
 // Use Pinia store

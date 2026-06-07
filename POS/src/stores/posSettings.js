@@ -268,6 +268,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		Boolean(settings.value.hide_images),
 	)
 
+	// Hardcoded for testing — controls whether item group tabs get distinct colors
+	const coloredItemGroups = ref(true)
+
 	watch(
 		disableOfflineMode,
 		(newVal) => {
@@ -546,6 +549,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowEditOfflineInvoice,
 		allowPrintOfflineInvoice,
 		hideImages,
+		coloredItemGroups,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,
