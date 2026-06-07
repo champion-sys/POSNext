@@ -1,6 +1,6 @@
 import { useDialog, useDialogState } from "@/composables/useDialogState"
 import { defineStore } from "pinia"
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 
 const LEFT_PANEL_MIN = 320
 const RIGHT_PANEL_MIN = 360
@@ -56,8 +56,18 @@ export const usePOSUIStore = defineStore("posUI", () => {
 	)
 
 	// Layout state
-	const leftPanelWidth = ref(800)
+	const leftPanelWidth = ref(
+		typeof window !== "undefined" && localStorage.getItem("pos_left_panel_width")
+			? Number(localStorage.getItem("pos_left_panel_width"))
+			: 800
+	)
 	const isResizing = ref(false)
+
+	watch(leftPanelWidth, (newVal) => {
+		if (typeof window !== "undefined" && newVal) {
+			localStorage.setItem("pos_left_panel_width", newVal)
+		}
+	})
 
 	// Computed
 	const isDesktop = computed(() => windowWidth.value >= 1024)

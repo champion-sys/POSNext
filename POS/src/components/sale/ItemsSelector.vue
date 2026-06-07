@@ -909,10 +909,20 @@ const focusedSortIndex = ref(-1) // Tracks keyboard navigation index in sort dro
 const skipPageReset = ref(false) // Skip page reset when navigating via pagination
 
 // Draggable Divider for Item Groups Section
-const itemGroupHeight = ref(160)
+const itemGroupHeight = ref(
+	typeof window !== "undefined" && localStorage.getItem("pos_item_group_height")
+		? Number(localStorage.getItem("pos_item_group_height"))
+		: 160
+)
 const dividerRef = ref(null)
 const isResizing = ref(false)
 let resizeState = null
+
+watch(itemGroupHeight, (newVal) => {
+	if (typeof window !== "undefined" && newVal) {
+		localStorage.setItem("pos_item_group_height", newVal)
+	}
+})
 
 function startResize(event) {
 	if (event.isPrimary === false) return
