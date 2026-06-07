@@ -44,7 +44,7 @@
 			role="separator"
 			aria-orientation="horizontal"
 			@pointerdown="startResize"
-			class="h-[3px] bg-gray-200 hover:bg-blue-500 cursor-row-resize relative flex-shrink-0 transition-[background-color,height] duration-150 group"
+			class="h-[2px] bg-gray-200 hover:bg-blue-500 cursor-row-resize relative flex-shrink-0 transition-[background-color,height] duration-150 group"
 			:class="{
 				'bg-blue-600 !h-[3px]': isResizing,
 				'pointer-events-none opacity-0': isAnyDialogOpen,
