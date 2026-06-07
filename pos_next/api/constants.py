@@ -48,6 +48,7 @@ POS_SETTINGS_FIELDS = [
 	"custom_hide_stock_quantity",
 	"allow_print_last_invoice",
 	"custom_disable_offline_mode",
+	"allow_delete_offline_invoice",
 	"custom_allow_access_to_previous_invoices",
 	"allow_print_previous_invoices",
 	"role_allowed_to_access_settings_in_pos"
@@ -91,5 +92,6 @@ DEFAULT_POS_SETTINGS = {
 	"custom_disable_offline_mode": 0,
 	"custom_allow_access_to_previous_invoices": 0,
 	"allow_print_previous_invoices": 0,
+	"allow_delete_offline_invoice": 0,
 	"role_allowed_to_access_settings_in_pos": None
 }

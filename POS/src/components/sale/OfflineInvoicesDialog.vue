@@ -129,6 +129,7 @@
 									</svg>
 								</button>
 								<button
+									v-if="settingsStore.allowDeleteOfflineInvoice"
 									@click="deleteInvoice(invoice)"
 									:disabled="isSyncing"
 									class="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -371,6 +372,10 @@ function syncAll() {
 }
 
 function deleteInvoice(invoice) {
+	if (!settingsStore.allowDeleteOfflineInvoice) {
+		showWarning(__("Deletion of offline invoices is disabled in POS Settings"))
+		return
+	}
 	if (props.isSyncing) return
 	invoiceToDelete.value = invoice
 	showDeleteConfirm.value = true

@@ -2727,6 +2727,10 @@ async function handleEditOfflineInvoice(invoice) {
 
 async function handleDeleteOfflineInvoice(invoiceId) {
 	try {
+		if (!posSettingsStore.allowDeleteOfflineInvoice) {
+			showWarning(__("Deletion of offline invoices is disabled in POS Settings"));
+			return;
+		}
 		if (offlineStore.isSyncing) {
 			showWarning(__("Cannot delete while syncing — please wait for sync to finish."));
 			return;
