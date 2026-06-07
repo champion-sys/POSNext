@@ -1679,6 +1679,7 @@ def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
     Clean up old draft invoices to prevent stock reservation issues.
     Deletes drafts older than max_age_hours (default 24 hours).
     """
+    return
     from datetime import datetime, timedelta
 
     doctype = "Sales Invoice"
