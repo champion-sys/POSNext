@@ -93,6 +93,7 @@
 							</div>
 							<div class="flex items-center justify-end sm:justify-start gap-1 sm:gap-2">
 								<button
+									v-if="settingsStore.allowEditOfflineInvoice"
 									@click="editInvoice(invoice)"
 									:disabled="isSyncing || invoice.data?.was_printed"
 									class="p-1.5 sm:p-2 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -120,7 +121,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
-									v-if="settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName)"
+									v-if="settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
 									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 								>
@@ -346,6 +347,10 @@ function viewDetails(invoice) {
 }
 
 function editInvoice(invoice) {
+	if (!settingsStore.allowEditOfflineInvoice) {
+		showWarning(__("Editing of offline invoices is disabled in POS Settings"))
+		return
+	}
 	if (props.isSyncing) return
 	if (invoice.data?.was_printed) return
 	emit("edit-invoice", invoice)
@@ -353,6 +358,10 @@ function editInvoice(invoice) {
 }
 
 function printInvoice(invoice) {
+	if (!settingsStore.allowPrintOfflineInvoice) {
+		showWarning(__("Printing of offline invoices is disabled in POS Settings"))
+		return
+	}
 	const isLastInvoice = invoice.offline_id && uiStore.lastInvoiceName && invoice.offline_id === uiStore.lastInvoiceName
 	const canPrint = settingsStore.allowPrintPreviousInvoices || 
 	                 (settingsStore.allowPrintLastInvoice && isLastInvoice)

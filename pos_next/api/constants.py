@@ -51,6 +51,8 @@ POS_SETTINGS_FIELDS = [
 	"allow_delete_offline_invoice",
 	"custom_allow_access_to_previous_invoices",
 	"allow_print_previous_invoices",
+	"custom_allow_edit_offline_invoice",
+	"custom_allow_print_offline_invoice",
 	"role_allowed_to_access_settings_in_pos"
 ]
 
@@ -93,5 +95,7 @@ DEFAULT_POS_SETTINGS = {
 	"custom_allow_access_to_previous_invoices": 0,
 	"allow_print_previous_invoices": 0,
 	"allow_delete_offline_invoice": 0,
+	"custom_allow_edit_offline_invoice": 1,
+	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None
 }
