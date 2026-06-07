@@ -196,9 +196,10 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 
 	// Computed - Pricing & Display
-	const decimalPrecision = computed(
-		() => Number.parseInt(settings.value.decimal_precision) || 2,
-	)
+	const decimalPrecision = computed(() => {
+		const precision = Number.parseInt(settings.value.decimal_precision)
+		return isNaN(precision) ? 2 : precision
+	})
 
 	// Watch decimalPrecision and update currency precision dynamically in utility
 	watch(
