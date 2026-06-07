@@ -561,7 +561,7 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100" ref="cartContainer">
 			<div
 				v-if="items.length === 0"
 				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto  -mt-[5%]"
@@ -1268,6 +1268,7 @@ const log = logger.create("InvoiceCart")
 import { createResource } from "frappe-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect, nextTick } from "vue"
 import EditItemDialog from "./EditItemDialog.vue"
+const cartContainer = ref(null)
 import OrderType from "./OrderType.vue"
 import TableSelector from "./TableSelector.vue"
 
@@ -1395,6 +1396,13 @@ const {
 	getCartSortLabel,
 	getCartSortIconState,
 } = useCartSort(() => props.items)
+
+watch(() => props.items.length, async (newLen, oldLen) => {
+  if (newLen > oldLen && cartContainer.value) {
+    await nextTick()
+    cartContainer.value.scrollTop = cartContainer.value.scrollHeight
+  }
+})
 
 /**
  * ============================================================================
