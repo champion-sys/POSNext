@@ -458,15 +458,15 @@
 			<!-- No Shift Placeholder -->
 			<div
 				v-else
-				class="flex-1 flex items-center justify-center bg-gray-50"
+				class="flex-1 flex items-center justify-center bg-gray-50 p-6"
 				style="max-height: calc(100vh - var(--header-height, 40px))"
 			>
-				<div class="text-center">
+				<div class="bg-white border border-gray-300 rounded-none p-8 text-center max-w-sm w-full mx-auto">
 					<div
-						class="mx-auto flex items-center justify-center h-24 w-24 rounded-none border-2 border-dashed border-blue-300 bg-blue-50"
+						class="mx-auto flex items-center justify-center h-16 w-16 rounded-none bg-gray-100 text-gray-650 mb-5"
 					>
 						<svg
-							class="h-12 w-12 text-blue-600"
+							class="h-10 w-10 text-current"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -474,25 +474,23 @@
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
-								stroke-width="2"
+								stroke-width="1.5"
 								d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
 							/>
 						</svg>
 					</div>
-					<h3 class="mt-4 text-lg font-medium text-gray-900">
+					<h3 class="text-base font-bold text-gray-900 uppercase tracking-wider">
 						{{ __("Welcome to POS Next") }}
 					</h3>
-					<p class="mt-2 text-sm text-gray-500">
+					<p class="mt-2 text-xs text-gray-500">
 						{{ __("Please open a shift to start making sales") }}
 					</p>
-					<Button
-						variant="solid"
-						theme="blue"
+					<button
 						@click="uiStore.showOpenShiftDialog = true"
-						class="mt-6"
+						class="mt-6 w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-none border border-black bg-black text-white hover:bg-gray-800 transition-colors"
 					>
 						{{ __("Open Shift") }}
-					</Button>
+					</button>
 				</div>
 			</div>
 
