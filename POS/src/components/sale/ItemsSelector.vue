@@ -1724,10 +1724,8 @@ function handleGlobalKeyDown(event) {
 	}
 
 	if (event.key === "[" || event.key === "]") {
-		if (!isSearchFocused) {
-			event.preventDefault()
-			navigateItemGroups(event.key === "]" ? 1 : -1)
-		}
+		event.preventDefault()
+		navigateItemGroups(event.key === "]" ? 1 : -1)
 	}
 }
 

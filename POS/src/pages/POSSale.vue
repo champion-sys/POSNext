@@ -352,10 +352,10 @@
 							}"
 						>
 							<div class="grid grid-cols-1 gap-[3px] opacity-50 group-hover:opacity-100 transition-opacity">
-								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
-								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
-								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
-								<div class="w-2 h-[1.5px] bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
+								<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': uiStore.isResizing }"></div>
 								
 							</div>
 						</div>
