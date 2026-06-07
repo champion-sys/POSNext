@@ -374,12 +374,11 @@
    "label": "Pricing & Display"
   },
   {
-   "default": "2",
    "description": "Number of decimal places for amounts",
    "fieldname": "decimal_precision",
    "fieldtype": "Select",
    "label": "Decimal Precision",
-   "options": "\n2\n3\n4\n5\n6"
+   "options": "\n0\n1\n2\n3\n4\n5\n6"
   },
   {
    "default": "0",
@@ -587,7 +586,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-25 20:02:11.356782",
+ "modified": "2026-06-07 20:15:03.477485",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

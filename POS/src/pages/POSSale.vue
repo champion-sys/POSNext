@@ -147,11 +147,18 @@
 							<path
 								stroke-linecap="round"
 								stroke-linejoin="round"
-								stroke-width="2"
+								stroke-width="1.5x`"
 								d="M3 7h18M3 12h18M3 17h18"
 							/>
 						</svg>
 						<span>{{ __("Switch To Desk") }}</span>
+					</button>
+					<button
+						@click="uiStore.showChangePasswordDialog = true"
+						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-circle-asterisk"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M12 8.5v7" /><path d="M9 10l6 4" /><path d="M9 14l6 -4" /><path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" /></svg>
+						<span>{{ __("Change Password") }}</span>
 					</button>
 					<hr class="my-1 border-gray-100"> 
 					<button
@@ -651,6 +658,11 @@
 				@customer-updated="handleCustomerUpdated"
 			/>
 
+			<!-- Change Password Dialog -->
+			<ChangePasswordDialog
+				v-model="uiStore.showChangePasswordDialog"
+			/>
+
 			<!-- Promotion Management -->
 			<PromotionManagement
 				v-model="showPromotionManagement"
@@ -1028,6 +1040,7 @@ import LoadingSpinner from "@/components/common/LoadingSpinner.vue";
 import POSFooter from "@/components/common/POSFooter.vue";
 import ManagementSlider from "@/components/pos/ManagementSlider.vue";
 import POSHeader from "@/components/pos/POSHeader.vue";
+import ChangePasswordDialog from "@/components/pos/ChangePasswordDialog.vue";
 import BatchSerialDialog from "@/components/sale/BatchSerialDialog.vue";
 import CouponDialog from "@/components/sale/CouponDialog.vue";
 import CreateCustomerDialog from "@/components/sale/CreateCustomerDialog.vue";
