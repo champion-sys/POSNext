@@ -790,6 +790,7 @@
 				>
 					<!-- Item Image Thumbnail -->
 					<div
+						v-if="!settingsStore.hideImages"
 						class="w-12 h-12 sm:w-12 sm:h-12 bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
 					>
 						<img
@@ -900,7 +901,7 @@
 								>
 									<!-- Serial count badge -->
 									<div
-										class="flex items-center bg-gray-50 border border-black rounded-none px-1.5 h-6 sm:h-7 font-mono"
+										class="flex items-center bg-gray-50 border border-gray-400 rounded-none px-1.5 h-6 sm:h-7 font-mono"
 									>
 										<FeatherIcon
 											name="hash"
@@ -923,7 +924,7 @@
 									v-else
 									:class="[
 										'flex items-center bg-white border rounded-none overflow-hidden h-6 sm:h-7',
-										item.is_resolved_barcode ? 'border-amber-300' : 'border-black'
+										item.is_resolved_barcode ? 'border-amber-300' : 'border-gray-400'
 									]"
 								>
 									<button
@@ -931,7 +932,7 @@
 										@click.stop="decrementQuantity(item)"
 										:disabled="item.is_resolved_barcode"
 										:class="[
-											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-black',
+											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-gray-400',
 											item.is_resolved_barcode
 												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
@@ -976,7 +977,7 @@
 										@click.stop="incrementQuantity(item)"
 										:disabled="item.is_resolved_barcode"
 										:class="[
-											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-black',
+											'w-6 h-full flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-gray-400',
 											item.is_resolved_barcode
 												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
@@ -1013,7 +1014,7 @@
 											item.is_resolved_barcode
 												? 'bg-amber-50 text-amber-700 border border-amber-300 cursor-not-allowed'
 												: item.item_uoms && item.item_uoms.length > 0
-													? 'bg-white hover:bg-gray-50 text-gray-900 border border-black cursor-pointer'
+													? 'bg-white hover:bg-gray-50 text-gray-900 border border-gray-400 cursor-pointer'
 													: 'bg-gray-50 text-gray-600 border border-gray-200 cursor-not-allowed opacity-60',
 										]"
 										:title="
@@ -1060,7 +1061,7 @@
 											item.item_uoms &&
 											item.item_uoms.length > 0
 										"
-										class="absolute top-full start-0 mt-0.5 bg-white border border-black rounded-none shadow-none z-50 min-w-full overflow-hidden"
+										class="absolute top-full start-0 mt-0.5 bg-white border border-gray-400 rounded-none shadow-none z-50 min-w-full overflow-hidden"
 									>
 										<button
 											type="button"

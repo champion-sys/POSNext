@@ -85,7 +85,10 @@ def get_pos_settings(pos_profile):
 		)
 
 		if not pos_settings:
-			return DEFAULT_POS_SETTINGS.copy()
+			pos_settings = DEFAULT_POS_SETTINGS.copy()
+
+		# hide_images comes from POS Profile (not POS Settings)
+		pos_settings["hide_images"] = frappe.db.get_value("POS Profile", pos_profile, "hide_images") or 0
 
 		return pos_settings
 	except Exception:

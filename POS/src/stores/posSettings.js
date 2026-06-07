@@ -80,6 +80,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		custom_disable_offline_mode: 0,
 		custom_allow_edit_offline_invoice: 1,
 		custom_allow_print_offline_invoice: 1,
+		hide_images: 0
 	})
 
 	const isLoading = ref(false)
@@ -263,6 +264,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const allowPrintOfflineInvoice = computed(() =>
 		Boolean(settings.value.custom_allow_print_offline_invoice),
 	)
+	const hideImages = computed(() =>
+		Boolean(settings.value.hide_images),
+	)
 
 	watch(
 		disableOfflineMode,
@@ -411,6 +415,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			custom_disable_offline_mode: 0,
 			custom_allow_edit_offline_invoice: 1,
 			custom_allow_print_offline_invoice: 1,
+			hide_images: 0
 		}
 		isLoaded.value = false
 	}
@@ -540,7 +545,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowChangePostingDate,
 		allowEditOfflineInvoice,
 		allowPrintOfflineInvoice,
-
+		hideImages,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,

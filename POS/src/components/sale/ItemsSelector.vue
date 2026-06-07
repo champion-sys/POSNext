@@ -362,7 +362,7 @@
 						</div>
  
 						<!-- Item Image -->
-						<div class="relative aspect-[4/3] bg-gray-100 rounded-none mb-1 overflow-hidden border-b border-gray-100">
+						<div v-if="!settingsStore.hideImages" class="relative aspect-[4/3] bg-gray-100 rounded-none mb-1 overflow-hidden border-b border-gray-100">
 							<!-- Image with conditional blur on hover -->
 							<div :class="[
 								'w-full h-full transition-all duration-300',
@@ -571,7 +571,7 @@
 				<table v-if="displayedItems.length > 0" class="min-w-full divide-y divide-gray-200">
 					<thead class="bg-gray-50 sticky top-0 z-10">
 						<tr>
-							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[50px] sm:w-[60px]">{{ __('Image') }}</th>
+							<th v-if="!settingsStore.hideImages" scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[50px] sm:w-[60px]">{{ __('Image') }}</th>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{{ __('Name') }}</th>
 							<th scope="col" class="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]" v-if="settingsStore.displayItemCode">{{ __('Code') }}</th>
 							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]">{{ __('Rate') }}</th>
@@ -594,7 +594,7 @@
 								focusedItemIndex === index ? 'bg-blue-50 ring-2 ring-blue-600 ring-inset' : ''
 							]"
 						>
-							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[50px] sm:w-[60px]">
+							<td v-if="!settingsStore.hideImages" class="px-2 sm:px-3 py-2 whitespace-nowrap w-[50px] sm:w-[60px]">
 								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
 									<LazyImage
 										v-if="item.image"

@@ -225,6 +225,7 @@ def _get_pos_settings(pos_profile_doc):
 			pos_profile_doc.write_off_account and (pos_profile_doc.write_off_limit or 0) > 0
 		) else 0
 		settings["disable_rounded_total"] = pos_profile_doc.disable_rounded_total or 0
+		settings["hide_images"] = pos_profile_doc.get("hide_images") or 0
 
 		return settings
 	except Exception:

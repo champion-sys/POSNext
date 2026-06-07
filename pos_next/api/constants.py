@@ -97,5 +97,6 @@ DEFAULT_POS_SETTINGS = {
 	"allow_delete_offline_invoice": 0,
 	"custom_allow_edit_offline_invoice": 1,
 	"custom_allow_print_offline_invoice": 1,
-	"role_allowed_to_access_settings_in_pos": None
+	"role_allowed_to_access_settings_in_pos": None,
+	"hide_images": 0
 }
