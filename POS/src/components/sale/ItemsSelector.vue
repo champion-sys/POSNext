@@ -1,13 +1,16 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="bg-gray-200 border-b border-gray-300 max-h-[169px] overflow-y-auto">
+		<div
+			class="bg-gray-200 border-b border-gray-300 overflow-y-auto"
+			:style="{ height: itemGroupHeight + 'px' }"
+		>
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
@@ -24,7 +27,7 @@
 					@click="handleFilterClick(option.value)"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
@@ -32,6 +35,40 @@
 				>
 					<span class="">{{ __(option.label) }}</span>
 				</button>
+			</div>
+		</div>
+
+		<!-- Draggable Divider -->
+		<div
+			ref="dividerRef"
+			role="separator"
+			aria-orientation="horizontal"
+			@pointerdown="startResize"
+			class="h-[3px] bg-gray-200 hover:bg-blue-500 cursor-row-resize relative flex-shrink-0 transition-[background-color,height] duration-150 group"
+			:class="{
+				'bg-blue-600 !h-[3px]': isResizing,
+				'pointer-events-none opacity-0': isAnyDialogOpen,
+				'z-[1]': !isAnyDialogOpen,
+			}"
+		>
+			<!-- Hover area expansion -->
+			<div
+				class="absolute inset-x-0 -top-1.5 -bottom-1.5 z-10"
+				style="cursor: row-resize"
+			></div>
+			<!-- Sleek Grab Handle with Dots (Horizontal style) -->
+			<div
+				class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-9 bg-white border border-gray-200 rounded-sm shadow-sm flex flex-row justify-center items-center gap-[3px] cursor-row-resize transition-all duration-150 group-hover:border-blue-400 group-hover:shadow-md z-20"
+				:class="{
+					'!border-blue-600 !shadow-sm': isResizing,
+				}"
+			>
+				<div class="flex flex-row gap-[3px] opacity-50 group-hover:opacity-100 transition-opacity">
+					<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': isResizing }"></div>
+					<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': isResizing }"></div>
+					<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': isResizing }"></div>
+					<div class="h-1 w-1 bg-gray-400 rounded-full transition-colors duration-150 group-hover:bg-gray-500" :class="{ '!bg-gray-600': isResizing }"></div>
+				</div>
 			</div>
 		</div>
 
@@ -870,6 +907,73 @@ const lastAutoSwitchCount = ref(0)
 const showSortDropdown = ref(false) // Sort dropdown visibility
 const focusedSortIndex = ref(-1) // Tracks keyboard navigation index in sort dropdown
 const skipPageReset = ref(false) // Skip page reset when navigating via pagination
+
+// Draggable Divider for Item Groups Section
+const itemGroupHeight = ref(135)
+const dividerRef = ref(null)
+const isResizing = ref(false)
+let resizeState = null
+
+function startResize(event) {
+	if (event.isPrimary === false) return
+	if (event.button !== undefined && event.button !== 0 && event.pointerType !== "touch") return
+
+	resizeState = {
+		pointerId: event.pointerId,
+		startY: event.clientY,
+		startHeight: itemGroupHeight.value,
+	}
+
+	isResizing.value = true
+
+	// Add document-level event listeners for dragging
+	document.addEventListener("pointermove", handleResize)
+	document.addEventListener("pointerup", stopResize)
+	document.addEventListener("pointercancel", stopResize)
+
+	dividerRef.value.setPointerCapture?.(event.pointerId)
+	document.body.style.cursor = "row-resize"
+	document.body.style.userSelect = "none"
+	event.preventDefault()
+}
+
+function handleResize(event) {
+	if (!isResizing.value || !resizeState || (event.pointerId ?? resizeState.pointerId) !== resizeState.pointerId) {
+		return
+	}
+
+	event.preventDefault()
+
+	const deltaY = event.clientY - resizeState.startY
+	const rawHeight = resizeState.startHeight + deltaY
+
+	// Bounds logic: min 44px, max 300px
+	itemGroupHeight.value = Math.max(44, Math.min(350, rawHeight))
+}
+
+function stopResize(event) {
+	if (!isResizing.value || !resizeState) return
+	if (event?.pointerId !== undefined && event.pointerId !== resizeState.pointerId) return
+
+	if (event?.preventDefault) event.preventDefault()
+
+	document.removeEventListener("pointermove", handleResize)
+	document.removeEventListener("pointerup", stopResize)
+	document.removeEventListener("pointercancel", stopResize)
+
+	try {
+		if (dividerRef.value && resizeState.pointerId !== undefined) {
+			dividerRef.value.releasePointerCapture?.(resizeState.pointerId)
+		}
+	} catch (e) {
+		// Ignore pointer capture errors
+	}
+
+	isResizing.value = false
+	resizeState = null
+	document.body.style.cursor = ""
+	document.body.style.userSelect = ""
+}
 
 // Warehouse availability dialog state
 const showWarehouseDialog = ref(false)
