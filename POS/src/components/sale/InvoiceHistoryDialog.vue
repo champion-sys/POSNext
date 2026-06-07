@@ -33,11 +33,7 @@
 					</Button>
 				</div>
 
-				<!-- Invoices List -->
-				<div v-if="invoicesResource.loading" class="text-center py-8">
-					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-					<p class="mt-3 text-xs text-gray-500">{{ __('Loading invoices...') }}</p>
-				</div>
+				<LoadingSpinner v-if="invoicesResource.loading" :text="__('Loading invoices...')" />
 
 				<div v-else-if="filteredInvoices.length === 0" class="text-center py-8">
 					<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -75,7 +75,7 @@
 		<!-- Cache Sync Indicator -->
 		<div v-if="cacheSyncing" class="px-0 sm:px-0 py-1 bg-blue-50 border-b border-blue-200">
 			<div class="flex items-center justify-center gap-2 text-[10px] sm:text-xs text-blue-700">
-				<div class="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+					<div class="animate-spin h-3.5 w-3.5 border border-black bg-white"></div>
 				<span>{{ __('Syncing catalog in background... {0} items cached', [cacheStats.items]) }}</span>
 			</div>
 		</div>
@@ -282,10 +282,7 @@
 
 		<!-- Initial Loading State - Show spinner while fetching items -->
 		<div v-if="loading && (!filteredItems || filteredItems.length === 0)" class="flex-1 flex items-center justify-center p-3">
-			<div class="text-center py-8">
-				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-				<p class="mt-3 text-xs text-gray-500">{{ __('Loading items...') }}</p>
-			</div>
+			<LoadingSpinner :text="__('Loading items...')" />
 		</div>
 
 		<!-- Empty State - Only show when NOT loading and truly no items -->
@@ -456,7 +453,7 @@
 
 				<!-- Loading More Indicator for Grid View -->
 				<div v-if="loadingMore" class="flex justify-center items-center py-4">
-					<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+					<div class="animate-spin h-6 w-6 border border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mx-auto"></div>
 					<p class="ms-2 text-xs text-gray-500">{{ __('Loading more items...') }}</p>
 				</div>
 
@@ -678,7 +675,7 @@
 						<tr v-if="loadingMore">
 							<td colspan="6" class="px-2 sm:px-3 py-4 text-center bg-white">
 								<div class="flex justify-center items-center">
-									<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+									<div class="animate-spin h-6 w-6 border border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mx-auto"></div>
 									<p class="ms-2 text-xs text-gray-500">{{ __('Loading more items...') }}</p>
 								</div>
 							</td>

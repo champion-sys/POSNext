@@ -64,12 +64,7 @@
 
 				<!-- Customers List - Optimized rendering -->
 				<div class="max-h-96 overflow-y-auto" style="will-change: scroll-position;">
-					<div v-if="loading" class="text-center py-8">
-						<div
-							class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"
-						></div>
-						<p class="mt-2 text-sm text-gray-500">{{ __('Loading customers...') }}</p>
-					</div>
+					<LoadingSpinner v-if="loading" :text="__('Loading customers...')" />
 
 					<div
 						v-else-if="allCustomers.length === 0 && !loading"

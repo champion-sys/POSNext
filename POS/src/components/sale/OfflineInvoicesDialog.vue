@@ -29,10 +29,7 @@
 					</Button>
 				</div>
 
-				<!-- Loading State -->
-				<div v-if="loading" class="flex items-center justify-center py-12">
-					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-				</div>
+				<LoadingSpinner v-if="loading" :text="null" />
 
 				<!-- Empty State -->
 				<div v-else-if="invoices.length === 0" class="text-center py-12">

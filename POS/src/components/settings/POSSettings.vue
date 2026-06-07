@@ -68,11 +68,7 @@
 
 					<!-- Main Content -->
 					<div class="flex-1 overflow-y-auto bg-gray-50">
-						<!-- Loading State -->
-						<div v-if="loading" class="flex flex-col items-center justify-center py-16">
-							<div class="animate-spin rounded-full h-12 w-12 border-b-3 border-blue-500 mb-4"></div>
-							<p class="text-sm font-medium text-gray-600">{{ __('Loading settings...') }}</p>
-						</div>
+						<LoadingSpinner v-if="loading" :text="__('Loading settings...')" />
 
 						<!-- Settings Form -->
 						<div v-else-if="settings.pos_profile || posProfile" class="p-6 flex flex-col gap-6">

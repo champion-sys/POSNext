@@ -84,11 +84,7 @@
 
 					<!-- Tab Content -->
 					<div class="flex-1 overflow-y-auto bg-gray-50">
-						<!-- Loading State -->
-						<div v-if="loading && activeTab === 'partial'" class="flex flex-col items-center justify-center py-16">
-							<div class="animate-spin rounded-full h-12 w-12 border-b-3 border-indigo-500 mb-4"></div>
-							<p class="text-sm font-medium text-gray-600">{{ __('Loading {0}...', [currentTabLabel]) }}</p>
-						</div>
+						<LoadingSpinner v-if="loading && activeTab === 'partial'" :text="__('Loading {0}...', [currentTabLabel])" />
 
 						<!-- Tab Content -->
 						<div class="p-6">
