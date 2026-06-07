@@ -21,8 +21,36 @@ def validate(doc, method=None):
 		doc: Sales Invoice document
 		method: Hook method name (unused)
 	"""
+	validate_return_invoice(doc)
 	apply_tax_inclusive(doc)
 	auto_assign_loyalty_program_on_invoice(doc)
+
+
+def validate_return_invoice(doc):
+	"""
+	Validate that return invoices are allowed for the POS Profile.
+	"""
+	if not doc.is_return or not doc.is_pos or not doc.pos_profile:
+		return
+
+	allow_return = frappe.db.get_value(
+		"POS Settings",
+		{"pos_profile": doc.pos_profile},
+		"allow_return"
+	)
+
+	if not cint(allow_return):
+		user_roles = set(frappe.get_roles(frappe.session.user))
+		allowed_roles = {
+			"Accounts User",
+			"Accounts Manager",
+			"Sales Manager",
+			"Sales User",
+			"System Manager",
+			"Administrator",
+		}
+		if not user_roles.intersection(allowed_roles):
+			frappe.throw(_("Returns are not allowed for POS Profile {0}").format(doc.pos_profile))
 
 
 def apply_tax_inclusive(doc):

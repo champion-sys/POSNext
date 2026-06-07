@@ -33,11 +33,11 @@
 									ref="invoiceSearchInput"
 									v-model="invoiceListFilter"
 									type="text"
-									:placeholder="isOffline ? __('Search unavailable offline') : __('Search by invoice, customer, or mobile...')"
-									:disabled="isOffline"
+									:placeholder="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (isOffline ? __('Search unavailable offline') : __('Search by invoice, customer, or mobile...'))"
+									:disabled="isOffline || !settingsStore.allowReturn"
 									:class="[
 										'w-full ps-10 pe-10 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-										isOffline ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300'
+										(isOffline || !settingsStore.allowReturn) ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300'
 									]"
 									@input="onSearchInput"
 									@keydown.down.prevent="navigateSuggestion(1)"
@@ -102,8 +102,8 @@
 							variant="subtle"
 							@click="loadInvoicesResource.reload()"
 							:loading="loadInvoicesResource.loading"
-							:disabled="isOffline"
-							:title="isOffline ? __('Refresh unavailable offline') : __('Refresh')"
+							:disabled="isOffline || !settingsStore.allowReturn"
+							:title="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (isOffline ? __('Refresh unavailable offline') : __('Refresh'))"
 						>
 							<FeatherIcon name="refresh-cw" class="w-4 h-4" />
 						</Button>
@@ -135,8 +135,11 @@
 						<div
 							v-for="invoice in filteredInvoiceList"
 							:key="invoice.name"
-							@click="openReturnModal(invoice)"
-							class="bg-white border border-gray-200 rounded-lg p-3 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer transition-all"
+							@click="settingsStore.allowReturn ? openReturnModal(invoice) : null"
+							:class="[
+								'bg-white border border-gray-200 rounded-lg p-3 transition-all',
+								settingsStore.allowReturn ? 'hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer' : 'opacity-60 cursor-not-allowed'
+							]"
 						>
 							<div class="flex items-start justify-between gap-3">
 								<!-- Invoice Info (Start Side) -->
@@ -760,6 +763,7 @@
 <script setup>
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useToast } from "@/composables/useToast"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { getPaymentIcon } from "@/utils/payment"
 import {
 	DEFAULT_CURRENCY,
@@ -773,6 +777,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
 const { isOffline } = useOfflineStatus()
+const settingsStore = usePOSSettingsStore()
 
 // ============================================
 // Constants (hoisted for performance)
@@ -1253,6 +1258,7 @@ const paymentSelectStyle = {
 }
 
 const canCreateReturn = computed(() => {
+	if (!settingsStore.allowReturn) return false
 	const hasSelectedItems = selectedItems.value.length > 0
 	if (!hasSelectedItems || !hasOpenShift.value) return false
 	// Credit sale returns and "add to customer credit" returns don't need payment validation
