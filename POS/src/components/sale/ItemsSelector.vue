@@ -1,13 +1,13 @@
 <template>
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
-		<div class="bg-gray-200 border-b border-gray-300 max-h-[135px] overflow-y-auto">
+		<div class="bg-gray-200 border-b border-gray-300 max-h-[169px] overflow-y-auto">
 			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
@@ -24,13 +24,13 @@
 					@click="handleFilterClick(option.value)"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-none text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs font-bold uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
 					]"
 				>
-					<span class="truncate">{{ __(option.label) }}</span>
+					<span class="">{{ __(option.label) }}</span>
 				</button>
 			</div>
 		</div>
