@@ -428,7 +428,7 @@
 						</div>
  
 						<!-- Item Details -->
-						<div class="min-w-0 flex flex-col justify-between pt-0.5 flex-1">
+						<div :class="['min-w-0 flex flex-col justify-between flex-1', settingsStore.hideImages ? 'pt-7' : 'pt-0.5']">
 							<div>
 								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight">
 									{{ item.item_name }}
