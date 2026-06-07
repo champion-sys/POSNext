@@ -1640,3 +1640,4 @@ Points applied: {0}. Please pay remaining {1} with {2},تم خصم النقاط:
 "Confirm password does not match new password","تأكيد كلمة المرور غير متطابق مع كلمة المرور الجديدة",""
 "Password updated successfully","تم تحديث كلمة المرور بنجاح",""
 "Failed to change password. Please verify current password.","فشل تغيير كلمة المرور. يرجى التحقق من كلمة المرور الحالية.",""
+"Lock Screen","تأمين الشاشة","",

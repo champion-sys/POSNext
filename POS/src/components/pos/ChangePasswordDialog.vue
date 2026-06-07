@@ -62,7 +62,7 @@
 					variant="subtle"
 					@click="show = false"
 					:disabled="loading"
-					class=""
+					class="px-2 py-1"
 				>
 					{{ __('Cancel') }}
 				</Button>
@@ -70,7 +70,7 @@
 					variant="solid"
 					@click="submitPasswordChange"
 					:loading="loading"
-					class=""
+					class="px-2 py-1"
 				>
 					{{ __('Change Password') }}
 				</Button>
