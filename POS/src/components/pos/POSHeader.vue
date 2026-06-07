@@ -52,6 +52,7 @@
 				<div class="flex items-stretch flex-shrink-0">
 					<!-- WiFi/Offline Status -->
 					<button
+						v-if="!disableOfflineMode"
 						@click="$emit('sync-click')"
 						:class="[
 							'px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center',
@@ -329,6 +330,10 @@ const props = defineProps({
 		default: false,
 	},
 	qzConnected: {
+		type: Boolean,
+		default: false,
+	},
+	disableOfflineMode: {
 		type: Boolean,
 		default: false,
 	},

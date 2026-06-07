@@ -77,6 +77,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allow_print_last_invoice: 0,
 		custom_allow_access_to_previous_invoices: 0,
 		role_allowed_to_access_settings_in_pos: null,
+		custom_disable_offline_mode: 0,
 	})
 
 	const isLoading = ref(false)
@@ -250,6 +251,19 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const allowChangePostingDate = computed(() =>
 		Boolean(settings.value.allow_change_posting_date),
 	)
+	const disableOfflineMode = computed(() =>
+		Boolean(settings.value.custom_disable_offline_mode),
+	)
+
+	watch(
+		disableOfflineMode,
+		(newVal) => {
+			if (typeof window !== "undefined") {
+				window.posNextDisableOfflineMode = newVal
+			}
+		},
+		{ immediate: true },
+	)
 
 	// Computed - Miscellaneous
 	const inputQty = computed(() => Boolean(settings.value.input_qty))
@@ -385,6 +399,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			// Security
 			enable_session_lock: 0,
 			session_lock_timeout: 5,
+			custom_disable_offline_mode: 0,
 		}
 		isLoaded.value = false
 	}
@@ -527,6 +542,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		enableSessionLock,
 		sessionLockTimeout,
 		roleAllowedToAccessSettingsInPos,
+		disableOfflineMode,
 
 		// Actions
 		loadSettings,

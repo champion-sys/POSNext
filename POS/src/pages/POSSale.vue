@@ -216,6 +216,7 @@
 					:is-refreshing="stockStore.refreshing"
 					:silent-print-enabled="posSettingsStore.silentPrint"
 					:qz-connected="qzConnected"
+					:disable-offline-mode="posSettingsStore.disableOfflineMode"
 					@sync-click="handleSyncClick"
 					@printer-click="openHistoryDialog"
 					@refresh-click="handleRefresh"

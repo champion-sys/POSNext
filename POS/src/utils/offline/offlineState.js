@@ -507,6 +507,9 @@ class OfflineStateManager {
 	 * Get current offline status
 	 */
 	get isOffline() {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			return false
+		}
 		return this._manualOffline || !this._browserOnline || !this._serverOnline
 	}
 
@@ -514,6 +517,9 @@ class OfflineStateManager {
 	 * Get manual offline state
 	 */
 	get manualOffline() {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			return false
+		}
 		return this._manualOffline
 	}
 
@@ -521,6 +527,9 @@ class OfflineStateManager {
 	 * Get server online state
 	 */
 	get serverOnline() {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			return true
+		}
 		return this._serverOnline
 	}
 
@@ -528,6 +537,9 @@ class OfflineStateManager {
 	 * Get browser online state
 	 */
 	get browserOnline() {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			return true
+		}
 		return this._browserOnline
 	}
 
@@ -535,6 +547,11 @@ class OfflineStateManager {
 	 * Set manual offline mode
 	 */
 	setManualOffline(value, { silent = false } = {}) {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			this._manualOffline = false
+			this._syncToWindow()
+			return
+		}
 		const newValue = !!value
 		if (this._manualOffline === newValue) return
 
@@ -552,6 +569,9 @@ class OfflineStateManager {
 	 * Toggle manual offline mode
 	 */
 	toggleManualOffline() {
+		if (typeof window !== 'undefined' && window.posNextDisableOfflineMode) {
+			return false
+		}
 		this.setManualOffline(!this._manualOffline)
 		return this._manualOffline
 	}
