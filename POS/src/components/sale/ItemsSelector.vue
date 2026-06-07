@@ -490,7 +490,7 @@
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
+									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to first page')"
 						>
@@ -505,7 +505,7 @@
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
+									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to previous page')"
 						>
@@ -521,7 +521,7 @@
 								:class="[
 									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
-										? 'bg-black text-white border-black'
+										? 'bg-black text-white border-gray-300'
 										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 								]"
 								:aria-label="__('Go to page {0}', [page])"
@@ -537,7 +537,7 @@
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
+									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to next page')"
 						>
@@ -552,7 +552,7 @@
 								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
+									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
 							]"
 							:aria-label="__('Go to last page')"
 						>
@@ -901,7 +901,7 @@ const {
 
 // Local state
 const viewMode = settingsStore.defaultCardView ? ref("grid") : ref("list") // 'grid' or 'list'
-const itemThreshold = ref(50) // Threshold for auto-switching to list view
+const itemThreshold = ref(200) // 50 Threshold for auto-switching to list view
 const userManuallySetView = ref(false) // Track if user manually changed view mode
 const lastAutoSwitchCount = ref(0)
 const showSortDropdown = ref(false) // Sort dropdown visibility
@@ -909,7 +909,7 @@ const focusedSortIndex = ref(-1) // Tracks keyboard navigation index in sort dro
 const skipPageReset = ref(false) // Skip page reset when navigating via pagination
 
 // Draggable Divider for Item Groups Section
-const itemGroupHeight = ref(135)
+const itemGroupHeight = ref(160)
 const dividerRef = ref(null)
 const isResizing = ref(false)
 let resizeState = null
