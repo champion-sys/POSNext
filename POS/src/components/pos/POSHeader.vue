@@ -224,13 +224,10 @@
 					<button
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
-						:class="[
-							'touch-manipulation px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center',
-							isRefreshing ? 'animate-spin' : ''
-						]"
+						class="touch-manipulation px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
 					>
-						<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+						<svg :class="['w-3.5 h-3.5 sm:w-4 sm:h-4', isRefreshing ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" :d="refreshIcon" />
 						</svg>
 					</button>
