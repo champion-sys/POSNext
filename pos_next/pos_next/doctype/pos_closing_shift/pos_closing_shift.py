@@ -137,6 +137,10 @@ class POSClosingShift(Document):
             standard_opening = frappe.db.get_value("POS Opening Entry", {"pos_profile": self.pos_profile, "status": "Open", "user": self.user}, "name")
         pce.pos_opening_entry = standard_opening
 
+        # Set custom shift properties in-memory for server script validation
+        pce.closing_to_mode_of_payment = self.closing_to_mode_of_payment
+        pce.difference_mode_of_payment_account = self.difference_mode_of_payment_account
+
         for inv in pos_invoices:
             pce.append("pos_invoices", {
                 "pos_invoice": inv.name,
