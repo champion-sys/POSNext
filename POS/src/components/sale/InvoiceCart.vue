@@ -788,6 +788,11 @@
 							: 'bg-white hover:bg-gray-50/50'
 					]"
 				>
+					<!-- Row Index -->
+					<span class="text-[12px] font-mono font-bold text-gray-700 w-5 text-center flex-shrink-0 select-none leading-none self-start pt-0.5">
+						{{ String(index + 1).padStart(2, '0') }}
+					</span>
+
 					<!-- Item Image Thumbnail -->
 					<div
 						v-if="!settingsStore.hideImages"
