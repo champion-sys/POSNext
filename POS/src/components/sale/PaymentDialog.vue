@@ -878,11 +878,15 @@
 					<!-- Numeric Keypad (Desktop only) -->
 					<div class="hidden lg:block bg-white border border-gray-200">
 						<!-- Amount Display -->
-						<div class="bg-black px-4 py-3">
-							<div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 text-center">{{ __('Enter Amount') }}</div>
-							<div dir="ltr" class="font-mono font-bold text-white text-center text-3xl">
-								<!-- <span class="text-gray-400 text-xl me-1">{{ currencySymbol }}</span> -->
-								<span>{{ numpadFormattedDisplay }}</span>
+						<div class="bg-white border-b-2 border-black px-4 pt-3 pb-4">
+							<!-- Top row: label + method hint -->
+							<div class="flex items-center justify-center mb-2">
+								<span class="text-[10px] font-medium text-gray-500 uppercase ">{{ __('Enter Amount') }}</span>
+							</div>
+							<!-- Amount row: currency + value -->
+							<div dir="ltr" class="flex items-baseline justify-center gap-1.5">
+								<!-- <span class="text-lg font-bold text-gray-400 leading-none">{{ currencySymbol }}</span> -->
+								<span class="font-mono font-black text-gray-900 text-3xl leading-none tracking-tight">{{ numpadFormattedDisplay }}</span>
 							</div>
 						</div>
 
@@ -2788,3 +2792,31 @@ watch(
 	},
 )
 </script>
+
+<style>
+/* Hide scrollbar on frappe-ui Dialog overlay (global — needed since it renders outside component scope) */
+[data-radix-scroll-area-viewport],
+[data-radix-dialog-content],
+.fui-dialog-content,
+.overflow-y-auto {
+	scrollbar-width: none !important;
+	-ms-overflow-style: none !important;
+}
+[data-radix-scroll-area-viewport]::-webkit-scrollbar,
+[data-radix-dialog-content]::-webkit-scrollbar,
+.fui-dialog-content::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+	display: none !important;
+}
+</style>
+
+<style scoped>
+/* Hide scrollbars on internal scroll containers */
+.overflow-y-auto {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.overflow-y-auto::-webkit-scrollbar {
+	display: none;
+}
+</style>
