@@ -880,14 +880,14 @@
 						<!-- Amount Display -->
 						<div class="bg-black px-4 py-3">
 							<div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 text-center">{{ __('Enter Amount') }}</div>
-							<div dir="ltr" class="font-mono font-bold text-white text-center text-3xl tracking-widest">
-								<span class="text-gray-400 text-xl me-1">{{ currencySymbol }}</span>
-								<span>{{ numpadDisplay || (0).toFixed(settingsStore.decimalPrecision) }}</span>
+							<div dir="ltr" class="font-mono font-bold text-white text-center text-3xl">
+								<!-- <span class="text-gray-400 text-xl me-1">{{ currencySymbol }}</span> -->
+								<span>{{ numpadFormattedDisplay }}</span>
 							</div>
 						</div>
 
-						<!-- Keypad Grid (4 columns) -->
-						<div class="grid grid-cols-4 gap-[1px] bg-gray-200">
+						<!-- Keypad Grid (4 columns) — always LTR so 7/4/1 stay on left in RTL too -->
+						<div dir="ltr" class="grid grid-cols-4 gap-[1px] bg-gray-200">
 							<!-- Row 1: 7, 8, 9, Backspace -->
 							<button
 								v-for="num in ['7', '8', '9']"
@@ -1301,6 +1301,20 @@ const {
 	isEnabled: computed(() => props.modelValue), // Only enabled when dialog is open
 	onEnter: handleNumpadEnter,
 	precision: computed(() => settingsStore.decimalPrecision),
+})
+
+// Format the numpad input as a currency number (thousands separated)
+// while preserving a trailing decimal point/digits during live input
+const numpadFormattedDisplay = computed(() => {
+	const raw = numpadDisplay.value
+	if (!raw) return (0).toFixed(settingsStore.decimalPrecision)
+	// Split on decimal point to preserve trailing '.' or decimal digits
+	const dotIdx = raw.indexOf('.')
+	const intPart = dotIdx === -1 ? raw : raw.slice(0, dotIdx)
+	const decPart = dotIdx === -1 ? '' : raw.slice(dotIdx) // includes the dot
+	const intNum = parseInt(intPart, 10)
+	const formatted = isNaN(intNum) ? intPart : intNum.toLocaleString('en-US')
+	return formatted + decPart
 })
 
 // Mobile custom amount state
