@@ -2527,3 +2527,13 @@ onBeforeUnmount(() => {
 })
 </script>
 
+<style scoped>
+/* Hide scrollbars on all scroll containers — keeps scrolling functional */
+.overflow-y-auto {
+	scrollbar-width: none;       /* Firefox */
+	-ms-overflow-style: none;    /* IE/Edge legacy */
+}
+.overflow-y-auto::-webkit-scrollbar {
+	display: none;               /* Chrome / Safari / WebKit */
+}
+</style>

@@ -591,11 +591,13 @@
 				<div
 					ref="rightColumnRef"
 					:class="[
-						'lg:col-span-3 bg-gray-50 rounded-none border border-gray-300 flex flex-col',
-						isSmallMobile ? 'p-1.5' : 'p-2 lg:p-3'
+						'lg:col-span-3 bg-gray-50 rounded-none border border-gray-300 flex flex-col overflow-hidden',
+						isSmallMobile ? 'p-0' : 'p-0'
 					]"
 					:style="isMobileView ? {} : { minHeight: rightColumnMinHeight }"
 				>
+					<!-- Scrollable top section: payment methods + quick amounts + numpad -->
+					<div :class="['flex-1 overflow-y-auto', isSmallMobile ? 'p-1.5' : 'p-2 lg:p-3']">
 					<!-- Payment Methods -->
 					<div :class="isSmallMobile ? 'mb-1' : 'mb-1.5 lg:mb-3'">
 						<div :class="['flex items-center justify-between', isSmallMobile ? 'mb-0.5' : 'mb-1 lg:mb-2']">
@@ -874,29 +876,30 @@
 					<!-- End Mobile Payment Section -->
 
 					<!-- Numeric Keypad (Desktop only) -->
-					<div :class="['hidden lg:block bg-white rounded-none border border-gray-300', isCompactMode ? 'p-2' : 'p-3']">
+					<div class="hidden lg:block bg-white border border-gray-200">
 						<!-- Amount Display -->
-						<div :class="['bg-gray-100 rounded-none border border-gray-300', isCompactMode ? 'p-2 mb-2' : 'p-3 mb-3']">
-							<div dir="ltr" :class="['font-bold text-gray-900 text-center flex items-center justify-center gap-2', isCompactMode ? 'text-xl' : 'text-2xl']">
-								<span>{{ currencySymbol }}</span>
-								<span class="font-mono tracking-wider">{{ numpadDisplay || (0).toFixed(settingsStore.decimalPrecision) }}</span>
+						<div class="bg-black px-4 py-3">
+							<div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 text-center">{{ __('Enter Amount') }}</div>
+							<div dir="ltr" class="font-mono font-bold text-white text-center text-3xl tracking-widest">
+								<span class="text-gray-400 text-xl me-1">{{ currencySymbol }}</span>
+								<span>{{ numpadDisplay || (0).toFixed(settingsStore.decimalPrecision) }}</span>
 							</div>
 						</div>
 
 						<!-- Keypad Grid (4 columns) -->
-						<div :class="['grid grid-cols-4', isCompactMode ? 'gap-1' : 'gap-1.5']">
+						<div class="grid grid-cols-4 gap-[1px] bg-gray-200">
 							<!-- Row 1: 7, 8, 9, Backspace -->
 							<button
 								v-for="num in ['7', '8', '9']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[dynamicNumpadSize.key, 'text-xl font-semibold rounded-none bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 transition-all active:bg-gray-200']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
 							<button
 								@click="numpadBackspace"
-								:class="[dynamicNumpadSize.key, 'text-lg font-semibold rounded-none bg-white border border-gray-300 hover:bg-red-50 text-red-600 transition-all active:bg-red-100 flex items-center justify-center']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-lg font-semibold bg-white hover:bg-red-50 text-red-500 transition-colors active:bg-red-100 flex items-center justify-center touch-manipulation select-none']"
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/>
@@ -908,13 +911,13 @@
 								v-for="num in ['4', '5', '6']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[dynamicNumpadSize.key, 'text-xl font-semibold rounded-none bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 transition-all active:bg-gray-200']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
 							<button
 								@click="numpadClear"
-								:class="[dynamicNumpadSize.key, 'text-lg font-semibold rounded-none bg-white border border-gray-300 hover:bg-orange-50 text-orange-600 transition-all active:bg-orange-100']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-lg font-bold bg-white hover:bg-orange-50 text-orange-500 transition-colors active:bg-orange-100 touch-manipulation select-none']"
 							>
 								C
 							</button>
@@ -924,7 +927,7 @@
 								v-for="num in ['1', '2', '3']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[dynamicNumpadSize.key, 'text-xl font-semibold rounded-none bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 transition-all active:bg-gray-200']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
@@ -932,25 +935,28 @@
 								@click="numpadAddPayment"
 								:disabled="!numpadValue || numpadValue <= 0 || !lastSelectedMethod"
 								:class="[
-									dynamicNumpadSize.addBtn, 'row-span-2 text-xl font-bold rounded-none transition-all',
+									'row-span-2 text-base font-bold transition-colors touch-manipulation select-none flex flex-col items-center justify-center gap-1',
 									!numpadValue || numpadValue <= 0 || !lastSelectedMethod
-										? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
-										: 'bg-black border border-black hover:bg-gray-900 text-white active:bg-black'
+										? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+										: 'bg-black hover:bg-gray-900 text-white active:bg-black'
 								]"
 							>
-								{{ __('Add') }}
+								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/>
+								</svg>
+								<span class="text-xs font-bold uppercase tracking-wider">{{ __('Add') }}</span>
 							</button>
 
 							<!-- Row 4: 00, 0, . -->
 							<button
 								@click="numpadInput('00')"
-								:class="[isCompactMode ? 'h-12' : 'h-16', 'text-2xl font-semibold rounded-none bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 transition-all active:bg-gray-200']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								00
 							</button>
 							<button
 								@click="numpadInput('0')"
-								:class="[isCompactMode ? 'h-12' : 'h-16', 'text-2xl font-semibold rounded-none bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 transition-all active:bg-gray-200']"
+								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								0
 							</button>
@@ -958,10 +964,10 @@
 								@click="numpadInput('.')"
 								:disabled="numpadDisplay.includes('.')"
 								:class="[
-									isCompactMode ? 'h-12' : 'h-16', 'text-2xl font-semibold rounded-none transition-all',
+									isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold transition-colors touch-manipulation select-none',
 									numpadDisplay.includes('.')
-										? 'bg-gray-100 border border-gray-200 text-gray-400 cursor-not-allowed'
-										: 'bg-white border border-gray-300 hover:bg-gray-100 text-gray-900 active:bg-gray-200'
+										? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+										: 'bg-white hover:bg-gray-50 text-gray-900 active:bg-gray-100'
 								]"
 							>
 								.
@@ -969,8 +975,11 @@
 						</div>
 					</div>
 
-					<!-- Action Buttons - Below Keypad (Desktop only) -->
-					<div :class="['hidden lg:flex items-center gap-2', isCompactMode ? 'mt-2' : 'mt-4']">
+					</div>
+					<!-- End scrollable section -->
+
+					<!-- Action Buttons - ALWAYS pinned at bottom (Desktop only) -->
+					<div class="hidden lg:flex items-center gap-2 p-3 bg-white border-t border-gray-200 mt-0">
 						<!-- Pay on Account Button (if credit sales enabled) -->
 						<button
 							v-if="allowCreditSale"
@@ -1016,6 +1025,7 @@
 							<span>{{ isSubmitting ? __('Processing...') : paymentButtonText }}</span>
 						</button>
 					</div>
+					<!-- End pinned action buttons -->
 				</div>
 				<!-- End Right Column -->
 			</div>
