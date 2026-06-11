@@ -2531,7 +2531,71 @@ function clearAll() {
 	autoFillNumpad()
 }
 
+// ──────────────────────────────────────────
+// Cashier Sound Effect (Web Audio API)
+// ──────────────────────────────────────────
+function playCashierSound() {
+	try {
+		const AudioCtx = window.AudioContext || window.webkitAudioContext
+		if (!AudioCtx) return
+		const ctx = new AudioCtx()
+
+		const now = ctx.currentTime
+
+		// Helper: play a tone burst
+		const playTone = (freq, startTime, duration, gainPeak, type = 'sine') => {
+			const osc = ctx.createOscillator()
+			const gain = ctx.createGain()
+			osc.type = type
+			osc.frequency.setValueAtTime(freq, startTime)
+			gain.gain.setValueAtTime(0, startTime)
+			gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.01)
+			gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration)
+			osc.connect(gain)
+			gain.connect(ctx.destination)
+			osc.start(startTime)
+			osc.stop(startTime + duration + 0.05)
+		}
+
+		// "Cha" — cash drawer thunk (low thump)
+		const bufferSize = ctx.sampleRate * 0.12
+		const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+		const data = buffer.getChannelData(0)
+		for (let i = 0; i < bufferSize; i++) {
+			data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 4)
+		}
+		const noise = ctx.createBufferSource()
+		noise.buffer = buffer
+		const noiseFilter = ctx.createBiquadFilter()
+		noiseFilter.type = 'lowpass'
+		noiseFilter.frequency.value = 200
+		const noiseGain = ctx.createGain()
+		noiseGain.gain.setValueAtTime(0.6, now)
+		noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12)
+		noise.connect(noiseFilter)
+		noiseFilter.connect(noiseGain)
+		noiseGain.connect(ctx.destination)
+		noise.start(now)
+		noise.stop(now + 0.15)
+
+		// "Ching" — metallic bell strike (high harmonics)
+		playTone(1400, now + 0.04, 0.5, 0.35, 'triangle')
+		playTone(2200, now + 0.04, 0.4, 0.20, 'sine')
+		playTone(3100, now + 0.05, 0.25, 0.10, 'sine')
+
+		// Coin rattle shimmer
+		playTone(1800, now + 0.08, 0.3, 0.12, 'triangle')
+		playTone(2600, now + 0.10, 0.25, 0.08, 'sine')
+
+		// Auto-close the context after sound finishes
+		setTimeout(() => ctx.close(), 800)
+	} catch {
+		// Silently ignore — browser may block AudioContext without user gesture
+	}
+}
+
 function completePayment() {
+
 	log.debug("[PaymentDialog] Complete payment called:", {
 		canComplete: canComplete.value,
 		totalPaid: totalPaid.value,
@@ -2551,9 +2615,13 @@ function completePayment() {
 		return
 	}
 
+	// Play cashier sound immediately on valid payment
+	playCashierSound()
+
 	// Calculate if this is a partial payment (considering write-off)
 	const effectivePaid = totalPaid.value + writeOffAmount.value
 	const isPartial = effectivePaid < props.grandTotal
+
 
 	const paymentData = {
 		payments: paymentEntries.value,
