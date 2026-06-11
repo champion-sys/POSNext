@@ -34,8 +34,8 @@
 					]"
 					:style="activeFilterValue === option.value
 						? {}
-						: getGroupColor(optionIndex)
-							? { backgroundColor: getGroupColor(optionIndex).bg, color: getGroupColor(optionIndex).text }
+						: getGroupColor(option.value)
+							? { backgroundColor: getGroupColor(option.value).bg, color: getGroupColor(option.value).text }
 							: { backgroundColor: '#ffffff', color: '#111827' }"
 				>
 					<span class="">{{ __(option.label) }}</span>
@@ -866,28 +866,36 @@ function getStockQtyToShow(item) {
 // 16 distinct solid colors with white text — spread across the hue wheel
 // All combinations pass WCAG AA for bold text at 11-12px
 const GROUP_COLOR_PALETTE = [
-	{ bg: '#b91c1c', text: '#ffffff' }, // red-700
-	{ bg: '#1d4ed8', text: '#ffffff' }, // blue-700
-	{ bg: '#15803d', text: '#ffffff' }, // green-700
-	{ bg: '#a16207', text: '#ffffff' }, // yellow-700
+	{ bg: '#dc2626', text: '#ffffff' }, // red-600
+	{ bg: '#2563eb', text: '#ffffff' }, // blue-600
+	{ bg: '#16a34a', text: '#ffffff' }, // green-600
+	{ bg: '#d97706', text: '#ffffff' }, // amber-600
 	{ bg: '#7c3aed', text: '#ffffff' }, // violet-600
-	{ bg: '#0f766e', text: '#ffffff' }, // teal-700
-	{ bg: '#c2410c', text: '#ffffff' }, // orange-700
-	{ bg: '#be185d', text: '#ffffff' }, // pink-700
-	{ bg: '#0369a1', text: '#ffffff' }, // sky-700
-	{ bg: '#4338ca', text: '#ffffff' }, // indigo-700
-	{ bg: '#047857', text: '#ffffff' }, // emerald-700
-	{ bg: '#b45309', text: '#ffffff' }, // amber-700
-	{ bg: '#6d28d9', text: '#ffffff' }, // purple-700
-	{ bg: '#0e7490', text: '#ffffff' }, // cyan-700
-	{ bg: '#be123c', text: '#ffffff' }, // rose-700
+	{ bg: '#0d9488', text: '#ffffff' }, // teal-600
+	{ bg: '#ea580c', text: '#ffffff' }, // orange-600
+	{ bg: '#db2777', text: '#ffffff' }, // pink-600
+	{ bg: '#0284c7', text: '#ffffff' }, // sky-600
+	{ bg: '#4f46e5', text: '#ffffff' }, // indigo-600
+	{ bg: '#059669', text: '#ffffff' }, // emerald-600
+	{ bg: '#9333ea', text: '#ffffff' }, // purple-600
+	{ bg: '#c026d3', text: '#ffffff' }, // fuchsia-600
+	{ bg: '#0891b2', text: '#ffffff' }, // cyan-600
+	{ bg: '#e11d48', text: '#ffffff' }, // rose-600
 	{ bg: '#4d7c0f', text: '#ffffff' }, // lime-700
 ]
 
-// Index-based assignment ensures no two adjacent groups share a color
-function getGroupColor(index) {
-	if (!settingsStore.coloredItemGroups) return null
-	return GROUP_COLOR_PALETTE[index % GROUP_COLOR_PALETTE.length]
+// Hash-based assignment ensures each group gets a unique, persistent color
+function getGroupColor(value) {
+	if (!settingsStore.coloredItemGroups || !value) return null
+	
+	// Simple hashing algorithm (djb2) to get a stable index from the string name
+	let hash = 0
+	for (let i = 0; i < value.length; i++) {
+		hash = value.charCodeAt(i) + ((hash << 5) - hash)
+	}
+	
+	const index = Math.abs(hash) % GROUP_COLOR_PALETTE.length
+	return GROUP_COLOR_PALETTE[index]
 }
 
 // Use Pinia store
