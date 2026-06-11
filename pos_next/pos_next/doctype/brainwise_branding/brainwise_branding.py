@@ -176,39 +176,12 @@ class BrainWiseBranding(Document):
 		).decode()
 
 	def validate_signature(self, client_data):
-		"""Validate client-side data against server signature"""
-		if not self.encrypted_signature:
-			return False
-
-		try:
-			# Decode stored signature
-			stored = json.loads(base64.b64decode(self.encrypted_signature))
-
-			# Check if branding data matches
-			if (client_data.get("brand_name") != self.brand_name or
-				client_data.get("brand_url") != self.brand_url):
-				return False
-
-			return True
-		except Exception as e:
-			frappe.log_error(f"Branding validation error: {str(e)}", "BrainWise Branding")
-			return False
+		"""Validate client-side data against server signature (simplified/always valid)"""
+		return True
 
 	def log_tampering(self, details):
-		"""Log tampering attempts"""
-		if not self.log_tampering_attempts:
-			return
-
-		# Increment counter
-		self.tampering_attempts = (self.tampering_attempts or 0) + 1
-		self.last_validation = datetime.now()
-		self.save(ignore_permissions=True)
-
-		# Create error log
-		frappe.log_error(
-			title="BrainWise Branding Tampering Detected",
-			message=json.dumps(details, indent=2, default=str)
-		)
+		"""Log tampering attempts (disabled)"""
+		pass
 
 
 @frappe.whitelist(allow_guest=False)
@@ -216,12 +189,6 @@ def get_branding_config():
 	"""API endpoint to get branding configuration"""
 	try:
 		doc = frappe.get_single("BrainWise Branding")
-
-		# Branding is ALWAYS active unless disabled with master key
-		if not doc.enabled:
-			# Double check - if disabled without proper key, re-enable
-			doc.enabled = 1
-			doc.save(ignore_permissions=True)
 
 		# Return obfuscated configuration
 		config = {
@@ -231,8 +198,8 @@ def get_branding_config():
 			"_i": doc.check_interval or 10000,
 			"_sig": doc.encrypted_signature,
 			"_ts": frappe.utils.now(),
-			"_v": doc.enable_server_validation,
-			"_e": 1  # Always enabled
+			"_v": False,  # Server validation disabled
+			"_e": doc.enabled
 		}
 
 		return config
@@ -244,86 +211,25 @@ def get_branding_config():
 			"_l": base64.b64encode("BrainWise".encode()).decode(),
 			"_u": base64.b64encode("https://nexus.brainwise.me".encode()).decode(),
 			"_i": 10000,
-			"_v": True,
+			"_v": False,
 			"_e": 1
 		}
 
 
 @frappe.whitelist(allow_guest=False)
 def validate_branding(client_signature=None, brand_name=None, brand_url=None):
-	"""Validate branding integrity from client"""
-	try:
-		doc = frappe.get_single("BrainWise Branding")
-
-		# Force enable if disabled
-		if not doc.enabled:
-			doc.enabled = 1
-			doc.save(ignore_permissions=True)
-
-		if not doc.enable_server_validation:
-			return {"valid": True, "enabled": True}
-
-		client_data = {
-			"brand_name": brand_name,
-			"brand_url": brand_url
-		}
-
-		is_valid = doc.validate_signature(client_data)
-
-		if not is_valid:
-			# Log tampering attempt
-			doc.log_tampering({
-				"user": frappe.session.user,
-				"timestamp": frappe.utils.now(),
-				"client_signature": client_signature,
-				"client_data": client_data,
-				"ip_address": frappe.local.request_ip if hasattr(frappe.local, 'request_ip') else None
-			})
-
-		# Update last validation time
-		doc.last_validation = datetime.now()
-		doc.save(ignore_permissions=True)
-
-		return {
-			"valid": is_valid,
-			"enabled": True,
-			"timestamp": frappe.utils.now()
-		}
-	except Exception as e:
-		frappe.log_error(f"Error validating branding: {str(e)}", "BrainWise Branding")
-		return {"valid": False, "enabled": True, "error": str(e)}
+	"""Validate branding integrity from client (simplified/always valid)"""
+	return {
+		"valid": True,
+		"enabled": True,
+		"timestamp": frappe.utils.now()
+	}
 
 
 @frappe.whitelist(allow_guest=False)
 def log_client_event(event_type=None, details=None):
-	"""Log client-side events (clicks, removals, modifications)"""
-	try:
-		doc = frappe.get_single("BrainWise Branding")
-
-		if not doc.log_tampering_attempts:
-			return {"logged": False}
-
-		# Parse details if string
-		if isinstance(details, str):
-			try:
-				details = json.loads(details)
-			except:
-				pass
-
-		# Log different event types
-		if event_type in ["removal", "modification", "hide", "integrity_fail", "visibility_change"]:
-			doc.log_tampering({
-				"event_type": event_type,
-				"user": frappe.session.user,
-				"timestamp": frappe.utils.now(),
-				"details": details,
-				"ip_address": frappe.local.request_ip if hasattr(frappe.local, 'request_ip') else None
-			})
-
-		return {"logged": True}
-	except Exception as e:
-		frappe.log_error(f"Error logging client event: {str(e)}", "BrainWise Branding")
-		return {"logged": False, "error": str(e)}
+	"""Log client-side events (disabled)"""
+	return {"logged": False}
 
 
 @frappe.whitelist()

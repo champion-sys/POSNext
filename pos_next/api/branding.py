@@ -81,120 +81,21 @@ def get_default_config():
 @frappe.whitelist(allow_guest=False)
 def validate_branding(client_signature=None, brand_name=None, brand_url=None):
 	"""
-	Validate branding integrity from client
-	Logs tampering attempts and validates signatures
+	Validate branding integrity from client (simplified/always valid)
 	"""
-	try:
-		# Check if doctype exists
-		if not frappe.db.exists("DocType", "BrainWise Branding"):
-			return {"valid": True, "message": "Branding doctype not installed"}
-
-		doc = frappe.get_single("BrainWise Branding")
-
-		if not doc.enabled or not doc.enable_server_validation:
-			return {"valid": True, "message": "Validation disabled"}
-
-		# Validate branding data
-		is_valid = (
-			brand_name == doc.brand_name and
-			brand_url == doc.brand_url
-		)
-
-		if not is_valid:
-			# Log tampering attempt
-			log_tampering_attempt(doc, {
-				"type": "validation_failed",
-				"user": frappe.session.user,
-				"timestamp": frappe.utils.now(),
-				"client_signature": client_signature,
-				"expected_brand": doc.brand_name,
-				"received_brand": brand_name,
-				"expected_url": doc.brand_url,
-				"received_url": brand_url,
-				"ip_address": frappe.local.request_ip if hasattr(frappe.local, 'request_ip') else None
-			})
-
-		# Update last validation time
-		frappe.db.set_value("BrainWise Branding", doc.name, "last_validation", frappe.utils.now())
-		frappe.db.commit()
-
-		return {
-			"valid": is_valid,
-			"timestamp": frappe.utils.now(),
-			"message": "Validation successful" if is_valid else "Branding mismatch detected"
-		}
-	except Exception as e:
-		frappe.log_error(f"Error validating branding: {str(e)}", "BrainWise Branding Validation")
-		return {"valid": False, "error": str(e)}
+	return {
+		"valid": True,
+		"timestamp": frappe.utils.now(),
+		"message": "Validation successful"
+	}
 
 
 @frappe.whitelist(allow_guest=False)
 def log_client_event(event_type=None, details=None):
 	"""
-	Log client-side events (clicks, removals, modifications)
-	Used for monitoring branding tampering attempts
+	Log client-side events (disabled)
 	"""
-	try:
-		# Check if doctype exists
-		if not frappe.db.exists("DocType", "BrainWise Branding"):
-			return {"logged": False, "message": "Branding doctype not installed"}
-
-		doc = frappe.get_single("BrainWise Branding")
-
-		if not doc.log_tampering_attempts:
-			return {"logged": False, "message": "Logging disabled"}
-
-		# Parse details if string
-		if isinstance(details, str):
-			try:
-				details = json.loads(details)
-			except:
-				pass
-
-		# Log different event types
-		if event_type in ["removal", "modification", "hide", "integrity_fail", "visibility_change"]:
-			log_tampering_attempt(doc, {
-				"event_type": event_type,
-				"user": frappe.session.user,
-				"timestamp": frappe.utils.now(),
-				"details": details,
-				"ip_address": frappe.local.request_ip if hasattr(frappe.local, 'request_ip') else None
-			})
-
-			return {"logged": True, "message": f"Event {event_type} logged"}
-		elif event_type == "link_click":
-			# Log link clicks (for analytics)
-			frappe.log_error(
-				title="BrainWise Branding - Link Click",
-				message=json.dumps({
-					"user": frappe.session.user,
-					"timestamp": frappe.utils.now(),
-					"details": details
-				}, indent=2)
-			)
-			return {"logged": True, "message": "Link click logged"}
-
-		return {"logged": False, "message": f"Unknown event type: {event_type}"}
-	except Exception as e:
-		frappe.log_error(f"Error logging client event: {str(e)}", "BrainWise Branding Event Log")
-		return {"logged": False, "error": str(e)}
-
-
-def log_tampering_attempt(doc, details):
-	"""Internal function to log tampering attempts"""
-	try:
-		# Increment tampering counter
-		current_attempts = frappe.db.get_value("BrainWise Branding", doc.name, "tampering_attempts") or 0
-		frappe.db.set_value("BrainWise Branding", doc.name, "tampering_attempts", current_attempts + 1)
-		frappe.db.commit()
-
-		# Create error log
-		frappe.log_error(
-			title="BrainWise Branding - Tampering Detected",
-			message=json.dumps(details, indent=2, default=str)
-		)
-	except Exception as e:
-		frappe.log_error(f"Error logging tampering: {str(e)}", "BrainWise Branding")
+	return {"logged": False, "message": "Logging disabled"}
 
 
 @frappe.whitelist(allow_guest=False)
