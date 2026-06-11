@@ -400,7 +400,6 @@
 						<div class="space-y-1.5 overflow-y-auto max-h-32 pr-1">
 							<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white p-1.5 lg:p-2 rounded-none border border-gray-300">
 								<div class="text-xs lg:text-sm font-medium text-gray-700 flex items-center gap-1.5 truncate">
-									<span>{{ isWalletPaymentMethod(entry.mode_of_payment) ? '🎁' : getPaymentIcon(entry.type) }}</span>
 									<span class="truncate">{{ __(entry.mode_of_payment) }}</span>
 								</div>
 								<div class="flex items-center gap-1.5 shrink-0">
@@ -636,7 +635,6 @@
 											: 'border-gray-300 bg-white hover:bg-gray-50 text-gray-900'
 								]"
 							>
-								<span :class="isSmallMobile ? 'text-xs' : 'text-sm lg:text-lg'">{{ isWalletPaymentMethod(method.mode_of_payment) ? '🎁' : getPaymentIcon(method.type) }}</span>
 								<span class="truncate max-w-[80px] lg:max-w-none">{{ __(method.mode_of_payment) }}</span>
 								<!-- Wallet Balance Badge -->
 								<span v-if="isWalletPaymentMethod(method.mode_of_payment) && walletInfo.wallet_enabled"
@@ -663,7 +661,6 @@
 										: 'border-gray-300 bg-white hover:bg-gray-50 text-gray-900'
 								]"
 							>
-								<span :class="isSmallMobile ? 'text-xs' : 'text-sm lg:text-lg'">💳</span>
 								<span class="truncate">{{ __('Credit Balance') }}</span>
 								<span v-if="getMethodTotal('Customer Credit') > 0"
 									:class="['font-bold rounded-none border', isSmallMobile ? 'text-[8px] px-0.5 py-0.5' : 'text-xs px-1 py-0.5', lastSelectedMethod?.mode_of_payment === 'Customer Credit' ? 'text-black bg-white border-white' : 'text-white bg-black border-black']">
