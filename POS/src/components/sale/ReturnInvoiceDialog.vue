@@ -1036,7 +1036,7 @@ const createReturnResource = createResource({
 		const baseDoc = preparedReturnDoc.value || {}
 
 		const invoiceData = {
-			doctype: "Sales Invoice",
+			doctype: preparedReturnDoc.value?.doctype || "Sales Invoice",
 			pos_profile: props.posProfile,
 			posa_pos_opening_shift: props.posOpeningShift,
 			customer: baseDoc.customer || originalInvoice.value.customer,

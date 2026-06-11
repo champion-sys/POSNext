@@ -20,6 +20,7 @@
   "pos_profile",
   "user",
   "journal_entry",
+  "pos_closing_entry",
   "section_break_12",
   "pos_transactions",
   "section_break_9",
@@ -217,6 +218,13 @@
    "fieldtype": "Link",
    "label": "Journal Entry",
    "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pos_closing_entry",
+   "fieldtype": "Link",
+   "label": "POS Closing Entry",
+   "options": "POS Closing Entry",
    "read_only": 1
   }
  ],

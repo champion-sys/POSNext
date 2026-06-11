@@ -137,7 +137,9 @@ def get_pending_wallet_payments(customer, exclude_invoice=None):
 	Get total wallet payments from unconsolidated/pending POS invoices.
 	This prevents double-spending of wallet balance.
 	"""
-	# Get open Sales Invoices (draft or unconsolidated POS invoices)
+	pending_amount = 0.0
+
+	# 1. Get open Sales Invoices (draft or unconsolidated POS invoices)
 	filters = {
 		"customer": customer,
 		"docstatus": ["in", [0, 1]],  # Draft or Submitted
@@ -151,8 +153,6 @@ def get_pending_wallet_payments(customer, exclude_invoice=None):
 		fields=["name"]
 	)
 
-	pending_amount = 0.0
-
 	for invoice in invoices:
 		if exclude_invoice and invoice.name == exclude_invoice:
 			continue
@@ -160,7 +160,35 @@ def get_pending_wallet_payments(customer, exclude_invoice=None):
 		# Get wallet payments from this invoice
 		payments = frappe.get_all(
 			"Sales Invoice Payment",
-			filters={"parent": invoice.name},
+			filters={"parent": invoice.name, "parenttype": "Sales Invoice"},
+			fields=["mode_of_payment", "amount"]
+		)
+
+		for payment in payments:
+			is_wallet = frappe.db.get_value(
+				"Mode of Payment", payment.mode_of_payment, "is_wallet_payment"
+			)
+			if is_wallet:
+				pending_amount += flt(payment.amount)
+
+	# 2. Get open POS Invoices
+	pos_invoices = frappe.get_all(
+		"POS Invoice",
+		filters={
+			"customer": customer,
+			"docstatus": ["in", [0, 1]],
+			"outstanding_amount": [">", 0]
+		},
+		fields=["name"]
+	)
+
+	for invoice in pos_invoices:
+		if exclude_invoice and invoice.name == exclude_invoice:
+			continue
+
+		payments = frappe.get_all(
+			"Sales Invoice Payment",
+			filters={"parent": invoice.name, "parenttype": "POS Invoice"},
 			fields=["mode_of_payment", "amount"]
 		)
 
@@ -172,6 +200,7 @@ def get_pending_wallet_payments(customer, exclude_invoice=None):
 				pending_amount += flt(payment.amount)
 
 	return pending_amount
+
 
 
 @frappe.whitelist()

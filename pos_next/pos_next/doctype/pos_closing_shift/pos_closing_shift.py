@@ -106,7 +106,88 @@ class POSClosingShift(Document):
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
-        self.create_journal_entry()
+        
+        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
+        if invoice_type == "POS Invoice":
+            self.create_standard_pos_closing_entry()
+        else:
+            self.create_journal_entry()
+
+    def create_standard_pos_closing_entry(self):
+        # 1. Fetch all submitted POS Invoices for this opening shift
+        pos_invoices = frappe.get_all(
+            "POS Invoice",
+            filters={
+                "posa_pos_opening_shift": self.pos_opening_shift,
+                "docstatus": 1,
+                "consolidated_invoice": ["in", ["", None]]
+            },
+            fields=["name", "grand_total", "customer", "posting_date", "is_return", "return_against"]
+        )
+
+        pce = frappe.new_doc("POS Closing Entry")
+        pce.pos_profile = self.pos_profile
+        pce.user = self.user
+        pce.company = self.company
+        pce.posting_date = self.posting_date
+        
+        # Link to standard POS Opening Entry linked to our opening shift
+        standard_opening = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_opening_entry")
+        if not standard_opening:
+            standard_opening = frappe.db.get_value("POS Opening Entry", {"pos_profile": self.pos_profile, "status": "Open", "user": self.user}, "name")
+        pce.pos_opening_entry = standard_opening
+
+        for inv in pos_invoices:
+            pce.append("pos_invoices", {
+                "pos_invoice": inv.name,
+                "posting_date": inv.posting_date,
+                "customer": inv.customer,
+                "grand_total": inv.grand_total,
+                "is_return": inv.is_return,
+                "return_against": inv.return_against
+            })
+
+        # Calculate expected payments
+        from collections import defaultdict
+        expected_amounts = defaultdict(float)
+        
+        for inv in pos_invoices:
+            inv_doc = frappe.get_doc("POS Invoice", inv.name)
+            for pay in inv_doc.payments:
+                if pay.amount:
+                    expected_amounts[pay.mode_of_payment] += pay.amount
+            if inv_doc.change_amount:
+                cash_mop = frappe.db.get_value("POS Profile", self.pos_profile, "posa_cash_mode_of_payment") or "Cash"
+                expected_amounts[cash_mop] -= inv_doc.change_amount
+
+        # Get opening balances from our custom Opening Shift
+        opening_shift_doc = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
+        opening_amounts = {d.mode_of_payment: d.amount for d in opening_shift_doc.balance_details}
+
+        # Populate standard closing reconciliation table
+        pos_profile_doc = frappe.get_doc("POS Profile", self.pos_profile)
+        for pm in pos_profile_doc.payments:
+            mop = pm.mode_of_payment
+            opening_amt = flt(opening_amounts.get(mop, 0.0))
+            expected_amt = flt(expected_amounts.get(mop, 0.0)) + opening_amt
+            
+            closing_amt = 0.0
+            for d in self.payment_reconciliation:
+                if d.mode_of_payment == mop:
+                    closing_amt = flt(d.closing_amount)
+                    break
+                    
+            pce.append("payment_reconciliation", {
+                "mode_of_payment": mop,
+                "opening_amount": opening_amt,
+                "expected_amount": expected_amt,
+                "closing_amount": closing_amt,
+                "difference": closing_amt - expected_amt
+            })
+
+        pce.insert(ignore_permissions=True)
+        pce.submit()
+        self.db_set("pos_closing_entry", pce.name)
 
     def create_journal_entry(self):
         def get_mop_account(mode_of_payment, company):
@@ -227,6 +308,12 @@ class POSClosingShift(Document):
         # remove links from invoices so they can be cancelled
         self._clear_closing_entry_invoices()
 
+        if getattr(self, "pos_closing_entry", None):
+            if frappe.db.exists("POS Closing Entry", self.pos_closing_entry):
+                pce_doc = frappe.get_doc("POS Closing Entry", self.pos_closing_entry)
+                if pce_doc.docstatus == 1:
+                    pce_doc.cancel()
+
     def _set_closing_entry_invoices(self):
         """Set `pos_closing_entry` on linked invoices."""
         for d in self.pos_transactions:
@@ -303,7 +390,8 @@ class POSClosingShift(Document):
 
     def delete_draft_invoices(self):
         if frappe.get_value("POS Profile", self.pos_profile, "posa_allow_delete"):
-            doctype = "Sales Invoice"
+            invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
+            doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
             data = frappe.db.sql(
                 f"""
 		select
@@ -498,8 +586,8 @@ def get_cashiers(doctype, txt, searchfield, start, page_len, filters):
 def get_pos_invoices(pos_opening_shift, doctype=None):
     if not doctype:
         pos_profile = frappe.db.get_value("POS Opening Shift", pos_opening_shift, "pos_profile")
-        use_pos_invoice = False
-        doctype = "POS Invoice" if use_pos_invoice else "Sales Invoice"
+        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
+        doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
     submit_printed_invoices(pos_opening_shift, doctype)
     cond = " and ifnull(consolidated_invoice,'') = ''" if doctype == "POS Invoice" else ""
     data = frappe.db.sql(
@@ -658,8 +746,10 @@ def _process_invoice(invoice, invoice_field, company_currency, cash_mode, paymen
 @frappe.whitelist()
 def make_closing_shift_from_opening(opening_shift):
     opening_shift = json.loads(opening_shift)
-    doctype = "Sales Invoice"
-    invoice_field = "sales_invoice"
+    pos_profile = opening_shift.get("pos_profile")
+    invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
+    doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
+    invoice_field = "pos_invoice" if invoice_type == "POS Invoice" else "sales_invoice"
 
     submit_printed_invoices(opening_shift.get("name"), doctype)
 

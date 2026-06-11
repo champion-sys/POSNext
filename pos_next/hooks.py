@@ -162,7 +162,8 @@ standard_queries = {
 # Override standard doctype classes
 
 override_doctype_class = {
-	"Sales Invoice": "pos_next.overrides.sales_invoice.CustomSalesInvoice"
+	"Sales Invoice": "pos_next.overrides.sales_invoice.CustomSalesInvoice",
+	"POS Invoice": "pos_next.overrides.pos_invoice.CustomPOSInvoice"
 }
 
 # Document Events

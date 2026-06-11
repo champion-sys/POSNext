@@ -63,7 +63,7 @@ function receiptDocFromQueuedInvoice(offlineId, raw) {
 	)
 	return {
 		name: offlineId,
-		doctype: "Sales Invoice",
+		doctype: raw.doctype || "Sales Invoice",
 		is_offline: true,
 		pos_profile: raw.pos_profile,
 		posting_date: raw.posting_date || new Date().toISOString().slice(0, 10),
@@ -407,7 +407,7 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 /**
  * Fetch server content and intercept page-break targets to cleanly isolate print records.
  */
-export async function silentPrintInvoice(invoiceName, printFormat = null) {
+export async function silentPrintInvoice(invoiceName, printFormat = null, doctype = null) {
 	if (isLocalOnlyInvoiceName(invoiceName)) {
 		const doc = await hydrateLocalOnlyInvoice({ name: invoiceName })
 		if (doc.items?.length > 0) return silentPrintInvoiceFromDoc(doc)
@@ -418,9 +418,10 @@ export async function silentPrintInvoice(invoiceName, printFormat = null) {
 		)
 	}
 	const format = printFormat || DEFAULT_PRINT_FORMAT
+	const doc = doctype || (invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice")
 
 	const result = await call("frappe.www.printview.get_html_and_style", {
-		doc: "Sales Invoice",
+		doc,
 		name: invoiceName,
 		print_format: format,
 		no_letterhead: 1,
@@ -478,7 +479,8 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 	}
 
 	try {
-		await silentPrintInvoice(invoiceName, printFormat)
+		const doctype = invoiceData.doctype || (invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice")
+		await silentPrintInvoice(invoiceName, printFormat, doctype)
 		return { method: "silent", success: true }
 	} catch (err) {
 		log.warn("Silent print failed, falling back to browser:", err?.message || err)

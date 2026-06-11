@@ -83,3 +83,5 @@ def get_app_version() -> str:
 		str: Application version
 	"""
 	return app_version
+
+

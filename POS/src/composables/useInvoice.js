@@ -1061,11 +1061,11 @@ export function useInvoice() {
 					update_stock: 1, // Critical: Ensures stock is updated
 				}
 
-				if (targetDoctype === "Sales Invoice" && posOrderType.value) {
+				if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posOrderType.value) {
 					invoiceData.pos_order_type = posOrderType.value
 				}
 
-				if (targetDoctype === "Sales Invoice" && posTableNo.value) {
+				if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posTableNo.value) {
 					invoiceData.pos_table_no = posTableNo.value
 				}
 

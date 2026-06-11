@@ -25,6 +25,41 @@ class POSOpeningShift(Document):
 
     def on_submit(self):
         self.set_status(update=True)
+        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
+        if invoice_type == "POS Invoice":
+            self.create_pos_opening_entry()
+
+    def on_cancel(self):
+        self.set_status(update=True)
+        if getattr(self, "pos_opening_entry", None):
+            if frappe.db.exists("POS Opening Entry", self.pos_opening_entry):
+                poe_doc = frappe.get_doc("POS Opening Entry", self.pos_opening_entry)
+                if poe_doc.docstatus == 1:
+                    poe_doc.cancel()
+
+    def create_pos_opening_entry(self):
+        existing = frappe.db.get_value("POS Opening Entry", {"pos_profile": self.pos_profile, "status": "Open"}, "name")
+        if existing:
+            self.db_set("pos_opening_entry", existing)
+            return
+
+        poe = frappe.new_doc("POS Opening Entry")
+        poe.pos_profile = self.pos_profile
+        poe.user = self.user
+        poe.company = self.company
+        poe.posting_date = self.posting_date
+        poe.period_start_date = self.period_start_date
+        poe.set_posting_date = self.set_posting_date
+
+        for row in self.balance_details:
+            poe.append("balance_details", {
+                "mode_of_payment": row.mode_of_payment,
+                "opening_amount": row.amount
+            })
+
+        poe.insert(ignore_permissions=True)
+        poe.submit()
+        self.db_set("pos_opening_entry", poe.name)
 
     def set_status(self, update=False):
         """Set the status of the opening shift"""
@@ -42,3 +77,4 @@ class POSOpeningShift(Document):
             frappe.db.set_value("POS Opening Shift", self.name, "status", status)
         else:
             self.status = status
+

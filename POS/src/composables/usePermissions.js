@@ -116,6 +116,8 @@ export function usePermissions() {
 			{ doctype: "POS Coupon", permType: "write" },
 			{ doctype: "Sales Invoice", permType: "create" },
 			{ doctype: "Sales Invoice", permType: "submit" },
+			{ doctype: "POS Invoice", permType: "create" },
+			{ doctype: "POS Invoice", permType: "submit" },
 		]
 
 		await checkMultiplePermissions(commonChecks)
@@ -157,9 +159,9 @@ export function usePOSPermissions() {
 
 	// Invoice permissions
 	const canCreateInvoice = async () =>
-		await checkPermission("Sales Invoice", "create")
+		await checkPermission("Sales Invoice", "create") || await checkPermission("POS Invoice", "create")
 	const canSubmitInvoice = async () =>
-		await checkPermission("Sales Invoice", "submit")
+		await checkPermission("Sales Invoice", "submit") || await checkPermission("POS Invoice", "submit")
 
 	// Settings permissions
 	const canEditSettings = async () =>

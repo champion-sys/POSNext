@@ -53,7 +53,8 @@ POS_SETTINGS_FIELDS = [
 	"allow_print_previous_invoices",
 	"custom_allow_edit_offline_invoice",
 	"custom_allow_print_offline_invoice",
-	"role_allowed_to_access_settings_in_pos"
+	"role_allowed_to_access_settings_in_pos",
+	"invoice_type"
 ]
 
 # Default POS Settings values
@@ -98,5 +99,6 @@ DEFAULT_POS_SETTINGS = {
 	"custom_allow_edit_offline_invoice": 1,
 	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None,
+	"invoice_type": "Sales Invoice",
 	"hide_images": 0
 }

@@ -204,9 +204,9 @@ const invoicesResource = createResource({
 	url: "frappe.client.get_list",
 	makeParams() {
 		return {
-			doctype: "Sales Invoice",
+			doctype: settingsStore.invoiceType || "Sales Invoice",
 			filters: {
-				is_pos: 1,
+				...(settingsStore.invoiceType === "Sales Invoice" && { is_pos: 1 }),
 				...(props.posProfile && { pos_profile: props.posProfile }),
 				...(!settingsStore.allowAccessToPreviousInvoices && props.posOpeningShift && { posa_pos_opening_shift: props.posOpeningShift }),
 			},

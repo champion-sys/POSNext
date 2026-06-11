@@ -80,7 +80,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		custom_disable_offline_mode: 0,
 		custom_allow_edit_offline_invoice: 1,
 		custom_allow_print_offline_invoice: 1,
-		hide_images: 0
+		hide_images: 0,
+		invoice_type: "Sales Invoice"
 	})
 
 	const isLoading = ref(false)
@@ -268,6 +269,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		Boolean(settings.value.hide_images),
 	)
 
+	const invoiceType = computed(() => settings.value.invoice_type || "Sales Invoice")
+
 	// Hardcoded for testing — controls whether item group tabs get distinct colors
 	const coloredItemGroups = ref(true)
 
@@ -418,7 +421,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			custom_disable_offline_mode: 0,
 			custom_allow_edit_offline_invoice: 1,
 			custom_allow_print_offline_invoice: 1,
-			hide_images: 0
+			hide_images: 0,
+			invoice_type: "Sales Invoice"
 		}
 		isLoaded.value = false
 	}
@@ -550,6 +554,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowPrintOfflineInvoice,
 		hideImages,
 		coloredItemGroups,
+		invoiceType,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,

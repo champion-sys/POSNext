@@ -132,6 +132,14 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const currentDraftId = ref(null)
 	const targetDoctype = ref("Sales Invoice")
 
+	watch(
+		() => settingsStore.invoiceType,
+		(newVal) => {
+			targetDoctype.value = newVal || "Sales Invoice"
+		},
+		{ immediate: true },
+	)
+
 	// POS Order Type (optional, from POS Profile)
 	const isPosOrderTypeEnabled = ref(false)
 	const defaultPosOrderType = ref(null)
@@ -258,7 +266,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		appliedOffers.value = []
 		appliedCoupon.value = null
 		currentDraftId.value = null
-		targetDoctype.value = "Sales Invoice"
+		targetDoctype.value = settingsStore.invoiceType || "Sales Invoice"
 
 		// Reset order type selection back to default for the active profile
 		resetPosOrderType(
@@ -361,7 +369,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		const rawItems = toRaw(invoiceItems.value)
 
 		return {
-			doctype: "Sales Invoice",
+			doctype: targetDoctype.value,
 			pos_profile: posProfile.value,
 			customer:
 				customer.value?.name || customer.value || currentProfile?.customer,
