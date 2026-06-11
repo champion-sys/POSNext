@@ -23,7 +23,7 @@ def after_install():
 		log_message("POS Next: Running post-install setup", level="info")
 
 		# Setup default print format for POS Profiles
-		setup_default_print_format()
+		# setup_default_print_format()
 
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
@@ -44,7 +44,7 @@ def after_migrate():
 	"""Hook that runs after bench migrate"""
 	try:
 		# Setup default print format
-		setup_default_print_format(quiet=True)
+		# setup_default_print_format(quiet=True)
 
 		# Clear cache
 		frappe.clear_cache()
@@ -70,7 +70,7 @@ def setup_default_print_format(quiet=False):
 	"""
 	try:
 		# Check if the print format exists
-		if not frappe.db.exists("Print Format", "POS Next Receipt SND"):
+		if not frappe.db.exists("Print Format", "POS Next Receipt"):
 			if not quiet:
 				log_message("POS Next Receipt SND print format not found, skipping default setup", level="warning")
 			return
