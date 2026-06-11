@@ -90,7 +90,7 @@
 				</div>
 			</transition>
 		</div>
-		<div class="px-2 py-2 border-b border-gray-200 bg-gray-200 pb-2.5">
+		<div class="px-2 py-2 border-b border-gray-200 bg-gray-200 pb-0">
 			<!-- Inline Customer Search/Selection -->
 			<div ref="customerSearchContainer" class="relative">
 				<!-- Unified Service Control Panel: Order Type + Table Selector -->
@@ -561,7 +561,7 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 bg-gray-100" ref="cartContainer">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 pt-0 sm:pt-0 bg-gray-100" ref="cartContainer">
 			<div
 				v-if="items.length === 0"
 				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto  -mt-[5%]"
@@ -789,7 +789,7 @@
 					]"
 				>
 					<!-- Row Index -->
-					<span class="text-[12px] font-mono font-bold text-gray-700 w-5 text-center flex-shrink-0 select-none leading-none self-start pt-0.5">
+					<span class="text-[14px] font-mono font-bold text-gray-900 w-5 text-center flex-shrink-0 select-none leading-none self-start pt-0.5">
 						{{ String(index + 1).padStart(2, '0') }}
 					</span>
 
