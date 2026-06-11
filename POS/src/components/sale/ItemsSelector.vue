@@ -2222,6 +2222,13 @@ function handleClickOutside(event) {
 	/* Create stacking context for better compositing */
 	transform: translateZ(0);
 	will-change: scroll-position;
+	/* Hide scrollbars (webkit + Firefox) */
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar {
+	display: none;
 }
 
 /* Reduce paint areas */

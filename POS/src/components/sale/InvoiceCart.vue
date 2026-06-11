@@ -393,7 +393,7 @@
 		<!-- Action Buttons Section -->
 		<div v-if="items.length > 0" class="px-3 py-2 bg-gray-200">
 			<div class="flex items-center justify-between mb-0">
-				<h2 class="text-xs font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
+				<h2 class="text-base font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
 				<div class="flex items-center gap-2">
 					<!-- Clear Cart Button -->
 					<button
