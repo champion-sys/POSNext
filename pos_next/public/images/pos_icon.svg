@@ -1,0 +1,95 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="bg" x1="80" y1="40" x2="440" y2="480">
+            <stop offset="0%" stop-color="#42A5FF"></stop>
+            <stop offset="100%" stop-color="#006DFF"></stop>
+        </linearGradient>
+
+        <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#5BB8FF"></stop>
+            <stop offset="100%" stop-color="#006DFF"></stop>
+        </linearGradient>
+
+        <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#3F9DFF"></stop>
+            <stop offset="100%" stop-color="#005BEA"></stop>
+        </linearGradient>
+
+        <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity="0.15"></feDropShadow>
+        </filter>
+
+        <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity="0.10"></feDropShadow>
+        </filter>
+    </defs>
+
+    <!-- Background -->
+    <rect width="512" height="512" rx="110" fill="url(#bg)"></rect>
+
+    <!-- Main POS Body -->
+    <g filter="url(#shadow)">
+        <rect x="90" y="220" width="332" height="180" rx="36" fill="white"></rect>
+    </g>
+
+    <!-- Screen Stand -->
+    <g filter="url(#softShadow)">
+        <rect x="215" y="175" width="30" height="45" rx="8" fill="#F5F7FA"></rect>
+    </g>
+
+    <!-- Screen -->
+    <g filter="url(#shadow)">
+        <rect x="140" y="95" width="180" height="110" rx="24" fill="#F5F7FA"></rect>
+        <rect x="152" y="107" width="156" height="86" rx="18" fill="url(#screen)"></rect>
+
+        <!-- Reflection -->
+        <path d="M170 110L280 110L220 193L170 193Z" fill="white" opacity="0.08"></path>
+    </g>
+
+    <!-- Receipt -->
+    <g filter="url(#softShadow)">
+        <rect x="335" y="100" width="95" height="145" rx="20" fill="white"></rect>
+
+        <path d="
+            M335 225
+            L345 215
+            L355 225
+            L365 215
+            L375 225
+            L385 215
+            L395 225
+            L405 215
+            L415 225
+            L425 215
+            L430 225
+        " fill="white"></path>
+
+        <line x1="355" y1="135" x2="405" y2="135" stroke="#D7DCE5" stroke-width="8" stroke-linecap="round"></line>
+        <line x1="355" y1="165" x2="395" y2="165" stroke="#D7DCE5" stroke-width="8" stroke-linecap="round"></line>
+        <line x1="355" y1="195" x2="385" y2="195" stroke="#D7DCE5" stroke-width="8" stroke-linecap="round"></line>
+    </g>
+
+    <!-- Buttons -->
+    <g filter="url(#softShadow)">
+        <rect x="125" y="255" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+        <rect x="185" y="255" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+        <rect x="245" y="255" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+
+        <rect x="125" y="315" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+        <rect x="185" y="315" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+        <rect x="245" y="315" width="42" height="42" rx="12" fill="url(#accent)"></rect>
+    </g>
+
+    <!-- Payment Button -->
+    <g filter="url(#softShadow)">
+        <rect x="315" y="255" width="80" height="102" rx="20" fill="url(#accent)"></rect>
+
+        <text x="355" y="322" font-size="62" font-family="Arial" font-weight="700" text-anchor="middle" fill="white">$</text>
+    </g>
+
+    <!-- Drawer -->
+    <g filter="url(#softShadow)">
+        <rect x="120" y="410" width="272" height="40" rx="18" fill="url(#accent)"></rect>
+        <rect x="230" y="420" width="52" height="18" rx="8" fill="#0051D3"></rect>
+    </g>
+</svg>
