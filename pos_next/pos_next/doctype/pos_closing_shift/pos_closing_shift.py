@@ -110,8 +110,8 @@ class POSClosingShift(Document):
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
         if invoice_type == "POS Invoice":
             self.create_standard_pos_closing_entry()
-        else:
-            self.create_journal_entry()
+        # else:
+        #     self.create_journal_entry()
 
     def create_standard_pos_closing_entry(self):
         # 1. Fetch all submitted POS Invoices for this opening shift

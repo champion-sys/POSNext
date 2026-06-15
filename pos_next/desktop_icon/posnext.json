@@ -1,0 +1,22 @@
+{
+ "app": "pos_next",
+ "bg_color": "gray",
+ "creation": "2026-04-16 18:09:54.979316",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "message",
+ "icon_type": "Link",
+ "idx": 0,
+ "label": "POSNext",
+ "link_to": "POSNext",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/pos_next/images/pos_icon.svg",
+ "modified": "2026-06-13 12:04:52.963056",
+ "modified_by": "Administrator",
+ "name": "POSNext",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
