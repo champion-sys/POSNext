@@ -534,6 +534,11 @@
 														</p>
 													</div>
 												</div>
+
+												<!-- Bluetooth Printer Settings -->
+												<div class="border-t border-gray-200 pt-6 mt-6">
+													<PrinterManagement />
+												</div>
 											</div>
 										</div>
 									</div>
@@ -562,6 +567,7 @@
 import CheckboxField from "@/components/settings/CheckboxField.vue"
 import NumberField from "@/components/settings/NumberField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
+import PrinterManagement from "@/components/settings/PrinterManagement.vue"
 import { useToast } from "@/composables/useToast"
 import { Button, call, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
