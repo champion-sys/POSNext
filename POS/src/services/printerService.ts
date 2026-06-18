@@ -184,9 +184,7 @@ export class PrinterService {
 			throw new Error("No printer connected.")
 		}
 
-		log.info(`Sending ${data.length} bytes to printer...`)
-		// Standard Bluetooth Low Energy MTU payload chunk size is typically safe at 20-512 bytes.
-		// Using 128 bytes chunking to ensure compatibility with most POS Bluetooth printers.
+		// Safe chunking: 128 bytes is universally supported by Bluetooth thermal printers.
 		const chunkSize = 128
 		for (let i = 0; i < data.length; i += chunkSize) {
 			const chunk = data.slice(i, i + chunkSize)
@@ -195,8 +193,8 @@ export class PrinterService {
 			} else {
 				await this.characteristic.writeValue(chunk)
 			}
-			// Small delay to allow printer buffer to process chunk
-			await new Promise((resolve) => setTimeout(resolve, 25))
+			// Small delay to prevent buffer overrun on the printer side
+			await new Promise((resolve) => setTimeout(resolve, 10))
 		}
 		log.info("Print data sent successfully.")
 	}

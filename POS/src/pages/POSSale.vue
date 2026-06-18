@@ -1130,6 +1130,7 @@ import { logger } from "@/utils/logger";
 import { shouldValidateItemStock } from "@/utils/stockValidator";
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter";
 import { PrinterService } from "@/services/printerService";
+import { printInvoiceToBluetooth } from "@/utils/escpos";
 
 // Initialize stores
 const cartStore = usePOSCartStore();
@@ -3106,6 +3107,17 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 					return;
 				}
 			}
+
+		// Bluetooth printer path — directly print to BLE thermal printer if enabled and connected
+		if (btStore.isEnabled && btStore.isConnected) {
+			try {
+				await printInvoiceToBluetooth(invoiceData);
+				return;
+			} catch (error) {
+				log.error("Bluetooth print failed, falling back to browser/silent:", error);
+				showWarning(__("Bluetooth printing failed. Attempting browser/silent fallback..."));
+			}
+		}
 
 		// Silent print path — send directly to thermal printer via QZ Tray
 		if (posSettingsStore.silentPrint) {
