@@ -263,32 +263,42 @@ export async function renderReceiptToRaster(
 	const height = canvas.height
 	const widthBytes = printWidth / 8
 
-	const escposBytes: number[] = []
-
 	// GS v 0 m xL xH yL yH d1...dk
 	const xL = widthBytes % 256
 	const xH = Math.floor(widthBytes / 256)
 	const yL = height % 256
 	const yH = Math.floor(height / 256)
 
-	// Initialize printer before sending image (best practice)
-	escposBytes.push(...COMMANDS.INITIALIZE)
+	const rasterSize = height * widthBytes
+	// INITIALIZE (2 bytes) + GS v 0 header (8 bytes) + raster data + LINE_FEED (1) + LINE_FEED (1) + CUT (4 bytes)
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + 6)
 
-	// Command header for Raster Bit Image
-	escposBytes.push(GS, 0x76, 0x30, 0, xL, xH, yL, yH)
+	// Initialize
+	escposBytes[0] = COMMANDS.INITIALIZE[0]
+	escposBytes[1] = COMMANDS.INITIALIZE[1]
 
-	// Pack 8 pixels into 1 byte
+	// GS v 0 Header
+	escposBytes[2] = GS
+	escposBytes[3] = 0x76
+	escposBytes[4] = 0x30
+	escposBytes[5] = 0
+	escposBytes[6] = xL
+	escposBytes[7] = xH
+	escposBytes[8] = yL
+	escposBytes[9] = yH
+
+	// Pack 8 pixels into 1 byte (optimized sequential access, no multiplications)
+	let pixelIndex = 0
+	let destIndex = 10
 	for (let y = 0; y < height; y++) {
 		for (let xByte = 0; xByte < widthBytes; xByte++) {
 			let byteVal = 0
 			for (let bit = 0; bit < 8; bit++) {
-				const xPixel = xByte * 8 + bit
-				const pixelIndex = (y * printWidth + xPixel) * 4
-
 				const r = data[pixelIndex]
 				const g = data[pixelIndex + 1]
 				const b = data[pixelIndex + 2]
 				const a = data[pixelIndex + 3]
+				pixelIndex += 4
 
 				const luminance = 0.299 * r + 0.587 * g + 0.114 * b
 
@@ -296,16 +306,19 @@ export async function renderReceiptToRaster(
 					byteVal |= 1 << (7 - bit)
 				}
 			}
-			escposBytes.push(byteVal)
+			escposBytes[destIndex++] = byteVal
 		}
 	}
 
-	// Add margin and cut paper after the image
-	escposBytes.push(...COMMANDS.LINE_FEED)
-	escposBytes.push(...COMMANDS.LINE_FEED)
-	escposBytes.push(...COMMANDS.CUT)
+	// Add margin and cut paper
+	escposBytes[destIndex++] = 0x0a // LINE_FEED
+	escposBytes[destIndex++] = 0x0a // LINE_FEED
+	escposBytes[destIndex++] = GS
+	escposBytes[destIndex++] = 0x56
+	escposBytes[destIndex++] = 66
+	escposBytes[destIndex++] = 0 // CUT
 
-	return new Uint8Array(escposBytes)
+	return escposBytes
 }
 
 export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
