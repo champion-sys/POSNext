@@ -59,7 +59,7 @@
 				<!-- Print Method Selection (Image vs Text) -->
 				<SelectField
 					v-model="store.printMethod"
-					:label="__('Arabic Print Mode')"
+					:label="__('Print Mode')"
 					:options="[
 						{ label: __('Raster Image (Perfect RTL/Arabic)'), value: 'image' },
 						{ label: __('Raw Text (Requires printer CP1256 support)'), value: 'text' }

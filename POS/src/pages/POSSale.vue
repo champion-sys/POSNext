@@ -230,6 +230,38 @@
 					@clear-cache="handleClearCache"
 				/>
 
+				<!-- Bluetooth Printer Disconnection Notice -->
+				<div
+					v-if="showBtDisconnectNotice"
+					class="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center justify-between gap-4 z-10"
+				>
+					<div class="flex items-center gap-2">
+						<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+						<p class="text-xs font-semibold text-red-900">
+							{{ __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName]) }}
+						</p>
+					</div>
+					<div class="flex gap-2">
+						<Button
+							@click="reconnectBtPrinter"
+							:loading="isBtReconnecting"
+							variant="solid"
+							theme="blue"
+							size="sm"
+						>
+							{{ __("Reconnect") }}
+						</Button>
+						<Button
+							@click="dismissBtNotice"
+							variant="subtle"
+							theme="gray"
+							size="sm"
+						>
+							{{ __("Dismiss") }}
+						</Button>
+					</div>
+				</div>
+
 				<!-- Main Content: Responsive Layout -->
 				<div
 					v-if="shiftStore.hasOpenShift"
@@ -1096,6 +1128,8 @@ import { usePOSUIStore } from "@/stores/posUI";
 import { useBootstrapStore } from "@/stores/bootstrap";
 import { logger } from "@/utils/logger";
 import { shouldValidateItemStock } from "@/utils/stockValidator";
+import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter";
+import { PrinterService } from "@/services/printerService";
 
 // Initialize stores
 const cartStore = usePOSCartStore();
@@ -1110,6 +1144,7 @@ const customerSearchStore = useCustomerSearchStore();
 const bootstrapStore = useBootstrapStore();
 // Note: settingsStore is an alias to posSettingsStore (same Pinia store singleton)
 const settingsStore = posSettingsStore;
+const btStore = useBluetoothPrinterStore();
 
 // Real-time stock updates
 const { onStockUpdate } = useRealtimeStock();
@@ -1178,6 +1213,51 @@ const showPromotionManagement = ref(false);
 
 // Settings dialog
 const showPOSSettings = ref(false);
+
+// Bluetooth Printer notice state
+const isBtReconnecting = ref(false);
+const btNoticeDismissed = ref(false);
+
+const showBtDisconnectNotice = computed(() => {
+	return (
+		btStore.isEnabled === 1 &&
+		Boolean(btStore.savedPrinterId) &&
+		!btStore.isConnected &&
+		!btNoticeDismissed.value
+	);
+});
+
+async function reconnectBtPrinter() {
+	if (!btStore.savedPrinterId) return;
+	isBtReconnecting.value = true;
+	try {
+		const success = await PrinterService.tryAutoReconnect(btStore.savedPrinterId);
+		if (success) {
+			btStore.setConnected(PrinterService.getConnectedDeviceId(), true);
+			showSuccess(__("Connected to Bluetooth printer successfully."));
+		} else {
+			// Fallback: Trigger browser devices list selector
+			const device = await PrinterService.scanAndConnect();
+			btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"));
+			btStore.setConnected(device.id, true);
+			showSuccess(__("Connected and saved printer successfully."));
+		}
+	} catch (error) {
+		showError(error.message || __("Failed to connect to printer."));
+	} finally {
+		isBtReconnecting.value = false;
+	}
+}
+
+function dismissBtNotice() {
+	btNoticeDismissed.value = true;
+}
+
+watch(() => btStore.isConnected, (connected) => {
+	if (connected) {
+		btNoticeDismissed.value = false;
+	}
+});
 
 // Stock Lookup dialog (Products menu)
 const showStockLookup = ref(false);
