@@ -325,7 +325,7 @@
 				class="flex-1 overflow-y-auto bg-gray-200"
 				style="min-height: 0;"
 			>
-				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-8 gap-[2px]">
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-8 gap-[2px] overflow-x-hidden">
 					<div
 						v-for="(item, index) in displayedItems"
 						:key="item.item_code"
