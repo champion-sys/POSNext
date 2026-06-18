@@ -245,6 +245,7 @@ async function handlePrintTest() {
 			// Legacy text encoding method
 			const bytesList = []
 			bytesList.push(...COMMANDS.INITIALIZE)
+			bytesList.push(...COMMANDS.CANCEL_CHINESE)
 			bytesList.push(...COMMANDS.SELECT_CP1256)
 
 			for (const line of testLines) {

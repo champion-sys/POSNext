@@ -18,6 +18,7 @@ export const COMMANDS = {
 	BOLD_OFF: new Uint8Array([ESC, 0x45, 0]),
 	CUT: new Uint8Array([GS, 0x56, 66, 0]), // Feed and cut
 	SELECT_CP1256: new Uint8Array([ESC, 0x74, 50]), // Select Arabic code page (often 50 or 22/WCP1256)
+	CANCEL_CHINESE: new Uint8Array([0x1c, 0x2e]), // FS . (Cancel Chinese/Kanji mode to prevent high-ASCII bytes being treated as Chinese characters)
 }
 
 // Map Arabic unicode characters to CP1256 (Windows-1256)
@@ -51,6 +52,7 @@ const ARABIC_TO_CP1256: Record<number, number> = {
 	0x0638: 0xd8, // Zah
 	0x0639: 0xd9, // Ain
 	0x063a: 0xda, // Ghain
+	0x0640: 0xdc, // Tatweel/Kashida
 	0x0641: 0xe1, // Feh
 	0x0642: 0xe2, // Qaf
 	0x0643: 0xe3, // Kaf
@@ -61,12 +63,39 @@ const ARABIC_TO_CP1256: Record<number, number> = {
 	0x0648: 0xe8, // Waw
 	0x0649: 0xe9, // Alef Maksura
 	0x064a: 0xea, // Yeh
+	// Harakat/Diacritics
+	0x064b: 0xf0, // Fathatan
+	0x064c: 0xf1, // Dammatan
+	0x064d: 0xf2, // Kasratan
+	0x064e: 0xf3, // Fatha
+	0x064f: 0xf5, // Damma
+	0x0650: 0xf6, // Kasra
+	0x0651: 0xf8, // Shadda
+	0x0652: 0xfa, // Sukun
 	// Perso-Arabic extensions (optional, fallback)
 	0x067e: 0x81, // Peh
+	0x0679: 0x8a, // Urdu Tteh
 	0x0686: 0x8d, // Tcheh
-	0x0698: 0x8f, // Jeh
-	0x06a9: 0x8e, // Keheh
+	0x0688: 0x8f, // Urdu Dal
+	0x0691: 0x9a, // Urdu Rreh
+	0x0698: 0x8e, // Jeh/Jeheh
+	0x06a9: 0x98, // Keheh
 	0x06af: 0x90, // Gaf
+	0x06ba: 0x9f, // Noon Ghunna
+	0x06be: 0xaa, // Heh Doachashmee
+	0x06c1: 0xc0, // Urdu Heh
+	0x06d2: 0xff, // Urdu Yeh Barree
+	// Formatting markers
+	0x200c: 0x9d, // ZWNJ
+	0x200d: 0x9e, // ZWJ
+	0x200e: 0xfd, // LRM
+	0x200f: 0xfe, // RLM
+	// Arabic-Indic digits mapped to ASCII equivalents to prevent '?'
+	0x0660: 0x30, 0x0661: 0x31, 0x0662: 0x32, 0x0663: 0x33, 0x0664: 0x34,
+	0x0665: 0x35, 0x0666: 0x36, 0x0667: 0x37, 0x0668: 0x38, 0x0669: 0x39,
+	// East Arabic-Indic digits mapped to ASCII equivalents to prevent '?'
+	0x06f0: 0x30, 0x06f1: 0x31, 0x06f2: 0x32, 0x06f3: 0x33, 0x06f4: 0x34,
+	0x06f5: 0x35, 0x06f6: 0x36, 0x06f7: 0x37, 0x06f8: 0x38, 0x06f9: 0x39,
 }
 
 /**
@@ -125,13 +154,34 @@ export function reshapeArabic(text: string): string {
 		0x064a: ["ي", "ـي", "ـيـ", "يـ"],
 		0x0629: ["ة", "ـة", "ـة", "ة"],
 		0x0649: ["ى", "ـى", "ـى", "ى"],
+		// Perso-Arabic extensions
+		0x067e: ["پ", "ـپ", "ـپـ", "پـ"], // Peh
+		0x0679: ["ٹ", "ـٹ", "ـٹـ", "ٹـ"], // Urdu Tteh
+		0x0686: ["چ", "ـچ", "ـچـ", "چـ"], // Tcheh
+		0x0688: ["ڈ", "ـڈ", "ـڈ", "ڈ"], // Urdu Dal
+		0x0691: ["ڑ", "ـڑ", "ـڑ", "ڑ"], // Urdu Rreh
+		0x0698: ["ژ", "ـژ", "ـژ", "ژ"], // Jeh/Jeheh
+		0x06a9: ["ک", "ـک", "ـکـ", "کـ"], // Keheh
+		0x06af: ["گ", "ـگ", "ـگـ", "گـ"], // Gaf
+		0x06ba: ["ں", "ـں", "ـنـ", "نـ"], // Noon Ghunna
+		0x06be: ["ھ", "ـھ", "ـھـ", "ھـ"], // Heh Doachashmee
+		0x06c1: ["ہ", "ـہ", "ـہـ", "ہـ"], // Urdu Heh
+		0x06d2: ["ے", "ـے", "ـيـ", "يـ"], // Urdu Yeh Barree
 	}
 
 	const isLinkerBefore = (char: string): boolean => {
 		if (!char) return false
 		const code = char.charCodeAt(0)
 		// Non-linkers (don't connect to the next character)
-		const nonLinkers = [0x0627, 0x062f, 0x0630, 0x0631, 0x0632, 0x0648, 0x0622, 0x0623, 0x0625]
+		const nonLinkers = [
+			0x0627, 0x062f, 0x0630, 0x0631, 0x0632, 0x0648, 0x0622, 0x0623, 0x0625,
+			0x0698, // Jeh/Jeheh
+			0x0688, // Urdu Dal
+			0x0691, // Urdu Rreh
+			0x0629, // Teh Marbuta
+			0x0649, // Alef Maksura
+			0x06d2, // Urdu Yeh Barree
+		]
 		return shapingMap[code] !== undefined && !nonLinkers.includes(code)
 	}
 
@@ -171,6 +221,11 @@ export function reshapeArabic(text: string): string {
 			} else {
 				reshapedWord += char
 			}
+		}
+		// Do not reverse character order if the word doesn't contain any Arabic characters (e.g. numbers, English words)
+		const containsArabic = /[\u0600-\u06FF]/.test(word)
+		if (!containsArabic) {
+			return reshapedWord
 		}
 		// Reverse character order for Right-to-Left print flow
 		return reshapedWord.split("").reverse().join("")
