@@ -1,4 +1,5 @@
 import { logger } from "./logger"
+import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
 
 const log = logger.create("ESCPOS")
 
@@ -192,10 +193,20 @@ export interface ReceiptLine {
  */
 export async function renderReceiptToRaster(
 	lines: ReceiptLine[],
-	width: number = 384 // 58mm = 384px, 80mm = 576px
+	width?: number
 ): Promise<Uint8Array> {
+	let printWidth = width
+	if (printWidth === undefined) {
+		try {
+			const store = useBluetoothPrinterStore()
+			printWidth = store.paperSize === "80" ? 576 : 384
+		} catch (e) {
+			printWidth = 384
+		}
+	}
+
 	const canvas = document.createElement("canvas")
-	canvas.width = width
+	canvas.width = printWidth
 	const ctx = canvas.getContext("2d")
 	if (!ctx) {
 		throw new Error("Could not create 2D canvas context")
@@ -231,9 +242,9 @@ export async function renderReceiptToRaster(
 
 		let x = 0
 		if (line.align === "center") {
-			x = (width - textWidth) / 2
+			x = (printWidth - textWidth) / 2
 		} else if (line.align === "right") {
-			x = width - textWidth - 5
+			x = printWidth - textWidth - 5
 		} else {
 			x = 5
 		}
@@ -246,7 +257,7 @@ export async function renderReceiptToRaster(
 	const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 	const data = imgData.data
 	const height = canvas.height
-	const widthBytes = width / 8
+	const widthBytes = printWidth / 8
 
 	const escposBytes: number[] = []
 
@@ -265,7 +276,7 @@ export async function renderReceiptToRaster(
 			let byteVal = 0
 			for (let bit = 0; bit < 8; bit++) {
 				const xPixel = xByte * 8 + bit
-				const pixelIndex = (y * width + xPixel) * 4
+				const pixelIndex = (y * printWidth + xPixel) * 4
 
 				// Read red, green, blue values
 				const r = data[pixelIndex]
