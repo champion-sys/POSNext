@@ -235,6 +235,8 @@ async function handlePrintTest() {
 			const printData = new Uint8Array([
 				...COMMANDS.INITIALIZE,
 				...rasterData,
+				...COMMANDS.LINE_FEED,
+				...COMMANDS.LINE_FEED,
 				...COMMANDS.CUT
 			])
 			await PrinterService.printRaw(printData)
@@ -266,6 +268,10 @@ async function handlePrintTest() {
 				bytesList.push(...encodeCP1256(shapedText))
 				bytesList.push(...COMMANDS.LINE_FEED)
 			}
+
+			// Add 2 lines of spacing before cutting
+			bytesList.push(...COMMANDS.LINE_FEED)
+			bytesList.push(...COMMANDS.LINE_FEED)
 
 			// Add Cut command
 			bytesList.push(...COMMANDS.CUT)

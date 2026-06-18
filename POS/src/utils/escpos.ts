@@ -205,6 +205,13 @@ export async function renderReceiptToRaster(
 		}
 	}
 
+	// Scale fonts based on the print width (58mm vs 80mm) to optimize legibility and sharpness
+	const is80mm = printWidth >= 500
+	const normalFontSize = is80mm ? 28 : 24
+	const largeFontSize = is80mm ? 38 : 32
+	const lineHeightNormal = is80mm ? 38 : 32
+	const lineHeightLarge = is80mm ? 50 : 44
+
 	const canvas = document.createElement("canvas")
 	canvas.width = printWidth
 	const ctx = canvas.getContext("2d")
@@ -213,10 +220,8 @@ export async function renderReceiptToRaster(
 	}
 
 	// First pass: Measure height dynamically
-	let currentY = 10
-	ctx.font = "normal 14px sans-serif"
-	const lineHeightNormal = 22
-	const lineHeightLarge = 30
+	let currentY = 15
+	ctx.font = `normal ${normalFontSize}px "Inter", "Arial", sans-serif`
 
 	lines.forEach((line) => {
 		if (line.size === "large") {
@@ -225,7 +230,7 @@ export async function renderReceiptToRaster(
 			currentY += lineHeightNormal
 		}
 	})
-	currentY += 20 // Padding at bottom
+	currentY += 30 // Padding at bottom
 
 	canvas.height = currentY
 
@@ -234,10 +239,10 @@ export async function renderReceiptToRaster(
 	ctx.fillRect(0, 0, canvas.width, canvas.height)
 	ctx.fillStyle = "#000000"
 
-	currentY = 10
+	currentY = 15
 	lines.forEach((line) => {
 		const isLarge = line.size === "large"
-		ctx.font = `${line.bold ? "bold" : "normal"} ${isLarge ? "18px" : "14px"} sans-serif`
+		ctx.font = `${line.bold ? "bold" : "normal"} ${isLarge ? largeFontSize : normalFontSize}px "Inter", "Arial", sans-serif`
 		const textWidth = ctx.measureText(line.text).width
 
 		let x = 0
@@ -249,7 +254,7 @@ export async function renderReceiptToRaster(
 			x = 5
 		}
 
-		ctx.fillText(line.text, x, currentY + (isLarge ? 16 : 12))
+		ctx.fillText(line.text, x, currentY + (isLarge ? largeFontSize - 4 : normalFontSize - 2))
 		currentY += isLarge ? lineHeightLarge : lineHeightNormal
 	})
 
@@ -288,7 +293,9 @@ export async function renderReceiptToRaster(
 				const luminance = 0.299 * r + 0.587 * g + 0.114 * b
 
 				// If pixel is dark and not transparent, set the bit to 1 (black)
-				if (a > 50 && luminance < 128) {
+				// Use a higher luminance threshold (200) to keep anti-aliased edge pixels,
+				// resulting in much bolder, sharper, and cleaner thermal printing.
+				if (a > 50 && luminance < 200) {
 					byteVal |= 1 << (7 - bit)
 				}
 			}
