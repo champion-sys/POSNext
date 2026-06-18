@@ -3,8 +3,17 @@ import { logger } from "../utils/logger"
 const log = logger.create("PrinterService")
 
 // Common UUIDs for Bluetooth Thermal Printers
-const PRINTER_SERVICE_UUID = "000018f0-0000-1000-8000-00805f9b34fb"
-const PRINTER_CHARACTERISTIC_UUID = "00002af1-0000-1000-8000-00805f9b34fb"
+const PRINTER_SERVICES = [
+	"000018f0-0000-1000-8000-00805f9b34fb",
+	"0000ffe0-0000-1000-8000-00805f9b34fb",
+	"49535343-fe7d-4ae5-8fa9-9fafd205e455",
+]
+
+const PRINTER_CHARACTERISTICS = [
+	"00002af1-0000-1000-8000-00805f9b34fb",
+	"0000ffe1-0000-1000-8000-00805f9b34fb",
+	"49535343-8841-43f4-a8d4-ecbe34729bb3",
+]
 
 export class PrinterService {
 	private static device: BluetoothDevice | null = null
@@ -32,23 +41,25 @@ export class PrinterService {
 
 		try {
 			// Try filtering for common printer services first
+			const filters = [
+				...PRINTER_SERVICES.map(service => ({ services: [service] })),
+				{ namePrefix: "Printer" },
+				{ namePrefix: "POS" },
+				{ namePrefix: "MTP" },
+				{ namePrefix: "Thermal" },
+				{ namePrefix: "QS" },
+			]
+
 			device = await navigator.bluetooth.requestDevice({
-				filters: [
-					{ services: [PRINTER_SERVICE_UUID] },
-					{ namePrefix: "Printer" },
-					{ namePrefix: "POS" },
-					{ namePrefix: "MTP" },
-					{ namePrefix: "Thermal" },
-					{ namePrefix: "QS" },
-				],
-				optionalServices: [PRINTER_SERVICE_UUID],
+				filters,
+				optionalServices: PRINTER_SERVICES,
 			})
 		} catch (error) {
 			log.warn("Filtered scan failed or cancelled, trying fallback all devices", error)
 			// Fallback: Show all devices to maximize compatibility
 			device = await navigator.bluetooth.requestDevice({
 				acceptAllDevices: true,
-				optionalServices: [PRINTER_SERVICE_UUID],
+				optionalServices: PRINTER_SERVICES,
 			})
 		}
 
@@ -80,15 +91,25 @@ export class PrinterService {
 			log.info("GATT server connected. Discovering services...")
 
 			// Try to find the printer service and characteristic
-			try {
-				const service = await this.server.getPrimaryService(PRINTER_SERVICE_UUID)
-				this.characteristic = await service.getCharacteristic(PRINTER_CHARACTERISTIC_UUID)
-				log.info("Printer service and characteristic found successfully.")
-			} catch (err) {
-				log.warn("Standard printer service UUID not found. Scanning all services...", err)
+			let found = false
+			for (let i = 0; i < PRINTER_SERVICES.length; i++) {
+				try {
+					const serviceUuid = PRINTER_SERVICES[i]
+					const charUuid = PRINTER_CHARACTERISTICS[i]
+					const service = await this.server.getPrimaryService(serviceUuid)
+					this.characteristic = await service.getCharacteristic(charUuid)
+					log.info(`Printer service (${serviceUuid}) and characteristic (${charUuid}) found successfully.`)
+					found = true
+					break
+				} catch (err) {
+					// Try next service/characteristic pair
+				}
+			}
+
+			if (!found) {
+				log.warn("Standard printer service UUIDs not found. Scanning all services...")
 				// Fallback: discover any writeable characteristic in available primary services
 				const services = await this.server.getPrimaryServices()
-				let found = false
 
 				for (const service of services) {
 					try {

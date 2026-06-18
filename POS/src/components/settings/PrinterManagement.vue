@@ -237,6 +237,7 @@ async function handlePrintTest() {
 				...rasterData,
 				...COMMANDS.LINE_FEED,
 				...COMMANDS.LINE_FEED,
+				...COMMANDS.LINE_FEED,
 				...COMMANDS.CUT
 			])
 			await PrinterService.printRaw(printData)
@@ -270,6 +271,7 @@ async function handlePrintTest() {
 			}
 
 			// Add 2 lines of spacing before cutting
+			bytesList.push(...COMMANDS.LINE_FEED)
 			bytesList.push(...COMMANDS.LINE_FEED)
 			bytesList.push(...COMMANDS.LINE_FEED)
 
