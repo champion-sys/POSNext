@@ -715,6 +715,10 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 					padding: 0 !important;
 					width: {width_mm}mm !important;
 					max-width: {width_mm}mm !important;
+					font-family: Arial, "Helvetica Neue", Helvetica, sans-serif !important;
+				}}
+				*, p, div, span, td, th, h1, h2, h3, h4, h5, h6 {{
+					font-family: Arial, "Helvetica Neue", Helvetica, sans-serif !important;
 				}}
 				table, .table {{
 					width: 100% !important;
