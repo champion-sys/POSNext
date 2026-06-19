@@ -231,34 +231,34 @@
 				/>
 
 				<!-- Bluetooth Printer Disconnection Notice -->
+				
+
 				<div
 					v-if="showBtDisconnectNotice"
-					class="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center justify-between gap-4 z-10"
+					class="bg-red-50 border-b border-red-200 ps-3 h-[35px] flex items-center justify-between gap-4 z-10"
 				>
 					<div class="flex items-center gap-2">
 						<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-						<p class="text-xs font-semibold text-red-900">
+						<p class="text-sm font-semibold text-red-600">
 							{{ __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName]) }}
 						</p>
 					</div>
-					<div class="flex gap-2">
-						<Button
+					<div class="flex items-center gap-0 flex-shrink-0">
+						
+						<button
 							@click="reconnectBtPrinter"
-							:loading="isBtReconnecting"
-							variant="solid"
-							theme="blue"
-							size="sm"
+							:disabled="isBtReconnecting"
+							class="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 text-white font-semibold rounded-none transition-colors disabled:bg-green-500 h-[35px]"
 						>
-							{{ __("Reconnect") }}
-						</Button>
-						<Button
+							{{ isBtReconnecting ? __("Connecting...") : __("Reconnect") }}
+						</button>
+
+						<button
 							@click="dismissBtNotice"
-							variant="subtle"
-							theme="gray"
-							size="sm"
+							class="bg-red-500 text-white hover:bg-red-600 font-medium px-2 py-2 text-sm transition-colors h-[35px]"
 						>
-							{{ __("Dismiss") }}
-						</Button>
+							<FeatherIcon name="x" class="h-5 w-5" />
+						</button>
 					</div>
 				</div>
 
@@ -1110,7 +1110,7 @@ import {
 } from "@/utils/printInvoice";
 import { qzConnected, connect as qzConnect, disconnect as qzDisconnect } from "@/utils/qzTray";
 
-import { Button, Dialog, createResource } from "frappe-ui";
+import { Button, Dialog, createResource, FeatherIcon } from "frappe-ui";
 import { call } from "@/utils/apiWrapper";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useToast } from "@/composables/useToast";
