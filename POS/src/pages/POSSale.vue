@@ -1130,7 +1130,7 @@ import { logger } from "@/utils/logger";
 import { shouldValidateItemStock } from "@/utils/stockValidator";
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter";
 import { PrinterService } from "@/services/printerService";
-import { printInvoiceToBluetooth } from "@/utils/escpos";
+import { printInvoiceToBluetooth, printInvoiceFormatToBluetooth } from "@/utils/escpos";
 
 // Initialize stores
 const cartStore = usePOSCartStore();
@@ -2707,7 +2707,9 @@ async function confirmClearCache() {
 		log.info("Clearing cached data...");
 
 		// Import the clear functions from db.js
-		const { clearCachedData, clearBrowserCache } = await import("@/utils/offline/db.js");
+		const { clearCachedData, clearBrowserCache, db } = await import("@/utils/offline/db.js");
+		// Clear local print format templates
+		await db.settings.where("key").startsWith("print_format_template_").delete();
 
 		// Clear IndexedDB cache (preserves invoices, drafts, and settings by default)
 		const dbResult = await clearCachedData({
@@ -3111,10 +3113,24 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 		// Bluetooth printer path — directly print to BLE thermal printer if enabled and connected
 		if (btStore.isEnabled && btStore.isConnected) {
 			try {
-				await printInvoiceToBluetooth(invoiceData);
-				return;
+				const printFormatName = shiftStore.currentProfile?.print_format;
+				if (printFormatName) {
+					try {
+						await printInvoiceFormatToBluetooth(invoiceData, printFormatName);
+						return;
+					} catch (fmtError) {
+						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError);
+						console.log(fmtError)
+						// Fallback to standard line-by-line Bluetooth print
+						// await printInvoiceToBluetooth(invoiceData);
+						// return;
+					}
+				} else {
+					await printInvoiceToBluetooth(invoiceData);
+					return;
+				}
 			} catch (error) {
-				log.error("Bluetooth print failed, falling back to browser/silent:", error);
+				log.error("Bluetooth print failed entirely, falling back to browser/silent:", error);
 				showWarning(__("Bluetooth printing failed. Attempting browser/silent fallback..."));
 			}
 		}

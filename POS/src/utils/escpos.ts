@@ -1,6 +1,8 @@
 import { logger } from "./logger"
 import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
 import { PrinterService } from "../services/printerService"
+import { call } from "./apiWrapper"
+import { usePOSSettingsStore } from "../stores/posSettings"
 
 const log = logger.create("ESCPOS")
 
@@ -473,4 +475,350 @@ export async function printInvoiceToBluetooth(invoiceData: any): Promise<void> {
 		const payload = generateTextPrintPayload(lines)
 		await PrinterService.printRaw(payload)
 	}
+}
+
+
+const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+
+async function fetchAsDataURL(url: string): Promise<string> {
+	try {
+		const absoluteUrl = url.startsWith("/")
+			? window.location.origin + url
+			: (url.startsWith("http") ? url : window.location.origin + "/" + url)
+
+		const res = await fetch(absoluteUrl)
+		if (!res.ok) throw new Error("Fetch failed")
+		const blob = await res.blob()
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader()
+			reader.onloadend = () => resolve(reader.result as string)
+			reader.onerror = reject
+			reader.readAsDataURL(blob)
+		})
+	} catch (e) {
+		console.warn("Failed to fetch asset for inlining:", url, e)
+		return BLANK_PNG
+	}
+}
+
+const XML_ENTITY_MAP: { [key: string]: string } = {
+	"&nbsp;": "&#160;",
+	"&iexcl;": "&#161;",
+	"&cent;": "&#162;",
+	"&pound;": "&#163;",
+	"&curren;": "&#164;",
+	"&yen;": "&#165;",
+	"&brvbar;": "&#166;",
+	"&sect;": "&#167;",
+	"&uml;": "&#168;",
+	"&copy;": "&#169;",
+	"&ordf;": "&#170;",
+	"&laquo;": "&#171;",
+	"&not;": "&#172;",
+	"&shy;": "&#173;",
+	"&reg;": "&#174;",
+	"&macr;": "&#175;",
+	"&deg;": "&#176;",
+	"&plusmn;": "&#177;",
+	"&sup2;": "&#178;",
+	"&sup3;": "&#179;",
+	"&acute;": "&#180;",
+	"&micro;": "&#181;",
+	"&para;": "&#182;",
+	"&middot;": "&#183;",
+	"&cedil;": "&#184;",
+	"&sup1;": "&#185;",
+	"&ordm;": "&#186;",
+	"&raquo;": "&#187;",
+	"&frac14;": "&#188;",
+	"&frac12;": "&#189;",
+	"&frac34;": "&#190;",
+	"&wish;": "&#9734;",
+	"&iquest;": "&#191;",
+	"&times;": "&#215;",
+	"&divide;": "&#247;",
+	"&trade;": "&#8482;",
+	"&bull;": "&#8226;",
+	"&hellip;": "&#8230;",
+	"&euro;": "&#8364;",
+};
+
+function sanitizeXmlString(str: string): string {
+	let res = str;
+	for (const [entity, char] of Object.entries(XML_ENTITY_MAP)) {
+		res = res.replace(new RegExp(entity, "g"), char);
+	}
+	// Escape raw ampersands that are not starting a valid XML entity reference
+	res = res.replace(/&(?!(amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)/g, "&amp;");
+	return res;
+}
+
+async function replaceCssUrls(cssText: string): Promise<string> {
+	const urlRegex = /url\(['"]?([^'")]+)['"]?\)/g
+	let match
+	let resultText = cssText
+	const matches: { full: string, url: string }[] = []
+
+	while ((match = urlRegex.exec(cssText)) !== null) {
+		matches.push({ full: match[0], url: match[1] })
+	}
+
+	for (const item of matches) {
+		if (!item.url.startsWith("data:")) {
+			const dataUrl = await fetchAsDataURL(item.url)
+			resultText = resultText.replace(item.full, `url("${dataUrl}")`)
+		}
+	}
+	return resultText
+}
+
+async function cleanCssString(cssText: string): Promise<string> {
+	// Remove @import statements completely
+	let cleaned = cssText.replace(/@import\s+[^;]+;/gi, "")
+	// Remove @font-face blocks completely
+	cleaned = cleaned.replace(/@font-face\s*\{[\s\S]*?\}/gi, "")
+
+	if (cleaned.includes("url(")) {
+		cleaned = await replaceCssUrls(cleaned)
+	}
+	return cleaned
+}
+
+async function prepareHtmlForSvg(html: string, style: string): Promise<{ html: string, style: string }> {
+	const parser = new DOMParser()
+	const doc = parser.parseFromString(html, "text/html")
+
+	const scripts = doc.querySelectorAll("script")
+	scripts.forEach(s => s.remove())
+
+	const links = doc.querySelectorAll("link")
+	links.forEach(l => l.remove())
+
+	// Clean all <style> blocks in the HTML
+	const styleTags = Array.from(doc.querySelectorAll("style"))
+	for (const tag of styleTags) {
+		tag.textContent = await cleanCssString(tag.textContent || "")
+	}
+
+	const images = Array.from(doc.querySelectorAll("img"))
+	for (const img of images) {
+		const src = img.getAttribute("src")
+		if (src && !src.startsWith("data:")) {
+			const dataUrl = await fetchAsDataURL(src)
+			img.setAttribute("src", dataUrl)
+		}
+	}
+
+	const elementsWithStyle = Array.from(doc.querySelectorAll("[style]"))
+	for (const el of elementsWithStyle) {
+		let styleAttr = el.getAttribute("style") || ""
+		if (styleAttr.includes("url(")) {
+			styleAttr = await cleanCssString(styleAttr)
+			el.setAttribute("style", styleAttr)
+		}
+	}
+
+	const cleanStyle = await cleanCssString(style)
+
+	return {
+		html: sanitizeXmlString(doc.body.innerHTML),
+		style: sanitizeXmlString(cleanStyle)
+	}
+}
+
+export async function htmlToCanvas(rawHtml: string, rawStyle: string, width: number): Promise<HTMLCanvasElement> {
+	const { html, style } = await prepareHtmlForSvg(rawHtml, rawStyle)
+
+	const container = document.createElement("div")
+	container.style.width = `${width}px`
+	container.style.position = "absolute"
+	container.style.left = "-9999px"
+	container.style.top = "-9999px"
+	container.style.visibility = "hidden"
+	container.innerHTML = `<style>${style}</style>${html}`
+	document.body.appendChild(container)
+
+	await new Promise(resolve => requestAnimationFrame(resolve))
+
+	const height = container.offsetHeight || 800
+	document.body.removeChild(container)
+
+	const svg = `
+		<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+			<foreignObject width="100%" height="100%">
+				<div xmlns="http://www.w3.org/1999/xhtml" style="background-color: white; color: black; font-family: sans-serif; width: 100%; height: 100%;">
+					<style>
+						${style}
+						body { background-color: white; color: black; }
+					</style>
+					${html}
+				</div>
+			</foreignObject>
+		</svg>
+	`
+
+	const canvas = document.createElement("canvas")
+	canvas.width = width
+	canvas.height = height
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not create 2D canvas context")
+
+	ctx.fillStyle = "#ffffff"
+	ctx.fillRect(0, 0, width, height)
+
+	const img = new Image()
+	const svgBlob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" })
+	const url = URL.createObjectURL(svgBlob)
+
+	await new Promise<void>((resolve, reject) => {
+		img.onload = () => {
+			ctx.drawImage(img, 0, 0)
+			URL.revokeObjectURL(url)
+			resolve()
+		}
+		img.onerror = (err) => {
+			URL.revokeObjectURL(url)
+			console.error("SVG rendering failed. Generated SVG content was:", svg)
+			reject(new Error("Failed to render SVG to image"))
+		}
+		img.src = url
+	})
+
+	return canvas
+}
+
+
+
+export async function base64ImageToCanvas(imageUrl: string, width: number, height: number): Promise<HTMLCanvasElement> {
+	const canvas = document.createElement("canvas")
+	canvas.width = width
+	canvas.height = height
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not create 2D canvas context")
+
+	ctx.fillStyle = "#ffffff"
+	ctx.fillRect(0, 0, width, height)
+
+	const img = new Image()
+	await new Promise<void>((resolve, reject) => {
+		img.onload = () => {
+			ctx.drawImage(img, 0, 0)
+			resolve()
+		}
+		img.onerror = () => {
+			reject(new Error("Failed to load server-rendered PNG image"))
+		}
+		img.src = imageUrl
+	})
+
+	return canvas
+}
+
+export async function printInvoiceFormatToBluetooth(invoiceData: any, printFormatName: string): Promise<void> {
+	const store = useBluetoothPrinterStore()
+	if (!PrinterService.isConnected()) {
+		throw new Error("Bluetooth printer is not connected.")
+	}
+
+	const invoiceName = invoiceData?.name
+	// If it's a local offline invoice (not synced to server yet), we cannot get it from the API, so fall back to local print
+	if (typeof invoiceName === "string" && (invoiceName.startsWith("OFFLINE-") || invoiceName.startsWith("pos_offline_"))) {
+		return printInvoiceToBluetooth(invoiceData)
+	}
+
+	let renderedImage = ""
+	let imgWidth = 576
+	let imgHeight = 800
+
+	try {
+		let doctype = invoiceData.doctype
+		if (!doctype) {
+			try {
+				const settingsStore = usePOSSettingsStore()
+				doctype = settingsStore.invoiceType || "Sales Invoice"
+			} catch (e) {
+				doctype = invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice"
+			}
+		}
+
+		const response = await call("pos_next.api.pos_profile.get_rendered_print_format", {
+			doc: doctype,
+			name: invoiceName,
+			print_format: printFormatName,
+			paper_size: store.paperSize || "80"
+		})
+		const result = response?.message || response
+		renderedImage = result?.image
+		imgWidth = result?.width || (store.paperSize === "80" ? 576 : 384)
+		imgHeight = result?.height || 800
+	} catch (e) {
+		log.warn("Failed to get rendered print PNG from server, falling back to standard Bluetooth receipt layout:", e)
+		return printInvoiceToBluetooth(invoiceData)
+	}
+
+	if (!renderedImage) {
+		return printInvoiceToBluetooth(invoiceData)
+	}
+
+	const widthPixels = store.paperSize === "80" ? 576 : 384
+	const canvas = await base64ImageToCanvas(renderedImage, imgWidth, imgHeight)
+
+	const ctx = canvas.getContext("2d")
+	if (!ctx) throw new Error("Could not create 2D canvas context")
+
+	const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+	const data = imgData.data
+	const height = canvas.height
+	const widthBytes = widthPixels / 8
+
+	const xL = widthBytes % 256
+	const xH = Math.floor(widthBytes / 256)
+	const yL = height % 256
+	const yH = Math.floor(height / 256)
+
+	const rasterSize = height * widthBytes
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + 6)
+
+	escposBytes[0] = COMMANDS.INITIALIZE[0]
+	escposBytes[1] = COMMANDS.INITIALIZE[1]
+
+	escposBytes[2] = GS
+	escposBytes[3] = 0x76
+	escposBytes[4] = 0x30
+	escposBytes[5] = 0
+	escposBytes[6] = xL
+	escposBytes[7] = xH
+	escposBytes[8] = yL
+	escposBytes[9] = yH
+
+	let pixelIndex = 0
+	let destIndex = 10
+	for (let y = 0; y < height; y++) {
+		for (let xByte = 0; xByte < widthBytes; xByte++) {
+			let byteVal = 0
+			for (let bit = 0; bit < 8; bit++) {
+				const r = data[pixelIndex]
+				const g = data[pixelIndex + 1]
+				const b = data[pixelIndex + 2]
+				const a = data[pixelIndex + 3]
+				pixelIndex += 4
+
+				const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+
+				if (a > 50 && luminance < 200) {
+					byteVal |= 1 << (7 - bit)
+				}
+			}
+			escposBytes[destIndex++] = byteVal
+		}
+	}
+
+	escposBytes[destIndex++] = 0x0a
+	escposBytes[destIndex++] = 0x0a
+	escposBytes[destIndex++] = GS
+	escposBytes[destIndex++] = 0x56
+	escposBytes[destIndex++] = 66
+	escposBytes[destIndex++] = 0
+
+	await PrinterService.printRaw(escposBytes)
 }

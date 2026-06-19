@@ -665,3 +665,97 @@ def delete_pos_profile(pos_profile):
 	"""
 	pos_profile = frappe.get_doc("POS Profile", pos_profile)
 	pos_profile.delete()
+
+
+@frappe.whitelist()
+def get_rendered_print_format(doc, name, print_format, paper_size="80"):
+	"""
+		Render the print format on the server, convert to a cropped PNG, and return as base64.
+	"""
+	from frappe.www.printview import get_html_and_style
+	import pdfkit
+	import fitz
+	from PIL import Image, ImageChops
+	import io
+	import base64
+
+	try:
+		result = get_html_and_style(doc=doc, name=name, print_format=print_format, no_letterhead=1)
+		html = result.get("html")
+		style = result.get("style") or ""
+
+		# Define paper width
+		width_mm = 80 if paper_size == "80" else 58
+
+		# Combine into a full HTML document
+		full_html = f"""
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<meta charset="utf-8">
+			<style>
+				{style}
+				body {{
+					background-color: white !important;
+					color: black !important;
+					margin: 0 !important;
+					padding: 0 !important;
+					width: {width_mm}mm !important;
+				}}
+			</style>
+		</head>
+		<body>
+			{html}
+		</body>
+		</html>
+		"""
+
+		# Render to PDF using wkhtmltopdf
+		options = {
+			'page-width': f'{width_mm}mm',
+			'page-height': '350mm', # Tall enough to fit most receipts in a single page
+			'margin-top': '0mm',
+			'margin-bottom': '0mm',
+			'margin-left': '0mm',
+			'margin-right': '0mm',
+			'encoding': 'UTF-8',
+			'quiet': '',
+		}
+
+		pdf_bytes = pdfkit.from_string(full_html, False, options=options)
+
+		# Open with PyMuPDF and render to image
+		pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+		page = pdf_doc.load_page(0)
+		pix = page.get_pixmap(dpi=150) # Use 150 DPI for high resolution
+		img_data = pix.tobytes("png")
+
+		# Crop white spaces at the bottom using Pillow
+		img = Image.open(io.BytesIO(img_data))
+		bg = Image.new(img.mode, img.size, (255, 255, 255))
+		diff = ImageChops.difference(img, bg)
+		bbox = diff.getbbox()
+		if bbox:
+			# Crop to bottom of content plus some margin (10px)
+			img = img.crop((0, 0, img.width, min(img.height, bbox[3] + 10)))
+
+		# Resize image to exact printer width
+		target_width = 576 if paper_size == "80" else 384
+		if img.width != target_width:
+			aspect_ratio = img.height / img.width
+			target_height = int(target_width * aspect_ratio)
+			img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+		# Convert final PNG to base64
+		output = io.BytesIO()
+		img.save(output, format="PNG")
+		png_base64 = base64.b64encode(output.getvalue()).decode("utf-8")
+
+		return {
+			"image": f"data:image/png;base64,{png_base64}",
+			"width": target_width,
+			"height": img.height
+		}
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "POS get_rendered_print_format server image render error")
+		raise e
