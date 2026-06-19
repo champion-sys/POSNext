@@ -255,7 +255,7 @@
 
 						<button
 							@click="dismissBtNotice"
-							class="bg-red-500 text-white hover:bg-red-600 font-medium px-2 py-2 text-sm transition-colors h-[35px]"
+							class="bg-red-600 text-white hover:bg-red-700 font-medium px-2 py-2 text-sm transition-colors h-[35px]"
 						>
 							<FeatherIcon name="x" class="h-5 w-5" />
 						</button>
