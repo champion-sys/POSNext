@@ -17,24 +17,28 @@ const PRINTER_CHARACTERISTICS = [
 ]
 
 export class PrinterService {
-	private static device: BluetoothDevice | null = null
-	private static server: BluetoothRemoteGATTServer | null = null
-	private static characteristic: BluetoothRemoteGATTCharacteristic | null = null
-	private static onDisconnectCallback: (() => void) | null = null
-	private static queue = new PrinterQueue(PrinterService.printRawInternal.bind(PrinterService))
+	private device: BluetoothDevice | null = null
+	private server: BluetoothRemoteGATTServer | null = null
+	private characteristic: BluetoothRemoteGATTCharacteristic | null = null
+	private onDisconnectCallback: (() => void) | null = null
+	public queue: PrinterQueue
 
+	constructor() {
+		// Instantiate the queue binding to this instance worker method
+		this.queue = new PrinterQueue(this.printRawInternal.bind(this))
+	}
 
 	/**
 	 * Checks if Web Bluetooth is supported in the current environment
 	 */
-	public static isSupported(): boolean {
+	public isSupported(): boolean {
 		return typeof window !== "undefined" && typeof navigator !== "undefined" && "bluetooth" in navigator
 	}
 
 	/**
 	 * Scans for nearby Bluetooth printers and connects
 	 */
-	public static async scanAndConnect(): Promise<BluetoothDevice> {
+	public async scanAndConnect(): Promise<BluetoothDevice> {
 		if (!this.isSupported()) {
 			throw new Error("Web Bluetooth is not supported in this browser.")
 		}
@@ -73,7 +77,7 @@ export class PrinterService {
 	/**
 	 * Connects to a specific Bluetooth device
 	 */
-	public static async connectToDevice(device: BluetoothDevice): Promise<void> {
+	public async connectToDevice(device: BluetoothDevice): Promise<void> {
 		this.disconnect()
 
 		this.device = device
@@ -143,14 +147,14 @@ export class PrinterService {
 	/**
 	 * Sets a callback function when disconnection occurs
 	 */
-	public static registerOnDisconnect(callback: () => void): void {
+	public registerOnDisconnect(callback: () => void): void {
 		this.onDisconnectCallback = callback
 	}
 
 	/**
 	 * Disconnects from the current device
 	 */
-	public static disconnect(): void {
+	public disconnect(): void {
 		if (this.device && this.device.gatt?.connected) {
 			log.info("Disconnecting from Bluetooth device...")
 			this.device.gatt.disconnect()
@@ -161,67 +165,51 @@ export class PrinterService {
 	/**
 	 * Checks if currently connected
 	 */
-	public static isConnected(): boolean {
+	public isConnected(): boolean {
 		return !!(this.device && this.device.gatt?.connected && this.characteristic)
 	}
 
 	/**
 	 * Get connected device name
 	 */
-	public static getConnectedDeviceName(): string {
+	public getConnectedDeviceName(): string {
 		return this.device?.name || this.device?.id || ""
 	}
 
 	/**
 	 * Get connected device ID
 	 */
-	public static getConnectedDeviceId(): string {
+	public getConnectedDeviceId(): string {
 		return this.device?.id || ""
 	}
 
 	/**
 	 * Get the active PrinterQueue instance
 	 */
-	public static getQueue(): PrinterQueue {
+	public getQueue(): PrinterQueue {
 		return this.queue
 	}
 
 	/**
 	 * Send raw byte data to the printer by adding it to the execution queue
 	 */
-	public static async printRaw(data: Uint8Array, priority: PrintJobPriority = "normal"): Promise<void> {
-		return new Promise<void>((resolve, reject) => {
-			const job = this.queue.enqueue(data, priority)
-			
-			const onStatus = (updatedJob: any) => {
-				if (updatedJob.id === job.id) {
-					if (updatedJob.status === "completed") {
-						this.queue.off("statusChanged", onStatus)
-						resolve()
-					} else if (updatedJob.status === "failed") {
-						this.queue.off("statusChanged", onStatus)
-						reject(updatedJob.error || new Error("Printing failed"))
-					} else if (updatedJob.status === "cancelled") {
-						this.queue.off("statusChanged", onStatus)
-						reject(new Error("Printing job cancelled"))
-					}
-				}
-			}
-			
-			this.queue.on("statusChanged", onStatus)
-		})
+	public async printRaw(data: Uint8Array, priority: PrintJobPriority = "normal"): Promise<void> {
+		const job = this.queue.enqueue(data, priority)
+		return this.queue.waitForJob(job.id)
 	}
 
 	/**
 	 * Send raw byte data directly to the printer in chunks (Internal queue worker use only)
 	 */
-	private static async printRawInternal(data: Uint8Array): Promise<void> {
+	private async printRawInternal(data: Uint8Array): Promise<void> {
 		if (!this.isConnected() || !this.characteristic) {
 			throw new Error("No printer connected.")
 		}
 
-		// Safe chunking: 128 bytes is universally supported by Bluetooth thermal printers.
-		const chunkSize = 128
+		// Retrieve chunk size and delay from settings/localStorage
+		const chunkSize = parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10)
+		const writeDelay = parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10)
+
 		for (let i = 0; i < data.length; i += chunkSize) {
 			const chunk = data.slice(i, i + chunkSize)
 			if (this.characteristic.properties.writeWithoutResponse) {
@@ -229,8 +217,11 @@ export class PrinterService {
 			} else {
 				await this.characteristic.writeValue(chunk)
 			}
+			
 			// Small delay to prevent buffer overrun on the printer side
-			await new Promise((resolve) => setTimeout(resolve, 10))
+			if (writeDelay > 0) {
+				await new Promise((resolve) => setTimeout(resolve, writeDelay))
+			}
 		}
 		log.info("Print data sent successfully.")
 	}
@@ -240,7 +231,7 @@ export class PrinterService {
 	 * Note: Browsers require prior user interaction/permission.
 	 * In Web Bluetooth, we can retrieve previously permitted devices using getDevices().
 	 */
-	public static async tryAutoReconnect(savedId: string): Promise<boolean> {
+	public async tryAutoReconnect(savedId: string): Promise<boolean> {
 		if (!this.isSupported() || !savedId) return false
 
 		try {
@@ -260,7 +251,7 @@ export class PrinterService {
 		return false
 	}
 
-	private static handleDisconnection(): void {
+	private handleDisconnection(): void {
 		log.warn("Bluetooth device disconnected.")
 		this.cleanup()
 		if (this.onDisconnectCallback) {
@@ -268,9 +259,12 @@ export class PrinterService {
 		}
 	}
 
-	private static cleanup(): void {
+	private cleanup(): void {
 		this.device = null
 		this.server = null
 		this.characteristic = null
 	}
 }
+
+// Export default instantiated singleton to prevent breaking existing imports
+export const printerService = new PrinterService()

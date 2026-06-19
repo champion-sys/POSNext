@@ -220,6 +220,125 @@
 						></span>
 					</div>
 
+					<!-- Bluetooth Print Queue Indicator -->
+					<div v-if="btStore.isEnabled" class="relative h-full flex items-center">
+						<button
+							@click="showQueueTooltip = !showQueueTooltip"
+							@blur="handleQueueBlur"
+							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							:title="__('Bluetooth Print Queue')"
+						>
+							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+							</svg>
+							
+							<span v-if="activeJob" class="w-1.5 h-1.5 rounded-full bg-blue-500 absolute top-1.5 start-1.5 animate-ping"></span>
+							
+							<span
+								v-if="pendingJobsCount > 0 || failedJobsCount > 0"
+								class="absolute top-1 end-1 text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center border border-white"
+								:class="failedJobsCount > 0 ? 'bg-red-500 text-white' : 'bg-blue-600 text-white'"
+							>
+								{{ pendingJobsCount + failedJobsCount }}
+							</span>
+						</button>
+
+						<!-- Print Queue Tooltip Dropdown -->
+						<div
+							v-if="showQueueTooltip"
+							@mousedown.prevent
+							class="absolute top-full mt-1.5 z-[999] w-[90vw] max-w-[280px]"
+							:style="{ left: '50%', transform: 'translateX(-50%)' }"
+						>
+							<div class="bg-white text-gray-900 text-xs rounded border border-gray-300 shadow-lg py-2.5 px-3 flex flex-col gap-2">
+								<!-- Arrow -->
+								<div class="absolute bottom-full mb-px left-1/2 -translate-x-1/2">
+									<div class="border-[5px] border-transparent border-b-gray-300"></div>
+								</div>
+
+								<!-- Header -->
+								<div class="flex items-center justify-between border-b pb-1.5">
+									<span class="font-bold text-xs uppercase tracking-wider text-gray-700">{{ __('Print Queue') }}</span>
+									<span
+										class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border"
+										:class="activeJob ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold animate-pulse' : failedJobsCount > 0 ? 'bg-red-50 border-red-500 text-red-700' : 'bg-gray-50 border-gray-300 text-gray-600'"
+									>
+										{{ activeJob ? __('Printing') : failedJobsCount > 0 ? __('Error') : __('Idle') }}
+									</span>
+								</div>
+
+								<!-- Connection status info -->
+								<div class="text-[10px] text-gray-500 flex items-center gap-1.5">
+									<div class="w-1.5 h-1.5 rounded-full" :class="btStore.isConnected ? 'bg-green-500' : 'bg-red-500'"></div>
+									<span class="font-medium truncate max-w-[220px]">
+										{{ btStore.isConnected ? __('Connected: {0}', [btStore.savedPrinterName]) : __('Printer Disconnected') }}
+									</span>
+								</div>
+
+								<!-- Queue list -->
+								<div class="max-h-[160px] overflow-y-auto flex flex-col gap-1.5 pr-0.5 scrollbar-thin">
+									<div v-if="queueJobs.length === 0" class="text-center py-4 text-gray-400 italic">
+										{{ __('No jobs in queue') }}
+									</div>
+									<div
+										v-for="job in queueJobs"
+										:key="job.id"
+										class="p-1.5 bg-gray-50 border border-gray-200 rounded flex flex-col gap-1"
+									>
+										<div class="flex items-center justify-between gap-1 text-[10px]">
+											<span class="font-mono text-gray-500">ID: {{ job.id }}</span>
+											<span
+												class="px-1 py-0.2 rounded text-[8px] font-bold uppercase"
+												:class="getJobStatusClass(job.status)"
+											>
+												{{ __(job.status) }}
+											</span>
+										</div>
+										<p v-if="job.errorMsg" class="text-[9px] text-red-600 leading-tight font-medium">
+											{{ job.errorMsg }}
+										</p>
+										<div class="flex items-center justify-between text-[9px] text-gray-400">
+											<span>{{ formatTime(job.createdAt) }}</span>
+											<div class="flex items-center gap-1">
+												<span v-if="job.retries > 0" class="text-orange-500 font-medium">{{ __('Retry:') }} {{ job.retries }}/{{ job.maxRetries }}</span>
+												<span :class="['px-1 rounded font-bold uppercase', getPriorityClass(job.priority)]">{{ __(job.priority) }}</span>
+												
+												<button
+													v-if="job.status === 'pending' || job.status === 'failed'"
+													@click="cancelJob(job.id)"
+													class="text-red-500 hover:text-red-700 font-bold p-0.5 rounded hover:bg-red-50 transition-colors"
+													:title="__('Cancel Job')"
+												>
+													<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
+													</svg>
+												</button>
+											</div>
+										</div>
+									</div>
+								</div>
+
+								<!-- Queue Controls Footer -->
+								<div class="border-t pt-1.5 flex items-center justify-between gap-2">
+									<button
+										@click="clearQueue"
+										:disabled="queueJobs.length === 0"
+										class="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider text-center text-gray-600 hover:text-red-600 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
+									>
+										{{ __('Clear All') }}
+									</button>
+									<button
+										@click="retryFailed"
+										:disabled="failedJobsCount === 0"
+										class="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider text-center text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed rounded transition-colors"
+									>
+										{{ __('Retry Failed') }}
+									</button>
+								</div>
+							</div>
+						</div>
+					</div>
+
 					<!-- Refresh -->
 					<button
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
@@ -245,8 +364,87 @@
 import StatusBadge from "@/components/common/StatusBadge.vue"
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.vue"
 import { DEFAULT_LOCALE } from "@/utils/currency"
-import { ref } from "vue"
+import { ref, onMounted, onUnmounted, computed } from "vue"
 import { version } from "../../../package.json"
+import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
+import { printerService } from "@/services/printerService"
+
+const btStore = useBluetoothPrinterStore()
+const showQueueTooltip = ref(false)
+const queueJobs = ref([])
+
+const pendingJobsCount = computed(() => {
+	return queueJobs.value.filter(j => j.status === "pending").length
+})
+
+const failedJobsCount = computed(() => {
+	return queueJobs.value.filter(j => j.status === "failed").length
+})
+
+const activeJob = computed(() => {
+	return queueJobs.value.find(j => j.status === "printing")
+})
+
+onMounted(() => {
+	// Initialize jobs list
+	queueJobs.value = printerService.queue.getJobs()
+	
+	// Reactively update jobs list on any queue events
+	const updateJobs = () => {
+		queueJobs.value = printerService.queue.getJobs()
+	}
+	printerService.queue.on("statusChanged", updateJobs)
+	printerService.queue.on("added", updateJobs)
+	printerService.queue.on("drain", updateJobs)
+
+	onUnmounted(() => {
+		printerService.queue.off("statusChanged", updateJobs)
+		printerService.queue.off("added", updateJobs)
+		printerService.queue.off("drain", updateJobs)
+	})
+})
+
+function formatTime(timestamp) {
+	if (!timestamp) return ""
+	const date = new Date(timestamp)
+	return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+function getJobStatusClass(status) {
+	if (status === "printing") return "bg-blue-100 text-blue-700 border border-blue-200 animate-pulse font-bold"
+	if (status === "completed") return "bg-green-100 text-green-700"
+	if (status === "failed") return "bg-red-100 text-red-700 border border-red-200 font-bold"
+	if (status === "cancelled") return "bg-gray-100 text-gray-500"
+	return "bg-yellow-100 text-yellow-700 font-medium" // pending
+}
+
+function getPriorityClass(priority) {
+	if (priority === "high") return "bg-red-50 text-red-600 font-bold"
+	if (priority === "low") return "bg-gray-50 text-gray-500 font-medium"
+	return "bg-blue-50 text-blue-600 font-medium"
+}
+
+function handleQueueBlur(event) {
+	// Prevent immediate blur closure when interacting within the print queue container
+	if (event.relatedTarget && event.currentTarget.parentElement.contains(event.relatedTarget)) {
+		return
+	}
+	setTimeout(() => {
+		showQueueTooltip.value = false
+	}, 200)
+}
+
+function cancelJob(jobId) {
+	printerService.queue.cancelJob(jobId)
+}
+
+function clearQueue() {
+	printerService.queue.clear()
+}
+
+function retryFailed() {
+	printerService.queue.retryFailedJobs()
+}
 
 const showCacheTooltip = ref(false)
 const appVersion = version

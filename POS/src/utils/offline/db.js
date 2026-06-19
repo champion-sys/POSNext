@@ -38,6 +38,9 @@ const CURRENT_SCHEMA = {
 	// Key-value store for settings and metadata
 	settings: "&key",
 
+	// Print queue for offline Bluetooth printing
+	print_queue: "&jobId, status, createdAt",
+
 	// Invoice queue for offline submissions
 	// offline_id is a unique UUID for deduplication across syncs
 	invoice_queue: "++id, &offline_id, timestamp, synced",
@@ -249,6 +252,7 @@ export const clearCachedData = async (options = {}) => {
 		sales_persons: 0,
 		invoices: 0,
 		payments: 0,
+		print_queue: 0,
 		drafts: 0,
 		settings: 0,
 	}
@@ -266,6 +270,7 @@ export const clearCachedData = async (options = {}) => {
 		if (!preserveInvoices) {
 			results.invoices = await db.invoice_queue.clear()
 			results.payments = await db.payment_queue.clear()
+			results.print_queue = await db.print_queue.clear()
 		}
 
 		// Conditionally clear drafts

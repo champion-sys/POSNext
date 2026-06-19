@@ -11,6 +11,11 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	const connectedDeviceId = ref("")
 	const isConnected = ref(false)
 
+	// New settings for delay, chunk size, and queue persistence
+	const chunkSize = ref(parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10))
+	const writeDelay = ref(parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10))
+	const enableQueuePersistence = ref(localStorage.getItem("pos_bt_queue_persistence") === "0" ? 0 : 1) // Default to 1 (enabled)
+
 	// Watchers to persist values in localStorage
 	watch(isEnabled, (newVal) => {
 		localStorage.setItem("pos_bt_printer_enabled", newVal === 1 ? "1" : "0")
@@ -40,6 +45,18 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		localStorage.setItem("pos_bt_print_method", newVal)
 	})
 
+	watch(chunkSize, (newVal) => {
+		localStorage.setItem("pos_bt_chunk_size", newVal.toString())
+	})
+
+	watch(writeDelay, (newVal) => {
+		localStorage.setItem("pos_bt_write_delay", newVal.toString())
+	})
+
+	watch(enableQueuePersistence, (newVal) => {
+		localStorage.setItem("pos_bt_queue_persistence", newVal === 1 ? "1" : "0")
+	})
+
 	// Actions
 	function setSavedPrinter(id, name) {
 		savedPrinterId.value = id
@@ -49,6 +66,13 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	function clearSavedPrinter() {
 		savedPrinterId.value = ""
 		savedPrinterName.value = ""
+	}
+
+	// Make sure we have setter functions to update the configuration
+	function setPrinterConfig(config) {
+		if (config.chunkSize !== undefined) chunkSize.value = config.chunkSize
+		if (config.writeDelay !== undefined) writeDelay.value = config.writeDelay
+		if (config.enableQueuePersistence !== undefined) enableQueuePersistence.value = config.enableQueuePersistence ? 1 : 0
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -70,9 +94,13 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		printMethod,
 		connectedDeviceId,
 		isConnected,
+		chunkSize,
+		writeDelay,
+		enableQueuePersistence,
 		setSavedPrinter,
 		clearSavedPrinter,
 		setConnected,
 		setPrintMethod,
+		setPrinterConfig,
 	}
 })

@@ -68,6 +68,40 @@
 				/>
 			</div>
 
+			<!-- Advanced Printer Settings -->
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-100 pt-4 mt-2">
+				<SelectField
+					v-model="store.chunkSize"
+					:label="__('Write Chunk Size')"
+					:options="[
+						{ label: '64 bytes (Compatible)', value: '64' },
+						{ label: '128 bytes (Standard)', value: '128' },
+						{ label: '256 bytes (Fast)', value: '256' },
+						{ label: '512 bytes (Ultra)', value: '512' }
+					]"
+					:description="__('Size of data packets sent to the printer.')"
+				/>
+
+				<SelectField
+					v-model="store.writeDelay"
+					:label="__('Inter-chunk Write Delay')"
+					:options="[
+						{ label: '0ms (No Delay - Fast)', value: '0' },
+						{ label: '5ms (Optimized)', value: '5' },
+						{ label: '10ms (Standard)', value: '10' },
+						{ label: '20ms (Safe)', value: '20' },
+						{ label: '50ms (Slow/Legacy)', value: '50' }
+					]"
+					:description="__('Delay between packets to prevent printer buffer overflow.')"
+				/>
+			</div>
+
+			<CheckboxField
+				v-model="store.enableQueuePersistence"
+				:label="__('Enable Offline Print Queue Persistence')"
+				:description="__('Saves failed or pending print jobs to IndexedDB so they recover on reload.')"
+			/>
+
 			<!-- Device Scanning & Test Utilities -->
 			<div class="flex items-center gap-3 pt-2">
 				<Button
@@ -126,7 +160,7 @@ import { computed, onMounted, ref } from "vue"
 import { Button } from "frappe-ui"
 import { useToast } from "@/composables/useToast"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
-import { PrinterService } from "@/services/printerService"
+import { printerService } from "@/services/printerService"
 import { COMMANDS, encodeCP1256, reshapeArabic, renderReceiptToRaster } from "@/utils/escpos"
 import CheckboxField from "@/components/settings/CheckboxField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
@@ -140,21 +174,21 @@ const isPrintingTest = ref(false)
 
 onMounted(() => {
 	// Auto-check connection state if we have a saved printer
-	if (PrinterService.isConnected()) {
-		store.setConnected(PrinterService.getConnectedDeviceId(), true)
+	if (printerService.isConnected()) {
+		store.setConnected(printerService.getConnectedDeviceId(), true)
 	}
 
 	// Register disconnection callback
-	PrinterService.registerOnDisconnect(() => {
+	printerService.registerOnDisconnect(() => {
 		store.setConnected("", false)
 		showError(__("Printer connection lost"))
 	})
 
 	// Attempt auto-reconnect if a printer is saved and Bluetooth is enabled
 	if (store.isEnabled && !store.isConnected && store.savedPrinterId) {
-		PrinterService.tryAutoReconnect(store.savedPrinterId).then((success) => {
+		printerService.tryAutoReconnect(store.savedPrinterId).then((success) => {
 			if (success) {
-				store.setConnected(PrinterService.getConnectedDeviceId(), true)
+				store.setConnected(printerService.getConnectedDeviceId(), true)
 				showSuccess(__("Auto-connected to saved printer"))
 			}
 		})
@@ -164,7 +198,7 @@ onMounted(() => {
 async function handleScan() {
 	isScanning.value = true
 	try {
-		const device = await PrinterService.scanAndConnect()
+		const device = await printerService.scanAndConnect()
 		store.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"))
 		store.setConnected(device.id, true)
 		showSuccess(__("Connected and saved printer successfully."))
@@ -180,9 +214,9 @@ async function handleConnectSaved() {
 	if (!store.savedPrinterId) return
 	isConnecting.value = true
 	try {
-		const success = await PrinterService.tryAutoReconnect(store.savedPrinterId)
+		const success = await printerService.tryAutoReconnect(store.savedPrinterId)
 		if (success) {
-			store.setConnected(PrinterService.getConnectedDeviceId(), true)
+			store.setConnected(printerService.getConnectedDeviceId(), true)
 			showSuccess(__("Connected to printer successfully."))
 		} else {
 			showError(__("Could not connect automatically. Please turn on printer and scan again."))
@@ -195,7 +229,7 @@ async function handleConnectSaved() {
 }
 
 function handleDisconnect() {
-	PrinterService.disconnect()
+	printerService.disconnect()
 	store.setConnected("", false)
 	showSuccess(__("Disconnected from printer."))
 }
@@ -240,7 +274,7 @@ async function handlePrintTest() {
 				...COMMANDS.LINE_FEED,
 				...COMMANDS.CUT
 			])
-			await PrinterService.printRaw(printData)
+			await printerService.printRaw(printData)
 		} else {
 			// Legacy text encoding method
 			const bytesList = []
@@ -279,7 +313,7 @@ async function handlePrintTest() {
 			// Add Cut command
 			bytesList.push(...COMMANDS.CUT)
 
-			await PrinterService.printRaw(new Uint8Array(bytesList))
+			await printerService.printRaw(new Uint8Array(bytesList))
 		}
 
 		showSuccess(__("Test receipt sent successfully."))

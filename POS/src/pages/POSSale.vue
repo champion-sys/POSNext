@@ -1129,7 +1129,7 @@ import { useBootstrapStore } from "@/stores/bootstrap";
 import { logger } from "@/utils/logger";
 import { shouldValidateItemStock } from "@/utils/stockValidator";
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter";
-import { PrinterService } from "@/services/printerService";
+import { printerService } from "@/services/printerService";
 import { printInvoiceToBluetooth, printInvoiceFormatToBluetooth } from "@/utils/escpos";
 
 // Initialize stores
@@ -1232,13 +1232,13 @@ async function reconnectBtPrinter() {
 	if (!btStore.savedPrinterId) return;
 	isBtReconnecting.value = true;
 	try {
-		const success = await PrinterService.tryAutoReconnect(btStore.savedPrinterId);
+		const success = await printerService.tryAutoReconnect(btStore.savedPrinterId);
 		if (success) {
-			btStore.setConnected(PrinterService.getConnectedDeviceId(), true);
+			btStore.setConnected(printerService.getConnectedDeviceId(), true);
 			showSuccess(__("Connected to Bluetooth printer successfully."));
 		} else {
 			// Fallback: Trigger browser devices list selector
-			const device = await PrinterService.scanAndConnect();
+			const device = await printerService.scanAndConnect();
 			btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"));
 			btStore.setConnected(device.id, true);
 			showSuccess(__("Connected and saved printer successfully."));

@@ -1,6 +1,6 @@
 import { logger } from "./logger"
 import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
-import { PrinterService } from "../services/printerService"
+import { printerService } from "../services/printerService"
 import { call } from "./apiWrapper"
 import { usePOSSettingsStore } from "../stores/posSettings"
 
@@ -213,19 +213,42 @@ export async function renderReceiptToRaster(
 		throw new Error("Could not create 2D canvas context")
 	}
 
+	// Dynamic text wrapping utility
+	const wrapText = (c: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+		if (!text) return [""]
+		const words = text.split(" ")
+		const wrappedLines: string[] = []
+		let currentLine = ""
+
+		for (let n = 0; n < words.length; n++) {
+			const testLine = currentLine ? currentLine + " " + words[n] : words[n]
+			const metrics = c.measureText(testLine)
+			const testWidth = metrics.width
+			if (testWidth > maxWidth && n > 0) {
+				wrappedLines.push(currentLine)
+				currentLine = words[n]
+			} else {
+				currentLine = testLine
+			}
+		}
+		if (currentLine) {
+			wrappedLines.push(currentLine)
+		}
+		return wrappedLines
+	}
+
 	// FIX: Comprehensive mobile Arabic font stack
 	const fontFamily = `"Inter", "Arial", "Tahoma", "Droid Arabic Naskh", system-ui, sans-serif`
 
-	// First pass: Measure height dynamically
+	// First pass: Measure height dynamically with text wrapping
 	let currentY = 15
-	ctx.font = `normal ${normalFontSize}px ${fontFamily}`
+	const maxTextWidth = printWidth - 10
 
 	lines.forEach((line) => {
-		if (line.size === "large") {
-			currentY += lineHeightLarge
-		} else {
-			currentY += lineHeightNormal
-		}
+		const isLarge = line.size === "large"
+		ctx.font = `${line.bold ? "bold" : "normal"} ${isLarge ? largeFontSize : normalFontSize}px ${fontFamily}`
+		const wrapped = wrapText(ctx, line.text, maxTextWidth)
+		currentY += wrapped.length * (isLarge ? lineHeightLarge : lineHeightNormal)
 	})
 	currentY += 30 // Padding at bottom
 
@@ -242,21 +265,25 @@ export async function renderReceiptToRaster(
 	currentY = 15
 	lines.forEach((line) => {
 		const isLarge = line.size === "large"
+		const activeLineHeight = isLarge ? lineHeightLarge : lineHeightNormal
 		ctx.font = `${line.bold ? "bold" : "normal"} ${isLarge ? largeFontSize : normalFontSize}px ${fontFamily}`
-		const textWidth = ctx.measureText(line.text).width
+		
+		const wrapped = wrapText(ctx, line.text, maxTextWidth)
+		wrapped.forEach((wrappedLine) => {
+			const textWidth = ctx.measureText(wrappedLine).width
 
-		let x = 0
-		if (line.align === "center") {
-			x = (printWidth - textWidth) / 2
-		} else if (line.align === "right") {
-			x = printWidth - textWidth - 5
-		} else {
-			x = 5
-		}
+			let x = 0
+			if (line.align === "center") {
+				x = (printWidth - textWidth) / 2
+			} else if (line.align === "right") {
+				x = printWidth - textWidth - 5
+			} else {
+				x = 5
+			}
 
-		// Changed baseline math to "top" so we just pass currentY directly
-		ctx.fillText(line.text, x, currentY)
-		currentY += isLarge ? lineHeightLarge : lineHeightNormal
+			ctx.fillText(wrappedLine, x, currentY)
+			currentY += activeLineHeight
+		})
 	})
 
 	// Convert canvas image to ESC/POS raster bit image format
@@ -289,23 +316,27 @@ export async function renderReceiptToRaster(
 	escposBytes[8] = yL
 	escposBytes[9] = yH
 
-	// Pack 8 pixels into 1 byte (optimized sequential access, no multiplications)
+	// Pack 8 pixels into 1 byte (optimized 32-bit sequential access, integer math)
+	const pixels = new Uint32Array(data.buffer)
 	let pixelIndex = 0
 	let destIndex = 10
 	for (let y = 0; y < height; y++) {
 		for (let xByte = 0; xByte < widthBytes; xByte++) {
 			let byteVal = 0
 			for (let bit = 0; bit < 8; bit++) {
-				const r = data[pixelIndex]
-				const g = data[pixelIndex + 1]
-				const b = data[pixelIndex + 2]
-				const a = data[pixelIndex + 3]
-				pixelIndex += 4
+				const pixel = pixels[pixelIndex++]
+				const a = (pixel >> 24) & 0xff
 
-				const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+				if (a > 50) {
+					const r = pixel & 0xff
+					const g = (pixel >> 8) & 0xff
+					const b = (pixel >> 16) & 0xff
 
-				if (a > 50 && luminance < 200) {
-					byteVal |= 1 << (7 - bit)
+					// Fast integer luminance: (r * 77 + g * 150 + b * 29) >> 8
+					const luminance = (r * 77 + g * 150 + b * 29) >> 8
+					if (luminance < 200) {
+						byteVal |= 1 << (7 - bit)
+					}
 				}
 			}
 			escposBytes[destIndex++] = byteVal
@@ -453,7 +484,7 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 
 export async function printInvoiceToBluetooth(invoiceData: any): Promise<void> {
 	const store = useBluetoothPrinterStore()
-	if (!PrinterService.isConnected()) {
+	if (!printerService.isConnected()) {
 		throw new Error("Bluetooth printer is not connected.")
 	}
 
@@ -470,10 +501,10 @@ export async function printInvoiceToBluetooth(invoiceData: any): Promise<void> {
 			...COMMANDS.LINE_FEED,
 			...COMMANDS.CUT
 		])
-		await PrinterService.printRaw(printData)
+		await printerService.printRaw(printData)
 	} else {
 		const payload = generateTextPrintPayload(lines)
-		await PrinterService.printRaw(payload)
+		await printerService.printRaw(payload)
 	}
 }
 
@@ -716,7 +747,7 @@ export async function base64ImageToCanvas(imageUrl: string, width: number, heigh
 
 export async function printInvoiceFormatToBluetooth(invoiceData: any, printFormatName: string): Promise<void> {
 	const store = useBluetoothPrinterStore()
-	if (!PrinterService.isConnected()) {
+	if (!printerService.isConnected()) {
 		throw new Error("Bluetooth printer is not connected.")
 	}
 
@@ -791,22 +822,27 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 	escposBytes[8] = yL
 	escposBytes[9] = yH
 
+	// Pack 8 pixels into 1 byte (optimized 32-bit sequential access, integer math)
+	const pixels = new Uint32Array(data.buffer)
 	let pixelIndex = 0
 	let destIndex = 10
 	for (let y = 0; y < height; y++) {
 		for (let xByte = 0; xByte < widthBytes; xByte++) {
 			let byteVal = 0
 			for (let bit = 0; bit < 8; bit++) {
-				const r = data[pixelIndex]
-				const g = data[pixelIndex + 1]
-				const b = data[pixelIndex + 2]
-				const a = data[pixelIndex + 3]
-				pixelIndex += 4
+				const pixel = pixels[pixelIndex++]
+				const a = (pixel >> 24) & 0xff
 
-				const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+				if (a > 50) {
+					const r = pixel & 0xff
+					const g = (pixel >> 8) & 0xff
+					const b = (pixel >> 16) & 0xff
 
-				if (a > 50 && luminance < 200) {
-					byteVal |= 1 << (7 - bit)
+					// Fast integer luminance: (r * 77 + g * 150 + b * 29) >> 8
+					const luminance = (r * 77 + g * 150 + b * 29) >> 8
+					if (luminance < 200) {
+						byteVal |= 1 << (7 - bit)
+					}
 				}
 			}
 			escposBytes[destIndex++] = byteVal
@@ -820,5 +856,5 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 	escposBytes[destIndex++] = 66
 	escposBytes[destIndex++] = 0
 
-	await PrinterService.printRaw(escposBytes)
+	await printerService.printRaw(escposBytes)
 }

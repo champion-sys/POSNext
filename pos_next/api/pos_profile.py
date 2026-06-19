@@ -672,12 +672,25 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 	"""
 		Render the print format on the server, convert to a cropped PNG, and return as base64.
 	"""
+	import json
 	from frappe.www.printview import get_html_and_style
 	import pdfkit
 	import fitz
 	from PIL import Image, ImageChops
 	import io
 	import base64
+
+	# Unique cache key for print format rendering
+	cache_key = f"pos_print_image:{doc}:{name}:{print_format}:{paper_size}"
+
+	try:
+		cache = frappe.cache()
+		cached_data = cache.get_value(cache_key)
+		if cached_data:
+			return json.loads(cached_data)
+	except Exception:
+		# Fail-safe: proceed without cache
+		pass
 
 	try:
 		result = get_html_and_style(doc=doc, name=name, print_format=print_format, no_letterhead=1)
@@ -751,11 +764,25 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 		img.save(output, format="PNG")
 		png_base64 = base64.b64encode(output.getvalue()).decode("utf-8")
 
-		return {
+		response_data = {
 			"image": f"data:image/png;base64,{png_base64}",
 			"width": target_width,
 			"height": img.height
 		}
+
+		# Cache results: indefinitely for submitted docs (status 1), 30s for draft docs
+		try:
+			docstatus = frappe.db.get_value(doc, name, "docstatus")
+			cache = frappe.cache()
+			if docstatus == 1:
+				cache.set_value(cache_key, json.dumps(response_data))
+			else:
+				cache.set_value(cache_key, json.dumps(response_data), expires_in_sec=30)
+		except Exception:
+			# Fail-safe: caching error should not prevent printing
+			pass
+
+		return response_data
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "POS get_rendered_print_format server image render error")
 		raise e
