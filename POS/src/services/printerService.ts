@@ -1,4 +1,5 @@
 import { logger } from "../utils/logger"
+import { PrinterQueue, PrintJobPriority } from "./printerQueue"
 
 const log = logger.create("PrinterService")
 
@@ -20,6 +21,8 @@ export class PrinterService {
 	private static server: BluetoothRemoteGATTServer | null = null
 	private static characteristic: BluetoothRemoteGATTCharacteristic | null = null
 	private static onDisconnectCallback: (() => void) | null = null
+	private static queue = new PrinterQueue(PrinterService.printRawInternal.bind(PrinterService))
+
 
 	/**
 	 * Checks if Web Bluetooth is supported in the current environment
@@ -177,9 +180,42 @@ export class PrinterService {
 	}
 
 	/**
-	 * Send raw byte data to the printer in chunks to avoid MTU buffer overflow
+	 * Get the active PrinterQueue instance
 	 */
-	public static async printRaw(data: Uint8Array): Promise<void> {
+	public static getQueue(): PrinterQueue {
+		return this.queue
+	}
+
+	/**
+	 * Send raw byte data to the printer by adding it to the execution queue
+	 */
+	public static async printRaw(data: Uint8Array, priority: PrintJobPriority = "normal"): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			const job = this.queue.enqueue(data, priority)
+			
+			const onStatus = (updatedJob: any) => {
+				if (updatedJob.id === job.id) {
+					if (updatedJob.status === "completed") {
+						this.queue.off("statusChanged", onStatus)
+						resolve()
+					} else if (updatedJob.status === "failed") {
+						this.queue.off("statusChanged", onStatus)
+						reject(updatedJob.error || new Error("Printing failed"))
+					} else if (updatedJob.status === "cancelled") {
+						this.queue.off("statusChanged", onStatus)
+						reject(new Error("Printing job cancelled"))
+					}
+				}
+			}
+			
+			this.queue.on("statusChanged", onStatus)
+		})
+	}
+
+	/**
+	 * Send raw byte data directly to the printer in chunks (Internal queue worker use only)
+	 */
+	private static async printRawInternal(data: Uint8Array): Promise<void> {
 		if (!this.isConnected() || !this.characteristic) {
 			throw new Error("No printer connected.")
 		}
