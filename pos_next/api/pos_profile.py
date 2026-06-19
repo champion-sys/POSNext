@@ -708,12 +708,16 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 			<meta charset="utf-8">
 			<style>
 				{style}
-				body {{
+				body, html, .print-format, .print-format-container, .print-preview {{
 					background-color: white !important;
 					color: black !important;
 					margin: 0 !important;
 					padding: 0 !important;
 					width: {width_mm}mm !important;
+					max-width: {width_mm}mm !important;
+				}}
+				table, .table {{
+					width: 100% !important;
 				}}
 			</style>
 		</head>
@@ -743,14 +747,16 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 		pix = page.get_pixmap(dpi=150) # Use 150 DPI for high resolution
 		img_data = pix.tobytes("png")
 
-		# Crop white spaces at the bottom using Pillow
+		# Crop white spaces using Pillow
 		img = Image.open(io.BytesIO(img_data))
 		bg = Image.new(img.mode, img.size, (255, 255, 255))
 		diff = ImageChops.difference(img, bg)
 		bbox = diff.getbbox()
 		if bbox:
-			# Crop to bottom of content plus some margin (10px)
-			img = img.crop((0, 0, img.width, min(img.height, bbox[3] + 10)))
+			# Crop to content bounds plus margin (10px bottom, 2px sides)
+			left = max(0, bbox[0] - 2)
+			right = min(img.width, bbox[2] + 2)
+			img = img.crop((left, 0, right, min(img.height, bbox[3] + 10)))
 
 		# Resize image to exact printer width
 		target_width = 576 if paper_size == "80" else 384

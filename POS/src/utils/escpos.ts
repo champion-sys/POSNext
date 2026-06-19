@@ -742,7 +742,7 @@ export async function base64ImageToCanvas(imageUrl: string, width: number, heigh
 	const img = new Image()
 	await new Promise<void>((resolve, reject) => {
 		img.onload = () => {
-			ctx.drawImage(img, 0, 0)
+			ctx.drawImage(img, 0, 0, width, height)
 			resolve()
 		}
 		img.onerror = () => {
@@ -801,7 +801,8 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 	}
 
 	const widthPixels = store.paperSize === "80" ? 576 : 384
-	const canvas = await base64ImageToCanvas(renderedImage, imgWidth, imgHeight)
+	const targetHeight = Math.round(imgHeight * (widthPixels / imgWidth))
+	const canvas = await base64ImageToCanvas(renderedImage, widthPixels, targetHeight)
 
 	const ctx = canvas.getContext("2d")
 	if (!ctx) throw new Error("Could not create 2D canvas context")
