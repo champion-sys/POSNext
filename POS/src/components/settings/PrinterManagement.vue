@@ -94,6 +94,23 @@
 					]"
 					:description="__('Delay between packets to prevent printer buffer overflow.')"
 				/>
+
+				<SelectField
+					v-model="store.lineFeedsAfterPrint"
+					:label="__('Line Feeds After Print')"
+					:options="[
+						{ label: '0', value: 0 },
+						{ label: '1', value: 1 },
+						{ label: '2', value: 2 },
+						{ label: '3 (Default)', value: 3 },
+						{ label: '4', value: 4 },
+						{ label: '5', value: 5 },
+						{ label: '6', value: 6 },
+						{ label: '7', value: 7 },
+						{ label: '8', value: 8 }
+					]"
+					:description="__('Number of empty lines to feed before cutting the paper.')"
+				/>
 			</div>
 
 			<CheckboxField
@@ -266,15 +283,7 @@ async function handlePrintTest() {
 		if (store.printMethod === "image") {
 			// Canvas Raster printing
 			const rasterData = await renderReceiptToRaster(testLines, widthPixels)
-			const printData = new Uint8Array([
-				...COMMANDS.INITIALIZE,
-				...rasterData,
-				...COMMANDS.LINE_FEED,
-				...COMMANDS.LINE_FEED,
-				...COMMANDS.LINE_FEED,
-				...COMMANDS.CUT
-			])
-			await printerService.printRaw(printData)
+			await printerService.printRaw(rasterData)
 		} else {
 			// Legacy text encoding method
 			const bytesList = []
@@ -305,10 +314,11 @@ async function handlePrintTest() {
 				bytesList.push(...COMMANDS.LINE_FEED)
 			}
 
-			// Add 2 lines of spacing before cutting
-			bytesList.push(...COMMANDS.LINE_FEED)
-			bytesList.push(...COMMANDS.LINE_FEED)
-			bytesList.push(...COMMANDS.LINE_FEED)
+			// Add dynamic lines of spacing before cutting
+			const feedsCount = store.lineFeedsAfterPrint !== undefined ? Number(store.lineFeedsAfterPrint) : 3
+			for (let i = 0; i < feedsCount; i++) {
+				bytesList.push(...COMMANDS.LINE_FEED)
+			}
 
 			// Add Cut command
 			bytesList.push(...COMMANDS.CUT)

@@ -15,6 +15,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	const chunkSize = ref(parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10))
 	const writeDelay = ref(parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10))
 	const enableQueuePersistence = ref(localStorage.getItem("pos_bt_queue_persistence") === "0" ? 0 : 1) // Default to 1 (enabled)
+	const lineFeedsAfterPrint = ref(parseInt(localStorage.getItem("pos_bt_line_feeds_after_print") || "3", 10))
 
 	// Watchers to persist values in localStorage
 	watch(isEnabled, (newVal) => {
@@ -57,6 +58,10 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		localStorage.setItem("pos_bt_queue_persistence", newVal === 1 ? "1" : "0")
 	})
 
+	watch(lineFeedsAfterPrint, (newVal) => {
+		localStorage.setItem("pos_bt_line_feeds_after_print", newVal.toString())
+	})
+
 	// Actions
 	function setSavedPrinter(id, name) {
 		savedPrinterId.value = id
@@ -73,6 +78,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		if (config.chunkSize !== undefined) chunkSize.value = config.chunkSize
 		if (config.writeDelay !== undefined) writeDelay.value = config.writeDelay
 		if (config.enableQueuePersistence !== undefined) enableQueuePersistence.value = config.enableQueuePersistence ? 1 : 0
+		if (config.lineFeedsAfterPrint !== undefined) lineFeedsAfterPrint.value = parseInt(config.lineFeedsAfterPrint, 10)
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -97,6 +103,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		chunkSize,
 		writeDelay,
 		enableQueuePersistence,
+		lineFeedsAfterPrint,
 		setSavedPrinter,
 		clearSavedPrinter,
 		setConnected,

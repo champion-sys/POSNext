@@ -3122,8 +3122,8 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError);
 						console.log(fmtError)
 						// Fallback to standard line-by-line Bluetooth print
-						// await printInvoiceToBluetooth(invoiceData);
-						// return;
+						await printInvoiceToBluetooth(invoiceData);
+						return;
 					}
 				} else {
 					await printInvoiceToBluetooth(invoiceData);

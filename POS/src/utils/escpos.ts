@@ -163,8 +163,17 @@ export function generateTextPrintPayload(lines: ReceiptLine[]): Uint8Array {
 		if (line.bold) payload.push(...COMMANDS.BOLD_OFF)
 	})
 
-	payload.push(...COMMANDS.LINE_FEED)
-	payload.push(...COMMANDS.LINE_FEED)
+	let feedsCount = 3
+	try {
+		const store = useBluetoothPrinterStore()
+		feedsCount = store.lineFeedsAfterPrint !== undefined ? Number(store.lineFeedsAfterPrint) : 3
+	} catch (e) {
+		// Ignore store error in non-vue context
+	}
+
+	for (let i = 0; i < feedsCount; i++) {
+		payload.push(LF)
+	}
 	payload.push(...COMMANDS.CUT)
 
 	return new Uint8Array(payload)
@@ -299,8 +308,15 @@ export async function renderReceiptToRaster(
 	const yH = Math.floor(height / 256)
 
 	const rasterSize = height * widthBytes
-	// INITIALIZE (2 bytes) + GS v 0 header (8 bytes) + raster data + LINE_FEED (1) + LINE_FEED (1) + CUT (4 bytes)
-	const escposBytes = new Uint8Array(2 + 8 + rasterSize + 6)
+	let feedsCount = 3
+	try {
+		const store = useBluetoothPrinterStore()
+		feedsCount = store.lineFeedsAfterPrint !== undefined ? Number(store.lineFeedsAfterPrint) : 3
+	} catch (e) {
+		// Ignore store error in non-vue context
+	}
+	// INITIALIZE (2 bytes) + GS v 0 header (8 bytes) + raster data + LINE_FEED (feedsCount) + CUT (4 bytes)
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4)
 
 	// Initialize
 	escposBytes[0] = COMMANDS.INITIALIZE[0]
@@ -344,8 +360,9 @@ export async function renderReceiptToRaster(
 	}
 
 	// Add margin and cut paper
-	escposBytes[destIndex++] = 0x0a // LINE_FEED
-	escposBytes[destIndex++] = 0x0a // LINE_FEED
+	for (let i = 0; i < feedsCount; i++) {
+		escposBytes[destIndex++] = 0x0a // LINE_FEED
+	}
 	escposBytes[destIndex++] = GS
 	escposBytes[destIndex++] = 0x56
 	escposBytes[destIndex++] = 66
@@ -493,15 +510,7 @@ export async function printInvoiceToBluetooth(invoiceData: any): Promise<void> {
 
 	if (store.printMethod === "image") {
 		const rasterData = await renderReceiptToRaster(lines, widthPixels)
-		const printData = new Uint8Array([
-			...COMMANDS.INITIALIZE,
-			...rasterData,
-			...COMMANDS.LINE_FEED,
-			...COMMANDS.LINE_FEED,
-			...COMMANDS.LINE_FEED,
-			...COMMANDS.CUT
-		])
-		await printerService.printRaw(printData)
+		await printerService.printRaw(rasterData)
 	} else {
 		const payload = generateTextPrintPayload(lines)
 		await printerService.printRaw(payload)
@@ -808,7 +817,8 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 	const yH = Math.floor(height / 256)
 
 	const rasterSize = height * widthBytes
-	const escposBytes = new Uint8Array(2 + 8 + rasterSize + 6)
+	const feedsCount = store.lineFeedsAfterPrint !== undefined ? Number(store.lineFeedsAfterPrint) : 3
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4)
 
 	escposBytes[0] = COMMANDS.INITIALIZE[0]
 	escposBytes[1] = COMMANDS.INITIALIZE[1]
@@ -849,8 +859,9 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 		}
 	}
 
-	escposBytes[destIndex++] = 0x0a
-	escposBytes[destIndex++] = 0x0a
+	for (let i = 0; i < feedsCount; i++) {
+		escposBytes[destIndex++] = 0x0a
+	}
 	escposBytes[destIndex++] = GS
 	escposBytes[destIndex++] = 0x56
 	escposBytes[destIndex++] = 66
