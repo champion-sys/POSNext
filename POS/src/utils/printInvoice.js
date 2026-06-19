@@ -4,6 +4,7 @@ import { getOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { printHTML as qzPrintHTML } from "@/utils/qzTray"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 
 const log = logger.create("PrintInvoice")
 
@@ -343,7 +344,14 @@ export async function printInvoice(invoiceData, printFormat = null, letterhead =
 			)
 		}
 
-		const doctype = invoiceData.doctype || "Sales Invoice"
+		let fallbackDoctype = "Sales Invoice"
+		try {
+			const posSettingsStore = usePOSSettingsStore()
+			fallbackDoctype = posSettingsStore.invoiceType || "Sales Invoice"
+		} catch (e) {
+			// Ignore store error in non-vue context
+		}
+		const doctype = invoiceData.doctype || fallbackDoctype
 		const format = printFormat || DEFAULT_PRINT_FORMAT
 
 		const params = new URLSearchParams({
@@ -418,7 +426,14 @@ export async function silentPrintInvoice(invoiceName, printFormat = null, doctyp
 		)
 	}
 	const format = printFormat || DEFAULT_PRINT_FORMAT
-	const doc = doctype || (invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice")
+	let fallbackDoctype = "Sales Invoice"
+	try {
+		const posSettingsStore = usePOSSettingsStore()
+		fallbackDoctype = posSettingsStore.invoiceType || "Sales Invoice"
+	} catch (e) {
+		// Ignore store error in non-vue context
+	}
+	const doc = doctype || fallbackDoctype
 
 	const result = await call("frappe.www.printview.get_html_and_style", {
 		doc,
@@ -479,7 +494,14 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 	}
 
 	try {
-		const doctype = invoiceData.doctype || (invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice")
+		let fallbackDoctype = "Sales Invoice"
+		try {
+			const posSettingsStore = usePOSSettingsStore()
+			fallbackDoctype = posSettingsStore.invoiceType || "Sales Invoice"
+		} catch (e) {
+			// Ignore store error in non-vue context
+		}
+		const doctype = invoiceData.doctype || fallbackDoctype
 		await silentPrintInvoice(invoiceName, printFormat, doctype)
 		return { method: "silent", success: true }
 	} catch (err) {

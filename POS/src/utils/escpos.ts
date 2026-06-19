@@ -777,7 +777,7 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 				const settingsStore = usePOSSettingsStore()
 				doctype = settingsStore.invoiceType || "Sales Invoice"
 			} catch (e) {
-				doctype = invoiceName.startsWith("ACC-PINV") || invoiceName.startsWith("PINV") ? "POS Invoice" : "Sales Invoice"
+				doctype = "Sales Invoice"
 			}
 		}
 
