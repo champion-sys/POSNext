@@ -1229,20 +1229,23 @@ const showBtDisconnectNotice = computed(() => {
 });
 
 async function reconnectBtPrinter() {
-	if (!btStore.savedPrinterId) return;
+	if (btStore.printers.length === 0) return;
 	isBtReconnecting.value = true;
 	try {
-		const type = btStore.activePrinter?.type || "bluetooth";
-		const success = await printerService.tryAutoReconnect(btStore.savedPrinterDeviceId, type);
-		if (success) {
-			btStore.setConnected(printerService.getConnectedDeviceId(), true);
-			if (type === "usb") {
-				showSuccess(__("Connected to USB printer successfully."));
-			} else {
-				showSuccess(__("Connected to Bluetooth printer successfully."));
+		let connectedAny = false;
+		for (const printer of btStore.printers) {
+			const success = await printerService.tryAutoReconnect(printer.deviceId, printer.type);
+			if (success) {
+				btStore.setConnected(printerService.getConnectedDeviceId(), true);
+				connectedAny = true;
 			}
+		}
+
+		if (connectedAny) {
+			showSuccess(__("Connected to printers successfully."));
 		} else {
 			// Fallback: Trigger browser devices list selector based on active type
+			const type = btStore.activePrinter?.type || "bluetooth";
 			if (type === "usb") {
 				const device = await printerService.scanAndConnectUsb();
 				const id = `usb_${device.vendorId}_${device.productId}_${device.serialNumber || ""}`;

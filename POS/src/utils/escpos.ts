@@ -1002,6 +1002,12 @@ export async function printInvoiceToAllPrinters(invoiceData: any): Promise<void>
 	try {
 		for (const printer of store.printers) {
 			try {
+				const printFormatName = printer.printFormat || null
+				if (!printFormatName) {
+					log.info(`Printer Router: Skipping printer ${printer.name} because it has no Target Print Format`)
+					continue
+				}
+
 				// Temporarily activate this printer to load its specific configuration
 				store.setActivePrinter(printer.id)
 
@@ -1016,17 +1022,12 @@ export async function printInvoiceToAllPrinters(invoiceData: any): Promise<void>
 					store.setConnected(printer.deviceId, true)
 				}
 
-				const printFormatName = printer.printFormat || null
-				log.info(`Printer Router: Printing to ${printer.name} with format ${printFormatName || "default"}`)
+				log.info(`Printer Router: Printing to ${printer.name} with format ${printFormatName}`)
 
-				if (printFormatName) {
-					try {
-						await printInvoiceFormatToBluetooth(invoiceData, printFormatName)
-					} catch (fmtError) {
-						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError)
-						await printInvoiceToBluetooth(invoiceData)
-					}
-				} else {
+				try {
+					await printInvoiceFormatToBluetooth(invoiceData, printFormatName)
+				} catch (fmtError) {
+					log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError)
 					await printInvoiceToBluetooth(invoiceData)
 				}
 				printedCount++
