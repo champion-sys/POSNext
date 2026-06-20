@@ -754,6 +754,55 @@ export async function base64ImageToCanvas(imageUrl: string, width: number, heigh
 	return canvas
 }
 
+const prefetchCache = new Map<string, Promise<any>>()
+
+export function prefetchPrintFormat(invoiceData: any, printFormatName: string) {
+	const invoiceName = invoiceData?.name
+	if (
+		!invoiceName ||
+		(typeof invoiceName === "string" &&
+			(invoiceName.startsWith("OFFLINE-") || invoiceName.startsWith("pos_offline_")))
+	) {
+		return
+	}
+
+	const key = `${invoiceName}:${printFormatName}`
+	if (prefetchCache.has(key)) return
+
+	let doctype = invoiceData.doctype
+	if (!doctype) {
+		try {
+			const settingsStore = usePOSSettingsStore()
+			doctype = settingsStore.invoiceType || "Sales Invoice"
+		} catch (e) {
+			doctype = "Sales Invoice"
+		}
+	}
+
+	const store = useBluetoothPrinterStore()
+	const promise = call("pos_next.api.pos_profile.get_rendered_print_format", {
+		doc: doctype,
+		name: invoiceName,
+		print_format: printFormatName,
+		paper_size: store.paperSize || "80",
+	})
+		.then((response) => {
+			return response?.message || response
+		})
+		.catch((err) => {
+			log.warn("Prefetch print format failed:", err)
+			prefetchCache.delete(key)
+			throw err
+		})
+
+	prefetchCache.set(key, promise)
+
+	// Clean up after 2 minutes
+	setTimeout(() => {
+		prefetchCache.delete(key)
+	}, 120000)
+}
+
 export async function printInvoiceFormatToBluetooth(invoiceData: any, printFormatName: string): Promise<void> {
 	const store = useBluetoothPrinterStore()
 	if (!printerService.isConnected()) {
@@ -781,13 +830,27 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 			}
 		}
 
-		const response = await call("pos_next.api.pos_profile.get_rendered_print_format", {
-			doc: doctype,
-			name: invoiceName,
-			print_format: printFormatName,
-			paper_size: store.paperSize || "80"
-		})
-		const result = response?.message || response
+		const key = `${invoiceName}:${printFormatName}`
+		let result = null
+		if (prefetchCache.has(key)) {
+			try {
+				result = await prefetchCache.get(key)
+				prefetchCache.delete(key) // Consume it
+			} catch (err) {
+				log.warn("Prefetched print format rejected, falling back to fresh API call", err)
+			}
+		}
+
+		if (!result) {
+			const response = await call("pos_next.api.pos_profile.get_rendered_print_format", {
+				doc: doctype,
+				name: invoiceName,
+				print_format: printFormatName,
+				paper_size: store.paperSize || "80"
+			})
+			result = response?.message || response
+		}
+
 		renderedImage = result?.image
 		imgWidth = result?.width || (store.paperSize === "80" ? 576 : 384)
 		imgHeight = result?.height || 800

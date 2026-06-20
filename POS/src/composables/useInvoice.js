@@ -5,6 +5,9 @@ import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
 import { roundCurrency } from "@/utils/currency"
+import { usePOSShiftStore } from "@/stores/posShift"
+import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
+import { prefetchPrintFormat } from "@/utils/escpos"
 
 const log = logger.create("Invoice")
 
@@ -1098,6 +1101,18 @@ export function useInvoice() {
 					throw new Error(
 						"Failed to create draft invoice - no invoice name returned",
 					)
+				}
+
+				// Trigger prefetch for Bluetooth printer print format
+				try {
+					const btStore = useBluetoothPrinterStore()
+					const shiftStore = usePOSShiftStore()
+					const printFormatName = shiftStore.currentProfile?.print_format || "POS Next Receipt"
+					if (btStore.isEnabled && btStore.isConnected) {
+						prefetchPrintFormat(invoiceDoc, printFormatName)
+					}
+				} catch (e) {
+					log.warn("Failed to prefetch print format on checkout:", e)
 				}
 
 				const submitData = {
