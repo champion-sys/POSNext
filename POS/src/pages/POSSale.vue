@@ -1232,15 +1232,27 @@ async function reconnectBtPrinter() {
 	if (!btStore.savedPrinterId) return;
 	isBtReconnecting.value = true;
 	try {
-		const success = await printerService.tryAutoReconnect(btStore.savedPrinterId);
+		const type = btStore.activePrinter?.type || "bluetooth";
+		const success = await printerService.tryAutoReconnect(btStore.savedPrinterId, type);
 		if (success) {
 			btStore.setConnected(printerService.getConnectedDeviceId(), true);
-			showSuccess(__("Connected to Bluetooth printer successfully."));
+			if (type === "usb") {
+				showSuccess(__("Connected to USB printer successfully."));
+			} else {
+				showSuccess(__("Connected to Bluetooth printer successfully."));
+			}
 		} else {
-			// Fallback: Trigger browser devices list selector
-			const device = await printerService.scanAndConnect();
-			btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"));
-			btStore.setConnected(device.id, true);
+			// Fallback: Trigger browser devices list selector based on active type
+			if (type === "usb") {
+				const device = await printerService.scanAndConnectUsb();
+				const id = `usb_${device.vendorId}_${device.productId}_${device.serialNumber || ""}`;
+				btStore.setSavedPrinter(id, device.productName || __("USB POS Printer"), "usb");
+				btStore.setConnected(id, true);
+			} else {
+				const device = await printerService.scanAndConnect();
+				btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"), "bluetooth");
+				btStore.setConnected(device.id, true);
+			}
 			showSuccess(__("Connected and saved printer successfully."));
 		}
 	} catch (error) {

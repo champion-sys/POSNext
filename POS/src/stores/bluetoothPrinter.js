@@ -1,84 +1,165 @@
 import { defineStore } from "pinia"
-import { ref, watch } from "vue"
+import { ref, watch, computed } from "vue"
 
 export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
+	// Migration helper
+	const loadInitialPrinters = () => {
+		try {
+			const saved = localStorage.getItem("pos_printers")
+			if (saved) {
+				return JSON.parse(saved)
+			}
+		} catch (error) {
+			console.error("Failed to parse pos_printers:", error)
+		}
+
+		// Fallback migration
+		const oldId = localStorage.getItem("pos_bt_printer_id")
+		const oldName = localStorage.getItem("pos_bt_printer_name")
+		if (oldId) {
+			const migrated = {
+				id: oldId,
+				name: oldName || "Bluetooth Printer",
+				type: "bluetooth",
+				paperSize: localStorage.getItem("pos_bt_paper_size") || "58",
+				printMethod: localStorage.getItem("pos_bt_print_method") || "image",
+				chunkSize: parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10),
+				writeDelay: parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10),
+				lineFeedsAfterPrint: parseInt(localStorage.getItem("pos_bt_line_feeds_after_print") || "3", 10),
+				isDefault: true
+			}
+			localStorage.setItem("pos_printers", JSON.stringify([migrated]))
+			localStorage.setItem("pos_active_printer_id", oldId)
+			return [migrated]
+		}
+		return []
+	}
+
 	// State
 	const isEnabled = ref(localStorage.getItem("pos_bt_printer_enabled") === "1" ? 1 : 0)
-	const paperSize = ref(localStorage.getItem("pos_bt_paper_size") || "58") // '58' or '80'
-	const savedPrinterId = ref(localStorage.getItem("pos_bt_printer_id") || "")
-	const savedPrinterName = ref(localStorage.getItem("pos_bt_printer_name") || "")
-	const printMethod = ref(localStorage.getItem("pos_bt_print_method") || "image") // 'image' or 'text'
+	const printers = ref(loadInitialPrinters())
+	const activePrinterId = ref(localStorage.getItem("pos_active_printer_id") || "")
 	const connectedDeviceId = ref("")
 	const isConnected = ref(false)
+	const enableQueuePersistence = ref(localStorage.getItem("pos_bt_queue_persistence") === "0" ? 0 : 1)
 
-	// New settings for delay, chunk size, and queue persistence
-	const chunkSize = ref(parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10))
-	const writeDelay = ref(parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10))
-	const enableQueuePersistence = ref(localStorage.getItem("pos_bt_queue_persistence") === "0" ? 0 : 1) // Default to 1 (enabled)
-	const lineFeedsAfterPrint = ref(parseInt(localStorage.getItem("pos_bt_line_feeds_after_print") || "3", 10))
+	// Fallback to first/default printer if activePrinterId is not set
+	if (!activePrinterId.value && printers.value.length > 0) {
+		const defaultPrinter = printers.value.find(p => p.isDefault) || printers.value[0]
+		activePrinterId.value = defaultPrinter.id
+	}
 
-	// Watchers to persist values in localStorage
+	// Watchers
 	watch(isEnabled, (newVal) => {
 		localStorage.setItem("pos_bt_printer_enabled", newVal === 1 ? "1" : "0")
-	})
-
-	watch(paperSize, (newVal) => {
-		localStorage.setItem("pos_bt_paper_size", newVal)
-	})
-
-	watch(savedPrinterId, (newVal) => {
-		if (newVal) {
-			localStorage.setItem("pos_bt_printer_id", newVal)
-		} else {
-			localStorage.removeItem("pos_bt_printer_id")
-		}
-	})
-
-	watch(savedPrinterName, (newVal) => {
-		if (newVal) {
-			localStorage.setItem("pos_bt_printer_name", newVal)
-		} else {
-			localStorage.removeItem("pos_bt_printer_name")
-		}
-	})
-
-	watch(printMethod, (newVal) => {
-		localStorage.setItem("pos_bt_print_method", newVal)
-	})
-
-	watch(chunkSize, (newVal) => {
-		localStorage.setItem("pos_bt_chunk_size", newVal.toString())
-	})
-
-	watch(writeDelay, (newVal) => {
-		localStorage.setItem("pos_bt_write_delay", newVal.toString())
 	})
 
 	watch(enableQueuePersistence, (newVal) => {
 		localStorage.setItem("pos_bt_queue_persistence", newVal === 1 ? "1" : "0")
 	})
 
-	watch(lineFeedsAfterPrint, (newVal) => {
-		localStorage.setItem("pos_bt_line_feeds_after_print", newVal.toString())
+	watch(activePrinterId, (newVal) => {
+		if (newVal) {
+			localStorage.setItem("pos_active_printer_id", newVal)
+		} else {
+			localStorage.removeItem("pos_active_printer_id")
+		}
+	})
+
+	watch(printers, (newVal) => {
+		localStorage.setItem("pos_printers", JSON.stringify(newVal))
+	}, { deep: true })
+
+	// Computed active printer
+	const activePrinter = computed(() => {
+		return printers.value.find(p => p.id === activePrinterId.value) || printers.value.find(p => p.isDefault) || printers.value[0] || null
+	})
+
+	// Backwards-compatible computed fields mapping to the active printer
+	const savedPrinterId = computed({
+		get: () => activePrinter.value?.id || "",
+		set: (val) => {
+			activePrinterId.value = val
+		}
+	})
+
+	const savedPrinterName = computed({
+		get: () => activePrinter.value?.name || "",
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.name = val
+		}
+	})
+
+	const paperSize = computed({
+		get: () => activePrinter.value?.paperSize || "58",
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.paperSize = val
+		}
+	})
+
+	const printMethod = computed({
+		get: () => activePrinter.value?.printMethod || "image",
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.printMethod = val
+		}
+	})
+
+	const chunkSize = computed({
+		get: () => activePrinter.value?.chunkSize || 128,
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.chunkSize = val
+		}
+	})
+
+	const writeDelay = computed({
+		get: () => activePrinter.value?.writeDelay ?? 10,
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.writeDelay = val
+		}
+	})
+
+	const lineFeedsAfterPrint = computed({
+		get: () => activePrinter.value?.lineFeedsAfterPrint ?? 3,
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.lineFeedsAfterPrint = val
+		}
 	})
 
 	// Actions
-	function setSavedPrinter(id, name) {
-		savedPrinterId.value = id
-		savedPrinterName.value = name
+	function setSavedPrinter(id, name, type = "bluetooth") {
+		let existing = printers.value.find(p => p.id === id)
+		if (!existing) {
+			existing = {
+				id,
+				name,
+				type,
+				paperSize: "58",
+				printMethod: "image",
+				chunkSize: 128,
+				writeDelay: 10,
+				lineFeedsAfterPrint: 3,
+				isDefault: printers.value.length === 0
+			}
+			printers.value.push(existing)
+		} else {
+			existing.name = name
+			existing.type = type
+		}
+		activePrinterId.value = id
 	}
 
 	function clearSavedPrinter() {
-		savedPrinterId.value = ""
-		savedPrinterName.value = ""
+		const idToRemove = activePrinterId.value
+		if (idToRemove) {
+			removePrinter(idToRemove)
+		}
 	}
 
-	// Make sure we have setter functions to update the configuration
 	function setPrinterConfig(config) {
-		if (config.chunkSize !== undefined) chunkSize.value = config.chunkSize
-		if (config.writeDelay !== undefined) writeDelay.value = config.writeDelay
-		if (config.enableQueuePersistence !== undefined) enableQueuePersistence.value = config.enableQueuePersistence ? 1 : 0
-		if (config.lineFeedsAfterPrint !== undefined) lineFeedsAfterPrint.value = parseInt(config.lineFeedsAfterPrint, 10)
+		if (!activePrinter.value) return
+		if (config.chunkSize !== undefined) activePrinter.value.chunkSize = config.chunkSize
+		if (config.writeDelay !== undefined) activePrinter.value.writeDelay = config.writeDelay
+		if (config.lineFeedsAfterPrint !== undefined) activePrinter.value.lineFeedsAfterPrint = parseInt(config.lineFeedsAfterPrint, 10)
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -87,27 +168,73 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	}
 
 	function setPrintMethod(method) {
-		if (method === "image" || method === "text") {
-			printMethod.value = method
+		if (activePrinter.value && (method === "image" || method === "text")) {
+			activePrinter.value.printMethod = method
 		}
+	}
+
+	function addPrinter(printer) {
+		printers.value.push(printer)
+		if (printer.isDefault || printers.value.length === 1) {
+			setDefaultPrinter(printer.id)
+		}
+	}
+
+	function removePrinter(id) {
+		const wasActive = activePrinterId.value === id
+		const wasDefault = printers.value.find(p => p.id === id)?.isDefault
+		printers.value = printers.value.filter(p => p.id !== id)
+		if (printers.value.length > 0) {
+			if (wasDefault) {
+				printers.value[0].isDefault = true
+			}
+			if (wasActive) {
+				const defaultPrinter = printers.value.find(p => p.isDefault) || printers.value[0]
+				activePrinterId.value = defaultPrinter.id
+			}
+		} else {
+			activePrinterId.value = ""
+		}
+	}
+
+	function setDefaultPrinter(id) {
+		printers.value.forEach(p => {
+			p.isDefault = p.id === id
+		})
+		activePrinterId.value = id
+	}
+
+	function setActivePrinter(id) {
+		activePrinterId.value = id
 	}
 
 	return {
 		isEnabled,
-		paperSize,
-		savedPrinterId,
-		savedPrinterName,
-		printMethod,
+		printers,
+		activePrinterId,
+		activePrinter,
 		connectedDeviceId,
 		isConnected,
+		enableQueuePersistence,
+		
+		// Computed fields
+		savedPrinterId,
+		savedPrinterName,
+		paperSize,
+		printMethod,
 		chunkSize,
 		writeDelay,
-		enableQueuePersistence,
 		lineFeedsAfterPrint,
+
+		// Actions
 		setSavedPrinter,
 		clearSavedPrinter,
+		setPrinterConfig,
 		setConnected,
 		setPrintMethod,
-		setPrinterConfig,
+		addPrinter,
+		removePrinter,
+		setDefaultPrinter,
+		setActivePrinter
 	}
 })
