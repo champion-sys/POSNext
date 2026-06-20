@@ -378,6 +378,7 @@ export async function renderReceiptToRaster(
 
 export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	const lines: ReceiptLine[] = []
+	const isRtl = !!invoice.is_offline
 
 	// Company Name
 	lines.push({
@@ -388,8 +389,12 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	})
 
 	// Header / Tax Invoice
+	const headerText = isRtl
+		? (invoice.status === "Draft" ? "مسودة" : "فاتورة ضريبية مبسطة")
+		: (invoice.header || "TAX INVOICE")
+
 	lines.push({
-		text: invoice.header || "TAX INVOICE",
+		text: headerText,
 		align: "center",
 		bold: true,
 		size: "normal"
@@ -398,25 +403,34 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	lines.push({ text: "--------------------------------", align: "center" })
 
 	if (invoice.is_offline) {
-		lines.push({ text: "*** OFFLINE RECEIPT ***", align: "center", bold: true })
+		lines.push({ text: "*** غير متصل بالشبكة ***", align: "center", bold: true })
 	}
 
 	// Invoice Info
-	lines.push({ text: `Invoice #: ${invoice.name}`, align: "left" })
+	lines.push({ text: isRtl ? `رقم الفاتورة: ${invoice.name}` : `Invoice #: ${invoice.name}`, align: isRtl ? "right" : "left" })
+	
 	const dateStr = invoice.posting_date
-		? new Date(invoice.posting_date).toLocaleString()
-		: new Date().toLocaleString()
-	lines.push({ text: `Date: ${dateStr}`, align: "left" })
+		? new Date(invoice.posting_date).toLocaleString(isRtl ? "ar-EG" : undefined)
+		: new Date().toLocaleString(isRtl ? "ar-EG" : undefined)
+	lines.push({ text: isRtl ? `التاريخ والوقت: ${dateStr}` : `Date: ${dateStr}`, align: isRtl ? "right" : "left" })
+
+	if (invoice.owner) {
+		lines.push({ text: isRtl ? `الكاشير: ${invoice.owner}` : `Cashier: ${invoice.owner}`, align: isRtl ? "right" : "left" })
+	}
+
+	if (invoice.pos_order_type) {
+		lines.push({ text: isRtl ? `نوع الطلب: ${invoice.pos_order_type}` : `Order Type: ${invoice.pos_order_type}`, align: isRtl ? "right" : "left" })
+	}
 
 	const customer = invoice.customer_name || invoice.customer
 	if (customer) {
-		lines.push({ text: `Customer: ${customer}`, align: "left" })
+		lines.push({ text: isRtl ? `العميل: ${customer}` : `Customer: ${customer}`, align: isRtl ? "right" : "left" })
 	}
 
 	lines.push({ text: "--------------------------------", align: "center" })
 
 	// Items Header
-	lines.push({ text: "Items", align: "left", bold: true })
+	lines.push({ text: isRtl ? "الأصناف" : "Items", align: isRtl ? "right" : "left", bold: true })
 
 	// Items List
 	const items = invoice.items || []
@@ -428,26 +442,32 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 		const isFree = item.is_free_item
 
 		let itemText = name
-		if (isFree) itemText += " (FREE)"
+		if (isFree) itemText += isRtl ? " (مجاني)" : " (FREE)"
 
-		lines.push({ text: itemText, align: "left", bold: true })
+		lines.push({ text: itemText, align: isRtl ? "right" : "left", bold: true })
 		lines.push({
-			text: `${qty} x ${rate.toFixed(2)}   ${subtotal.toFixed(2)}`,
-			align: "right"
+			text: isRtl 
+				? `${subtotal.toFixed(2)}   ${rate.toFixed(2)} × ${qty}`
+				: `${qty} x ${rate.toFixed(2)}   ${subtotal.toFixed(2)}`,
+			align: isRtl ? "left" : "right"
 		})
 
 		const hasDiscount = (item.discount_percentage && Number(item.discount_percentage) > 0) || (item.discount_amount && Number(item.discount_amount) > 0)
 		if (hasDiscount) {
 			lines.push({
-				text: `Discount: -${Number(item.discount_amount || 0).toFixed(2)}`,
-				align: "right"
+				text: isRtl 
+					? `-${Number(item.discount_amount || 0).toFixed(2)} :خصم`
+					: `Discount: -${Number(item.discount_amount || 0).toFixed(2)}`,
+				align: isRtl ? "left" : "right"
 			})
 		}
 
 		if (item.serial_no) {
 			lines.push({
-				text: `S/N: ${String(item.serial_no).replace(/\n/g, ", ")}`,
-				align: "left"
+				text: isRtl 
+					? `أرقام تسلسلية: ${String(item.serial_no).replace(/\n/g, ", ")}`
+					: `S/N: ${String(item.serial_no).replace(/\n/g, ", ")}`,
+				align: isRtl ? "right" : "left"
 			})
 		}
 	})
@@ -458,17 +478,28 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	const totalTax = invoice.total_taxes_and_charges || 0
 	if (totalTax > 0) {
 		const subtotal = (invoice.grand_total || 0) - totalTax
-		lines.push({ text: `Subtotal: ${subtotal.toFixed(2)}`, align: "right" })
-		lines.push({ text: `Tax: ${totalTax.toFixed(2)}`, align: "right" })
+		lines.push({ 
+			text: isRtl ? `${subtotal.toFixed(2)} :المجموع الفرعي` : `Subtotal: ${subtotal.toFixed(2)}`, 
+			align: isRtl ? "left" : "right" 
+		})
+		lines.push({ 
+			text: isRtl ? `${totalTax.toFixed(2)} :الضريبة` : `Tax: ${totalTax.toFixed(2)}`, 
+			align: isRtl ? "left" : "right" 
+		})
 	}
 
 	if (invoice.discount_amount) {
-		lines.push({ text: `Discount: -${Math.abs(invoice.discount_amount).toFixed(2)}`, align: "right" })
+		lines.push({ 
+			text: isRtl 
+				? `-${Math.abs(invoice.discount_amount).toFixed(2)} :خصم إضافي` 
+				: `Discount: -${Math.abs(invoice.discount_amount).toFixed(2)}`, 
+			align: isRtl ? "left" : "right" 
+		})
 	}
 
 	lines.push({
-		text: `TOTAL: ${(invoice.grand_total || 0).toFixed(2)}`,
-		align: "right",
+		text: isRtl ? `${(invoice.grand_total || 0).toFixed(2)} :الإجمالي` : `TOTAL: ${(invoice.grand_total || 0).toFixed(2)}`,
+		align: isRtl ? "left" : "right",
 		bold: true,
 		size: "large"
 	})
@@ -476,29 +507,44 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	// Payments
 	const payments = invoice.payments || []
 	if (payments.length > 0) {
-		lines.push({ text: "Payments:", align: "left", bold: true })
+		lines.push({ text: isRtl ? "المدفوعات:" : "Payments:", align: isRtl ? "right" : "left", bold: true })
 		let totalPaid = 0
 		payments.forEach((p: any) => {
 			const amt = Number(p.amount) || 0
 			totalPaid += amt
-			lines.push({ text: `${p.mode_of_payment}: ${amt.toFixed(2)}`, align: "right" })
+			lines.push({ 
+				text: isRtl ? `${amt.toFixed(2)} :${p.mode_of_payment}` : `${p.mode_of_payment}: ${amt.toFixed(2)}`, 
+				align: isRtl ? "left" : "right" 
+			})
 		})
 
-		lines.push({ text: `Total Paid: ${totalPaid.toFixed(2)}`, align: "right", bold: true })
+		lines.push({ 
+			text: isRtl ? `${totalPaid.toFixed(2)} :إجمالي المدفوع` : `Total Paid: ${totalPaid.toFixed(2)}`, 
+			align: isRtl ? "left" : "right", 
+			bold: true 
+		})
 
 		if (invoice.change_amount && invoice.change_amount > 0) {
-			lines.push({ text: `Change: ${Number(invoice.change_amount).toFixed(2)}`, align: "right", bold: true })
+			lines.push({ 
+				text: isRtl ? `${Number(invoice.change_amount).toFixed(2)} :المتبقي (الفكة)` : `Change: ${Number(invoice.change_amount).toFixed(2)}`, 
+				align: isRtl ? "left" : "right", 
+				bold: true 
+			})
 		}
 
 		if (invoice.outstanding_amount && invoice.outstanding_amount > 0) {
-			lines.push({ text: `Balance Due: ${Number(invoice.outstanding_amount).toFixed(2)}`, align: "right", bold: true })
+			lines.push({ 
+				text: isRtl ? `${Number(invoice.outstanding_amount).toFixed(2)} :المبلغ المتبقي` : `Balance Due: ${Number(invoice.outstanding_amount).toFixed(2)}`, 
+				align: isRtl ? "left" : "right", 
+				bold: true 
+			})
 		}
 	}
 
 	lines.push({ text: "--------------------------------", align: "center" })
 
 	// Footer
-	const footerText = invoice.footer || "Thank you for your business!"
+	const footerText = invoice.footer || (isRtl ? "شكراً لتعاملكم معنا!" : "Thank you for your business!")
 	lines.push({ text: footerText, align: "center" })
 
 	return lines

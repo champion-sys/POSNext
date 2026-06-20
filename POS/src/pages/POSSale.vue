@@ -2256,6 +2256,8 @@ async function handlePaymentCompleted(paymentData) {
 				doctype: "Sales Invoice",
 				is_offline: true,
 				pos_profile: cartStore.posProfile,
+				owner: userName.value || undefined,
+				pos_order_type: invoiceData.pos_order_type || undefined,
 				posting_date: new Date().toISOString().slice(0, 10),
 				company: shiftStore.profileCompany || undefined,
 				customer_name: customerLabel,
