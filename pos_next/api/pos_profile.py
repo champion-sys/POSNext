@@ -672,6 +672,9 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 	"""
 		Render the print format on the server, convert to a cropped PNG, and return as base64.
 	"""
+	if not frappe.has_permission(doc, "print", name):
+		frappe.throw(_("No permission to print this document"), frappe.PermissionError)
+
 	import json
 	from frappe.www.printview import get_html_and_style
 	import pdfkit
