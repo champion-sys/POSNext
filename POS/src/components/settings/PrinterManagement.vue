@@ -92,7 +92,7 @@
 							</div>
 
 							<!-- Connect/Disconnect Button -->
-							<Button
+							<!-- <Button
 								v-if="store.connectedDeviceId !== printer.deviceId || !store.isConnected"
 								@click="handleConnectPrinter(printer)"
 								:loading="isConnecting && store.activePrinterId === printer.id"
@@ -100,7 +100,10 @@
 								size="sm"
 							>
 								{{ __('Connect') }}
-							</Button>
+							</Button> -->
+							<span v-if="store.connectedDeviceId !== printer.deviceId || !store.isConnected">
+
+							</span>
 							<Button
 								v-else
 								@click="handleDisconnect"
