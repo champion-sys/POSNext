@@ -107,35 +107,35 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	const chunkSize = computed({
 		get: () => activePrinter.value?.chunkSize || 128,
 		set: (val) => {
-			if (activePrinter.value) activePrinter.value.chunkSize = val
+			if (activePrinter.value) activePrinter.value.chunkSize = parseInt(val, 10)
 		}
 	})
 
 	const writeDelay = computed({
 		get: () => activePrinter.value?.writeDelay ?? 10,
 		set: (val) => {
-			if (activePrinter.value) activePrinter.value.writeDelay = val
+			if (activePrinter.value) activePrinter.value.writeDelay = parseInt(val, 10)
 		}
 	})
 
 	const lineFeedsAfterPrint = computed({
 		get: () => activePrinter.value?.lineFeedsAfterPrint ?? 3,
 		set: (val) => {
-			if (activePrinter.value) activePrinter.value.lineFeedsAfterPrint = val
+			if (activePrinter.value) activePrinter.value.lineFeedsAfterPrint = parseInt(val, 10)
 		}
 	})
 
 	const interJobDelay = computed({
 		get: () => activePrinter.value?.interJobDelay ?? 1500,
 		set: (val) => {
-			if (activePrinter.value) activePrinter.value.interJobDelay = val
+			if (activePrinter.value) activePrinter.value.interJobDelay = parseInt(val, 10)
 		}
 	})
 
 	const usbWriteDelay = computed({
 		get: () => activePrinter.value?.usbWriteDelay ?? 5,
 		set: (val) => {
-			if (activePrinter.value) activePrinter.value.usbWriteDelay = val
+			if (activePrinter.value) activePrinter.value.usbWriteDelay = parseInt(val, 10)
 		}
 	})
 
