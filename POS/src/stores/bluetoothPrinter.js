@@ -33,7 +33,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 				deviceId: oldId,
 				name: oldName || "Bluetooth Printer",
 				type: "bluetooth",
-				paperSize: localStorage.getItem("pos_bt_paper_size") || "58",
+				paperSize: localStorage.getItem("pos_bt_paper_size") || "80",
 				printMethod: localStorage.getItem("pos_bt_print_method") || "image",
 				chunkSize: parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10),
 				writeDelay: parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10),
@@ -108,7 +108,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 	})
 
 	const paperSize = computed({
-		get: () => activePrinter.value?.paperSize || "58",
+		get: () => activePrinter.value?.paperSize || "80",
 		set: (val) => {
 			if (activePrinter.value) activePrinter.value.paperSize = val
 		}
@@ -171,7 +171,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 			deviceId,
 			name,
 			type,
-			paperSize: "58",
+			paperSize: "80",
 			printMethod: "image",
 			chunkSize: 128,
 			writeDelay: 10,
