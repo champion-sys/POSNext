@@ -988,3 +988,74 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 
 	await printerService.printRaw(escposBytes)
 }
+
+export async function printInvoiceToAllPrinters(invoiceData: any): Promise<void> {
+	const store = useBluetoothPrinterStore()
+	if (!store.isEnabled || store.printers.length === 0) {
+		throw new Error("No printers configured or printer integration is disabled.")
+	}
+
+	const originalActiveId = store.activePrinterId
+	let printedCount = 0
+	let lastError: any = null
+
+	try {
+		for (const printer of store.printers) {
+			try {
+				// Temporarily activate this printer to load its specific configuration
+				store.setActivePrinter(printer.id)
+
+				// Check connection and reconnect if device differs
+				if (printerService.getConnectedDeviceId() !== printer.deviceId || !printerService.isConnected()) {
+					log.info(`Printer Router: Connecting to physical device ${printer.deviceId} for printer ${printer.name}`)
+					const success = await printerService.tryAutoReconnect(printer.deviceId, printer.type)
+					if (!success) {
+						throw new Error(`Could not connect to printer ${printer.name}`)
+					}
+					// Sync connection state with store
+					store.setConnected(printer.deviceId, true)
+				}
+
+				const printFormatName = printer.printFormat || null
+				log.info(`Printer Router: Printing to ${printer.name} with format ${printFormatName || "default"}`)
+
+				if (printFormatName) {
+					try {
+						await printInvoiceFormatToBluetooth(invoiceData, printFormatName)
+					} catch (fmtError) {
+						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError)
+						await printInvoiceToBluetooth(invoiceData)
+					}
+				} else {
+					await printInvoiceToBluetooth(invoiceData)
+				}
+				printedCount++
+
+				// If there are multiple printers, give a small cooldown delay between jobs
+				if (store.printers.length > 1) {
+					await new Promise(resolve => setTimeout(resolve, 600))
+				}
+			} catch (printerErr) {
+				log.error(`Failed printing to printer ${printer.name}:`, printerErr)
+				lastError = printerErr
+			}
+		}
+	} finally {
+		if (originalActiveId) {
+			store.setActivePrinter(originalActiveId)
+			// Reconnect active printer if it was changed
+			const activePrinter = store.printers.find(p => p.id === originalActiveId)
+			if (activePrinter && printerService.getConnectedDeviceId() !== activePrinter.deviceId) {
+				printerService.tryAutoReconnect(activePrinter.deviceId, activePrinter.type).then(success => {
+					if (success) {
+						store.setConnected(activePrinter.deviceId, true)
+					}
+				}).catch(e => log.warn("Failed to reconnect default active printer:", e))
+			}
+		}
+	}
+
+	if (printedCount === 0 && lastError) {
+		throw lastError
+	}
+}

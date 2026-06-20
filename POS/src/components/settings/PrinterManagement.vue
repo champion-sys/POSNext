@@ -76,6 +76,9 @@
 									<span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
 										{{ printer.printMethod === 'image' ? __('Raster') : __('Text') }}
 									</span>
+									<span v-if="printer.printFormat" class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+										{{ printer.printFormat }}
+									</span>
 								</div>
 							</div>
 						</div>
@@ -83,14 +86,14 @@
 						<!-- Right Side: State/Actions -->
 						<div class="flex items-center gap-2 mt-3 md:mt-0 justify-end">
 							<!-- Connection status indicator -->
-							<div v-if="store.connectedDeviceId === printer.id && store.isConnected" class="flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-300 text-green-700 text-xs font-semibold rounded-full me-2">
+							<div v-if="store.connectedDeviceId === printer.deviceId && store.isConnected" class="flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-300 text-green-700 text-xs font-semibold rounded-full me-2">
 								<div class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
 								{{ __('Connected') }}
 							</div>
 
 							<!-- Connect/Disconnect Button -->
 							<Button
-								v-if="store.connectedDeviceId !== printer.id || !store.isConnected"
+								v-if="store.connectedDeviceId !== printer.deviceId || !store.isConnected"
 								@click="handleConnectPrinter(printer)"
 								:loading="isConnecting && store.activePrinterId === printer.id"
 								variant="ghost"
@@ -185,6 +188,19 @@
 						type="text" 
 						class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
 						:placeholder="__('e.g. Kitchen Printer, Checkout 1')"
+					/>
+				</div>
+
+				<!-- Target Print Format -->
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<SelectField
+						v-model="store.printFormat"
+						:label="__('Target Print Format')"
+						:options="[
+							{ label: __('Default POS Profile Print Format'), value: '' },
+							...printFormats
+						]"
+						:description="__('Choose layout configuration printed by this printer.')"
 					/>
 				</div>
 
@@ -317,7 +333,7 @@
 				<div class="flex items-center gap-3 pt-3 border-t border-gray-150">
 					<Button
 						@click="handlePrintTest"
-						:disabled="!store.isConnected || store.connectedDeviceId !== store.activePrinterId"
+						:disabled="!store.isConnected || store.connectedDeviceId !== store.activePrinter?.deviceId"
 						:loading="isPrintingTest"
 						variant="solid"
 						theme="blue"
@@ -345,8 +361,10 @@
 <script setup>
 import { computed, onMounted, ref } from "vue"
 import { Button } from "frappe-ui"
+import { call } from "@/utils/apiWrapper"
 import { useToast } from "@/composables/useToast"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { printerService } from "@/services/printerService"
 import { COMMANDS, encodeCP1256, reshapeArabic, renderReceiptToRaster } from "@/utils/escpos"
 import CheckboxField from "@/components/settings/CheckboxField.vue"
@@ -354,13 +372,15 @@ import SelectField from "@/components/settings/SelectField.vue"
 
 const { showSuccess, showError } = useToast()
 const store = useBluetoothPrinterStore()
+const posSettings = usePOSSettingsStore()
 
 const isScanning = ref(false)
 const isConnecting = ref(false)
 const isPrintingTest = ref(false)
 const showAdvanced = ref(false)
+const printFormats = ref([])
 
-onMounted(() => {
+onMounted(async () => {
 	// Auto-check connection state if we have a saved printer
 	if (printerService.isConnected()) {
 		store.setConnected(printerService.getConnectedDeviceId(), true)
@@ -375,12 +395,27 @@ onMounted(() => {
 	// Attempt auto-reconnect if a printer is saved and printer integration is enabled
 	if (store.isEnabled && !store.isConnected && store.savedPrinterId) {
 		const type = store.activePrinter?.type || 'bluetooth'
-		printerService.tryAutoReconnect(store.savedPrinterId, type).then((success) => {
+		const deviceId = store.activePrinter?.deviceId || store.savedPrinterDeviceId
+		printerService.tryAutoReconnect(deviceId, type).then((success) => {
 			if (success) {
 				store.setConnected(printerService.getConnectedDeviceId(), true)
 				showSuccess(__("Auto-connected to saved printer"))
 			}
 		})
+	}
+
+	// Fetch enabled print formats matching active invoice type
+	try {
+		const invoiceType = posSettings.invoiceType || "Sales Invoice"
+		const res = await call("pos_next.api.pos_profile.get_enabled_print_formats", {
+			doc_type: invoiceType
+		})
+		printFormats.value = (res || []).map(pf => ({
+			label: pf.name,
+			value: pf.name
+		}))
+	} catch (err) {
+		console.error("Failed to load print formats:", err)
 	}
 })
 
@@ -388,9 +423,9 @@ async function handleConnectPrinter(printer) {
 	isConnecting.value = true
 	store.setActivePrinter(printer.id)
 	try {
-		const success = await printerService.tryAutoReconnect(printer.id, printer.type)
+		const success = await printerService.tryAutoReconnect(printer.deviceId, printer.type)
 		if (success) {
-			store.setConnected(printer.id, true)
+			store.setConnected(printer.deviceId, true)
 			showSuccess(__("Connected to printer successfully."))
 		} else {
 			showError(__("Could not connect automatically. Please turn on printer and scan again."))
@@ -406,7 +441,7 @@ async function handleScanBluetooth() {
 	isScanning.value = true
 	try {
 		const device = await printerService.scanAndConnect()
-		store.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"), "bluetooth")
+		const uniqueId = store.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"), "bluetooth")
 		store.setConnected(device.id, true)
 		showSuccess(__("Connected and saved Bluetooth printer successfully."))
 	} catch (error) {
@@ -421,10 +456,10 @@ async function handleScanUsb() {
 	isScanning.value = true
 	try {
 		const device = await printerService.scanAndConnectUsb()
-		const id = `usb_${device.vendorId}_${device.productId}_${device.serialNumber || ""}`
+		const deviceId = `usb_${device.vendorId}_${device.productId}_${device.serialNumber || ""}`
 		const name = device.productName || __("USB POS Printer")
-		store.setSavedPrinter(id, name, "usb")
-		store.setConnected(id, true)
+		const uniqueId = store.setSavedPrinter(deviceId, name, "usb")
+		store.setConnected(deviceId, true)
 		showSuccess(__("Connected and saved USB printer successfully."))
 	} catch (error) {
 		console.error("USB pairing error:", error)
@@ -441,7 +476,8 @@ function handleDisconnect() {
 }
 
 function handleForgetPrinter(id) {
-	if (store.connectedDeviceId === id) {
+	const printer = store.printers.find(p => p.id === id)
+	if (printer && store.connectedDeviceId === printer.deviceId) {
 		handleDisconnect()
 	}
 	store.removePrinter(id)

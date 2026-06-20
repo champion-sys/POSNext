@@ -799,3 +799,19 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "POS get_rendered_print_format server image render error")
 		raise e
+
+@frappe.whitelist()
+def get_enabled_print_formats(doc_type):
+	"""Get all enabled print formats for a given DocType, verifying permissions first"""
+	if not doc_type:
+		return []
+
+	if not frappe.has_permission(doc_type, "read"):
+		frappe.throw(_("No permission to view print formats for {0}").format(doc_type), frappe.PermissionError)
+
+	return frappe.get_list(
+		"Print Format",
+		filters={"doc_type": doc_type, "disabled": 0},
+		fields=["name", "doc_type"],
+		order_by="name"
+	)

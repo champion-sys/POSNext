@@ -7,7 +7,18 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		try {
 			const saved = localStorage.getItem("pos_printers")
 			if (saved) {
-				return JSON.parse(saved)
+				const parsed = JSON.parse(saved)
+				if (Array.isArray(parsed)) {
+					return parsed.map(p => {
+						if (!p.deviceId) {
+							p.deviceId = p.id
+						}
+						if (p.printFormat === undefined) {
+							p.printFormat = ""
+						}
+						return p
+					})
+				}
 			}
 		} catch (error) {
 			console.error("Failed to parse pos_printers:", error)
@@ -18,7 +29,8 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		const oldName = localStorage.getItem("pos_bt_printer_name")
 		if (oldId) {
 			const migrated = {
-				id: oldId,
+				id: `printer_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+				deviceId: oldId,
 				name: oldName || "Bluetooth Printer",
 				type: "bluetooth",
 				paperSize: localStorage.getItem("pos_bt_paper_size") || "58",
@@ -26,10 +38,11 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 				chunkSize: parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10),
 				writeDelay: parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10),
 				lineFeedsAfterPrint: parseInt(localStorage.getItem("pos_bt_line_feeds_after_print") || "3", 10),
-				isDefault: true
+				isDefault: true,
+				printFormat: ""
 			}
 			localStorage.setItem("pos_printers", JSON.stringify([migrated]))
-			localStorage.setItem("pos_active_printer_id", oldId)
+			localStorage.setItem("pos_active_printer_id", migrated.id)
 			return [migrated]
 		}
 		return []
@@ -81,6 +94,10 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		set: (val) => {
 			activePrinterId.value = val
 		}
+	})
+
+	const savedPrinterDeviceId = computed(() => {
+		return activePrinter.value?.deviceId || ""
 	})
 
 	const savedPrinterName = computed({
@@ -139,29 +156,34 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		}
 	})
 
-	// Actions
-	function setSavedPrinter(id, name, type = "bluetooth") {
-		let existing = printers.value.find(p => p.id === id)
-		if (!existing) {
-			existing = {
-				id,
-				name,
-				type,
-				paperSize: "58",
-				printMethod: "image",
-				chunkSize: 128,
-				writeDelay: 10,
-				lineFeedsAfterPrint: 3,
-				interJobDelay: 1500,
-				usbWriteDelay: 5,
-				isDefault: printers.value.length === 0
-			}
-			printers.value.push(existing)
-		} else {
-			existing.name = name
-			existing.type = type
+	const printFormat = computed({
+		get: () => activePrinter.value?.printFormat || "",
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.printFormat = val
 		}
-		activePrinterId.value = id
+	})
+
+	// Actions
+	function setSavedPrinter(deviceId, name, type = "bluetooth") {
+		const uniqueId = `printer_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+		const newPrinter = {
+			id: uniqueId,
+			deviceId,
+			name,
+			type,
+			paperSize: "58",
+			printMethod: "image",
+			chunkSize: 128,
+			writeDelay: 10,
+			lineFeedsAfterPrint: 3,
+			interJobDelay: 1500,
+			usbWriteDelay: 5,
+			isDefault: printers.value.length === 0,
+			printFormat: ""
+		}
+		printers.value.push(newPrinter)
+		activePrinterId.value = uniqueId
+		return uniqueId
 	}
 
 	function clearSavedPrinter() {
@@ -178,6 +200,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		if (config.lineFeedsAfterPrint !== undefined) activePrinter.value.lineFeedsAfterPrint = parseInt(config.lineFeedsAfterPrint, 10)
 		if (config.interJobDelay !== undefined) activePrinter.value.interJobDelay = parseInt(config.interJobDelay, 10)
 		if (config.usbWriteDelay !== undefined) activePrinter.value.usbWriteDelay = parseInt(config.usbWriteDelay, 10)
+		if (config.printFormat !== undefined) activePrinter.value.printFormat = config.printFormat
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -237,6 +260,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		
 		// Computed fields
 		savedPrinterId,
+		savedPrinterDeviceId,
 		savedPrinterName,
 		paperSize,
 		printMethod,
@@ -245,6 +269,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		lineFeedsAfterPrint,
 		interJobDelay,
 		usbWriteDelay,
+		printFormat,
 
 		// Actions
 		setSavedPrinter,

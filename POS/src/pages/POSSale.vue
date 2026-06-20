@@ -1130,7 +1130,7 @@ import { logger } from "@/utils/logger";
 import { shouldValidateItemStock } from "@/utils/stockValidator";
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter";
 import { printerService } from "@/services/printerService";
-import { printInvoiceToBluetooth, printInvoiceFormatToBluetooth } from "@/utils/escpos";
+import { printInvoiceToBluetooth, printInvoiceFormatToBluetooth, printInvoiceToAllPrinters } from "@/utils/escpos";
 
 // Initialize stores
 const cartStore = usePOSCartStore();
@@ -1233,7 +1233,7 @@ async function reconnectBtPrinter() {
 	isBtReconnecting.value = true;
 	try {
 		const type = btStore.activePrinter?.type || "bluetooth";
-		const success = await printerService.tryAutoReconnect(btStore.savedPrinterId, type);
+		const success = await printerService.tryAutoReconnect(btStore.savedPrinterDeviceId, type);
 		if (success) {
 			btStore.setConnected(printerService.getConnectedDeviceId(), true);
 			if (type === "usb") {
@@ -1246,11 +1246,21 @@ async function reconnectBtPrinter() {
 			if (type === "usb") {
 				const device = await printerService.scanAndConnectUsb();
 				const id = `usb_${device.vendorId}_${device.productId}_${device.serialNumber || ""}`;
-				btStore.setSavedPrinter(id, device.productName || __("USB POS Printer"), "usb");
+				if (btStore.activePrinter) {
+					btStore.activePrinter.deviceId = id;
+					btStore.activePrinter.name = device.productName || __("USB POS Printer");
+				} else {
+					btStore.setSavedPrinter(id, device.productName || __("USB POS Printer"), "usb");
+				}
 				btStore.setConnected(id, true);
 			} else {
 				const device = await printerService.scanAndConnect();
-				btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"), "bluetooth");
+				if (btStore.activePrinter) {
+					btStore.activePrinter.deviceId = device.id;
+					btStore.activePrinter.name = device.name || __("Bluetooth Printer");
+				} else {
+					btStore.setSavedPrinter(device.id, device.name || __("Bluetooth Printer"), "bluetooth");
+				}
 				btStore.setConnected(device.id, true);
 			}
 			showSuccess(__("Connected and saved printer successfully."));
@@ -3124,28 +3134,14 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 				}
 			}
 
-		// Bluetooth printer path — directly print to BLE thermal printer if enabled and connected
-		if (btStore.isEnabled && btStore.isConnected) {
+		// Thermal printer routing path — routes print job to all configured printers
+		if (btStore.isEnabled && btStore.printers.length > 0) {
 			try {
-				const printFormatName = shiftStore.currentProfile?.print_format;
-				if (printFormatName) {
-					try {
-						await printInvoiceFormatToBluetooth(invoiceData, printFormatName);
-						return;
-					} catch (fmtError) {
-						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError);
-						console.log(fmtError)
-						// Fallback to standard line-by-line Bluetooth print
-						await printInvoiceToBluetooth(invoiceData);
-						return;
-					}
-				} else {
-					await printInvoiceToBluetooth(invoiceData);
-					return;
-				}
+				await printInvoiceToAllPrinters(invoiceData);
+				return;
 			} catch (error) {
-				log.error("Bluetooth print failed entirely, falling back to browser/silent:", error);
-				showWarning(__("Bluetooth printing failed. Attempting browser/silent fallback..."));
+				log.error("Thermal print routing failed, falling back to browser/silent:", error);
+				showWarning(__("Thermal printing failed. Attempting browser/silent fallback..."));
 			}
 		}
 
