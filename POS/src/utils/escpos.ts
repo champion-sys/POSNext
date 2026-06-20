@@ -175,6 +175,7 @@ export function generateTextPrintPayload(lines: ReceiptLine[]): Uint8Array {
 		payload.push(LF)
 	}
 	payload.push(...COMMANDS.CUT)
+	payload.push(...COMMANDS.INITIALIZE) // Reset state machine to default at the end
 
 	return new Uint8Array(payload)
 }
@@ -315,8 +316,8 @@ export async function renderReceiptToRaster(
 	} catch (e) {
 		// Ignore store error in non-vue context
 	}
-	// INITIALIZE (2 bytes) + GS v 0 header (8 bytes) + raster data + LINE_FEED (feedsCount) + CUT (4 bytes)
-	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4)
+	// INITIALIZE (2 bytes) + GS v 0 header (8 bytes) + raster data + LINE_FEED (feedsCount) + CUT (4 bytes) + INITIALIZE (2 bytes)
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4 + 2)
 
 	// Initialize
 	escposBytes[0] = COMMANDS.INITIALIZE[0]
@@ -367,6 +368,10 @@ export async function renderReceiptToRaster(
 	escposBytes[destIndex++] = 0x56
 	escposBytes[destIndex++] = 66
 	escposBytes[destIndex++] = 0 // CUT
+
+	// Reset printer state at the end
+	escposBytes[destIndex++] = COMMANDS.INITIALIZE[0]
+	escposBytes[destIndex++] = COMMANDS.INITIALIZE[1]
 
 	return escposBytes
 }
@@ -882,7 +887,7 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 
 	const rasterSize = height * widthBytes
 	const feedsCount = store.lineFeedsAfterPrint !== undefined ? Number(store.lineFeedsAfterPrint) : 3
-	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4)
+	const escposBytes = new Uint8Array(2 + 8 + rasterSize + feedsCount + 4 + 2)
 
 	escposBytes[0] = COMMANDS.INITIALIZE[0]
 	escposBytes[1] = COMMANDS.INITIALIZE[1]
@@ -930,6 +935,10 @@ export async function printInvoiceFormatToBluetooth(invoiceData: any, printForma
 	escposBytes[destIndex++] = 0x56
 	escposBytes[destIndex++] = 66
 	escposBytes[destIndex++] = 0
+
+	// Reset printer state at the end
+	escposBytes[destIndex++] = COMMANDS.INITIALIZE[0]
+	escposBytes[destIndex++] = COMMANDS.INITIALIZE[1]
 
 	await printerService.printRaw(escposBytes)
 }

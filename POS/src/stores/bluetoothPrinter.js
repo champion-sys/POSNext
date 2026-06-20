@@ -125,6 +125,20 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		}
 	})
 
+	const interJobDelay = computed({
+		get: () => activePrinter.value?.interJobDelay ?? 1500,
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.interJobDelay = val
+		}
+	})
+
+	const usbWriteDelay = computed({
+		get: () => activePrinter.value?.usbWriteDelay ?? 5,
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.usbWriteDelay = val
+		}
+	})
+
 	// Actions
 	function setSavedPrinter(id, name, type = "bluetooth") {
 		let existing = printers.value.find(p => p.id === id)
@@ -138,6 +152,8 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 				chunkSize: 128,
 				writeDelay: 10,
 				lineFeedsAfterPrint: 3,
+				interJobDelay: 1500,
+				usbWriteDelay: 5,
 				isDefault: printers.value.length === 0
 			}
 			printers.value.push(existing)
@@ -160,6 +176,8 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		if (config.chunkSize !== undefined) activePrinter.value.chunkSize = config.chunkSize
 		if (config.writeDelay !== undefined) activePrinter.value.writeDelay = config.writeDelay
 		if (config.lineFeedsAfterPrint !== undefined) activePrinter.value.lineFeedsAfterPrint = parseInt(config.lineFeedsAfterPrint, 10)
+		if (config.interJobDelay !== undefined) activePrinter.value.interJobDelay = parseInt(config.interJobDelay, 10)
+		if (config.usbWriteDelay !== undefined) activePrinter.value.usbWriteDelay = parseInt(config.usbWriteDelay, 10)
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -225,6 +243,8 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		chunkSize,
 		writeDelay,
 		lineFeedsAfterPrint,
+		interJobDelay,
+		usbWriteDelay,
 
 		// Actions
 		setSavedPrinter,

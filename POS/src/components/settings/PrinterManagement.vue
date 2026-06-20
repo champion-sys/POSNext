@@ -274,6 +274,35 @@
 								]"
 								:description="__('Number of empty lines to feed before cutting the paper.')"
 							/>
+
+							<SelectField
+								v-model="store.interJobDelay"
+								:label="__('Inter-job Cooldown Delay')"
+								:options="[
+									{ label: '0ms (No Delay)', value: 0 },
+									{ label: '500ms (Very Fast)', value: 500 },
+									{ label: '1000ms (Fast)', value: 1000 },
+									{ label: '1500ms (Recommended)', value: 1500 },
+									{ label: '2000ms (Safe)', value: 2000 },
+									{ label: '3000ms (Slow)', value: 3000 }
+								]"
+								:description="__('Delay between print jobs to allow physical printer buffer recovery.')"
+							/>
+						</div>
+
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<SelectField
+								v-model="store.usbWriteDelay"
+								:label="__('USB Inter-chunk Delay')"
+								:options="[
+									{ label: '0ms (No Delay)', value: 0 },
+									{ label: '2ms (Fast)', value: 2 },
+									{ label: '5ms (Recommended)', value: 5 },
+									{ label: '10ms (Safe)', value: 10 },
+									{ label: '20ms (Slow)', value: 20 }
+								]"
+								:description="__('Small delay between USB data packet transfers to prevent buffer overruns.')"
+							/>
 						</div>
 					</div>
 				</div>

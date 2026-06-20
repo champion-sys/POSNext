@@ -265,6 +265,32 @@ export class PrinterQueue {
 				}
 
 				await this.executeJob(nextJob)
+
+				// Apply inter-job delay if there are more pending jobs in the queue
+				const hasMoreJobs = this.jobs.some((j) => j.status === "pending")
+				if (hasMoreJobs) {
+					let interJobDelay = 1500
+					try {
+						if (typeof localStorage !== "undefined") {
+							const activePrinterId = localStorage.getItem("pos_active_printer_id")
+							const printersStr = localStorage.getItem("pos_printers")
+							if (printersStr && activePrinterId) {
+								const printers = JSON.parse(printersStr)
+								const active = printers.find((p: any) => p.id === activePrinterId)
+								if (active && active.interJobDelay !== undefined) {
+									interJobDelay = parseInt(active.interJobDelay, 10)
+								}
+							}
+						}
+					} catch (e) {
+						log.warn("Failed to retrieve interJobDelay configuration:", e)
+					}
+
+					if (interJobDelay > 0) {
+						log.info(`Waiting ${interJobDelay}ms between print jobs to prevent buffer overflow...`)
+						await new Promise((resolve) => setTimeout(resolve, interJobDelay))
+					}
+				}
 			}
 		} catch (error) {
 			log.error("Fatal queue processing error:", error)

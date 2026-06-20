@@ -345,15 +345,35 @@ export class PrinterService {
 			}
 			log.info(`Sending ${data.length} bytes to USB bulk OUT endpoint ${this.usbEndpointNumber}...`)
 			
+			let usbWriteDelay = 5
+			try {
+				if (typeof localStorage !== "undefined") {
+					const activePrinterId = localStorage.getItem("pos_active_printer_id")
+					const printersStr = localStorage.getItem("pos_printers")
+					if (printersStr && activePrinterId) {
+						const printers = JSON.parse(printersStr)
+						const active = printers.find((p: any) => p.id === activePrinterId)
+						if (active && active.usbWriteDelay !== undefined) {
+							usbWriteDelay = parseInt(active.usbWriteDelay, 10)
+						}
+					}
+				}
+			} catch (e) {
+				log.warn("Failed to retrieve usbWriteDelay configuration:", e)
+			}
+
 			// Bulk transfer using standard USB packet boundaries
 			const maxPacketSize = 1024
 			if (data.length > maxPacketSize) {
 				for (let i = 0; i < data.length; i += maxPacketSize) {
 					const chunk = data.slice(i, i + maxPacketSize)
-					await this.usbDevice.transferOut(this.usbEndpointNumber, chunk)
+					await this.usbDevice.transferOut(this.usbEndpointNumber, chunk as any)
+					if (usbWriteDelay > 0) {
+						await new Promise((resolve) => setTimeout(resolve, usbWriteDelay))
+					}
 				}
 			} else {
-				await this.usbDevice.transferOut(this.usbEndpointNumber, data)
+				await this.usbDevice.transferOut(this.usbEndpointNumber, data as any)
 			}
 		} else {
 			// Bluetooth path
