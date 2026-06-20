@@ -380,8 +380,27 @@ export class PrinterService {
 			if (!this.characteristic) {
 				throw new Error("Bluetooth printer characteristic is missing.")
 			}
-			const chunkSize = parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10)
-			const writeDelay = parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10)
+			let chunkSize = 128
+			let writeDelay = 10
+			try {
+				if (typeof localStorage !== "undefined") {
+					const activePrinterId = localStorage.getItem("pos_active_printer_id")
+					const printersStr = localStorage.getItem("pos_printers")
+					if (printersStr && activePrinterId) {
+						const printers = JSON.parse(printersStr)
+						const active = printers.find((p: any) => p.id === activePrinterId)
+						if (active) {
+							if (active.chunkSize !== undefined) chunkSize = parseInt(active.chunkSize, 10)
+							if (active.writeDelay !== undefined) writeDelay = parseInt(active.writeDelay, 10)
+						}
+					} else {
+						chunkSize = parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10)
+						writeDelay = parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10)
+					}
+				}
+			} catch (e) {
+				log.warn("Failed to retrieve bluetooth printer configurations:", e)
+			}
 
 			for (let i = 0; i < data.length; i += chunkSize) {
 				const chunk = data.slice(i, i + chunkSize)
