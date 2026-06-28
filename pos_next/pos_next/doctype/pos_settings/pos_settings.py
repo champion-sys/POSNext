@@ -33,6 +33,19 @@ class POSSettings(Document):
 					"Please disable Partial Payment first."
 				)
 
+		# Prevent changing Invoice Type if there are open shifts
+		if self._doc_before_save and self.invoice_type != self._doc_before_save.invoice_type:
+			open_shift = frappe.db.exists(
+				"POS Opening Shift",
+				{"pos_profile": self.pos_profile, "status": "Open"}
+			)
+			if open_shift:
+				frappe.throw(
+					frappe._("Cannot change Invoice Type because there is an active open POS shift ({0}) for POS Profile {1}.").format(
+						open_shift, self.pos_profile
+					)
+				)
+
 	# def on_update(self):
 	# 	"""Sync allow_negative_stock with Stock Settings"""
 	# 	self.sync_negative_stock_setting()

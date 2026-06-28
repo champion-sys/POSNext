@@ -435,7 +435,7 @@
 						<!-- Item Details -->
 						<div :class="['min-w-0 flex flex-col justify-between flex-1', settingsStore.hideImages ? 'pt-7' : 'pt-0.5']">
 							<div>
-								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight">
+								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight break-words line-clamp-2" :title="item.item_name">
 									{{ item.item_name }}
 								</h3>
 								<p v-if="item.item_code && settingsStore.displayItemCode" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
