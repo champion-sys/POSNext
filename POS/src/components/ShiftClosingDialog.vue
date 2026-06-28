@@ -2,13 +2,13 @@
   <Dialog v-model="open" :options="{ title: __('Close POS Shift'), size: '4xl' }">
     <template #body-content>
       <div class="flex flex-col gap-3 md:gap-6">
-        <div v-if="closingDataResource.loading" class="text-center py-8 md:py-12">
+        <div v-if="closingDataResource.loading || !isLoaded" class="text-center py-8 md:py-12">
           <div class="inline-block animate-spin rounded-full h-12 w-12 md:h-16 md:w-16 border-b-4 border-blue-600"></div>
           <p class="mt-3 md:mt-4 text-base md:text-lg font-medium text-gray-600">{{ __('Loading shift data...') }}</p>
           <p class="text-xs md:text-sm text-gray-500">{{ __('Calculating totals and reconciliation...') }}</p>
         </div>
 
-        <div v-else-if="closingData" class="flex flex-col gap-3 md:gap-6">
+        <div v-else-if="closingData && isLoaded" class="flex flex-col gap-3 md:gap-6">
           <!-- Idle Warning -->
           <div v-if="showIdleWarning" class="rounded-lg bg-amber-50 border border-amber-300 p-3 flex items-center gap-2">
             <FeatherIcon name="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -637,7 +637,7 @@ function updateClosingAmount(payment, value) {
 }
 
 const canSubmit = computed(() => {
-	if (!closingData.value || !closingData.value.payment_reconciliation)
+	if (!closingData.value || !closingData.value.payment_reconciliation || !isLoaded.value)
 		return false
 
 	// Check if all closing amounts have been manually entered
