@@ -195,6 +195,8 @@ import { createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { useShift } from "../composables/useShift"
 import { useFormatters } from "../composables/useFormatters"
+import { useToast } from "../composables/useToast"
+import { parseError } from "../utils/errorHandler"
 import ShiftClosingDialog from "./ShiftClosingDialog.vue"
 import TranslatedHTML from "./common/TranslatedHTML.vue"
 
@@ -212,6 +214,7 @@ const open = computed({
 const { createOpeningShift, getOpeningDialogData, checkOpeningShift } =
 	useShift()
 const { formatDateTime } = useFormatters()
+const { showError } = useToast()
 
 const step = ref(1)
 const selectedProfile = ref(null)
@@ -333,6 +336,8 @@ async function openShift() {
 		closeDialog("shift-opened")
 	} catch (error) {
 		console.error("Error opening shift:", error)
+		const err = parseError(error)
+		showError(err.message || __("Failed to open shift"))
 	}
 }
 

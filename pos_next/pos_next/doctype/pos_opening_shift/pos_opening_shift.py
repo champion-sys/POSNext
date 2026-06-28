@@ -13,6 +13,39 @@ class POSOpeningShift(Document):
     def validate(self):
         self.validate_pos_profile_and_cashier()
         self.set_status()
+        if self.docstatus == 1:
+            self.validate_no_other_active_shift()
+
+    def validate_no_other_active_shift(self):
+        # Check for another open POS Opening Shift for this POS Profile
+        existing_shift = frappe.db.get_value(
+            "POS Opening Shift",
+            {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name]},
+            ["name", "user"],
+            as_dict=True
+        )
+        if existing_shift:
+            frappe.throw(
+                _("POS Profile {0} is already open in another POS Opening Shift ({1}).")
+                .format(self.pos_profile, existing_shift.name, existing_shift.user)
+            )
+
+        # Check for an open POS Opening Entry for this POS Profile
+        filters = {"pos_profile": self.pos_profile, "status": "Open"}
+        if getattr(self, "pos_opening_entry", None):
+            filters["name"] = ["!=", self.pos_opening_entry]
+
+        existing_entry = frappe.db.get_value(
+            "POS Opening Entry",
+            filters,
+            ["name", "user"],
+            as_dict=True
+        )
+        if existing_entry:
+            frappe.throw(
+                _("POS Profile {0} has an open POS Opening Entry ({1}).")
+                .format(self.pos_profile, existing_entry.name, existing_entry.user)
+            )
 
     def validate_pos_profile_and_cashier(self):
         if self.company != frappe.db.get_value("POS Profile", self.pos_profile, "company"):
