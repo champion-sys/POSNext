@@ -967,11 +967,11 @@ const fetchInvoiceResource = createResource({
 			}
 
 			// Map items for UI display and selection.
-			// - sales_invoice_item: links to original item row for accurate return tracking
+			// - sales_invoice_item / pos_invoice_item: links to original item row for accurate return tracking
 			// - remaining_qty: maximum quantity user can return for this item
 			returnItems.value = availableItems.map((item) => ({
 				...item,
-				name: item.sales_invoice_item,
+				name: item.sales_invoice_item || item.pos_invoice_item,
 				quantity: item.remaining_qty,
 				selected: false,
 				return_qty: item.remaining_qty,
@@ -1034,9 +1034,10 @@ const createReturnResource = createResource({
 		// This document was created by ERPNext's make_sales_return() and contains
 		// the sales_team entries from the original invoice.
 		const baseDoc = preparedReturnDoc.value || {}
+		const doctype = preparedReturnDoc.value?.doctype || "Sales Invoice"
 
 		const invoiceData = {
-			doctype: preparedReturnDoc.value?.doctype || "Sales Invoice",
+			doctype: doctype,
 			pos_profile: props.posProfile,
 			posa_pos_opening_shift: props.posOpeningShift,
 			customer: baseDoc.customer || originalInvoice.value.customer,
@@ -1065,7 +1066,7 @@ const createReturnResource = createResource({
 				uom: item.uom,
 				conversion_factor: item.conversion_factor || 1,
 				// Link to original invoice item row for accurate return tracking in ERPNext
-				sales_invoice_item: item.name,
+				[doctype === "POS Invoice" ? "pos_invoice_item" : "sales_invoice_item"]: item.name,
 			})),
 			// Flag to indicate return amount should be added to customer credit balance
 			add_to_customer_balance: addToCustomerCredit.value,

@@ -2082,15 +2082,18 @@ def get_invoice_for_return(invoice_name):
                 )
 
     # Aggregate quantities already returned from previous return invoices.
-    # Uses COALESCE to match by sales_invoice_item (row ID) first, then item_code as fallback.
+    # Uses COALESCE to match by sales_invoice_item/pos_invoice_item (row ID) first, then item_code as fallback.
     ret_si = frappe.qb.DocType(doctype)
     ret_item = frappe.qb.DocType(item_doctype)
+
+    ref_field = "pos_invoice_item" if doctype == "POS Invoice" else "sales_invoice_item"
+    ref_col = getattr(ret_item, ref_field)
 
     returned_qty_results = (
         frappe.qb.from_(ret_si)
         .inner_join(ret_item).on(ret_item.parent == ret_si.name)
         .select(
-            Coalesce(ret_item.sales_invoice_item, ret_item.item_code).as_("key_field"),
+            Coalesce(ref_col, ret_item.item_code).as_("key_field"),
             Sum(Abs(ret_item.qty)).as_("returned_qty")
         )
         .where(
@@ -2098,7 +2101,7 @@ def get_invoice_for_return(invoice_name):
             & (ret_si.docstatus == 1)
             & (ret_si.is_return == 1)
         )
-        .groupby(Coalesce(ret_item.sales_invoice_item, ret_item.item_code))
+        .groupby(Coalesce(ref_col, ret_item.item_code))
     ).run(as_dict=True)
 
     returned_qty = {row["key_field"]: flt(row["returned_qty"]) for row in returned_qty_results}
@@ -2406,11 +2409,14 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
     ret_si = frappe.qb.DocType(doctype)
     ret_item = frappe.qb.DocType(item_doctype)
 
+    ref_field = "pos_invoice_item" if doctype == "POS Invoice" else "sales_invoice_item"
+    ref_col = getattr(ret_item, ref_field)
+
     returned_qty_results = (
         frappe.qb.from_(ret_si)
         .inner_join(ret_item).on(ret_item.parent == ret_si.name)
         .select(
-            Coalesce(ret_item.sales_invoice_item, ret_item.item_code).as_("key_field"),
+            Coalesce(ref_col, ret_item.item_code).as_("key_field"),
             Sum(Abs(ret_item.qty)).as_("returned_qty")
         )
         .where(
@@ -2418,7 +2424,7 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             & (ret_si.docstatus == 1)
             & (ret_si.is_return == 1)
         )
-        .groupby(Coalesce(ret_item.sales_invoice_item, ret_item.item_code))
+        .groupby(Coalesce(ref_col, ret_item.item_code))
     ).run(as_dict=True)
 
     returned_qty_map = {row["key_field"]: flt(row["returned_qty"]) for row in returned_qty_results}
@@ -2493,7 +2499,7 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
 
     def process_return_item(item):
         """Process single item for return, returns None if not returnable."""
-        item_ref = item.get("sales_invoice_item") or item.get("item_code")
+        item_ref = item.get("pos_invoice_item") or item.get("sales_invoice_item") or item.get("item_code")
         original_qty = abs(flt(item.get("qty", 0)))
         remaining_qty = original_qty - returned_qty_map.get(item_ref, 0)
 

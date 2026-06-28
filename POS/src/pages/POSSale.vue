@@ -1221,6 +1221,7 @@ const btNoticeDismissed = ref(false);
 
 const showBtDisconnectNotice = computed(() => {
 	return (
+		shiftStore.hasOpenShift &&
 		btStore.isEnabled === 1 &&
 		Boolean(btStore.savedPrinterId) &&
 		!btStore.isConnected &&
