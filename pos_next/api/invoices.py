@@ -672,7 +672,12 @@ def update_invoice(data):
         data = json.loads(data) if isinstance(data, str) else data
 
         pos_profile = data.get("pos_profile")
-        doctype = data.get("doctype", "Sales Invoice")
+        doctype = data.get("doctype")
+        if not doctype:
+            invoice_type = "Sales Invoice"
+            if pos_profile:
+                invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
+            doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
 
         # Ensure the document type is set
         data.setdefault("doctype", doctype)
@@ -1235,7 +1240,12 @@ def submit_invoice(invoice=None, data=None):
         data = {}
 
     pos_profile = invoice.get("pos_profile")
-    doctype = invoice.get("doctype", "Sales Invoice")
+    doctype = invoice.get("doctype")
+    if not doctype:
+        invoice_type = "Sales Invoice"
+        if pos_profile:
+            invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
+        doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
 
     # Normalize pricing_rules before processing
     standardize_pricing_rules(invoice.get("items"))

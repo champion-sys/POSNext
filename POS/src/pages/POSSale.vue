@@ -2219,6 +2219,7 @@ async function handlePaymentCompleted(paymentData) {
 			const preparedItems = cartStore.formatItemsForSubmission(cartStore.invoiceItems);
 
 			const invoiceData = {
+				doctype: cartStore.targetDoctype || "Sales Invoice",
 				pos_profile: cartStore.posProfile,
 				posa_pos_opening_shift: cartStore.posOpeningShift,
 				company: shiftStore.profileCompany,
@@ -2266,7 +2267,7 @@ async function handlePaymentCompleted(paymentData) {
 
 			const offlinePrintDoc = {
 				name: offlineReceiptName,
-				doctype: "Sales Invoice",
+				doctype: cartStore.targetDoctype || "Sales Invoice",
 				is_offline: true,
 				pos_profile: cartStore.posProfile,
 				owner: userName.value || undefined,

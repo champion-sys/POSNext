@@ -208,8 +208,8 @@ const checkDuplicateError = (error) => {
 
 	if (!isDuplicate) return { isDuplicate: false, invoiceName: null }
 
-	const match = errorMessage.match(/Sales Invoice: (\S+)/)
-	return { isDuplicate: true, invoiceName: match?.[1] || null }
+	const match = errorMessage.match(/(Sales Invoice|POS Invoice): (\S+)/)
+	return { isDuplicate: true, invoiceName: match?.[2] || null }
 }
 
 /**
