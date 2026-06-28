@@ -10,6 +10,8 @@ const log = logger.create("PrintInvoice")
 
 const DEFAULT_PRINT_FORMAT = "POS Next Receipt"
 
+let cachedPrintFormat = null
+
 // ============================================================================
 // Shared helpers
 // ============================================================================
@@ -33,7 +35,10 @@ function derivePaidAmount(invoiceData) {
 
 /** Sales Invoices not yet on the server (offline queue / local receipt id). */
 export function isLocalOnlyInvoiceName(name) {
-	return typeof name === "string" && (name.startsWith("OFFLINE-") || name.startsWith("pos_offline_"))
+	return (
+		typeof name === "string" &&
+		(name.startsWith("OFFLINE-") || name.startsWith("pos_offline_"))
+	)
 }
 
 /**
@@ -95,7 +100,8 @@ function receiptDocFromQueuedInvoice(offlineId, raw) {
  * Prevents server print / get_invoice for synthetic pos_offline_* ids.
  */
 export async function hydrateLocalOnlyInvoice(invoiceData) {
-	if (!invoiceData?.name || !isLocalOnlyInvoiceName(invoiceData.name)) return invoiceData
+	if (!invoiceData?.name || !isLocalOnlyInvoiceName(invoiceData.name))
+		return invoiceData
 	if (invoiceData.items?.length > 0) return invoiceData
 
 	const cached = getOfflineReceiptPayload(invoiceData.name)
@@ -184,7 +190,8 @@ export function buildReceiptHTML(invoiceData) {
 	const itemsHtml = items
 		.map((item) => {
 			const hasDiscount =
-				(item.discount_percentage && Number.parseFloat(item.discount_percentage) > 0) ||
+				(item.discount_percentage &&
+					Number.parseFloat(item.discount_percentage) > 0) ||
 				(item.discount_amount && Number.parseFloat(item.discount_amount) > 0)
 			const isFree = item.is_free_item
 			const qty = item.quantity || item.qty || 0
@@ -204,8 +211,10 @@ export function buildReceiptHTML(invoiceData) {
 		.join("")
 
 	const headerText = isRtl
-		? (invoiceData.status === "Draft" ? __("مسودة") : __("فاتورة"))
-		: (invoiceData.header || __("TAX INVOICE"))
+		? invoiceData.status === "Draft"
+			? __("مسودة")
+			: __("فاتورة")
+		: invoiceData.header || __("TAX INVOICE")
 
 	return `
 			<div class="receipt ${isRtl ? "rtl" : ""}">
@@ -222,7 +231,7 @@ export function buildReceiptHTML(invoiceData) {
 					${invoiceData.owner ? `<div><span>${isRtl ? __("الكاشير:") : __("Cashier:")}</span><span>${invoiceData.owner}</span></div>` : ""}
 					${invoiceData.pos_order_type ? `<div><span>${isRtl ? __("نوع الطلب:") : __("Order Type:")}</span><span>${invoiceData.pos_order_type}</span></div>` : ""}
 					${invoiceData.customer_name || invoiceData.customer ? `<div><span>${isRtl ? __("العميل:") : __("Customer:")}</span><span>${invoiceData.customer_name || invoiceData.customer}</span></div>` : ""}
-					${(invoiceData.status === "Partly Paid" || (invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 && invoiceData.outstanding_amount < invoiceData.grand_total)) ? `<div class="partial-status"><span>${isRtl ? __("الحالة:") : __("Status:")}</span><span>${isRtl ? __("دفع جزئي") : __("PARTIAL PAYMENT")}</span></div>` : ""}
+					${invoiceData.status === "Partly Paid" || (invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 && invoiceData.outstanding_amount < invoiceData.grand_total) ? `<div class="partial-status"><span>${isRtl ? __("الحالة:") : __("Status:")}</span><span>${isRtl ? __("دفع جزئي") : __("PARTIAL PAYMENT")}</span></div>` : ""}
 				</div>
 
 				<div class="items-table">
@@ -230,22 +239,35 @@ export function buildReceiptHTML(invoiceData) {
 				</div>
 
 				<div class="totals">
-					${invoiceData.total_taxes_and_charges && invoiceData.total_taxes_and_charges > 0 ? `
+					${
+						invoiceData.total_taxes_and_charges &&
+						invoiceData.total_taxes_and_charges > 0
+							? `
 					<div class="total-row"><span>${isRtl ? __("المجموع الفرعي:") : __("Subtotal:")}</span><span>${formatCurrency((invoiceData.grand_total || 0) - (invoiceData.total_taxes_and_charges || 0))}</span></div>
-					<div class="total-row"><span>${isRtl ? __("الضريبة:") : __("Tax:")}</span><span>${formatCurrency(invoiceData.total_taxes_and_charges)}</span></div>` : ""}
-					${invoiceData.discount_amount ? `
-					<div class="total-row" style="color: #28a745;"><span>${isRtl ? __("خصم إضافي") : __("Additional Discount")}${invoiceData.additional_discount_percentage ? ` (${Number(invoiceData.additional_discount_percentage).toFixed(1)}%)` : ""}:</span><span>-${formatCurrency(Math.abs(invoiceData.discount_amount))}</span></div>` : ""}
+					<div class="total-row"><span>${isRtl ? __("الضريبة:") : __("Tax:")}</span><span>${formatCurrency(invoiceData.total_taxes_and_charges)}</span></div>`
+							: ""
+					}
+					${
+						invoiceData.discount_amount
+							? `
+					<div class="total-row" style="color: #28a745;"><span>${isRtl ? __("خصم إضافي") : __("Additional Discount")}${invoiceData.additional_discount_percentage ? ` (${Number(invoiceData.additional_discount_percentage).toFixed(1)}%)` : ""}:</span><span>-${formatCurrency(Math.abs(invoiceData.discount_amount))}</span></div>`
+							: ""
+					}
 					<div class="total-row grand-total"><span>${isRtl ? __("الإجمالي:") : __("TOTAL:")}</span><span>${formatCurrency(invoiceData.grand_total)}</span></div>
 				</div>
 
-				${invoiceData.payments && invoiceData.payments.length > 0 ? `
+				${
+					invoiceData.payments && invoiceData.payments.length > 0
+						? `
 				<div class="payments">
 					<div style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">${isRtl ? __("المدفوعات:") : __("Payments:")}</div>
 					${invoiceData.payments.map((p) => `<div class="payment-row"><span>${p.mode_of_payment}:</span><span>${formatCurrency(p.amount)}</span></div>`).join("")}
 					<div class="payment-row total-paid"><span>${isRtl ? __("إجمالي المدفوع:") : __("Total Paid:")}</span><span>${formatCurrency(paidAmount)}</span></div>
 					${invoiceData.change_amount && invoiceData.change_amount > 0 ? `<div class="payment-row" style="font-weight: bold; margin-top: 5px;"><span>${isRtl ? __("المتبقي (الفكة):") : __("Change:")}</span><span>${formatCurrency(invoiceData.change_amount)}</span></div>` : ""}
 					${invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 ? `<div class="outstanding-row"><span>${isRtl ? __("المبلغ المتبقي:") : __("BALANCE DUE:")}</span><span>${formatCurrency(invoiceData.outstanding_amount)}</span></div>` : ""}
-				</div>` : ""}
+				</div>`
+						: ""
+				}
 
 				<div class="footer">
 					<div style="margin-bottom: 5px;">${invoiceData.footer || (isRtl ? __("شكراً لتعاملكم معنا!") : __("Thank you for your business!"))}</div>
@@ -254,7 +276,10 @@ export function buildReceiptHTML(invoiceData) {
 			</div>`
 }
 
-function buildReceiptDocumentHTML(invoiceData, { includeControls = false } = {}) {
+function buildReceiptDocumentHTML(
+	invoiceData,
+	{ includeControls = false } = {},
+) {
 	const controls = includeControls
 		? `
 			<div class="no-print" style="text-align: center; margin-top: 20px;">
@@ -288,7 +313,8 @@ function buildReceiptDocumentHTML(invoiceData, { includeControls = false } = {})
  */
 async function processAndExecuteSilentPrint(fullHTML, injectedStyles = "") {
 	// Regular expression matching structural target nodes: <div class="page-break"></div> or with variants/spacing/inner attributes
-	const splitRegex = /<div[^>]*class=["'][^"']*page-break[^"']*["'][^>]*>\s*<\/div>/gi
+	const splitRegex =
+		/<div[^>]*class=["'][^"']*page-break[^"']*["'][^>]*>\s*<\/div>/gi
 
 	// Extract everything inside body if it's an absolute document, or utilize raw strings
 	let innerContent = fullHTML
@@ -352,7 +378,11 @@ async function resolvePrintSettings(posProfile, printFormat, letterhead) {
  * Open Frappe's /printview containing combined data nodes in a single browser window.
  * Natively segmented during rendering through internal CSS rules.
  */
-export async function printInvoice(invoiceData, printFormat = null, letterhead = null) {
+export async function printInvoice(
+	invoiceData,
+	printFormat = null,
+	letterhead = null,
+) {
 	try {
 		if (!invoiceData?.name) throw new Error("Invalid invoice data")
 
@@ -362,7 +392,9 @@ export async function printInvoice(invoiceData, printFormat = null, letterhead =
 		if (isLocalOnlyInvoiceName(invoiceData.name)) {
 			if (invoiceData.items?.length > 0) return printInvoiceCustom(invoiceData)
 			throw new Error(
-				__("This offline receipt is no longer in browser storage. Sync the invoice, then print from history."),
+				__(
+					"This offline receipt is no longer in browser storage. Sync the invoice, then print from history.",
+				),
 			)
 		}
 
@@ -387,7 +419,11 @@ export async function printInvoice(invoiceData, printFormat = null, letterhead =
 		})
 		if (letterhead) params.append("letterhead", letterhead)
 
-		const printWindow = window.open(`/printview?${params}`, "_blank", "width=800,height=600")
+		const printWindow = window.open(
+			`/printview?${params}`,
+			"_blank",
+			"width=800,height=600",
+		)
 		if (!printWindow) {
 			throw new Error("Popup blocked — check your browser settings.")
 		}
@@ -408,7 +444,11 @@ export async function printInvoice(invoiceData, printFormat = null, letterhead =
  * Fetch an invoice by name, resolve its POS Profile print settings,
  * then open the browser print window.
  */
-export async function printInvoiceByName(invoiceName, printFormat = null, letterhead = null) {
+export async function printInvoiceByName(
+	invoiceName,
+	printFormat = null,
+	letterhead = null,
+) {
 	if (isLocalOnlyInvoiceName(invoiceName)) {
 		const localDoc = await hydrateLocalOnlyInvoice({ name: invoiceName })
 		if (!localDoc.items?.length) {
@@ -418,7 +458,11 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 				),
 			)
 		}
-		const settings = await resolvePrintSettings(localDoc.pos_profile, printFormat, letterhead)
+		const settings = await resolvePrintSettings(
+			localDoc.pos_profile,
+			printFormat,
+			letterhead,
+		)
 		return printInvoice(localDoc, settings.printFormat, settings.letterhead)
 	}
 	const invoiceDoc = await call("pos_next.api.invoices.get_invoice", {
@@ -426,7 +470,11 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 	})
 	if (!invoiceDoc) throw new Error("Invoice not found")
 
-	const settings = await resolvePrintSettings(invoiceDoc.pos_profile, printFormat, letterhead)
+	const settings = await resolvePrintSettings(
+		invoiceDoc.pos_profile,
+		printFormat,
+		letterhead,
+	)
 	return printInvoice(invoiceDoc, settings.printFormat, settings.letterhead)
 }
 
@@ -437,7 +485,11 @@ export async function printInvoiceByName(invoiceName, printFormat = null, letter
 /**
  * Fetch server content and intercept page-break targets to cleanly isolate print records.
  */
-export async function silentPrintInvoice(invoiceName, printFormat = null, doctype = null) {
+export async function silentPrintInvoice(
+	invoiceName,
+	printFormat = null,
+	doctype = null,
+) {
 	if (isLocalOnlyInvoiceName(invoiceName)) {
 		const doc = await hydrateLocalOnlyInvoice({ name: invoiceName })
 		if (doc.items?.length > 0) return silentPrintInvoiceFromDoc(doc)
@@ -447,7 +499,23 @@ export async function silentPrintInvoice(invoiceName, printFormat = null, doctyp
 			),
 		)
 	}
-	const format = printFormat || DEFAULT_PRINT_FORMAT
+	let format = printFormat
+	if (!format) {
+		if (cachedPrintFormat) {
+			format = cachedPrintFormat
+		} else {
+			let posProfile = null
+			try {
+				const posSettingsStore = usePOSSettingsStore()
+				posProfile = posSettingsStore.settings?.pos_profile
+			} catch (e) {
+				// Ignore store error in non-vue context
+			}
+			const settings = await resolvePrintSettings(posProfile, null, null)
+			format = settings.printFormat
+			cachedPrintFormat = format
+		}
+	}
 	let fallbackDoctype = "Sales Invoice"
 	try {
 		const posSettingsStore = usePOSSettingsStore()
@@ -471,7 +539,9 @@ export async function silentPrintInvoice(invoiceName, printFormat = null, doctyp
 	// Parse markup dynamically down to independent prints if split containers are targeted
 	await processAndExecuteSilentPrint(html, style)
 
-	log.info(`Silent print processed with dynamic layout validation for ${invoiceName}`)
+	log.info(
+		`Silent print processed with dynamic layout validation for ${invoiceName}`,
+	)
 	return true
 }
 
@@ -479,11 +549,15 @@ export async function silentPrintInvoice(invoiceName, printFormat = null, doctyp
  * Silent-print local offline markup objects using automated layout splits.
  */
 export async function silentPrintInvoiceFromDoc(invoiceData) {
-	const combinedHTML = buildReceiptDocumentHTML(invoiceData, { includeControls: false })
+	const combinedHTML = buildReceiptDocumentHTML(invoiceData, {
+		includeControls: false,
+	})
 
 	await processAndExecuteSilentPrint(combinedHTML, "")
 
-	log.info(`Silent print split execution sequence successfully completed for local doc: ${invoiceData?.name}`)
+	log.info(
+		`Silent print split execution sequence successfully completed for local doc: ${invoiceData?.name}`,
+	)
 	flagOfflineInvoicePrinted(invoiceData?.name)
 	return true
 }
@@ -496,15 +570,15 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 	const invoiceName = invoiceData?.name
 	if (!invoiceName) throw new Error("Invalid invoice data — missing name")
 
-	if (
-		isLocalOnlyInvoiceName(invoiceName) &&
-		invoiceData.items?.length > 0
-	) {
+	if (isLocalOnlyInvoiceName(invoiceName) && invoiceData.items?.length > 0) {
 		try {
 			await silentPrintInvoiceFromDoc(invoiceData)
 			return { method: "silent", success: true }
 		} catch (err) {
-			log.warn("Silent local receipt failed, falling back to browser:", err?.message || err)
+			log.warn(
+				"Silent local receipt failed, falling back to browser:",
+				err?.message || err,
+			)
 		}
 		try {
 			printInvoiceCustom(invoiceData)
@@ -527,7 +601,10 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 		await silentPrintInvoice(invoiceName, printFormat, doctype)
 		return { method: "silent", success: true }
 	} catch (err) {
-		log.warn("Silent print failed, falling back to browser:", err?.message || err)
+		log.warn(
+			"Silent print failed, falling back to browser:",
+			err?.message || err,
+		)
 	}
 
 	try {
@@ -553,7 +630,9 @@ export function printInvoiceCustom(invoiceData) {
 		throw new Error(__("Popup blocked — check your browser settings."))
 	}
 
-	const printContent = buildReceiptDocumentHTML(invoiceData, { includeControls: true })
+	const printContent = buildReceiptDocumentHTML(invoiceData, {
+		includeControls: true,
+	})
 
 	printWindow.document.write(printContent)
 	printWindow.document.close()
