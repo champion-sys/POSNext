@@ -221,7 +221,7 @@
 					</div>
 
 					<!-- Bluetooth Print Queue Indicator -->
-					<div v-if="btStore.isEnabled" class="relative h-full flex items-center">
+					<div v-if="hasOpenShift && btStore.isEnabled" class="relative h-full flex items-center">
 						<button
 							@click="showQueueTooltip = !showQueueTooltip"
 							@blur="handleQueueBlur"
