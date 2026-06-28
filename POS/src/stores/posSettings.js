@@ -340,7 +340,11 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		try {
 			const bootstrapStore = useBootstrapStore()
 			const preloadedSettings = bootstrapStore.getPreloadedPOSSettings()
-			if (preloadedSettings && Object.keys(preloadedSettings).length > 0) {
+			if (
+				preloadedSettings &&
+				preloadedSettings.pos_profile === posProfile &&
+				Object.keys(preloadedSettings).length > 0
+			) {
 				Object.assign(settings.value, preloadedSettings)
 				isLoaded.value = true
 				isLoading.value = false

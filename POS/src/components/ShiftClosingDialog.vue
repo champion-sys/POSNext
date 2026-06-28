@@ -535,7 +535,7 @@ const open = computed({
 const { getClosingShiftData, submitClosingShift } = useShift()
 const { formatCurrency, formatQuantity, formatDateTime, formatTime } = useFormatters()
 const posSettingsStore = usePOSSettingsStore()
-const { hideExpectedAmount } = storeToRefs(posSettingsStore)
+const { hideExpectedAmount, isLoaded } = storeToRefs(posSettingsStore)
 
 const shiftStore = usePOSShiftStore()
 
@@ -560,9 +560,13 @@ watch(open, async (isOpen) => {
 			showIdleWarning.value = true
 		}, 60_000)
 
-		// Refresh POS settings to get latest hideExpectedAmount value
-		await posSettingsStore.reloadSettings()
-		loadClosingData()
+		// Reset settings loaded state to avoid flashes of expected amount
+		posSettingsStore.isLoaded = false
+
+		await loadClosingData()
+		if (closingData.value && closingData.value.pos_profile) {
+			await posSettingsStore.loadSettings(closingData.value.pos_profile)
+		}
 	} else {
 		// Resume the shift duration counter
 		shiftStore.shiftTimerPaused = false
@@ -695,7 +699,7 @@ function closeDialog() {
 
 // UI State Computed Properties
 const shouldShowSummary = computed(() =>
-	!hideExpectedAmount.value
+	closingData.value && isLoaded.value && !hideExpectedAmount.value
 )
 
 const isInEntryMode = computed(() =>
