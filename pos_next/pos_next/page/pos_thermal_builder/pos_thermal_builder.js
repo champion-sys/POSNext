@@ -53,6 +53,9 @@ class POSThermalPrintBuilder {
     this._template_load_token = null;
     this._switch_token = null;
     this._saving = false;
+    this.undo_stack = [];
+    this.redo_stack = [];
+    this.temp_history_snapshot = null;
 
     this.setup_page_fields();
     this.setup_page_actions();
@@ -314,10 +317,26 @@ class POSThermalPrintBuilder {
 
     this.$root.on("focus", ".ptb-inline-edit", (e) => {
       $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "false");
+      this.temp_history_snapshot = {
+        elements: JSON.parse(JSON.stringify(this.state.elements)),
+        active_id: this.active_id
+      };
     });
 
     this.$root.on("blur", ".ptb-inline-edit", (e) => {
       $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "true");
+      this.commit_temp_history();
+    });
+
+    this.$root.on("focus", "#ptb-props [data-prop], #ptb-props [data-column]", (e) => {
+      this.temp_history_snapshot = {
+        elements: JSON.parse(JSON.stringify(this.state.elements)),
+        active_id: this.active_id
+      };
+    });
+
+    this.$root.on("blur change", "#ptb-props [data-prop], #ptb-props [data-column]", (e) => {
+      this.commit_temp_history();
     });
 
     this.$root.on("input change", "#ptb-props [data-prop]", (e) => {
@@ -343,6 +362,29 @@ class POSThermalPrintBuilder {
     });
 
     this.$root.on("click", "#ptb-copy-code", () => this.handle_async(() => this.copy_generated_code()));
+
+    $(document).on("keydown.ptb_history", (e) => {
+      if ($(e.target).is("input, textarea, [contenteditable=true]")) {
+        return;
+      }
+
+      const is_mac = /Mac|iPad|iPhone|iPod/.test(navigator.platform);
+      const cmd_or_ctrl = is_mac ? e.metaKey : e.ctrlKey;
+
+      if (cmd_or_ctrl && !e.altKey) {
+        if (e.key === "z" || e.key === "Z") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            this.redo();
+          } else {
+            this.undo();
+          }
+        } else if (e.key === "y" || e.key === "Y") {
+          e.preventDefault();
+          this.redo();
+        }
+      }
+    });
   }
 
   apply_translations() {
@@ -803,6 +845,7 @@ class POSThermalPrintBuilder {
   }
 
   add_element(type, overrides = {}) {
+    this.save_history();
     const element = Object.assign(this.get_default_element(type), overrides);
     const active = this.find_element(this.active_id);
 
@@ -1023,6 +1066,9 @@ class POSThermalPrintBuilder {
   }
 
   delete_element(id, list = this.state.elements) {
+    if (list === this.state.elements) {
+      this.save_history();
+    }
     const index = list.findIndex((el) => el.id === id);
 
     if (index > -1) {
@@ -1069,7 +1115,63 @@ class POSThermalPrintBuilder {
     return null;
   }
 
+  save_history() {
+    if (this.undo_stack.length >= 100) {
+      this.undo_stack.shift();
+    }
+    this.undo_stack.push({
+      elements: JSON.parse(JSON.stringify(this.state.elements)),
+      active_id: this.active_id
+    });
+    this.redo_stack = [];
+  }
+
+  commit_temp_history() {
+    if (!this.temp_history_snapshot) return;
+
+    const elements_changed = JSON.stringify(this.state.elements) !== JSON.stringify(this.temp_history_snapshot.elements);
+    if (elements_changed) {
+      if (this.undo_stack.length >= 100) {
+        this.undo_stack.shift();
+      }
+      this.undo_stack.push(this.temp_history_snapshot);
+      this.redo_stack = [];
+    }
+    this.temp_history_snapshot = null;
+  }
+
+  undo() {
+    if (!this.undo_stack.length) return;
+
+    this.redo_stack.push({
+      elements: JSON.parse(JSON.stringify(this.state.elements)),
+      active_id: this.active_id
+    });
+
+    const previous = this.undo_stack.pop();
+    this.state.elements = previous.elements;
+    this.active_id = previous.active_id;
+
+    this.render();
+  }
+
+  redo() {
+    if (!this.redo_stack.length) return;
+
+    this.undo_stack.push({
+      elements: JSON.parse(JSON.stringify(this.state.elements)),
+      active_id: this.active_id
+    });
+
+    const next = this.redo_stack.pop();
+    this.state.elements = next.elements;
+    this.active_id = next.active_id;
+
+    this.render();
+  }
+
   reorder_element(source_id, target_id, position = "before") {
+    this.save_history();
     if (!source_id || !target_id || source_id === target_id) return;
 
     const source_info = this.find_element_info(source_id);
@@ -1112,6 +1214,7 @@ class POSThermalPrintBuilder {
   move_element_up(id) {
     const info = this.find_element_info(id);
     if (!info || info.index <= 0) return;
+    this.save_history();
     const [element] = info.list.splice(info.index, 1);
     info.list.splice(info.index - 1, 0, element);
     this.render();
@@ -1120,6 +1223,7 @@ class POSThermalPrintBuilder {
   move_element_down(id) {
     const info = this.find_element_info(id);
     if (!info || info.index >= info.list.length - 1) return;
+    this.save_history();
     const [element] = info.list.splice(info.index, 1);
     info.list.splice(info.index + 1, 0, element);
     this.render();
@@ -1128,6 +1232,7 @@ class POSThermalPrintBuilder {
   duplicate_element(id) {
     const info = this.find_element_info(id);
     if (!info) return;
+    this.save_history();
 
     const clone_element = (el) => {
       const cloned = JSON.parse(JSON.stringify(el));
@@ -1155,6 +1260,7 @@ class POSThermalPrintBuilder {
   clear_container(id) {
     const info = this.find_element_info(id);
     if (info && info.element.type === "container") {
+      this.save_history();
       info.element.children = [];
       this.render();
     }
