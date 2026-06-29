@@ -1,11 +1,11 @@
 .ptb-shell {
-  display: grid;
-  grid-template-columns: 290px minmax(480px, 1fr) 330px;
-  gap: 16px;
-  height: calc(100vh - 130px);
+  height: calc(100vh - 92px);
   min-height: 620px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
   background: #f5f6f8;
-  padding: 16px;
   overflow: hidden;
 }
 
@@ -17,34 +17,81 @@
   direction: ltr;
 }
 
+.ptb-topbar {
+  background: #fff;
+  border: 1px solid #e6e8ec;
+  border-radius: 14px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 190px 150px 190px minmax(180px, 1fr) 100px auto;
+  gap: 10px;
+  align-items: end;
+  flex: 0 0 auto;
+}
+
+.ptb-topbar-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #475467;
+  margin-bottom: 4px;
+}
+
+.ptb-topbar-field select,
+.ptb-topbar-field input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 0 8px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.ptb-topbar-field input[readonly] {
+  background: #f9fafb;
+  color: #667085;
+}
+
+.ptb-topbar-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.ptb-workspace {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 280px minmax(420px, 1fr) 340px;
+  gap: 12px;
+  overflow: hidden;
+}
+
 .ptb-panel,
 .ptb-designer {
   background: #fff;
   border: 1px solid #e6e8ec;
   border-radius: 14px;
+  min-height: 0;
   overflow: hidden;
 }
 
 .ptb-panel {
   display: flex;
   flex-direction: column;
-  min-height: 0;
-}
-
-.ptb-panel-scroll {
-  overflow: auto;
-  min-height: 0;
 }
 
 .ptb-panel-header {
-  padding: 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid #edf0f2;
   flex: 0 0 auto;
 }
 
 .ptb-panel-header h3 {
   margin: 0 0 4px;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -54,8 +101,14 @@
   font-size: 12px;
 }
 
+.ptb-panel-scroll {
+  overflow: auto;
+  min-height: 0;
+  padding-bottom: 10px;
+}
+
 .ptb-group {
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-bottom: 1px solid #f0f2f4;
 }
 
@@ -63,7 +116,7 @@
   font-size: 12px;
   font-weight: 700;
   color: #475467;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .ptb-add,
@@ -72,7 +125,7 @@
   border: 1px solid #e4e7ec;
   background: #fff;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 9px 10px;
   margin-bottom: 8px;
   text-align: start;
   cursor: pointer;
@@ -96,60 +149,46 @@
   display: block;
   color: #667085;
   font-size: 11px;
-  margin-top: 3px;
-}
-
-.ptb-add-field {
-  font-size: 12px;
-  color: #344054;
+  margin-top: 2px;
 }
 
 .ptb-designer {
   display: flex;
   flex-direction: column;
-  min-width: 0;
 }
 
-.ptb-toolbar {
-  min-height: 58px;
+.ptb-canvas-header {
+  min-height: 56px;
   padding: 12px 16px;
   border-bottom: 1px solid #edf0f2;
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   flex: 0 0 auto;
 }
 
-.ptb-toolbar-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.ptb-canvas-header strong {
+  display: block;
+  font-size: 14px;
 }
 
-.ptb-toolbar-section label {
+.ptb-canvas-header small {
+  display: block;
+  color: #667085;
+  margin-top: 2px;
   font-size: 12px;
-  color: #475467;
-  margin: 0;
 }
 
-.ptb-toolbar-section select {
-  height: 32px;
-  border: 1px solid #d0d5dd;
-  border-radius: 8px;
-  padding: 0 10px;
-  background: #fff;
-}
-
-.ptb-toolbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+.ptb-canvas-hint {
+  color: #667085;
+  font-size: 11px;
+  text-align: end;
 }
 
 .ptb-canvas-wrap {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 20px;
   background:
@@ -161,28 +200,13 @@
   background-position: 0 0, 0 11px, 11px -11px, -11px 0;
 }
 
-.ptb-canvas-title {
-  text-align: center;
-  margin-bottom: 14px;
-}
-
-.ptb-canvas-title span {
-  display: block;
-  font-weight: 700;
-  color: #344054;
-}
-
-.ptb-canvas-title small {
-  color: #667085;
-}
-
 .ptb-paper {
   margin: 0 auto 40px;
   background: #fff;
   color: #000;
   border: 1px solid #d0d5dd;
   box-shadow: 0 12px 30px rgba(16, 24, 40, 0.14);
-  min-height: 540px;
+  min-height: 520px;
   padding: 8px;
   font-family: Tahoma, Arial, sans-serif;
   direction: rtl;
@@ -279,10 +303,6 @@
   vertical-align: top;
 }
 
-.ptb-preview-table th {
-  font-weight: 700;
-}
-
 .ptb-preview-table td:last-child,
 .ptb-preview-table th:last-child {
   text-align: end;
@@ -301,16 +321,41 @@
   margin: 0 auto;
 }
 
-.ptb-image-placeholder {
+.ptb-image-placeholder,
+.ptb-qr-placeholder {
   border: 1px dashed #bbb;
   color: #777;
   text-align: center;
   padding: 10px;
   font-size: 11px;
+  border-radius: 6px;
+}
+
+.ptb-qr-placeholder {
+  width: 28mm;
+  min-height: 28mm;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ptb-container-preview {
+  border: 1px solid #000;
+  border-radius: 8px;
+  padding: 6px;
+  margin: 4px 0;
+}
+
+.ptb-container-empty {
+  color: #98a2b3;
+  font-size: 11px;
+  text-align: center;
+  padding: 8px;
 }
 
 .ptb-props {
-  padding: 16px;
+  padding: 14px;
   overflow: auto;
   min-height: 0;
 }
@@ -345,8 +390,19 @@
 }
 
 .ptb-field textarea {
-  min-height: 90px;
+  min-height: 82px;
   resize: vertical;
+}
+
+.ptb-color-row {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 8px;
+}
+
+.ptb-color-row input[type="color"] {
+  padding: 0;
+  height: 36px;
 }
 
 .ptb-check {
@@ -368,6 +424,12 @@
   border-top: 1px solid #edf0f2;
   padding-top: 12px;
   margin: 14px 0 10px;
+}
+
+.ptb-prop-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 14px;
 }
 
 .ptb-modal {
@@ -444,9 +506,24 @@
   border-top: 1px solid #edf0f2;
 }
 
-@media (max-width: 1200px) {
-  .ptb-shell {
-    grid-template-columns: 260px 1fr;
+@media (max-width: 1300px) {
+  .ptb-topbar {
+    grid-template-columns: repeat(3, minmax(160px, 1fr));
+  }
+
+  .ptb-topbar-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .ptb-workspace {
+    grid-template-columns: 250px minmax(420px, 1fr) 320px;
+  }
+}
+
+@media (max-width: 1050px) {
+  .ptb-workspace {
+    grid-template-columns: 240px 1fr;
   }
 
   .ptb-properties {

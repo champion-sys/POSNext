@@ -1,136 +1,170 @@
 <div class="ptb-shell" dir="auto">
-  <aside class="ptb-panel ptb-palette">
-    <div class="ptb-panel-header">
-      <h3 data-i18n="Elements"></h3>
-      <p data-i18n="Drag or click to add an element to the template"></p>
+  <div class="ptb-topbar">
+    <div class="ptb-topbar-field">
+      <label data-i18n="POS Settings"></label>
+      <select id="ptb-pos-settings"></select>
     </div>
 
-    <div class="ptb-panel-scroll">
-      <div class="ptb-group">
-        <div class="ptb-group-title" data-i18n="General Elements"></div>
-
-        <button class="ptb-add" data-type="text">
-          <span data-i18n="Text"></span>
-          <small data-i18n="Title, note, or footer message"></small>
-        </button>
-
-        <button class="ptb-add" data-type="field">
-          <span data-i18n="Invoice Field"></span>
-          <small data-i18n="Invoice number, customer, date, and more"></small>
-        </button>
-
-        <button class="ptb-add" data-type="image">
-          <span data-i18n="Image"></span>
-          <small data-i18n="Company logo or QR code"></small>
-        </button>
-
-        <button class="ptb-add" data-type="divider">
-          <span data-i18n="Divider"></span>
-          <small data-i18n="Horizontal line"></small>
-        </button>
-
-        <button class="ptb-add" data-type="spacer">
-          <span data-i18n="Spacer"></span>
-          <small data-i18n="Vertical empty space"></small>
-        </button>
-      </div>
-
-      <div class="ptb-group">
-        <div class="ptb-group-title" data-i18n="POS Invoice Sections"></div>
-
-        <button class="ptb-add" data-type="items_table">
-          <span data-i18n="Items Table"></span>
-          <small data-i18n="Item, quantity, rate, and amount"></small>
-        </button>
-
-        <button class="ptb-add" data-type="totals">
-          <span data-i18n="Totals"></span>
-          <small data-i18n="Net total, taxes, grand total, and payment"></small>
-        </button>
-
-        <button class="ptb-add" data-type="payments">
-          <span data-i18n="Payments"></span>
-          <small data-i18n="Cash, card, transfer, and other modes"></small>
-        </button>
-
-        <button class="ptb-add" data-type="taxes">
-          <span data-i18n="Taxes and Charges"></span>
-          <small data-i18n="VAT and other taxes"></small>
-        </button>
-      </div>
-
-      <div class="ptb-group">
-        <div class="ptb-group-title" data-i18n="Important Fields"></div>
-
-        <button class="ptb-add-field" data-fieldname="name" data-field-label="Invoice Number" data-i18n="Invoice Number"></button>
-        <button class="ptb-add-field" data-fieldname="posting_date" data-field-label="Posting Date" data-i18n="Posting Date"></button>
-        <button class="ptb-add-field" data-fieldname="posting_time" data-field-label="Posting Time" data-i18n="Posting Time"></button>
-        <button class="ptb-add-field" data-fieldname="customer" data-field-label="Customer" data-i18n="Customer"></button>
-        <button class="ptb-add-field" data-fieldname="company" data-field-label="Company" data-i18n="Company"></button>
-        <button class="ptb-add-field" data-fieldname="pos_profile" data-field-label="POS Profile" data-i18n="POS Profile"></button>
-        <button class="ptb-add-field" data-fieldname="owner" data-field-label="User" data-i18n="User"></button>
-        <button class="ptb-add-field" data-fieldname="grand_total" data-field-label="Grand Total" data-i18n="Grand Total"></button>
-        <button class="ptb-add-field" data-fieldname="paid_amount" data-field-label="Paid Amount" data-i18n="Paid Amount"></button>
-        <button class="ptb-add-field" data-fieldname="change_amount" data-field-label="Change Amount" data-i18n="Change Amount"></button>
-      </div>
-    </div>
-  </aside>
-
-  <main class="ptb-designer">
-    <div class="ptb-toolbar">
-      <div class="ptb-toolbar-section">
-        <label for="ptb-paper-size" data-i18n="Paper Size"></label>
-        <select id="ptb-paper-size">
-          <option value="58">58 mm</option>
-          <option value="80" selected>80 mm</option>
-        </select>
-      </div>
-
-      <div class="ptb-toolbar-actions">
-        <button class="btn btn-default btn-sm" id="ptb-save-layout" data-i18n="Save Locally"></button>
-        <button class="btn btn-default btn-sm" id="ptb-load-layout" data-i18n="Load Last Layout"></button>
-        <button class="btn btn-default btn-sm" id="ptb-clear-layout" data-i18n="Clear"></button>
-        <button class="btn btn-primary btn-sm" id="ptb-generate-html" data-i18n="Generate Print Format"></button>
-      </div>
+    <div class="ptb-topbar-field">
+      <label data-i18n="Invoice DocType"></label>
+      <input id="ptb-invoice-doctype" type="text" readonly>
     </div>
 
-    <div class="ptb-canvas-wrap">
-      <div class="ptb-canvas-title">
-        <span data-i18n="Thermal Receipt Preview"></span>
-        <small data-i18n="Select any element to edit its properties"></small>
-      </div>
-
-      <div class="ptb-paper ptb-paper-80" id="ptb-paper">
-        <div class="ptb-empty" data-i18n="Start by adding elements from the elements panel"></div>
-      </div>
-    </div>
-  </main>
-
-  <aside class="ptb-panel ptb-properties">
-    <div class="ptb-panel-header">
-      <h3 data-i18n="Element Properties"></h3>
-      <p data-i18n="The selected element properties will appear here"></p>
+    <div class="ptb-topbar-field">
+      <label data-i18n="Template"></label>
+      <select id="ptb-template"></select>
     </div>
 
-    <div id="ptb-props-empty" class="ptb-props-empty" data-i18n="No element selected"></div>
-    <form id="ptb-props" class="ptb-props"></form>
-  </aside>
+    <div class="ptb-topbar-field ptb-template-name-field">
+      <label data-i18n="Template Name"></label>
+      <input id="ptb-template-name" type="text">
+    </div>
+
+    <div class="ptb-topbar-field ptb-paper-field">
+      <label data-i18n="Paper Size"></label>
+      <select id="ptb-paper-size">
+        <option value="58">58 mm</option>
+        <option value="80" selected>80 mm</option>
+      </select>
+    </div>
+
+    <div class="ptb-topbar-actions">
+      <button class="btn btn-default btn-sm" id="ptb-new-template" type="button" data-i18n="New"></button>
+      <button class="btn btn-default btn-sm" id="ptb-load-template" type="button" data-i18n="Load"></button>
+      <button class="btn btn-default btn-sm" id="ptb-save-as-template" type="button" data-i18n="Save As"></button>
+      <button class="btn btn-default btn-sm" id="ptb-set-default" type="button" data-i18n="Set Default"></button>
+      <button class="btn btn-primary btn-sm" id="ptb-save-template" type="button" data-i18n="Save"></button>
+      <button class="btn btn-primary btn-sm" id="ptb-generate-print-format" type="button" data-i18n="Generate Print Format"></button>
+    </div>
+  </div>
+
+  <div class="ptb-workspace">
+    <aside class="ptb-panel ptb-palette">
+      <div class="ptb-panel-header">
+        <h3 data-i18n="Elements"></h3>
+        <p data-i18n="Click an element to add it to the receipt"></p>
+      </div>
+
+      <div class="ptb-panel-scroll">
+        <div class="ptb-group">
+          <div class="ptb-group-title" data-i18n="Basic Elements"></div>
+
+          <button class="ptb-add" data-type="text" type="button">
+            <span data-i18n="Text"></span>
+            <small data-i18n="Title, note, or any fixed text"></small>
+          </button>
+
+          <button class="ptb-add" data-type="field" type="button">
+            <span data-i18n="Invoice Field"></span>
+            <small data-i18n="Read a field from the invoice document"></small>
+          </button>
+
+          <button class="ptb-add" data-type="image" type="button">
+            <span data-i18n="Image"></span>
+            <small data-i18n="URL, attachment, or company logo"></small>
+          </button>
+
+          <button class="ptb-add" data-type="divider" type="button">
+            <span data-i18n="Divider"></span>
+            <small data-i18n="Horizontal line"></small>
+          </button>
+
+          <button class="ptb-add" data-type="spacer" type="button">
+            <span data-i18n="Spacer"></span>
+            <small data-i18n="Vertical empty space"></small>
+          </button>
+        </div>
+
+        <div class="ptb-group">
+          <div class="ptb-group-title" data-i18n="Receipt Sections"></div>
+
+          <button class="ptb-add" data-type="items_table" type="button">
+            <span data-i18n="Items Table"></span>
+            <small data-i18n="Items, quantities, rates, and amounts"></small>
+          </button>
+
+          <button class="ptb-add" data-type="totals" type="button">
+            <span data-i18n="Totals"></span>
+            <small data-i18n="Net total, tax, grand total, and paid amount"></small>
+          </button>
+
+          <button class="ptb-add" data-type="payments" type="button">
+            <span data-i18n="Payments"></span>
+            <small data-i18n="Payment methods and amounts"></small>
+          </button>
+
+          <button class="ptb-add" data-type="taxes" type="button">
+            <span data-i18n="Taxes and Charges"></span>
+            <small data-i18n="Tax rows from the invoice"></small>
+          </button>
+        </div>
+
+        <div class="ptb-group">
+          <div class="ptb-group-title" data-i18n="Advanced Elements"></div>
+
+          <button class="ptb-add" data-type="container" type="button">
+            <span data-i18n="Container"></span>
+            <small data-i18n="Group elements inside a bordered box"></small>
+          </button>
+
+          <button class="ptb-add" data-type="footer_note" type="button">
+            <span data-i18n="Footer Note"></span>
+            <small data-i18n="Small note at the bottom of the receipt"></small>
+          </button>
+
+          <button class="ptb-add" data-type="qr_code" type="button">
+            <span data-i18n="QR Code"></span>
+            <small data-i18n="Generate QR from fields or fixed value"></small>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="ptb-designer">
+      <div class="ptb-canvas-header">
+        <div>
+          <strong data-i18n="Thermal Receipt Preview"></strong>
+          <small data-i18n="Select any element to edit its properties"></small>
+        </div>
+
+        <div class="ptb-canvas-hint">
+          <span data-i18n="Receipt splitting is configured from Items Table properties"></span>
+        </div>
+      </div>
+
+      <div class="ptb-canvas-wrap">
+        <div class="ptb-paper ptb-paper-80" id="ptb-paper">
+          <div class="ptb-empty" data-i18n="Start by adding elements from the left panel"></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="ptb-panel ptb-properties">
+      <div class="ptb-panel-header">
+        <h3 data-i18n="Element Properties"></h3>
+        <p data-i18n="The selected element settings will appear here"></p>
+      </div>
+
+      <div id="ptb-props-empty" class="ptb-props-empty" data-i18n="No element selected"></div>
+      <form id="ptb-props" class="ptb-props"></form>
+    </aside>
+  </div>
 </div>
 
 <div class="ptb-modal ptb-hidden" id="ptb-code-modal" dir="auto">
   <div class="ptb-modal-card">
     <div class="ptb-modal-header">
-      <h3 data-i18n="Print Format Code"></h3>
+      <h3 data-i18n="Generated Print Format"></h3>
       <button class="ptb-modal-close" id="ptb-close-code" type="button">×</button>
     </div>
 
-    <p class="ptb-modal-note" data-i18n="Copy the following code and use it in a custom Print Format for POS Invoice"></p>
+    <p class="ptb-modal-note" data-i18n="This is the HTML/Jinja code that will be saved in the Print Format"></p>
 
     <textarea id="ptb-generated-code" spellcheck="false"></textarea>
 
     <div class="ptb-modal-actions">
       <button class="btn btn-default" id="ptb-copy-code" type="button" data-i18n="Copy Code"></button>
-      <button class="btn btn-primary" id="ptb-create-print-format" type="button" data-i18n="Create Print Format"></button>
+      <button class="btn btn-primary" id="ptb-close-code-bottom" type="button" data-i18n="Close"></button>
     </div>
   </div>
 </div>

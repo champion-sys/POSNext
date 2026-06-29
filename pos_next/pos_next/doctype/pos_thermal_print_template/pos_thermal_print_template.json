@@ -1,12 +1,29 @@
 {
  "actions": [],
- "allow_rename": 1,
+ "autoname": "field:template_name",
  "creation": "2026-06-29 18:17:27.897577",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "is_default",
+  "column_break_nxdg",
+  "disabled",
   "section_break_svpw",
-  "t"
+  "template_name",
+  "paper_size",
+  "column_break_y2kl",
+  "pos_settings",
+  "invoice_doctype",
+  "section_break_adfc",
+  "layout_json",
+  "generated_html",
+  "generated_css",
+  "section_break_2bsh",
+  "last_generated_on",
+  "print_format",
+  "version",
+  "column_break_zix7",
+  "remarks"
  ],
  "fields": [
   {
@@ -14,18 +31,111 @@
    "fieldtype": "Section Break"
   },
   {
-   "fieldname": "t",
+   "default": "0",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Is Default"
+  },
+  {
+   "fieldname": "column_break_nxdg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "label": "Disabled"
+  },
+  {
+   "fieldname": "template_name",
    "fieldtype": "Data",
-   "label": "t"
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "paper_size",
+   "fieldtype": "Select",
+   "label": "Paper Size",
+   "options": "\n58\n80"
+  },
+  {
+   "fieldname": "column_break_y2kl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "pos_settings",
+   "fieldtype": "Link",
+   "label": "POS Settings",
+   "options": "POS Settings",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "pos_settings.invoice_type",
+   "fieldname": "invoice_doctype",
+   "fieldtype": "Link",
+   "label": "Invoice Doctype",
+   "options": "DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_adfc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "layout_json",
+   "fieldtype": "Code",
+   "label": "Layout JSON"
+  },
+  {
+   "fieldname": "generated_html",
+   "fieldtype": "Code",
+   "label": "Generated HTML"
+  },
+  {
+   "fieldname": "generated_css",
+   "fieldtype": "Code",
+   "label": "Generated CSS"
+  },
+  {
+   "fieldname": "section_break_2bsh",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "last_generated_on",
+   "fieldtype": "Datetime",
+   "label": "Last Generated On"
+  },
+  {
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
+  },
+  {
+   "fieldname": "version",
+   "fieldtype": "Int",
+   "label": "Version"
+  },
+  {
+   "fieldname": "column_break_zix7",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-29 18:17:37.795381",
+ "modified": "2026-06-29 19:49:01.824299",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Thermal Print Template",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {
@@ -39,11 +149,33 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Nexus POS Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "POS User",
+   "share": 1
   }
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
  "sort_field": "creation",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }
