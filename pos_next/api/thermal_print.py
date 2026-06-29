@@ -118,6 +118,10 @@ def _generate_or_update_print_format(doc):
     if not doc.generated_html:
         frappe.throw(_("Generated HTML is empty"))
 
+    # Restrict Print Format creation/saving to users with rights to modify Print Format
+    if not frappe.has_permission("Print Format", ptype="write"):
+        frappe.throw(_("You do not have permission to generate or update Print Formats"))
+
     print_format_name = doc.print_format or _get_print_format_name(doc.template_name)
 
     if frappe.db.exists("Print Format", print_format_name):
@@ -410,9 +414,10 @@ def save_template(
         _ensure_pos_settings_access(doc.pos_settings, "write")
 
         if doc.name != template_name:
-            frappe.throw(
-                _("Template Name cannot be changed because it is used as the document name")
-            )
+            if frappe.db.exists("POS Thermal Print Template", template_name):
+                frappe.throw(_("Template {0} already exists").format(template_name))
+            frappe.rename_doc("POS Thermal Print Template", doc.name, template_name)
+            doc = frappe.get_doc("POS Thermal Print Template", template_name)
 
         if doc.pos_settings != pos_settings:
             frappe.throw(_("Template does not belong to the selected POS Settings"))
@@ -572,7 +577,7 @@ def get_qr_data_uri(value, box_size=4, border=2):
     try:
         import qrcode
     except ImportError:
-        return ""
+        frappe.throw(_("The 'qrcode' library is required to generate QR codes. Please contact your system administrator."))
 
     qr = qrcode.QRCode(
         version=None,

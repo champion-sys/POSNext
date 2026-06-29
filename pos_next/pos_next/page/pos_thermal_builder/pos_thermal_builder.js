@@ -40,8 +40,12 @@ class POSThermalPrintBuilder {
   }
 
   bind() {
-    this.$root.on("change", "#ptb-pos-settings", () => this.on_pos_settings_change());
-    this.$root.on("change", "#ptb-template", () => this.on_template_select_change());
+    this.$root.on("change", "#ptb-pos-settings", (e) => {
+      if (e.originalEvent) this.on_pos_settings_change();
+    });
+    this.$root.on("change", "#ptb-template", (e) => {
+      if (e.originalEvent) this.on_template_select_change();
+    });
 
     this.$root.on("change", "#ptb-paper-size", (e) => {
       this.state.paper_size = String(e.target.value || "80");
@@ -224,6 +228,8 @@ class POSThermalPrintBuilder {
     this.state.elements = [];
     this.active_id = null;
 
+    this.$root.find("#ptb-template-name").val("").prop("disabled", false);
+
     this.render();
   }
 
@@ -316,7 +322,7 @@ class POSThermalPrintBuilder {
 
     this.$root.find("#ptb-pos-settings").val(this.state.pos_settings);
     this.$root.find("#ptb-invoice-doctype").val(this.state.invoice_doctype);
-    this.$root.find("#ptb-template-name").val(this.state.template_name);
+    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", true);
     this.$root.find("#ptb-paper-size").val(this.state.paper_size);
 
     await this.load_invoice_fields();
@@ -336,7 +342,7 @@ class POSThermalPrintBuilder {
     this.active_id = null;
 
     this.$root.find("#ptb-template").val("");
-    this.$root.find("#ptb-template-name").val(this.state.template_name);
+    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", false);
     this.$root.find("#ptb-paper-size").val(this.state.paper_size);
 
     this.render();
@@ -377,7 +383,7 @@ class POSThermalPrintBuilder {
     await this.load_templates();
 
     this.$root.find("#ptb-template").val(this.state.template);
-    this.$root.find("#ptb-template-name").val(this.state.template_name);
+    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", true);
 
     frappe.show_alert({ message: __("Template saved"), indicator: "green" });
   }
