@@ -21,7 +21,7 @@
   background: #ffffff;
   border: 1px solid #eaecf0;
   border-radius: 8px;
-  padding: 10px 16px;
+  padding: 10px 16px 0px;
   display: flex;
   flex-direction: row;
   justify-content: space-between;
@@ -308,12 +308,26 @@
 }
 
 .ptb-empty {
-  border: 1px dashed #d0d5dd;
-  color: #98a2b3;
+  border: 1px dashed #e2e8f0;
+  color: #94a3b8;
   text-align: center;
-  padding: 28px 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: 32px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  background: transparent;
+  height: 100%;
+  min-height: 182px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.ptb-empty:hover {
+  border-color: #cbd5e1;
+  color: #64748b;
 }
 
 .ptb-canvas-element {
@@ -486,10 +500,24 @@
 }
 
 .ptb-container-empty {
-  color: #98a2b3;
-  font-size: 11px;
+  border: 1px dashed #e2e8f0;
+  color: #94a3b8;
   text-align: center;
-  padding: 8px;
+  padding: 16px 12px;
+  margin: 4px 0;
+  border-radius: 6px;
+  font-size: 11px;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.ptb-container-empty:hover {
+  border-color: #cbd5e1;
+  color: #64748b;
 }
 
 .ptb-props {
