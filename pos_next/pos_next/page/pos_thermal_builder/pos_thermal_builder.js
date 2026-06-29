@@ -167,6 +167,14 @@ class POSThermalPrintBuilder {
       this.set_active(id);
     });
 
+    this.$root.on("click", ".ptb-canvas-wrap, .ptb-paper", (e) => {
+      if ($(e.target).hasClass("ptb-canvas-wrap") || $(e.target).hasClass("ptb-paper") || $(e.target).hasClass("ptb-empty")) {
+        if (this.active_id) {
+          this.set_active(null);
+        }
+      }
+    });
+
     this.$root.on("click", ".ptb-delete", (e) => {
       e.preventDefault();
       e.stopPropagation();
