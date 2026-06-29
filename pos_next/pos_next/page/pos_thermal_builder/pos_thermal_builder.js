@@ -395,6 +395,17 @@ class POSThermalPrintBuilder {
       e.preventDefault();
       this.redo();
     });
+
+    this.$root.on("click", ".ptb-toggle-code", (e) => {
+      e.preventDefault();
+      const $modal = this.$root.find("#ptb-code-modal");
+      if ($modal.hasClass("ptb-hidden")) {
+        const generated_html = this.generate_print_format_html();
+        this.show_generated_code(generated_html);
+      } else {
+        $modal.addClass("ptb-hidden");
+      }
+    });
   }
 
   apply_translations() {
