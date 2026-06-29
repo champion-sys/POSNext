@@ -257,7 +257,23 @@ class POSThermalPrintBuilder {
     this.$root.on("input", ".ptb-inline-edit", (e) => {
       const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
       const element = this.find_element(id);
-      if (element) {
+      if (!element) return;
+
+      const $el = $(e.currentTarget);
+      const prop = $el.data("prop");
+      const row_idx = $el.attr("data-row-idx");
+
+      if (row_idx !== undefined && row_idx !== null && element.rows) {
+        const idx = parseInt(row_idx, 10);
+        if (element.rows[idx]) {
+          element.rows[idx].label = e.currentTarget.innerText;
+          element.rows_text = this.details_rows_to_text(element.rows);
+          this.$root.find(`#ptb-props [data-prop="rows_text"]`).val(element.rows_text);
+        }
+      } else if (prop) {
+        this.set_nested_value(element, prop, e.currentTarget.innerText);
+        this.$root.find(`#ptb-props [data-prop="${prop}"]`).val(e.currentTarget.innerText);
+      } else {
         element.content = e.currentTarget.innerText;
         this.$root.find(`#ptb-props [data-prop="content"]`).val(element.content);
       }
@@ -1170,7 +1186,7 @@ class POSThermalPrintBuilder {
 
       return `
         <div class="ptb-receipt-row" style="${style}">
-          ${element.show_label ? `<span>${this.escape_html(element.label || element.fieldname)}</span>` : ""}
+          ${element.show_label ? `<span class="ptb-inline-edit" contenteditable="true" spellcheck="false" data-prop="label" style="outline:none;">${this.escape_html(element.label || element.fieldname)}</span>` : ""}
           <span>${this.escape_html(value)}</span>
         </div>
       `;
@@ -1302,16 +1318,16 @@ class POSThermalPrintBuilder {
   render_preview_details_table(element) {
     const rows = element.rows || [];
     const title = element.show_title
-      ? `<tr><td colspan="2" style="text-align:center;font-weight:700;background:${this.safe_css_color(element.header_bg_color, "#f2f0f0")}">${this.escape_html(element.title || "")}</td></tr>`
+      ? `<tr><td colspan="2" class="ptb-inline-edit" contenteditable="true" spellcheck="false" data-prop="title" style="text-align:center;font-weight:700;background:${this.safe_css_color(element.header_bg_color, "#f2f0f0")};outline:none;">${this.escape_html(element.title || "")}</td></tr>`
       : "";
 
     const body = rows
-      .map((row) => {
+      .map((row, idx) => {
         const value = this.sample_doc[row.fieldname] ?? "";
 
         return `
           <tr>
-            <td style="font-weight:700;">${this.escape_html(row.label)}</td>
+            <td class="ptb-inline-edit" contenteditable="true" spellcheck="false" data-row-idx="${idx}" style="font-weight:700;outline:none;">${this.escape_html(row.label)}</td>
             <td style="text-align:left;direction:ltr;">${this.escape_html(value)}</td>
           </tr>
         `;
