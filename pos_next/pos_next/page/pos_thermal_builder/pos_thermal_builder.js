@@ -175,6 +175,44 @@ class POSThermalPrintBuilder {
       this.delete_element(id);
     });
 
+    this.$root.on("click", ".ptb-move-up", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
+      this.move_element_up(id);
+    });
+
+    this.$root.on("click", ".ptb-move-down", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
+      this.move_element_down(id);
+    });
+
+    this.$root.on("click", ".ptb-duplicate", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
+      this.duplicate_element(id);
+    });
+
+    this.$root.on("click", ".ptb-select-parent", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
+      this.select_parent_element(id);
+    });
+    
+    this.$root.on("click", "#ptb-duplicate-active", (e) => {
+      e.preventDefault();
+      if (this.active_id) this.duplicate_element(this.active_id);
+    });
+    
+    this.$root.on("click", "#ptb-clear-container", (e) => {
+      e.preventDefault();
+      if (this.active_id) this.clear_container(this.active_id);
+    });
+
     this.$root.on("dragstart", ".ptb-canvas-element", (e) => {
       e.stopPropagation();
       this.dragged_id = $(e.currentTarget).data("id");
@@ -793,6 +831,17 @@ class POSThermalPrintBuilder {
         width: 26,
         align: "center"
       },
+      barcode: {
+        content_type: "document_field",
+        static_value: "",
+        url: "",
+        fieldname: "name",
+        fields: ["name", "grand_total"],
+        custom_jinja: "doc.name",
+        barcode_type: "code128",
+        width: 40,
+        align: "center"
+      },
       items_table: {
         show_header: true,
         table_fieldname: "items",
@@ -855,6 +904,7 @@ class POSThermalPrintBuilder {
       details_table: "Details Table",
       footer_note: "Footer Note",
       qr_code: "QR Code",
+      barcode: "Barcode",
       items_table: "Items Table",
       totals: "Totals",
       payments: "Payments",
@@ -971,6 +1021,57 @@ class POSThermalPrintBuilder {
     this.render();
   }
 
+  move_element_up(id) {
+    const info = this.find_element_info(id);
+    if (!info || info.index <= 0) return;
+    const [element] = info.list.splice(info.index, 1);
+    info.list.splice(info.index - 1, 0, element);
+    this.render();
+  }
+
+  move_element_down(id) {
+    const info = this.find_element_info(id);
+    if (!info || info.index >= info.list.length - 1) return;
+    const [element] = info.list.splice(info.index, 1);
+    info.list.splice(info.index + 1, 0, element);
+    this.render();
+  }
+
+  duplicate_element(id) {
+    const info = this.find_element_info(id);
+    if (!info) return;
+
+    const clone_element = (el) => {
+      const cloned = JSON.parse(JSON.stringify(el));
+      cloned.id = this.make_id();
+      if (cloned.children) {
+        cloned.children = cloned.children.map(child => clone_element(child));
+      }
+      return cloned;
+    };
+
+    const cloned = clone_element(info.element);
+    info.list.splice(info.index + 1, 0, cloned);
+    this.active_id = cloned.id;
+    this.render();
+  }
+
+  select_parent_element(id) {
+    const info = this.find_element_info(id);
+    if (info && info.parent) {
+      this.active_id = info.parent.id;
+      this.render();
+    }
+  }
+  
+  clear_container(id) {
+    const info = this.find_element_info(id);
+    if (info && info.element.type === "container") {
+      info.element.children = [];
+      this.render();
+    }
+  }
+
   render() {
     this.render_canvas();
     this.render_props();
@@ -1000,10 +1101,16 @@ class POSThermalPrintBuilder {
   render_canvas_element(element) {
     const active = element.id === this.active_id ? "ptb-active" : "";
     const body = this.render_preview_body(element);
+    const info = this.find_element_info(element.id);
+    const has_parent = info && info.parent !== null;
 
     return `
       <div class="ptb-canvas-element ${active}" data-id="${this.escape_attr(element.id)}" draggable="true">
         <div class="ptb-element-tools">
+          ${has_parent ? `<button class="ptb-tool-btn ptb-select-parent" title="${this.escape_attr(__("Select Parent Container"))}" type="button">↑</button>` : ""}
+          <button class="ptb-tool-btn ptb-move-up" title="${this.escape_attr(__("Move Up"))}" type="button">▲</button>
+          <button class="ptb-tool-btn ptb-move-down" title="${this.escape_attr(__("Move Down"))}" type="button">▼</button>
+          <button class="ptb-tool-btn ptb-duplicate" title="${this.escape_attr(__("Duplicate"))}" type="button">⧉</button>
           <button class="ptb-tool-btn ptb-delete" title="${this.escape_attr(__("Delete"))}" type="button">×</button>
         </div>
         ${body}
@@ -1094,17 +1201,62 @@ class POSThermalPrintBuilder {
       return this.render_preview_taxes(element);
     }
 
-    if (element.type === "qr_code") {
-      return `
-        <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
-          <div class="ptb-qr-placeholder" style="width:${ptb_cint(element.width)}mm; min-height:${ptb_cint(element.width)}mm;">
-            ${__("QR Code")}
+    if (element.type === "qr_code" || element.type === "barcode") {
+      if (!element._preview_data_uri && !element._is_fetching_preview) {
+        element._is_fetching_preview = true;
+        const value = this.get_preview_code_value(element) || "123456";
+        const method = element.type === "qr_code" ? "pos_next.api.thermal_print.get_qr_data_uri" : "pos_next.api.thermal_print.get_barcode_data_uri";
+        const args = { value: value };
+        if (element.type === "barcode") {
+            args.barcode_type = element.barcode_type || "code128";
+        }
+        
+        frappe.call({
+          method: method,
+          args: args,
+          callback: (r) => {
+            element._is_fetching_preview = false;
+            if (r.message) {
+              element._preview_data_uri = r.message;
+              this.render_canvas();
+            }
+          },
+          error: () => {
+            element._is_fetching_preview = false;
+          }
+        });
+      }
+
+      if (element._preview_data_uri) {
+         return `
+          <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+             <img class="thermal-qr" src="${element._preview_data_uri}" style="width:${ptb_cint(element.width)}mm; ${element.type === 'barcode' ? 'max-height:' + (ptb_cint(element.width)/2) + 'mm;' : ''}">
           </div>
-        </div>
-      `;
+         `;
+      } else {
+        const type_label = element.type === "qr_code" ? __("QR Code") : __("Barcode");
+        return `
+          <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+            <div class="ptb-qr-placeholder" style="width:${ptb_cint(element.width)}mm; min-height:${element.type === "qr_code" ? ptb_cint(element.width) : ptb_cint(element.width) / 2}mm;">
+              ${type_label}...
+            </div>
+          </div>
+        `;
+      }
     }
 
     return "";
+  }
+
+  get_preview_code_value(element) {
+    if (element.content_type === "static_text") return element.static_value || "123456";
+    if (element.content_type === "url") return element.url || "https://example.com";
+    if (element.content_type === "document_field") return this.sample_doc[element.fieldname] || "123456";
+    if (element.content_type === "multiple_fields") {
+      const fields = element.fields || ["name"];
+      return fields.map(f => this.sample_doc[f] || "").filter(Boolean).join(" | ") || "123456";
+    }
+    return "123456";
   }
 
   render_preview_details_table(element) {
@@ -1334,6 +1486,7 @@ class POSThermalPrintBuilder {
         ${this.color("background_color", __("Background Color"), element.background_color)}
         <div class="ptb-prop-actions">
           <button class="btn btn-default btn-sm" id="ptb-add-field-to-container" type="button">${__("Add Field to Container")}</button>
+          <button class="btn btn-danger btn-sm" id="ptb-clear-container" type="button" style="margin-top: 5px;">${__("Clear Container")}</button>
         </div>
       `;
     }
@@ -1400,9 +1553,10 @@ class POSThermalPrintBuilder {
       `;
     }
 
-    if (element.type === "qr_code") {
+    if (element.type === "qr_code" || element.type === "barcode") {
+      const label = element.type === "qr_code" ? __("QR Code Properties") : __("Barcode Properties");
       html += `
-        <div class="ptb-section-label">${__("QR Code Properties")}</div>
+        <div class="ptb-section-label">${label}</div>
         ${this.select("content_type", __("Content Type"), element.content_type, [
         ["static_text", __("Static Text")],
         ["url", __("URL")],
@@ -1430,10 +1584,23 @@ class POSThermalPrintBuilder {
         ${this.depends(element.content_type === "custom_jinja", `
           ${this.textarea("custom_jinja", __("Custom Jinja Expression"), element.custom_jinja || "doc.name")}
         `)}
+        
+        ${this.depends(element.type === "barcode", `
+          ${this.select("barcode_type", __("Barcode Type"), element.barcode_type || "code128", [
+            ["code128", "Code 128"],
+            ["code39", "Code 39"],
+            ["ean13", "EAN-13"]
+          ])}
+        `)}
 
         ${this.number("width", __("Width in mm"), element.width)}
       `;
     }
+
+    html += `
+      <div class="ptb-section-label" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 10px;">${__("Actions")}</div>
+      <button class="btn btn-default btn-sm w-100" id="ptb-duplicate-active" type="button">${__("Duplicate Element")}</button>
+    `;
 
     return html;
   }
@@ -1667,6 +1834,13 @@ class POSThermalPrintBuilder {
       const field = this.invoice_fields.find((f) => f.fieldname === value);
       if (field) {
         element.label = field.label || value;
+      }
+    }
+
+    if (element.type === "qr_code" || element.type === "barcode") {
+      const code_props = ["content_type", "static_value", "url", "fieldname", "fields", "custom_jinja", "barcode_type"];
+      if (code_props.includes(prop)) {
+        element._preview_data_uri = null;
       }
     }
 
@@ -2008,7 +2182,7 @@ ${group_receipts}
       return this.render_print_taxes(element);
     }
 
-    if (element.type === "qr_code") {
+    if (element.type === "qr_code" || element.type === "barcode") {
       return this.render_print_qr_code(element);
     }
 
@@ -2215,10 +2389,22 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
 
   render_print_qr_code(element) {
     const width = ptb_cint(element.width || 26);
-    const qr_value = this.get_qr_value_jinja(element);
+    const code_value = this.get_qr_value_jinja(element);
+
+    if (element.type === "barcode") {
+        const barcode_type = this.escape_jinja_string(element.barcode_type || "code128");
+        return `
+{% set ptb_code_value = ${code_value} %}
+{% set ptb_code_data_uri = frappe.get_attr("pos_next.api.thermal_print.get_barcode_data_uri")(ptb_code_value, "${barcode_type}") %}
+{% if ptb_code_data_uri %}
+<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+  <img class="thermal-qr" src="{{ ptb_code_data_uri }}" style="width:${width}mm; max-height:${width/2}mm;">
+</div>
+{% endif %}`.trim();
+    }
 
     return `
-{% set ptb_qr_value = ${qr_value} %}
+{% set ptb_qr_value = ${code_value} %}
 {% set ptb_qr_data_uri = frappe.get_attr("pos_next.api.thermal_print.get_qr_data_uri")(ptb_qr_value) %}
 {% if ptb_qr_data_uri %}
 <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">

@@ -597,3 +597,37 @@ def get_qr_data_uri(value, box_size=4, border=2):
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     return "data:image/png;base64,{0}".format(encoded)
+
+
+@frappe.whitelist()
+def get_barcode_data_uri(value, barcode_type="code128"):
+    if not value:
+        return ""
+
+    try:
+        # pip install python-barcode
+        import barcode
+        from barcode.writer import ImageWriter
+    except ImportError:
+        frappe.throw(_("The 'barcode' library is required to generate barcodes. Please contact your system administrator."))
+
+    try:
+        barcode_class = barcode.get_barcode_class(barcode_type)
+    except barcode.errors.BarcodeNotFoundError:
+        barcode_class = barcode.get_barcode_class("code128")
+
+    # Disable text under barcode for cleaner receipt look
+    options = {
+        "write_text": False,
+        "module_height": 8.0,
+        "quiet_zone": 2.0
+    }
+
+    code = barcode_class(str(value), writer=ImageWriter())
+    
+    buffer = io.BytesIO()
+    code.write(buffer, options=options)
+    
+    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+    return "data:image/png;base64,{0}".format(encoded)
