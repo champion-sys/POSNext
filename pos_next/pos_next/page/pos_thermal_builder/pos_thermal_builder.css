@@ -1,5 +1,5 @@
 .ptb-shell {
-  height: calc(100vh - 92px);
+  height: calc(100vh - 48px);
   min-height: 620px;
   display: flex;
   flex-direction: column;
@@ -430,6 +430,13 @@
   display: flex;
   gap: 8px;
   margin: 8px 0 14px;
+}
+
+.ptb-help {
+  color: #667085;
+  font-size: 11px;
+  margin-top: -6px;
+  margin-bottom: 12px;
 }
 
 .ptb-modal {

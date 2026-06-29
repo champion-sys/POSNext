@@ -1,12 +1,9 @@
-# Copyright (c) 2026, BrainWise and contributors
-# For license information, please see license.txt
-
 import json
 
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, now_datetime
+from frappe.utils import now_datetime
 
 
 ALLOWED_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
@@ -48,16 +45,12 @@ class POSThermalPrintTemplate(Document):
 
         if self.name and self.name != self.template_name and not self.is_new():
             frappe.throw(
-                _(
-                    "Template Name cannot be changed because it is used as the document name"
-                )
+                _("Template Name cannot be changed because it is used as the document name")
             )
 
     def validate_invoice_doctype(self):
         if self.invoice_doctype not in ALLOWED_INVOICE_DOCTYPES:
-            frappe.throw(
-                _("Invoice DocType must be either Sales Invoice or POS Invoice")
-            )
+            frappe.throw(_("Invoice DocType must be either Sales Invoice or POS Invoice"))
 
     def validate_paper_size(self):
         if not self.paper_size:
@@ -119,7 +112,6 @@ def get_invoice_doctype_from_pos_settings(pos_settings):
         frappe.throw(_("POS Settings {0} does not exist").format(pos_settings))
 
     meta = frappe.get_meta("POS Settings")
-
     invoice_type = None
 
     if meta.has_field("invoice_type"):

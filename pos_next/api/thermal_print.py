@@ -64,7 +64,6 @@ def _get_invoice_doctype_from_pos_settings(pos_settings):
     _get_pos_settings_doc(pos_settings)
 
     meta = frappe.get_meta("POS Settings")
-
     invoice_type = None
 
     if meta.has_field("invoice_type"):
@@ -113,6 +112,44 @@ def _get_template_doc(template):
 
 def _get_print_format_name(template_name):
     return "POS Thermal - {0}".format(template_name)
+
+
+def _generate_or_update_print_format(doc):
+    if not doc.generated_html:
+        frappe.throw(_("Generated HTML is empty"))
+
+    print_format_name = doc.print_format or _get_print_format_name(doc.template_name)
+
+    if frappe.db.exists("Print Format", print_format_name):
+        print_format = frappe.get_doc("Print Format", print_format_name)
+        print_format.doc_type = doc.invoice_doctype
+        print_format.print_format_type = "Jinja"
+        print_format.custom_format = 1
+        print_format.disabled = 0
+        print_format.html = doc.generated_html
+
+        if frappe.get_meta("Print Format").has_field("print_format_name"):
+            print_format.print_format_name = print_format_name
+
+        print_format.save(ignore_permissions=True)
+    else:
+        print_format = frappe.new_doc("Print Format")
+        print_format.name = print_format_name
+
+        if frappe.get_meta("Print Format").has_field("print_format_name"):
+            print_format.print_format_name = print_format_name
+
+        if frappe.get_meta("Print Format").has_field("module"):
+            print_format.module = "POS Next"
+
+        print_format.doc_type = doc.invoice_doctype
+        print_format.print_format_type = "Jinja"
+        print_format.custom_format = 1
+        print_format.disabled = 0
+        print_format.html = doc.generated_html
+        print_format.insert(ignore_permissions=True)
+
+    return print_format
 
 
 @frappe.whitelist()
@@ -167,8 +204,15 @@ def get_pos_settings_context(pos_settings):
 @frappe.whitelist()
 def get_invoice_doctype_fields(invoice_doctype):
     invoice_doctype = _normalize_invoice_doctype(invoice_doctype)
-
     meta = frappe.get_meta(invoice_doctype)
+
+    custom_fieldnames = set(
+        frappe.get_all(
+            "Custom Field",
+            filters={"dt": invoice_doctype},
+            pluck="fieldname",
+        )
+    )
 
     excluded_fieldtypes = {
         "Section Break",
@@ -186,6 +230,8 @@ def get_invoice_doctype_fields(invoice_doctype):
         if not df.fieldname:
             continue
 
+        is_custom = 1 if df.fieldname in custom_fieldnames else 0
+
         if df.fieldtype in ("Table", "Table MultiSelect"):
             table_fields.append(
                 {
@@ -193,6 +239,8 @@ def get_invoice_doctype_fields(invoice_doctype):
                     "label": df.label or df.fieldname,
                     "fieldtype": df.fieldtype,
                     "options": df.options,
+                    "is_custom": is_custom,
+                    "hidden": cint(df.hidden),
                 }
             )
             continue
@@ -206,8 +254,12 @@ def get_invoice_doctype_fields(invoice_doctype):
                 "label": df.label or df.fieldname,
                 "fieldtype": df.fieldtype,
                 "options": df.options,
+                "is_custom": is_custom,
+                "hidden": cint(df.hidden),
             }
         )
+
+    fields = sorted(fields, key=lambda x: (x.get("is_custom", 0), x.get("label") or ""))
 
     return {
         "doctype": invoice_doctype,
@@ -222,6 +274,14 @@ def get_child_table_fields(child_doctype):
         frappe.throw(_("Child DocType is required"))
 
     meta = frappe.get_meta(child_doctype)
+
+    custom_fieldnames = set(
+        frappe.get_all(
+            "Custom Field",
+            filters={"dt": child_doctype},
+            pluck="fieldname",
+        )
+    )
 
     excluded_fieldtypes = {
         "Section Break",
@@ -246,8 +306,12 @@ def get_child_table_fields(child_doctype):
                 "label": df.label or df.fieldname,
                 "fieldtype": df.fieldtype,
                 "options": df.options,
+                "is_custom": 1 if df.fieldname in custom_fieldnames else 0,
+                "hidden": cint(df.hidden),
             }
         )
+
+    fields = sorted(fields, key=lambda x: (x.get("is_custom", 0), x.get("label") or ""))
 
     return {
         "doctype": child_doctype,
@@ -347,9 +411,7 @@ def save_template(
 
         if doc.name != template_name:
             frappe.throw(
-                _(
-                    "Template Name cannot be changed because it is used as the document name"
-                )
+                _("Template Name cannot be changed because it is used as the document name")
             )
 
         if doc.pos_settings != pos_settings:
@@ -367,9 +429,7 @@ def save_template(
         doc.save()
     else:
         if frappe.db.exists("POS Thermal Print Template", template_name):
-            frappe.throw(
-                _("Template {0} already exists").format(template_name)
-            )
+            frappe.throw(_("Template {0} already exists").format(template_name))
 
         doc = frappe.new_doc("POS Thermal Print Template")
         doc.template_name = template_name
@@ -408,9 +468,7 @@ def duplicate_template(template, new_template_name=None):
         new_template_name = "{0} Copy".format(source.template_name)
 
     if frappe.db.exists("POS Thermal Print Template", new_template_name):
-        frappe.throw(
-            _("Template {0} already exists").format(new_template_name)
-        )
+        frappe.throw(_("Template {0} already exists").format(new_template_name))
 
     doc = frappe.copy_doc(source)
     doc.template_name = new_template_name
@@ -431,13 +489,33 @@ def set_default_template(template):
     doc = _get_template_doc(template)
     _ensure_pos_settings_access(doc.pos_settings, "write")
 
+    print_format = _generate_or_update_print_format(doc)
+
     doc.is_default = 1
     doc.disabled = 0
-    doc.save()
+    doc.print_format = print_format.name
+    doc.last_generated_on = now_datetime()
+    doc.save(ignore_permissions=True)
+
+    pos_profile = frappe.db.get_value("POS Settings", doc.pos_settings, "pos_profile")
+    pos_profile_updated = 0
+
+    if pos_profile and frappe.get_meta("POS Profile").has_field("print_format"):
+        frappe.db.set_value(
+            "POS Profile",
+            pos_profile,
+            "print_format",
+            print_format.name,
+            update_modified=True,
+        )
+        pos_profile_updated = 1
 
     return {
         "name": doc.name,
         "is_default": 1,
+        "print_format": print_format.name,
+        "pos_profile": pos_profile,
+        "pos_profile_updated": pos_profile_updated,
     }
 
 
@@ -473,28 +551,7 @@ def generate_print_format(template):
     doc = _get_template_doc(template)
     _ensure_pos_settings_access(doc.pos_settings, "write")
 
-    if not doc.generated_html:
-        frappe.throw(_("Generated HTML is empty"))
-
-    print_format_name = doc.print_format or _get_print_format_name(doc.template_name)
-
-    if frappe.db.exists("Print Format", print_format_name):
-        print_format = frappe.get_doc("Print Format", print_format_name)
-        print_format.doc_type = doc.invoice_doctype
-        print_format.print_format_type = "Jinja"
-        print_format.custom_format = 1
-        print_format.disabled = 0
-        print_format.html = doc.generated_html
-        print_format.save(ignore_permissions=True)
-    else:
-        print_format = frappe.new_doc("Print Format")
-        print_format.name = print_format_name
-        print_format.doc_type = doc.invoice_doctype
-        print_format.print_format_type = "Jinja"
-        print_format.custom_format = 1
-        print_format.disabled = 0
-        print_format.html = doc.generated_html
-        print_format.insert(ignore_permissions=True)
+    print_format = _generate_or_update_print_format(doc)
 
     doc.print_format = print_format.name
     doc.last_generated_on = now_datetime()
