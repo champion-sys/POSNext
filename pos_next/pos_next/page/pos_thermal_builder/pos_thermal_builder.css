@@ -238,10 +238,39 @@
   font-size: 12px;
 }
 
-.ptb-canvas-hint {
-  color: #667085;
-  font-size: 11px;
-  text-align: end;
+.ptb-history-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.ptb-history-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d0d5dd;
+  background: #ffffff;
+  border-radius: 6px;
+  color: #344054;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease-in-out;
+}
+
+.ptb-history-btn:hover:not(.disabled) {
+  background-color: #f2f4f7;
+  color: #101828;
+  border-color: #cbd5e1;
+}
+
+.ptb-history-btn.disabled,
+.ptb-history-btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background-color: #fcfcfd;
+  color: #98a2b3;
+  border-color: #eaecf0;
 }
 
 .ptb-canvas-wrap {

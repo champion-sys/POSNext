@@ -385,6 +385,16 @@ class POSThermalPrintBuilder {
         }
       }
     });
+
+    this.$root.on("click", ".ptb-undo:not(.disabled)", (e) => {
+      e.preventDefault();
+      this.undo();
+    });
+
+    this.$root.on("click", ".ptb-redo:not(.disabled)", (e) => {
+      e.preventDefault();
+      this.redo();
+    });
   }
 
   apply_translations() {
@@ -1269,6 +1279,24 @@ class POSThermalPrintBuilder {
   render() {
     this.render_canvas();
     this.render_props();
+    this.render_history_buttons();
+  }
+
+  render_history_buttons() {
+    const $undo = this.$root.find(".ptb-undo");
+    const $redo = this.$root.find(".ptb-redo");
+
+    if (this.undo_stack && this.undo_stack.length) {
+      $undo.removeAttr("disabled").removeClass("disabled");
+    } else {
+      $undo.attr("disabled", "disabled").addClass("disabled");
+    }
+
+    if (this.redo_stack && this.redo_stack.length) {
+      $redo.removeAttr("disabled").removeClass("disabled");
+    } else {
+      $redo.attr("disabled", "disabled").addClass("disabled");
+    }
   }
 
   render_canvas() {
