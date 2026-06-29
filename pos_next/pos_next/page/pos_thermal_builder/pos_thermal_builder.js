@@ -414,10 +414,6 @@ class POSThermalPrintBuilder {
   }
 
   apply_translations() {
-    this.$root.find("[data-i18n]").each((_, el) => {
-      const key = el.getAttribute("data-i18n");
-      el.textContent = __(key);
-    });
 
     const lang = ((frappe.boot && frappe.boot.lang) || "en").split("-")[0];
     const rtl_languages = ["ar", "fa", "he", "ur"];
