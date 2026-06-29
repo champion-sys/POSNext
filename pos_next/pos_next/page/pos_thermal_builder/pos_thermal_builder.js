@@ -231,18 +231,40 @@ class POSThermalPrintBuilder {
       e.preventDefault();
       e.stopPropagation();
       const $currentTarget = $(e.currentTarget);
-      if (!$currentTarget.hasClass("ptb-dragover")) {
-        this.$root.find(".ptb-dragover").removeClass("ptb-dragover");
-        $currentTarget.addClass("ptb-dragover");
+      const target_id = $currentTarget.data("id");
+
+      if (this.dragged_id === target_id) return;
+
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relY = e.originalEvent.clientY - rect.top;
+      const target_info = this.find_element_info(target_id);
+
+      let position = "before";
+      if (target_info && target_info.element.type === "container" && (!target_info.element.children || target_info.element.children.length === 0)) {
+        position = "inside";
+      } else {
+        position = relY < rect.height / 2 ? "before" : "after";
+      }
+
+      this.drop_position = position;
+
+      this.$root.find(".ptb-dragover, .ptb-dragover-top, .ptb-dragover-bottom, .ptb-dragover-inside").removeClass("ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
+
+      if (position === "before") {
+        $currentTarget.addClass("ptb-dragover-top");
+      } else if (position === "after") {
+        $currentTarget.addClass("ptb-dragover-bottom");
+      } else {
+        $currentTarget.addClass("ptb-dragover-inside");
       }
     });
 
     this.$root.on("dragleave drop dragend", ".ptb-canvas-element", (e) => {
-      $(e.currentTarget).removeClass("ptb-dragover");
+      $(e.currentTarget).removeClass("ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
     });
 
     this.$root.on("dragend", ".ptb-canvas-element", () => {
-      this.$root.find(".ptb-dragover").removeClass("ptb-dragover");
+      this.$root.find(".ptb-dragover, .ptb-dragover-top, .ptb-dragover-bottom, .ptb-dragover-inside").removeClass("ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
     });
 
     this.$root.on("drop", ".ptb-canvas-element", (e) => {
@@ -250,8 +272,9 @@ class POSThermalPrintBuilder {
       e.stopPropagation();
 
       const target_id = $(e.currentTarget).data("id");
-      this.reorder_element(this.dragged_id, target_id);
+      this.reorder_element(this.dragged_id, target_id, this.drop_position);
       this.dragged_id = null;
+      this.drop_position = null;
     });
 
     this.$root.on("input", ".ptb-inline-edit", (e) => {
@@ -1046,7 +1069,7 @@ class POSThermalPrintBuilder {
     return null;
   }
 
-  reorder_element(source_id, target_id) {
+  reorder_element(source_id, target_id, position = "before") {
     if (!source_id || !target_id || source_id === target_id) return;
 
     const source_info = this.find_element_info(source_id);
@@ -1055,7 +1078,7 @@ class POSThermalPrintBuilder {
     if (!source_info || !target_info) return;
 
     if (source_info.element.type === "container") {
-      if (target_info.parent !== null || target_info.element.type === "container") {
+      if (target_info.parent !== null || position === "inside") {
         return;
       }
     }
@@ -1066,7 +1089,7 @@ class POSThermalPrintBuilder {
 
     const [source] = source_info.list.splice(source_info.index, 1);
 
-    if (target_info.element.type === "container") {
+    if (position === "inside" && target_info.element.type === "container") {
       target_info.element.children = target_info.element.children || [];
       target_info.element.children.push(source);
     } else {
@@ -1074,6 +1097,10 @@ class POSThermalPrintBuilder {
 
       if (source_info.list === target_info.list && source_info.index < target_info.index) {
         target_index--;
+      }
+
+      if (position === "after") {
+        target_index++;
       }
 
       target_info.list.splice(target_index, 0, source);
