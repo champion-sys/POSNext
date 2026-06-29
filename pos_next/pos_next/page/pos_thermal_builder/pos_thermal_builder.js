@@ -9,6 +9,21 @@ frappe.pages["pos-thermal-builder"].on_page_load = function (wrapper) {
   new POSThermalPrintBuilder(page);
 };
 
+const PTB_ALLOWED_BORDER_STYLES = new Set(["solid", "dashed", "dotted", "none"]);
+const PTB_ALLOWED_LINE_STYLES = new Set(["solid", "dashed", "dotted"]);
+
+function ptb_cint(value) {
+  if (typeof cint === "function") return cint(value);
+  const number = parseInt(value || 0, 10);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function ptb_flt(value) {
+  if (typeof flt === "function") return flt(value);
+  const number = parseFloat(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
 class POSThermalPrintBuilder {
   constructor(page) {
     this.page = page;
@@ -32,30 +47,112 @@ class POSThermalPrintBuilder {
     this.child_table_fields = {};
     this.active_id = null;
     this.dragged_id = null;
+    this.prevent_trigger = false;
     this.sample_doc = this.get_sample_doc();
+    this._canvas_render_frame = null;
+    this._template_load_token = null;
+    this._switch_token = null;
+    this._saving = false;
 
+    this.setup_page_fields();
+    this.setup_page_actions();
     this.bind();
     this.apply_translations();
-    this.load_pos_settings_list();
+    this.handle_async(() => this.load_pos_settings_list());
+  }
+
+  setup_page_fields() {
+    const self = this;
+    const $container = this.$root.find(".ptb-topbar-fields");
+
+    const make_field = (df) => {
+      const $field_wrapper = $('<div class="ptb-topbar-field"></div>').appendTo($container);
+
+      if (df.fieldname === "paper_size") {
+        $field_wrapper.addClass("ptb-paper-field");
+      } else if (df.fieldname === "invoice_doctype") {
+        $field_wrapper.addClass("ptb-invoice-doctype-field");
+      } else if (df.fieldname) {
+        $field_wrapper.addClass(`ptb-${df.fieldname.replace(/_/g, "-")}-field`);
+      }
+
+      const control = frappe.ui.form.make_control({
+        df: df,
+        parent: $field_wrapper,
+        only_input: false
+      });
+      control.refresh();
+
+      this.page.fields_dict[df.fieldname] = control;
+      return control;
+    };
+
+    this.pos_settings_field = make_field({
+      fieldname: "pos_settings",
+      label: __("POS Settings"),
+      fieldtype: "Select",
+      change: function() {
+        if (self.prevent_trigger) return;
+        self.handle_async(() => self.on_pos_settings_change());
+      }
+    });
+
+    this.invoice_doctype_field = make_field({
+      fieldname: "invoice_doctype",
+      label: __("Invoice DocType"),
+      fieldtype: "Read Only"
+    });
+
+    this.template_field = make_field({
+      fieldname: "template",
+      label: __("Template"),
+      fieldtype: "Select",
+      change: function() {
+        if (self.prevent_trigger) return;
+        self.handle_async(() => self.on_template_select_change());
+      }
+    });
+
+    this.template_name_field = make_field({
+      fieldname: "template_name",
+      label: __("Template Name"),
+      fieldtype: "Data",
+      change: function() {
+        if (self.prevent_trigger) return;
+        self.state.template_name = this.get_value() || "";
+      }
+    });
+
+    this.paper_size_field = make_field({
+      fieldname: "paper_size",
+      label: __("Paper Size"),
+      fieldtype: "Select",
+      options: [
+        { value: "58", label: "58 mm" },
+        { value: "80", label: "80 mm" }
+      ],
+      default: "80",
+      change: function() {
+        if (self.prevent_trigger) return;
+        self.state.paper_size = String(this.get_value() || "80");
+        self.schedule_canvas_render();
+      }
+    });
+  }
+
+  setup_page_actions() {
+    this.page.set_primary_action(
+      __("Save"),
+      () => this.handle_async(() => this.save_template()),
+    );
+
+    this.page.add_inner_button(__("New"), () => this.handle_async(() => this.new_template()));
+    this.page.add_inner_button(__("Save As"), () => this.handle_async(() => this.save_as_template()));
+    this.page.add_inner_button(__("Set Default"), () => this.handle_async(() => this.set_default_template()));
+    this.page.add_inner_button(__("Generate Print Format"), () => this.handle_async(() => this.generate_print_format()));
   }
 
   bind() {
-    this.$root.on("change", "#ptb-pos-settings", (e) => {
-      if (e.originalEvent) this.on_pos_settings_change();
-    });
-    this.$root.on("change", "#ptb-template", (e) => {
-      if (e.originalEvent) this.on_template_select_change();
-    });
-
-    this.$root.on("change", "#ptb-paper-size", (e) => {
-      this.state.paper_size = String(e.target.value || "80");
-      this.render_canvas();
-    });
-
-    this.$root.on("input", "#ptb-template-name", (e) => {
-      this.state.template_name = e.target.value || "";
-    });
-
     this.$root.on("click", ".ptb-add", (e) => {
       const type = $(e.currentTarget).data("type");
       this.add_element(type);
@@ -87,16 +184,19 @@ class POSThermalPrintBuilder {
     this.$root.on("dragover", ".ptb-canvas-element", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.$root.find(".ptb-canvas-element").removeClass("ptb-dragover");
-      $(e.currentTarget).addClass("ptb-dragover");
+      const $currentTarget = $(e.currentTarget);
+      if (!$currentTarget.hasClass("ptb-dragover")) {
+        this.$root.find(".ptb-dragover").removeClass("ptb-dragover");
+        $currentTarget.addClass("ptb-dragover");
+      }
     });
 
     this.$root.on("dragleave drop dragend", ".ptb-canvas-element", (e) => {
       $(e.currentTarget).removeClass("ptb-dragover");
     });
 
-    this.$root.on("dragend", ".ptb-canvas-element", (e) => {
-      this.$root.find(".ptb-canvas-element").removeClass("ptb-dragover");
+    this.$root.on("dragend", ".ptb-canvas-element", () => {
+      this.$root.find(".ptb-dragover").removeClass("ptb-dragover");
     });
 
     this.$root.on("drop", ".ptb-canvas-element", (e) => {
@@ -118,7 +218,7 @@ class POSThermalPrintBuilder {
 
     this.$root.on("click", "#ptb-upload-image", (e) => {
       e.preventDefault();
-      this.upload_image_for_active_element();
+      this.handle_async(() => this.upload_image_for_active_element());
     });
 
     this.$root.on("click", "#ptb-add-field-to-container", (e) => {
@@ -126,18 +226,11 @@ class POSThermalPrintBuilder {
       this.add_element("field");
     });
 
-    this.$root.on("click", "#ptb-new-template", () => this.new_template());
-    this.$root.on("click", "#ptb-load-template", () => this.load_selected_template());
-    this.$root.on("click", "#ptb-save-template", () => this.save_template());
-    this.$root.on("click", "#ptb-save-as-template", () => this.save_as_template());
-    this.$root.on("click", "#ptb-set-default", () => this.set_default_template());
-    this.$root.on("click", "#ptb-generate-print-format", () => this.generate_print_format());
-
     this.$root.on("click", "#ptb-close-code, #ptb-close-code-bottom", () => {
       this.$root.find("#ptb-code-modal").addClass("ptb-hidden");
     });
 
-    this.$root.on("click", "#ptb-copy-code", () => this.copy_generated_code());
+    this.$root.on("click", "#ptb-copy-code", () => this.handle_async(() => this.copy_generated_code()));
   }
 
   apply_translations() {
@@ -162,14 +255,80 @@ class POSThermalPrintBuilder {
         freeze,
         callback: (r) => {
           if (r.exc) {
-            reject(r.exc);
+            reject(this.normalize_error(r));
             return;
           }
 
           resolve(r.message);
         },
-        error: reject
+        error: (xhr) => reject(this.normalize_error(xhr))
       });
+    });
+  }
+
+  handle_async(fn) {
+    return Promise.resolve()
+      .then(fn)
+      .catch((error) => this.show_error(error));
+  }
+
+  async with_prevent_trigger(fn) {
+    this.prevent_trigger = true;
+    try {
+      await fn();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally {
+      this.prevent_trigger = false;
+    }
+  }
+
+  normalize_error(error) {
+    if (!error) return __("Unknown error");
+
+    if (typeof error === "string") {
+      return error;
+    }
+
+    if (error._server_messages) {
+      try {
+        const messages = JSON.parse(error._server_messages)
+          .map((message) => JSON.parse(message).message)
+          .filter(Boolean);
+
+        if (messages.length) {
+          return messages.join("<br>");
+        }
+      } catch (e) {
+        // Fall through to other formats.
+      }
+    }
+
+    if (error.message) return error.message;
+    if (error.exc) return error.exc;
+
+    return String(error);
+  }
+
+  show_error(error) {
+    const message = this.normalize_error(error);
+
+    frappe.msgprint({
+      title: __("POS Thermal Print Builder"),
+      message,
+      indicator: "red"
+    });
+
+    console.error(error);
+  }
+
+  schedule_canvas_render() {
+    if (this._canvas_render_frame) {
+      window.cancelAnimationFrame(this._canvas_render_frame);
+    }
+
+    this._canvas_render_frame = window.requestAnimationFrame(() => {
+      this._canvas_render_frame = null;
+      this.render_canvas();
     });
   }
 
@@ -181,46 +340,63 @@ class POSThermalPrintBuilder {
     const records = await this.call("get_pos_settings_list");
     this.pos_settings_list = records || [];
 
-    const $select = this.$root.find("#ptb-pos-settings");
-    $select.empty();
-
     if (!this.pos_settings_list.length) {
-      $select.append(`<option value="">${__("No POS Settings found")}</option>`);
+      this.page.fields_dict.pos_settings.df.options = [
+        { value: "", label: __("No POS Settings found") }
+      ];
+      this.page.fields_dict.pos_settings.refresh();
       return;
     }
 
-    this.pos_settings_list.forEach((row) => {
+    const options = this.pos_settings_list.map((row) => {
       const label = row.pos_profile ? `${row.pos_profile} (${row.name})` : row.name;
-      $select.append(`<option value="${this.escape_attr(row.name)}">${this.escape_html(label)}</option>`);
+      return { value: row.name, label };
+    });
+
+    this.page.fields_dict.pos_settings.df.options = options;
+
+    // Guard: refresh() auto-selects the first option and fires the 'change' event
+    // synchronously. Without this guard, on_pos_settings_change() would launch a
+    // parallel _switch_pos_settings() before the one below, causing a page freeze.
+    await this.with_prevent_trigger(async () => {
+      this.page.fields_dict.pos_settings.refresh();
     });
 
     const route_template = frappe.route_options && frappe.route_options.template;
 
     if (route_template) {
-      await this.load_template(route_template);
       frappe.route_options = null;
+      await this.load_template(route_template);
       return;
     }
 
-    this.state.pos_settings = this.pos_settings_list[0].name;
-    $select.val(this.state.pos_settings);
-    await this.on_pos_settings_change();
+    await this._switch_pos_settings(this.pos_settings_list[0].name);
   }
 
   async on_pos_settings_change() {
-    const pos_settings = this.$root.find("#ptb-pos-settings").val();
+    if (this.prevent_trigger) return;
 
-    if (!pos_settings) return;
+    const pos_settings = this.page.fields_dict.pos_settings.get_value();
+
+    if (!pos_settings || pos_settings === this.state.pos_settings) return;
+
+    await this._switch_pos_settings(pos_settings);
+  }
+
+  async _switch_pos_settings(pos_settings) {
+    const token = (this._switch_token = {});
 
     this.state.pos_settings = pos_settings;
 
     const context = await this.call("get_pos_settings_context", { pos_settings });
+
+    if (token !== this._switch_token) return;
+
     this.state.invoice_doctype = context.invoice_doctype || "POS Invoice";
 
-    this.$root.find("#ptb-invoice-doctype").val(this.state.invoice_doctype);
+    await this._load_pos_settings_data(pos_settings, this.state.invoice_doctype);
 
-    await this.load_invoice_fields();
-    await this.load_templates();
+    if (token !== this._switch_token) return;
 
     this.state.template = "";
     this.state.template_name = "";
@@ -228,78 +404,59 @@ class POSThermalPrintBuilder {
     this.state.elements = [];
     this.active_id = null;
 
-    this.$root.find("#ptb-template-name").val("").prop("disabled", false);
+    await this.with_prevent_trigger(async () => {
+      await this.page.fields_dict.pos_settings.set_value(pos_settings);
+      await this.page.fields_dict.invoice_doctype.set_value(this.state.invoice_doctype);
+      await this.page.fields_dict.template_name.set_value("");
+      this._set_template_name_enabled(true);
+      await this._refresh_template_options();
+    });
 
     this.render();
   }
 
-  async load_invoice_fields() {
-    if (!this.state.invoice_doctype) return;
+  async _load_pos_settings_data(pos_settings, invoice_doctype) {
+    const [fields_result, templates] = await Promise.all([
+      this.call("get_invoice_doctype_fields", { invoice_doctype }),
+      this.call("list_templates", { pos_settings, invoice_doctype })
+    ]);
 
-    const result = await this.call("get_invoice_doctype_fields", {
-      invoice_doctype: this.state.invoice_doctype
-    });
-
-    this.invoice_fields = result.fields || [];
-    this.table_fields = result.table_fields || [];
-
-    const items_table = this.table_fields.find((df) => df.fieldname === "items") || this.table_fields[0];
-
-    if (items_table && items_table.options && !this.child_table_fields[items_table.options]) {
-      const child = await this.call("get_child_table_fields", {
-        child_doctype: items_table.options
-      });
-
-      this.child_table_fields[items_table.options] = child.fields || [];
-    }
-  }
-
-  async load_templates() {
-    if (!this.state.pos_settings || !this.state.invoice_doctype) return;
-
-    const templates = await this.call("list_templates", {
-      pos_settings: this.state.pos_settings,
-      invoice_doctype: this.state.invoice_doctype
-    });
-
+    this.invoice_fields = (fields_result && fields_result.fields) || [];
+    this.table_fields = (fields_result && fields_result.table_fields) || [];
     this.templates = templates || [];
-    this.render_template_select();
   }
 
-  render_template_select() {
-    const $select = this.$root.find("#ptb-template");
-    $select.empty();
-
-    $select.append(`<option value="">${__("New Template")}</option>`);
+  async _refresh_template_options() {
+    const options = [{ value: "", label: __("New Template") }];
 
     this.templates.forEach((row) => {
       const suffix = row.is_default ? ` - ${__("Default")}` : "";
-      $select.append(`
-        <option value="${this.escape_attr(row.name)}">
-          ${this.escape_html(row.template_name)}${suffix}
-        </option>
-      `);
+      options.push({
+        value: row.name,
+        label: `${row.template_name}${suffix}`
+      });
     });
 
-    $select.val(this.state.template || "");
+    this.page.fields_dict.template.df.options = options;
+    this.page.fields_dict.template.refresh();
+    await this.page.fields_dict.template.set_value(this.state.template || "");
   }
 
-  on_template_select_change() {
-    const template = this.$root.find("#ptb-template").val();
+  _set_template_name_enabled(enabled) {
+    const field = this.page.fields_dict.template_name;
+    if (!field) return;
 
-    if (!template) {
-      this.new_template(false);
-      return;
-    }
-
-    this.load_template(template);
+    field.df.read_only = enabled ? 0 : 1;
+    field.refresh();
   }
 
-  async load_selected_template() {
-    const template = this.$root.find("#ptb-template").val();
+  async on_template_select_change() {
+    if (this.prevent_trigger) return;
+
+    const template = this.page.fields_dict.template.get_value();
 
     if (!template) {
-      frappe.show_alert({ message: __("Please select a template"), indicator: "orange" });
+      await this.new_template(false);
       return;
     }
 
@@ -307,33 +464,39 @@ class POSThermalPrintBuilder {
   }
 
   async load_template(template) {
+    const token = (this._template_load_token = {});
     const data = await this.call("get_template", { template });
+
+    if (token !== this._template_load_token) return;
 
     this.state.pos_settings = data.pos_settings;
     this.state.invoice_doctype = data.invoice_doctype;
     this.state.template = data.name;
     this.state.template_name = data.template_name;
     this.state.paper_size = String(data.paper_size || "80");
-    this.state.is_default = cint(data.is_default);
+    this.state.is_default = ptb_cint(data.is_default);
 
     const layout = data.layout_json || {};
-    this.state.elements = layout.elements || [];
+    this.state.elements = this.normalize_elements(layout.elements || []);
     this.active_id = null;
 
-    this.$root.find("#ptb-pos-settings").val(this.state.pos_settings);
-    this.$root.find("#ptb-invoice-doctype").val(this.state.invoice_doctype);
-    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", true);
-    this.$root.find("#ptb-paper-size").val(this.state.paper_size);
+    await this._load_pos_settings_data(this.state.pos_settings, this.state.invoice_doctype);
 
-    await this.load_invoice_fields();
-    await this.load_templates();
+    if (token !== this._template_load_token) return;
 
-    this.$root.find("#ptb-template").val(this.state.template);
+    await this.with_prevent_trigger(async () => {
+      await this.page.fields_dict.pos_settings.set_value(this.state.pos_settings);
+      await this.page.fields_dict.invoice_doctype.set_value(this.state.invoice_doctype);
+      await this.page.fields_dict.template_name.set_value(this.state.template_name);
+      this._set_template_name_enabled(false);
+      await this.page.fields_dict.paper_size.set_value(this.state.paper_size);
+      await this._refresh_template_options();
+    });
 
     this.render();
   }
 
-  new_template(clear_name = true) {
+  async new_template(clear_name = true) {
     this.state.template = "";
     this.state.template_name = clear_name ? "" : this.state.template_name;
     this.state.paper_size = "80";
@@ -341,51 +504,70 @@ class POSThermalPrintBuilder {
     this.state.elements = [];
     this.active_id = null;
 
-    this.$root.find("#ptb-template").val("");
-    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", false);
-    this.$root.find("#ptb-paper-size").val(this.state.paper_size);
+    await this.with_prevent_trigger(async () => {
+      await this.page.fields_dict.template.set_value("");
+      await this.page.fields_dict.template_name.set_value(this.state.template_name);
+      this._set_template_name_enabled(true);
+      await this.page.fields_dict.paper_size.set_value(this.state.paper_size);
+    });
 
     this.render();
   }
 
   async save_template() {
-    if (!this.state.pos_settings) {
-      frappe.throw(__("POS Settings is required"));
-      return;
+    if (this._saving) return;
+
+    this._saving = true;
+
+    try {
+      if (!this.state.pos_settings) {
+        frappe.throw(__("POS Settings is required"));
+        return;
+      }
+
+      const template_name = (this.page.fields_dict.template_name.get_value() || "").trim();
+
+      if (!template_name) {
+        frappe.throw(__("Template Name is required"));
+        return;
+      }
+
+      const generated_html = this.generate_print_format_html();
+
+      const result = await this.call("save_template", {
+        pos_settings: this.state.pos_settings,
+        template_name,
+        paper_size: this.state.paper_size,
+        layout_json: this.get_layout_json(),
+        generated_html,
+        generated_css: "",
+        template: this.state.template || null,
+        is_default: this.state.is_default || 0,
+        disabled: 0,
+        remarks: ""
+      }, true);
+
+      this.state.template = result.name;
+      this.state.template_name = result.template_name;
+      this.state.is_default = result.is_default || 0;
+
+      const saved_templates = await this.call("list_templates", {
+        pos_settings: this.state.pos_settings,
+        invoice_doctype: this.state.invoice_doctype
+      });
+
+      this.templates = saved_templates || [];
+
+      await this.with_prevent_trigger(async () => {
+        await this._refresh_template_options();
+        await this.page.fields_dict.template_name.set_value(this.state.template_name);
+        this._set_template_name_enabled(false);
+      });
+
+      frappe.show_alert({ message: __("Template saved"), indicator: "green" });
+    } finally {
+      this._saving = false;
     }
-
-    const template_name = (this.$root.find("#ptb-template-name").val() || "").trim();
-
-    if (!template_name) {
-      frappe.throw(__("Template Name is required"));
-      return;
-    }
-
-    const generated_html = this.generate_print_format_html();
-
-    const result = await this.call("save_template", {
-      pos_settings: this.state.pos_settings,
-      template_name,
-      paper_size: this.state.paper_size,
-      layout_json: this.get_layout_json(),
-      generated_html,
-      generated_css: "",
-      template: this.state.template || null,
-      is_default: this.state.is_default || 0,
-      disabled: 0,
-      remarks: ""
-    }, true);
-
-    this.state.template = result.name;
-    this.state.template_name = result.template_name;
-    this.state.is_default = result.is_default || 0;
-
-    await this.load_templates();
-
-    this.$root.find("#ptb-template").val(this.state.template);
-    this.$root.find("#ptb-template-name").val(this.state.template_name).prop("disabled", true);
-
-    frappe.show_alert({ message: __("Template saved"), indicator: "green" });
   }
 
   async save_as_template() {
@@ -398,29 +580,30 @@ class POSThermalPrintBuilder {
           reqd: 1
         }
       ],
-      async (values) => {
+      (values) => this.handle_async(async () => {
         const old_template = this.state.template;
+        const old_template_name = this.state.template_name;
+
         this.state.template = "";
-        this.$root.find("#ptb-template-name").val(values.template_name);
+        this.page.fields_dict.template_name.set_value(values.template_name);
         this.state.template_name = values.template_name;
 
         try {
           await this.save_template();
         } catch (e) {
           this.state.template = old_template;
+          this.state.template_name = old_template_name;
+          this.page.fields_dict.template_name.set_value(old_template_name);
+          throw e;
         }
-      },
+      }),
       __("Save As"),
       __("Save")
     );
   }
 
   async set_default_template() {
-    if (!this.state.template) {
-      await this.save_template();
-    } else {
-      await this.save_template();
-    }
+    await this.save_template();
 
     const result = await this.call("set_default_template", {
       template: this.state.template
@@ -428,7 +611,16 @@ class POSThermalPrintBuilder {
 
     this.state.is_default = 1;
 
-    await this.load_templates();
+    const default_templates = await this.call("list_templates", {
+      pos_settings: this.state.pos_settings,
+      invoice_doctype: this.state.invoice_doctype
+    });
+
+    this.templates = default_templates || [];
+
+    await this.with_prevent_trigger(async () => {
+      await this._refresh_template_options();
+    });
 
     const message = result.pos_profile_updated
       ? __("Template set as default and assigned to POS Profile")
@@ -438,11 +630,7 @@ class POSThermalPrintBuilder {
   }
 
   async generate_print_format() {
-    if (!this.state.template) {
-      await this.save_template();
-    } else {
-      await this.save_template();
-    }
+    await this.save_template();
 
     const result = await this.call("generate_print_format", {
       template: this.state.template
@@ -466,6 +654,40 @@ class POSThermalPrintBuilder {
       paper_size: this.state.paper_size,
       elements: this.state.elements
     };
+  }
+
+  normalize_elements(elements) {
+    return (elements || []).map((element) => {
+      const default_element = this.get_default_element(element.type);
+      const normalized = Object.assign({}, default_element, element);
+
+      if (normalized.type === "items_table") {
+        normalized.split_settings = Object.assign(
+          {},
+          default_element.split_settings || {},
+          element.split_settings || {}
+        );
+      }
+
+      if (normalized.type === "container") {
+        normalized.children = this.normalize_elements(element.children || []);
+      }
+
+      return normalized;
+    });
+  }
+
+  find_first_element_by_type(type, list = this.state.elements) {
+    for (const element of list || []) {
+      if (element.type === type) return element;
+
+      if (element.children && element.children.length) {
+        const found = this.find_first_element_by_type(type, element.children);
+        if (found) return found;
+      }
+    }
+
+    return null;
   }
 
   add_element(type, overrides = {}) {
@@ -694,6 +916,7 @@ class POSThermalPrintBuilder {
 
     for (let i = 0; i < list.length; i++) {
       const element = list[i];
+
       if (element.id === id) {
         return {
           element,
@@ -720,34 +943,28 @@ class POSThermalPrintBuilder {
 
     if (!source_info || !target_info) return;
 
-    // A container cannot contain a container
     if (source_info.element.type === "container") {
       if (target_info.parent !== null || target_info.element.type === "container") {
         return;
       }
     }
 
-    // Target cannot be a descendant of source
     if (this.find_element(target_id, source_info.element.children || [])) {
       return;
     }
 
-    // Remove source from its original location
     const [source] = source_info.list.splice(source_info.index, 1);
 
-    // If target is a container, we drop it INTO the container
     if (target_info.element.type === "container") {
       target_info.element.children = target_info.element.children || [];
       target_info.element.children.push(source);
     } else {
-      // Otherwise, we insert it at target's position
       let target_index = target_info.index;
-      
-      // Adjust target index if source and target were in the same list and source was before target
+
       if (source_info.list === target_info.list && source_info.index < target_info.index) {
         target_index--;
       }
-      
+
       target_info.list.splice(target_index, 0, source);
     }
 
@@ -824,18 +1041,18 @@ class POSThermalPrintBuilder {
       }
 
       return `
-        <div style="text-align:${this.css_align(element.align)}; margin:${cint(element.margin_top)}px 0 ${cint(element.margin_bottom)}px;">
-          <img class="ptb-image-preview" src="${this.escape_attr(src)}" style="width:${cint(element.width)}mm;">
+        <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+          <img class="ptb-image-preview" src="${this.escape_attr(src)}" style="width:${ptb_cint(element.width)}mm;">
         </div>
       `;
     }
 
     if (element.type === "divider") {
-      return `<div class="ptb-divider" style="border-top-style:${this.escape_attr(element.line_style || "dashed")};"></div>`;
+      return `<div class="ptb-divider" style="border-top-style:${this.safe_line_style(element.line_style)};"></div>`;
     }
 
     if (element.type === "spacer") {
-      return `<div style="height:${cint(element.height)}px;"></div>`;
+      return `<div style="height:${ptb_cint(element.height)}px;"></div>`;
     }
 
     if (element.type === "container") {
@@ -844,10 +1061,10 @@ class POSThermalPrintBuilder {
         .join("");
 
       const container_style = [
-        `border:${cint(element.border_width)}px ${element.border_style || "solid"} ${element.border_color || "#000"}`,
-        `border-radius:${cint(element.border_radius)}px`,
-        `padding:${cint(element.padding)}px`,
-        `background:${element.background_color || "#fff"}`
+        `border:${ptb_cint(element.border_width)}px ${this.safe_border_style(element.border_style)} ${this.safe_css_color(element.border_color, "#000000")}`,
+        `border-radius:${ptb_cint(element.border_radius)}px`,
+        `padding:${ptb_cint(element.padding)}px`,
+        `background:${this.safe_css_color(element.background_color, "#ffffff")}`
       ].join(";");
 
       return `
@@ -879,8 +1096,8 @@ class POSThermalPrintBuilder {
 
     if (element.type === "qr_code") {
       return `
-        <div style="text-align:${this.css_align(element.align)}; margin:${cint(element.margin_top)}px 0 ${cint(element.margin_bottom)}px;">
-          <div class="ptb-qr-placeholder" style="width:${cint(element.width)}mm; min-height:${cint(element.width)}mm;">
+        <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+          <div class="ptb-qr-placeholder" style="width:${ptb_cint(element.width)}mm; min-height:${ptb_cint(element.width)}mm;">
             ${__("QR Code")}
           </div>
         </div>
@@ -893,12 +1110,13 @@ class POSThermalPrintBuilder {
   render_preview_details_table(element) {
     const rows = element.rows || [];
     const title = element.show_title
-      ? `<tr><td colspan="2" style="text-align:center;font-weight:700;background:${this.escape_attr(element.header_bg_color || "#f2f0f0")}">${this.escape_html(element.title || "")}</td></tr>`
+      ? `<tr><td colspan="2" style="text-align:center;font-weight:700;background:${this.safe_css_color(element.header_bg_color, "#f2f0f0")}">${this.escape_html(element.title || "")}</td></tr>`
       : "";
 
     const body = rows
       .map((row) => {
         const value = this.sample_doc[row.fieldname] ?? "";
+
         return `
           <tr>
             <td style="font-weight:700;">${this.escape_html(row.label)}</td>
@@ -910,9 +1128,9 @@ class POSThermalPrintBuilder {
 
     return `
       <table class="ptb-preview-table" style="
-        font-size:${cint(element.font_size || 11)}px;
-        border:${cint(element.border_width)}px ${element.border_style || "solid"} ${element.border_color || "#000"};
-        border-radius:${cint(element.border_radius)}px;
+        font-size:${ptb_cint(element.font_size || 11)}px;
+        border:${ptb_cint(element.border_width)}px ${this.safe_border_style(element.border_style)} ${this.safe_css_color(element.border_color, "#000000")};
+        border-radius:${ptb_cint(element.border_radius)}px;
         border-collapse:separate;
         overflow:hidden;
       ">
@@ -928,7 +1146,7 @@ class POSThermalPrintBuilder {
 
     const thead = element.show_header
       ? `
-        <thead style="background:${this.escape_attr(element.header_bg_color || "#f2f0f0")}; color:${this.escape_attr(element.header_text_color || "#000")}">
+        <thead style="background:${this.safe_css_color(element.header_bg_color, "#f2f0f0")}; color:${this.safe_css_color(element.header_text_color, "#000000")}">
           <tr>
             ${columns.map((c) => `<th>${this.escape_html(labels[c] || c)}</th>`).join("")}
           </tr>
@@ -948,7 +1166,7 @@ class POSThermalPrintBuilder {
 
     return `
       ${split_badge}
-      <table class="ptb-preview-table" style="font-size:${cint(element.font_size)}px;">
+      <table class="ptb-preview-table" style="font-size:${ptb_cint(element.font_size)}px;">
         ${thead}
         <tbody>${rows}</tbody>
       </table>
@@ -966,7 +1184,7 @@ class POSThermalPrintBuilder {
 
     return rows
       .map(([label, value]) => `
-        <div class="ptb-receipt-row" style="font-size:${cint(element.font_size)}px;">
+        <div class="ptb-receipt-row" style="font-size:${ptb_cint(element.font_size)}px;">
           <span>${this.escape_html(label)}</span>
           <span>${this.format_money(value)} ${this.escape_html(this.sample_doc.currency)}</span>
         </div>
@@ -981,7 +1199,7 @@ class POSThermalPrintBuilder {
 
     const rows = this.sample_doc.payments
       .map((row) => `
-        <div class="ptb-receipt-row" style="font-size:${cint(element.font_size)}px;">
+        <div class="ptb-receipt-row" style="font-size:${ptb_cint(element.font_size)}px;">
           <span>${this.escape_html(row.mode_of_payment)}</span>
           <span>${this.format_money(row.amount)} ${this.escape_html(this.sample_doc.currency)}</span>
         </div>
@@ -998,7 +1216,7 @@ class POSThermalPrintBuilder {
 
     const rows = this.sample_doc.taxes
       .map((row) => `
-        <div class="ptb-receipt-row" style="font-size:${cint(element.font_size)}px;">
+        <div class="ptb-receipt-row" style="font-size:${ptb_cint(element.font_size)}px;">
           <span>${this.escape_html(row.description)}</span>
           <span>${this.format_money(row.tax_amount)} ${this.escape_html(this.sample_doc.currency)}</span>
         </div>
@@ -1010,7 +1228,7 @@ class POSThermalPrintBuilder {
 
   get_sample_item_value(row, column, element) {
     if (column === "amount" && element.amount_mode === "price_list_rate_times_qty") {
-      return flt(row.price_list_rate) * flt(row.qty);
+      return ptb_flt(row.price_list_rate) * ptb_flt(row.qty);
     }
 
     if (column === "rate" && element.rate_field === "price_list_rate") {
@@ -1023,10 +1241,10 @@ class POSThermalPrintBuilder {
   get_preview_style(element) {
     return [
       `text-align:${this.css_align(element.align)}`,
-      `font-size:${cint(element.font_size)}px`,
+      `font-size:${ptb_cint(element.font_size)}px`,
       `font-weight:${element.bold ? "700" : "400"}`,
-      `margin-top:${cint(element.margin_top)}px`,
-      `margin-bottom:${cint(element.margin_bottom)}px`
+      `margin-top:${ptb_cint(element.margin_top)}px`,
+      `margin-bottom:${ptb_cint(element.margin_bottom)}px`
     ].join(";");
   }
 
@@ -1050,10 +1268,10 @@ class POSThermalPrintBuilder {
     let html = `
       <div class="ptb-section-label">${__("General Settings")}</div>
       ${this.select("align", __("Alignment"), element.align, [
-        ["right", __("Right")],
-        ["center", __("Center")],
-        ["left", __("Left")]
-      ])}
+      ["right", __("Right")],
+      ["center", __("Center")],
+      ["left", __("Left")]
+    ])}
       ${this.number("font_size", __("Font Size"), element.font_size)}
       ${this.number("margin_top", __("Top Margin"), element.margin_top)}
       ${this.number("margin_bottom", __("Bottom Margin"), element.margin_bottom)}
@@ -1081,10 +1299,10 @@ class POSThermalPrintBuilder {
       html += `
         <div class="ptb-section-label">${__("Image Properties")}</div>
         ${this.select("source_type", __("Image Source Type"), element.source_type, [
-          ["company_logo", __("Company Logo")],
-          ["url", __("URL")],
-          ["attach", __("Attach")]
-        ])}
+        ["company_logo", __("Company Logo")],
+        ["url", __("URL")],
+        ["attach", __("Attach")]
+      ])}
 
         ${this.depends(element.source_type === "url", `
           ${this.input("image_url", __("Image URL"), element.image_url || "")}
@@ -1106,10 +1324,10 @@ class POSThermalPrintBuilder {
         <div class="ptb-section-label">${__("Container Properties")}</div>
         ${this.number("border_width", __("Border Width"), element.border_width)}
         ${this.select("border_style", __("Border Style"), element.border_style, [
-          ["solid", __("Solid")],
-          ["dashed", __("Dashed")],
-          ["dotted", __("Dotted")]
-        ])}
+        ["solid", __("Solid")],
+        ["dashed", __("Dashed")],
+        ["dotted", __("Dotted")]
+      ])}
         ${this.color("border_color", __("Border Color"), element.border_color)}
         ${this.number("border_radius", __("Border Radius"), element.border_radius)}
         ${this.number("padding", __("Padding"), element.padding)}
@@ -1129,10 +1347,10 @@ class POSThermalPrintBuilder {
         `)}
         ${this.number("border_width", __("Border Width"), element.border_width)}
         ${this.select("border_style", __("Border Style"), element.border_style, [
-          ["solid", __("Solid")],
-          ["dashed", __("Dashed")],
-          ["dotted", __("Dotted")]
-        ])}
+        ["solid", __("Solid")],
+        ["dashed", __("Dashed")],
+        ["dotted", __("Dotted")]
+      ])}
         ${this.color("border_color", __("Border Color"), element.border_color)}
         ${this.number("border_radius", __("Border Radius"), element.border_radius)}
         ${this.color("header_bg_color", __("Header Background Color"), element.header_bg_color)}
@@ -1146,10 +1364,10 @@ class POSThermalPrintBuilder {
       html += `
         <div class="ptb-section-label">${__("Divider Properties")}</div>
         ${this.select("line_style", __("Line Style"), element.line_style || "dashed", [
-          ["solid", __("Solid")],
-          ["dashed", __("Dashed")],
-          ["dotted", __("Dotted")]
-        ])}
+        ["solid", __("Solid")],
+        ["dashed", __("Dashed")],
+        ["dotted", __("Dotted")]
+      ])}
       `;
     }
 
@@ -1186,12 +1404,12 @@ class POSThermalPrintBuilder {
       html += `
         <div class="ptb-section-label">${__("QR Code Properties")}</div>
         ${this.select("content_type", __("Content Type"), element.content_type, [
-          ["static_text", __("Static Text")],
-          ["url", __("URL")],
-          ["document_field", __("Document Field")],
-          ["multiple_fields", __("Multiple Fields")],
-          ["custom_jinja", __("Custom Jinja")]
-        ])}
+        ["static_text", __("Static Text")],
+        ["url", __("URL")],
+        ["document_field", __("Document Field")],
+        ["multiple_fields", __("Multiple Fields")],
+        ["custom_jinja", __("Custom Jinja")]
+      ])}
 
         ${this.depends(element.content_type === "static_text", `
           ${this.textarea("static_value", __("Static Value"), element.static_value || "")}
@@ -1226,13 +1444,13 @@ class POSThermalPrintBuilder {
       ${this.checkbox("show_header", __("Show Table Header"), element.show_header)}
       ${this.checkbox("show_item_remarks", __("Show Item Remarks"), element.show_item_remarks)}
       ${this.select("rate_field", __("Rate Field"), element.rate_field, [
-        ["rate", __("Rate")],
-        ["price_list_rate", __("Price List Rate")]
-      ])}
+      ["rate", __("Rate")],
+      ["price_list_rate", __("Price List Rate")]
+    ])}
       ${this.select("amount_mode", __("Amount Mode"), element.amount_mode, [
-        ["amount", __("Amount Field")],
-        ["price_list_rate_times_qty", __("Price List Rate x Quantity")]
-      ])}
+      ["amount", __("Amount Field")],
+      ["price_list_rate_times_qty", __("Price List Rate x Quantity")]
+    ])}
 
       <div class="ptb-section-label">${__("Table Header Style")}</div>
       ${this.color("header_bg_color", __("Header Background Color"), element.header_bg_color)}
@@ -1308,7 +1526,8 @@ class POSThermalPrintBuilder {
   }
 
   color(prop, label, value) {
-    const safe_value = value || "#000000";
+    const safe_value = this.safe_css_color(value, "#000000");
+
     return `
       <div class="ptb-field">
         <label>${this.escape_html(label)}</label>
@@ -1326,12 +1545,12 @@ class POSThermalPrintBuilder {
         <label>${this.escape_html(label)}</label>
         <select data-prop="${this.escape_attr(prop)}">
           ${options
-            .map(([val, text]) => `
+        .map(([val, text]) => `
               <option value="${this.escape_attr(val)}" ${String(val) === String(value) ? "selected" : ""}>
                 ${this.escape_html(text)}
               </option>
             `)
-            .join("")}
+        .join("")}
         </select>
       </div>
     `;
@@ -1356,6 +1575,8 @@ class POSThermalPrintBuilder {
     const custom = [];
 
     (fields || []).forEach((field) => {
+      if (!field || !field.fieldname) return;
+
       let label = `${field.label || field.fieldname} (${field.fieldname})`;
 
       if (field.hidden) {
@@ -1395,6 +1616,7 @@ class POSThermalPrintBuilder {
       .split("\n")
       .map((line) => {
         const parts = line.split("|");
+
         return {
           label: (parts[0] || "").trim(),
           fieldname: (parts[1] || "").trim(),
@@ -1416,7 +1638,7 @@ class POSThermalPrintBuilder {
     if ($input.attr("type") === "checkbox") {
       value = $input.is(":checked") ? 1 : 0;
     } else if ($input.attr("type") === "number") {
-      value = flt($input.val());
+      value = ptb_flt($input.val());
     } else {
       value = $input.val();
     }
@@ -1427,6 +1649,13 @@ class POSThermalPrintBuilder {
         .map((x) => x.trim())
         .filter(Boolean);
     }
+
+    const current_value = this.get_nested_value(element, prop);
+    const is_same = Array.isArray(value) && Array.isArray(current_value)
+      ? JSON.stringify(value) === JSON.stringify(current_value)
+      : value === current_value;
+
+    if (is_same) return;
 
     this.set_nested_value(element, prop, value);
 
@@ -1441,6 +1670,10 @@ class POSThermalPrintBuilder {
       }
     }
 
+    if ($input.closest(".ptb-color-row").length) {
+      $input.siblings("input").val(value);
+    }
+
     const should_rerender_props =
       $input.attr("type") === "checkbox" ||
       input.tagName === "SELECT" ||
@@ -1450,8 +1683,20 @@ class POSThermalPrintBuilder {
     if (should_rerender_props) {
       this.render();
     } else {
-      this.render_canvas();
+      this.schedule_canvas_render();
     }
+  }
+
+  get_nested_value(object, path) {
+    const parts = String(path).split(".");
+    let current = object;
+
+    for (const part of parts) {
+      if (current === null || current === undefined) return undefined;
+      current = current[part];
+    }
+
+    return current;
   }
 
   set_nested_value(object, path, value) {
@@ -1476,12 +1721,13 @@ class POSThermalPrintBuilder {
     const checked = $(input).is(":checked");
 
     element.columns = element.columns || [];
+    const has_column = element.columns.includes(fieldname);
 
-    if (checked && !element.columns.includes(fieldname)) {
+    if (checked === has_column) return;
+
+    if (checked) {
       element.columns.push(fieldname);
-    }
-
-    if (!checked) {
+    } else {
       element.columns = element.columns.filter((c) => c !== fieldname);
     }
 
@@ -1508,11 +1754,9 @@ class POSThermalPrintBuilder {
 
   generate_print_format_html() {
     const paper = this.state.paper_size || "80";
-    const split_element = this.state.elements.find(
-      (el) => el.type === "items_table" && el.split_settings && el.split_settings.enabled
-    );
+    const split_element = this.find_first_element_by_type("items_table");
 
-    const body = split_element
+    const body = split_element && split_element.split_settings && split_element.split_settings.enabled
       ? this.render_print_split_receipts(split_element)
       : `<div class="thermal-receipt">${this.render_print_elements(this.state.elements, "doc.items", {})}</div>`;
 
@@ -1642,7 +1886,7 @@ ${body}
       ? `
 {% set item_groups = {} %}
 {% for item in doc.items %}
-  {% set group_name = frappe.db.get_value("Item Group", item.item_group, "item_group_name") if item.item_group else _("No Item Group") %}
+  {% set group_name = item.item_group or _("No Item Group") %}
   {% if group_name not in item_groups %}
     {% set _ = item_groups.update({group_name: []}) %}
   {% endif %}
@@ -1655,10 +1899,10 @@ ${body}
   <div class="thermal-receipt">
     ${this.render_split_receipt_title(`${this.escape_html(group_prefix)} {{ group_name }}`, true)}
     ${this.render_print_elements(this.state.elements, "group_items", {
-      mode: "group",
-      include_totals: Boolean(s.include_totals_in_group_receipts),
-      include_payments: Boolean(s.include_payments_in_group_receipts)
-    })}
+        mode: "group",
+        include_totals: Boolean(s.include_totals_in_group_receipts),
+        include_payments: Boolean(s.include_payments_in_group_receipts)
+      })}
   </div>
 {% endfor %}`
       : "";
@@ -1707,12 +1951,14 @@ ${group_receipts}
 
     if (element.type === "field") {
       const fieldname = this.safe_fieldname(element.fieldname || "");
+      if (!fieldname) return "";
+
       const label_html = this.render_label(element.label || fieldname, element.translate_label);
 
       return `
 <div class="thermal-row" style="${style}">
   ${element.show_label ? `<span>${label_html}</span>` : ""}
-  <span>{{ doc.${fieldname} or "" }}</span>
+  <span>{{ ${this.doc_value_jinja(fieldname)} }}</span>
 </div>`.trim();
     }
 
@@ -1721,22 +1967,22 @@ ${group_receipts}
     }
 
     if (element.type === "divider") {
-      return `<div class="thermal-divider" style="border-top-style:${this.escape_attr(element.line_style || "dashed")};"></div>`;
+      return `<div class="thermal-divider" style="border-top-style:${this.safe_line_style(element.line_style)};"></div>`;
     }
 
     if (element.type === "spacer") {
-      return `<div style="height:${cint(element.height)}px;"></div>`;
+      return `<div style="height:${ptb_cint(element.height)}px;"></div>`;
     }
 
     if (element.type === "container") {
       const child_html = this.render_print_elements(element.children || [], item_source, context);
       const container_style = [
-        `border:${cint(element.border_width)}px ${element.border_style || "solid"} ${element.border_color || "#000"}`,
-        `border-radius:${cint(element.border_radius)}px`,
-        `padding:${cint(element.padding)}px`,
-        `background:${element.background_color || "#fff"}`,
-        `margin-top:${cint(element.margin_top)}px`,
-        `margin-bottom:${cint(element.margin_bottom)}px`
+        `border:${ptb_cint(element.border_width)}px ${this.safe_border_style(element.border_style)} ${this.safe_css_color(element.border_color, "#000000")}`,
+        `border-radius:${ptb_cint(element.border_radius)}px`,
+        `padding:${ptb_cint(element.padding)}px`,
+        `background:${this.safe_css_color(element.background_color, "#ffffff")}`,
+        `margin-top:${ptb_cint(element.margin_top)}px`,
+        `margin-bottom:${ptb_cint(element.margin_bottom)}px`
       ].join(";");
 
       return `<div class="thermal-box" style="${container_style}">${child_html}</div>`;
@@ -1770,11 +2016,11 @@ ${group_receipts}
   }
 
   render_print_details_table(element) {
-    const rows = element.rows || [];
+    const rows = (element.rows || []).filter((row) => this.safe_fieldname(row.fieldname));
     const title = element.show_title
       ? `
       <tr>
-        <td colspan="2" style="text-align:center;font-weight:700;background:${this.escape_attr(element.header_bg_color || "#f2f0f0")};">
+        <td colspan="2" style="text-align:center;font-weight:700;background:${this.safe_css_color(element.header_bg_color, "#f2f0f0")};">
           ${this.escape_html(element.title || "")}
         </td>
       </tr>`
@@ -1788,21 +2034,23 @@ ${group_receipts}
         return `
         <tr>
           <td style="font-weight:700;">${label}</td>
-          <td style="text-align:left;direction:ltr;">{{ doc.get_formatted("${fieldname}") or doc.${fieldname} or "" }}</td>
+          <td style="text-align:left;direction:ltr;">{{ ${this.doc_value_jinja(fieldname, true)} }}</td>
         </tr>
       `;
       })
       .join("");
 
+    if (!title && !body) return "";
+
     return `
 <table class="thermal-table" style="
-  font-size:${cint(element.font_size || 11)}px;
-  border:${cint(element.border_width)}px ${element.border_style || "solid"} ${element.border_color || "#000"};
-  border-radius:${cint(element.border_radius)}px;
+  font-size:${ptb_cint(element.font_size || 11)}px;
+  border:${ptb_cint(element.border_width)}px ${this.safe_border_style(element.border_style)} ${this.safe_css_color(element.border_color, "#000000")};
+  border-radius:${ptb_cint(element.border_radius)}px;
   border-collapse:separate;
   overflow:hidden;
-  margin-top:${cint(element.margin_top)}px;
-  margin-bottom:${cint(element.margin_bottom)}px;
+  margin-top:${ptb_cint(element.margin_top)}px;
+  margin-bottom:${ptb_cint(element.margin_bottom)}px;
 ">
   ${title}
   <tbody>${body}</tbody>
@@ -1810,13 +2058,13 @@ ${group_receipts}
   }
 
   render_print_image(element) {
-    const width = cint(element.width || 36);
+    const width = ptb_cint(element.width || 36);
 
     if (element.source_type === "company_logo") {
       return `
 {% set company_logo = frappe.db.get_value("Company", doc.company, "company_logo") %}
 {% if company_logo %}
-<div style="text-align:${this.css_align(element.align)}; margin:${cint(element.margin_top)}px 0 ${cint(element.margin_bottom)}px;">
+<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
   <img class="thermal-logo" src="{{ company_logo }}" style="width:${width}mm;">
 </div>
 {% endif %}`.trim();
@@ -1827,24 +2075,30 @@ ${group_receipts}
     if (!src) return "";
 
     return `
-<div style="text-align:${this.css_align(element.align)}; margin:${cint(element.margin_top)}px 0 ${cint(element.margin_bottom)}px;">
+<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
   <img class="thermal-logo" src="${this.escape_attr(src)}" style="width:${width}mm;">
 </div>`.trim();
   }
 
   render_print_items_table(element, item_source) {
-    const columns = element.columns || [];
     const labels = this.get_item_column_labels();
-    const font_size = cint(element.font_size || 10);
-    const header_bg = element.header_bg_color || "#f2f0f0";
-    const header_text = element.header_text_color || "#000000";
-    const header_border = element.header_border_color || "#000000";
+    const columns = (element.columns || [])
+      .map((column) => this.safe_fieldname(column))
+      .filter(Boolean);
+
+    if (!columns.length) return "";
+
+    const source = item_source === "group_items" ? "group_items" : "doc.items";
+    const font_size = ptb_cint(element.font_size || 10);
+    const header_bg = this.safe_css_color(element.header_bg_color, "#f2f0f0");
+    const header_text = this.safe_css_color(element.header_text_color, "#000000");
+    const header_border = this.safe_css_color(element.header_border_color, "#000000");
 
     const header = element.show_header
       ? `
-<thead style="background-color:${this.escape_attr(header_bg)}; color:${this.escape_attr(header_text)};">
+<thead style="background-color:${header_bg}; color:${header_text};">
   <tr>
-    ${columns.map((c) => `<th style="border-color:${this.escape_attr(header_border)};">${this.render_label(labels[c] || c, true)}</th>`).join("\n    ")}
+    ${columns.map((c) => `<th style="border-color:${header_border};">${this.render_label(labels[c] || c, true)}</th>`).join("\n    ")}
   </tr>
 </thead>`
       : "";
@@ -1855,9 +2109,9 @@ ${group_receipts}
 
     const remarks = element.show_item_remarks
       ? `
-      {% if row.remarks %}
+      {% if row.get("remarks") %}
       <tr>
-        <td colspan="${columns.length || 1}">#{{ row.remarks }}</td>
+        <td colspan="${columns.length || 1}">#{{ row.get("remarks") }}</td>
       </tr>
       {% endif %}`
       : "";
@@ -1866,7 +2120,7 @@ ${group_receipts}
 <table class="thermal-table" style="font-size:${font_size}px;">
   ${header}
   <tbody>
-    {% for row in ${item_source || "doc.items"} %}
+    {% for row in ${source} %}
     <tr>
       ${cells}
     </tr>
@@ -1877,34 +2131,38 @@ ${group_receipts}
   }
 
   get_item_cell_jinja(column, element) {
-    if (column === "rate") {
+    const fieldname = this.safe_fieldname(column);
+
+    if (!fieldname) return "";
+
+    if (fieldname === "rate") {
       const rate_field = element.rate_field === "price_list_rate" ? "price_list_rate" : "rate";
-      return `{{ "{:,.1f}".format(row.${rate_field}) if row.${rate_field} else "-" }}`;
+      return `{{ "{:,.1f}".format(row.get("${rate_field}") or 0) if row.get("${rate_field}") else "-" }}`;
     }
 
-    if (column === "amount") {
+    if (fieldname === "amount") {
       if (element.amount_mode === "price_list_rate_times_qty") {
-        return `{{ "{:,.1f}".format((row.price_list_rate or 0) * (row.qty or 0)) }}`;
+        return `{{ "{:,.1f}".format((row.get("price_list_rate") or 0) * (row.get("qty") or 0)) }}`;
       }
 
-      return `{{ "{:,.1f}".format(row.amount) if row.amount else "-" }}`;
+      return `{{ "{:,.1f}".format(row.get("amount") or 0) if row.get("amount") else "-" }}`;
     }
 
-    if (column === "qty") {
-      return `{{ "{:,.1f}".format(row.qty) if row.qty else "-" }}`;
+    if (fieldname === "qty") {
+      return `{{ "{:,.1f}".format(row.get("qty") or 0) if row.get("qty") else "-" }}`;
     }
 
-    return `{{ row.${this.safe_fieldname(column)} or "" }}`;
+    return `{{ ${this.row_value_jinja(fieldname)} }}`;
   }
 
   render_print_totals(element, item_source) {
-    const font_size = cint(element.font_size || 11);
+    const font_size = ptb_cint(element.font_size || 11);
 
     if (item_source === "group_items") {
       return `
 {% set ns = namespace(total=0) %}
 {% for row in group_items %}
-  {% set ns.total = ns.total + ((row.price_list_rate or row.rate or 0) * (row.qty or 0)) %}
+  {% set ns.total = ns.total + ((row.get("price_list_rate") or row.get("rate") or 0) * (row.get("qty") or 0)) %}
 {% endfor %}
 <div class="thermal-row" style="font-size:${font_size}px; font-weight:700;">
   <span>{{ _("Total") }}</span>
@@ -1914,11 +2172,11 @@ ${group_receipts}
 
     const rows = [];
 
-    if (element.show_net_total) rows.push(["Net Total", "{{ doc.net_total }} {{ doc.currency }}"]);
-    if (element.show_taxes) rows.push(["Taxes and Charges", "{{ doc.total_taxes_and_charges }} {{ doc.currency }}"]);
-    if (element.show_grand_total) rows.push(["Grand Total", "{{ doc.grand_total }} {{ doc.currency }}"]);
-    if (element.show_paid_amount) rows.push(["Paid Amount", "{{ doc.paid_amount }} {{ doc.currency }}"]);
-    if (element.show_change_amount) rows.push(["Change Amount", "{{ doc.change_amount }} {{ doc.currency }}"]);
+    if (element.show_net_total) rows.push(["Net Total", `{{ ${this.doc_value_jinja("net_total", true)} }}`]);
+    if (element.show_taxes) rows.push(["Taxes and Charges", `{{ ${this.doc_value_jinja("total_taxes_and_charges", true)} }}`]);
+    if (element.show_grand_total) rows.push(["Grand Total", `{{ ${this.doc_value_jinja("grand_total", true)} }}`]);
+    if (element.show_paid_amount) rows.push(["Paid Amount", `{{ ${this.doc_value_jinja("paid_amount", true)} }}`]);
+    if (element.show_change_amount) rows.push(["Change Amount", `{{ ${this.doc_value_jinja("change_amount", true)} }}`]);
 
     return rows
       .map(([label, value]) => `
@@ -1930,40 +2188,40 @@ ${group_receipts}
   }
 
   render_print_payments(element) {
-    const font_size = cint(element.font_size || 11);
+    const font_size = ptb_cint(element.font_size || 11);
 
     return `
 ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("Payments") }}</div>` : ""}
 {% for payment in doc.payments %}
 <div class="thermal-row" style="font-size:${font_size}px;">
-  <span>{{ payment.mode_of_payment or "" }}</span>
-  <span>{{ payment.amount }} {{ doc.currency }}</span>
+  <span>{{ payment.get("mode_of_payment") or "" }}</span>
+  <span>{{ "{:,.2f}".format(payment.get("amount") or 0) }} {{ doc.currency }}</span>
 </div>
 {% endfor %}`.trim();
   }
 
   render_print_taxes(element) {
-    const font_size = cint(element.font_size || 10);
+    const font_size = ptb_cint(element.font_size || 10);
 
     return `
 ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("Taxes and Charges") }}</div>` : ""}
 {% for tax in doc.taxes %}
 <div class="thermal-row" style="font-size:${font_size}px;">
-  <span>{{ tax.description or tax.account_head or "" }}</span>
-  <span>{{ tax.tax_amount }} {{ doc.currency }}</span>
+  <span>{{ tax.get("description") or tax.get("account_head") or "" }}</span>
+  <span>{{ "{:,.2f}".format(tax.get("tax_amount") or 0) }} {{ doc.currency }}</span>
 </div>
 {% endfor %}`.trim();
   }
 
   render_print_qr_code(element) {
-    const width = cint(element.width || 26);
+    const width = ptb_cint(element.width || 26);
     const qr_value = this.get_qr_value_jinja(element);
 
     return `
 {% set ptb_qr_value = ${qr_value} %}
 {% set ptb_qr_data_uri = frappe.get_attr("pos_next.api.thermal_print.get_qr_data_uri")(ptb_qr_value) %}
 {% if ptb_qr_data_uri %}
-<div style="text-align:${this.css_align(element.align)}; margin:${cint(element.margin_top)}px 0 ${cint(element.margin_bottom)}px;">
+<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
   <img class="thermal-qr" src="{{ ptb_qr_data_uri }}" style="width:${width}mm;">
 </div>
 {% endif %}`.trim();
@@ -1979,19 +2237,61 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
     }
 
     if (element.content_type === "document_field") {
-      return `doc.${this.safe_fieldname(element.fieldname || "name")} or ""`;
+      return this.doc_value_jinja(element.fieldname || "name");
     }
 
     if (element.content_type === "multiple_fields") {
-      const fields = (element.fields || ["name"]).map((field) => `doc.${this.safe_fieldname(field)} or ""`);
-      return `[${fields.join(", ")}] | join(" | ")`;
+      const fields = (element.fields || ["name"])
+        .map((field) => this.safe_fieldname(field))
+        .filter(Boolean)
+        .map((field) => this.doc_value_jinja(field));
+
+      return `([${fields.length ? fields.join(", ") : this.doc_value_jinja("name")}] | join(" | "))`;
     }
 
     if (element.content_type === "custom_jinja") {
-      return element.custom_jinja || "doc.name";
+      return String(element.custom_jinja || "doc.name").trim() || "doc.name";
     }
 
-    return `doc.name or ""`;
+    return this.doc_value_jinja("name");
+  }
+
+  doc_value_jinja(fieldname, formatted = false) {
+    const field = this.safe_fieldname(fieldname);
+
+    if (!field) return '""';
+
+    if (formatted) {
+      return `(doc.get_formatted("${field}") or doc.get("${field}") or "")`;
+    }
+
+    return `(doc.get("${field}") or "")`;
+  }
+
+  row_value_jinja(fieldname) {
+    const field = this.safe_fieldname(fieldname);
+
+    if (!field) return '""';
+
+    return `(row.get("${field}") or "")`;
+  }
+
+  safe_css_color(value, fallback = "#000000") {
+    const color = String(value || "").trim();
+
+    if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+      return color;
+    }
+
+    return fallback;
+  }
+
+  safe_border_style(value) {
+    return PTB_ALLOWED_BORDER_STYLES.has(value) ? value : "solid";
+  }
+
+  safe_line_style(value) {
+    return PTB_ALLOWED_LINE_STYLES.has(value) ? value : "dashed";
   }
 
   render_label(label, translate_label = true) {
@@ -2007,10 +2307,10 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
   get_print_style(element) {
     return [
       `text-align:${this.css_align(element.align)}`,
-      `font-size:${cint(element.font_size)}px`,
+      `font-size:${ptb_cint(element.font_size)}px`,
       `font-weight:${element.bold ? "700" : "400"}`,
-      `margin-top:${cint(element.margin_top)}px`,
-      `margin-bottom:${cint(element.margin_bottom)}px`
+      `margin-top:${ptb_cint(element.margin_top)}px`,
+      `margin-bottom:${ptb_cint(element.margin_bottom)}px`
     ].join(";");
   }
 
@@ -2019,16 +2319,19 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
     this.$root.find("#ptb-code-modal").removeClass("ptb-hidden");
   }
 
-  copy_generated_code() {
-    const code = this.$root.find("#ptb-generated-code").val();
+  async copy_generated_code() {
+    const code = this.$root.find("#ptb-generated-code").val() || "";
 
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(code);
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(code);
       frappe.show_alert({ message: __("Code copied"), indicator: "green" });
       return;
     }
 
     const textarea = this.$root.find("#ptb-generated-code")[0];
+
+    if (!textarea) return;
+
     textarea.select();
     document.execCommand("copy");
     frappe.show_alert({ message: __("Code copied"), indicator: "green" });
