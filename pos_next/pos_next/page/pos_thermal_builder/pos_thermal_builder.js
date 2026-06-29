@@ -833,6 +833,10 @@ class POSThermalPrintBuilder {
       spacer: {
         height: 8
       },
+      cutter: {
+        margin_top: 2,
+        margin_bottom: 2
+      },
       container: {
         border_width: 1,
         border_style: "solid",
@@ -951,6 +955,7 @@ class POSThermalPrintBuilder {
       image: "Image",
       divider: "Divider",
       spacer: "Spacer",
+      cutter: "Cutter",
       container: "Container",
       details_table: "Details Table",
       footer_note: "Footer Note",
@@ -1218,6 +1223,16 @@ class POSThermalPrintBuilder {
       return `<div style="height:${ptb_cint(element.height)}px;"></div>`;
     }
 
+    if (element.type === "cutter") {
+      return `
+        <div class="ptb-cutter" style="display:flex; align-items:center; justify-content:center; border-top:1px dashed #d0d5dd; border-bottom:1px dashed #d0d5dd; padding:6px 0; color:#98a2b3; font-size:10px; gap:8px;">
+          <span>✂</span>
+          <span>${__("Printer Cut / Page Break")}</span>
+          <span>✂</span>
+        </div>
+      `;
+    }
+
     if (element.type === "container") {
       const child_html = (element.children || [])
         .map((child) => this.render_canvas_element(child))
@@ -1401,8 +1416,9 @@ class POSThermalPrintBuilder {
   }
 
   render_preview_payments(element) {
+    const title = element.title !== undefined ? element.title : __("Payments");
     const header = element.show_header
-      ? `<div class="ptb-receipt-text" style="font-weight:700;">${__("Payments")}</div>`
+      ? `<div class="ptb-receipt-text ptb-inline-edit" contenteditable="true" spellcheck="false" data-prop="title" style="font-weight:700;outline:none;">${this.escape_html(title)}</div>`
       : "";
 
     const rows = this.sample_doc.payments
@@ -1418,8 +1434,9 @@ class POSThermalPrintBuilder {
   }
 
   render_preview_taxes(element) {
+    const title = element.title !== undefined ? element.title : __("Taxes and Charges");
     const header = element.show_header
-      ? `<div class="ptb-receipt-text" style="font-weight:700;">${__("Taxes and Charges")}</div>`
+      ? `<div class="ptb-receipt-text ptb-inline-edit" contenteditable="true" spellcheck="false" data-prop="title" style="font-weight:700;outline:none;">${this.escape_html(title)}</div>`
       : "";
 
     const rows = this.sample_doc.taxes
@@ -1587,6 +1604,13 @@ class POSThermalPrintBuilder {
       `;
     }
 
+    if (element.type === "cutter") {
+      html += `
+        <div class="ptb-section-label">${__("Cutter Properties")}</div>
+        <div style="font-size: 11px; color: #667085; padding: 4px 0 12px;">${__("This element forces a page break / cut command on supporting thermal printers.")}</div>
+      `;
+    }
+
     if (element.type === "items_table") {
       html += this.get_items_table_props_html(element);
     }
@@ -1602,10 +1626,23 @@ class POSThermalPrintBuilder {
       `;
     }
 
-    if (element.type === "payments" || element.type === "taxes") {
+    if (element.type === "payments") {
       html += `
         <div class="ptb-section-label">${__("Display Settings")}</div>
         ${this.checkbox("show_header", __("Show Header"), element.show_header)}
+        ${this.depends(element.show_header, `
+          ${this.input("title", __("Header Title"), element.title !== undefined ? element.title : __("Payments"))}
+        `)}
+      `;
+    }
+
+    if (element.type === "taxes") {
+      html += `
+        <div class="ptb-section-label">${__("Display Settings")}</div>
+        ${this.checkbox("show_header", __("Show Header"), element.show_header)}
+        ${this.depends(element.show_header, `
+          ${this.input("title", __("Header Title"), element.title !== undefined ? element.title : __("Taxes and Charges"))}
+        `)}
       `;
     }
 
@@ -2204,6 +2241,10 @@ ${group_receipts}
       return `<div style="height:${ptb_cint(element.height)}px;"></div>`;
     }
 
+    if (element.type === "cutter") {
+      return `<div class="page-break"></div>`;
+    }
+
     if (element.type === "container") {
       const child_html = this.render_print_elements(element.children || [], item_source, context);
       const container_style = [
@@ -2419,9 +2460,10 @@ ${group_receipts}
 
   render_print_payments(element) {
     const font_size = ptb_cint(element.font_size || 11);
+    const title = element.title !== undefined ? element.title : "Payments";
 
     return `
-${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("Payments") }}</div>` : ""}
+${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("${this.escape_html(title)}") }}</div>` : ""}
 {% for payment in doc.payments %}
 <div class="thermal-row" style="font-size:${font_size}px;">
   <span>{{ payment.get("mode_of_payment") or "" }}</span>
@@ -2432,9 +2474,10 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
 
   render_print_taxes(element) {
     const font_size = ptb_cint(element.font_size || 10);
+    const title = element.title !== undefined ? element.title : "Taxes and Charges";
 
     return `
-${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("Taxes and Charges") }}</div>` : ""}
+${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-size:${font_size}px;">{{ _("${this.escape_html(title)}") }}</div>` : ""}
 {% for tax in doc.taxes %}
 <div class="thermal-row" style="font-size:${font_size}px;">
   <span>{{ tax.get("description") or tax.get("account_head") or "" }}</span>
