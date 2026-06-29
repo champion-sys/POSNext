@@ -406,6 +406,11 @@ class POSThermalPrintBuilder {
         $modal.addClass("ptb-hidden");
       }
     });
+
+    this.$root.on("click", ".ptb-print-test", (e) => {
+      e.preventDefault();
+      this.print_test();
+    });
   }
 
   apply_translations() {
@@ -1568,7 +1573,7 @@ class POSThermalPrintBuilder {
       .join("");
 
     const split_badge = element.split_settings && element.split_settings.enabled
-      ? `<div class="ptb-receipt-text" style="font-size:9px;text-align:center;">${__("Receipt splitting is enabled")}</div>`
+      ? `<div class="ptb-receipt-text ptb-split-badge" style="font-size:9px;text-align:center;">${__("Receipt splitting is enabled")}</div>`
       : "";
 
     return `
@@ -2786,6 +2791,226 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
   show_generated_code(html) {
     this.$root.find("#ptb-generated-code").val(html);
     this.$root.find("#ptb-code-modal").removeClass("ptb-hidden");
+  }
+
+  print_test() {
+    const split_element = this.find_first_element_by_type("items_table");
+    const is_split_enabled = split_element && split_element.split_settings && split_element.split_settings.enabled;
+    
+    let content_html = "";
+    if (is_split_enabled) {
+      content_html = this.generate_split_preview_html(split_element);
+    } else {
+      const $clone = this.$root.find("#ptb-paper").clone();
+      $clone.find(".ptb-element-tools, .ptb-empty, .ptb-container-empty").remove();
+      $clone.find(".ptb-canvas-element").removeClass("ptb-active ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
+      $clone.find("[contenteditable]").removeAttr("contenteditable");
+      content_html = $clone[0].outerHTML;
+    }
+
+    const paper_size = this.state.paper_size || "80";
+    const paper_width = paper_size === "58" ? "58mm" : "80mm";
+    
+    const stylesheets = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map(el => el.outerHTML)
+      .join("\n");
+
+    const print_window = window.open("", "_blank", "width=800,height=600");
+    if (!print_window) {
+      frappe.show_alert({ message: __("Popup blocker prevented print test"), indicator: "orange" });
+      return;
+    }
+
+    print_window.document.write(`
+      <html>
+        <head>
+          <title>${__("Print Test")}</title>
+          ${stylesheets}
+          <style>
+            @page {
+              size: ${paper_width} auto;
+              margin: 0;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              background: #ffffff;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .ptb-paper {
+              width: ${paper_width} !important;
+              max-width: ${paper_width} !important;
+              margin: 0 auto 20px auto !important;
+              box-shadow: none !important;
+              border: none !important;
+              padding: 4px !important;
+              background: #ffffff !important;
+            }
+            .ptb-canvas-element {
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+            }
+            .ptb-split-badge {
+              display: none !important;
+            }
+            .page-break {
+              page-break-after: always;
+              break-after: page;
+            }
+            @media print {
+              body, html {
+                width: ${paper_width};
+              }
+              .ptb-paper {
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 0 10px 0 !important;
+                padding: 0 !important;
+              }
+              .ptb-split-badge {
+                display: none !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="ptb-shell">
+            <div class="ptb-workspace" style="display:block; padding:0; background:transparent;">
+              <div class="ptb-designer" style="display:block; padding:0; background:transparent;">
+                <div class="ptb-canvas-wrap" style="display:block; padding:0; background:transparent;">
+                  ${content_html}
+                </div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+                window.close();
+              }, 300);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    print_window.document.close();
+    print_window.focus();
+  }
+
+  generate_split_preview_html(split_element) {
+    const s = split_element.split_settings || {};
+    const customer_title = s.customer_receipt_title || "Customer Receipt";
+    const waiter_title = s.waiter_receipt_title || "Waiter Receipt";
+    const group_prefix = s.group_receipt_title_prefix || "Receipt for";
+    const add_page_break = s.add_page_break_between_receipts;
+
+    let html = "";
+    let has_previous = false;
+
+    const render_receipt_part = (title, items_filter_fn, hide_elements_selector_fn) => {
+      const $clone = this.$root.find("#ptb-paper").clone();
+      
+      $clone.find(".ptb-element-tools, .ptb-empty, .ptb-container-empty").remove();
+      $clone.find(".ptb-canvas-element").removeClass("ptb-active ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
+      $clone.find("[contenteditable]").removeAttr("contenteditable");
+
+      if (hide_elements_selector_fn) {
+        hide_elements_selector_fn($clone);
+      }
+
+      if (title) {
+        $clone.prepend(`<div class="ptb-receipt-text" style="font-size:12px; font-weight:bold; text-align:center; margin-bottom:8px; border-bottom:1px dashed #d0d5dd; padding-bottom:4px;">${this.escape_html(title)}</div>`);
+      }
+
+      if (items_filter_fn) {
+        const $table = $clone.find(".ptb-preview-table");
+        if ($table.length) {
+          const $tbody = $table.find("tbody");
+          const filtered_items = this.sample_doc.items.filter(items_filter_fn);
+          
+          if (filtered_items.length === 0) {
+            return "";
+          }
+
+          const col_names = (split_element.columns || []).map(c => this.safe_fieldname(c)).filter(Boolean);
+          
+          let rows_html = "";
+          for (const row of filtered_items) {
+            rows_html += `<tr>${col_names.map((c) => `<td>${this.escape_html(this.get_sample_item_value(row, c, split_element))}</td>`).join("")}</tr>`;
+          }
+          $tbody.html(rows_html);
+        }
+      }
+
+      return $clone[0].outerHTML;
+    };
+
+    if (s.print_customer_receipt) {
+      const part = render_receipt_part(customer_title, null, null);
+      if (part) {
+        if (has_previous && add_page_break) html += '<div class="page-break"></div>';
+        html += part;
+        has_previous = true;
+      }
+    }
+
+    if (s.print_waiter_receipt) {
+      const part = render_receipt_part(waiter_title, null, null);
+      if (part) {
+        if (has_previous && add_page_break) html += '<div class="page-break"></div>';
+        html += part;
+        has_previous = true;
+      }
+    }
+
+    if (s.print_group_receipts) {
+      const groups = {};
+      for (const item of this.sample_doc.items) {
+        const g = item.item_group || "No Item Group";
+        groups[g] = groups[g] || [];
+        groups[g].push(item);
+      }
+
+      for (const group_name of Object.keys(groups)) {
+        const title = `${group_prefix} ${group_name}`;
+        const part = render_receipt_part(
+          title,
+          (item) => (item.item_group || "No Item Group") === group_name,
+          ($c) => {
+            if (!s.include_payments_in_group_receipts) {
+              $c.find(".ptb-canvas-element").each((_, el) => {
+                const id = $(el).data("id");
+                const item_el = this.find_element(id);
+                if (item_el && item_el.type === "payments") {
+                  $(el).remove();
+                }
+              });
+            }
+            if (!s.include_totals_in_group_receipts) {
+              $c.find(".ptb-canvas-element").each((_, el) => {
+                const id = $(el).data("id");
+                const item_el = this.find_element(id);
+                if (item_el && (item_el.type === "totals" || item_el.type === "taxes")) {
+                  $(el).remove();
+                }
+              });
+            }
+          }
+        );
+
+        if (part) {
+          if (has_previous && add_page_break) html += '<div class="page-break"></div>';
+          html += part;
+          has_previous = true;
+        }
+      }
+    }
+
+    return html;
   }
 
   async copy_generated_code() {

@@ -675,3 +675,9 @@
     display: none;
   }
 }
+
+@media print {
+  .ptb-split-badge {
+    display: none !important;
+  }
+}
