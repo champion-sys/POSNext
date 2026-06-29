@@ -206,7 +206,7 @@
   color: #000;
   border: 1px solid #d0d5dd;
   box-shadow: 0 12px 30px rgba(16, 24, 40, 0.14);
-  min-height: 520px;
+  min-height: 200px;
   padding: 8px;
   font-family: Tahoma, Arial, sans-serif;
   direction: rtl;
@@ -246,6 +246,11 @@
 .ptb-canvas-element.ptb-active {
   border-color: #667085;
   background: rgba(242, 244, 247, 0.9);
+}
+
+.ptb-canvas-element.ptb-dragover {
+  border: 1px dashed #667085 !important;
+  background: rgba(242, 244, 247, 0.8) !important;
 }
 
 .ptb-element-tools {

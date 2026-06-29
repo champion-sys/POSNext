@@ -75,16 +75,29 @@ class POSThermalPrintBuilder {
     });
 
     this.$root.on("dragstart", ".ptb-canvas-element", (e) => {
+      e.stopPropagation();
       this.dragged_id = $(e.currentTarget).data("id");
       e.originalEvent.dataTransfer.effectAllowed = "move";
     });
 
     this.$root.on("dragover", ".ptb-canvas-element", (e) => {
       e.preventDefault();
+      e.stopPropagation();
+      this.$root.find(".ptb-canvas-element").removeClass("ptb-dragover");
+      $(e.currentTarget).addClass("ptb-dragover");
+    });
+
+    this.$root.on("dragleave drop dragend", ".ptb-canvas-element", (e) => {
+      $(e.currentTarget).removeClass("ptb-dragover");
+    });
+
+    this.$root.on("dragend", ".ptb-canvas-element", (e) => {
+      this.$root.find(".ptb-canvas-element").removeClass("ptb-dragover");
     });
 
     this.$root.on("drop", ".ptb-canvas-element", (e) => {
       e.preventDefault();
+      e.stopPropagation();
 
       const target_id = $(e.currentTarget).data("id");
       this.reorder_element(this.dragged_id, target_id);
@@ -670,16 +683,67 @@ class POSThermalPrintBuilder {
     return false;
   }
 
+  find_element_info(id, list = this.state.elements, parent = null) {
+    if (!id) return null;
+
+    for (let i = 0; i < list.length; i++) {
+      const element = list[i];
+      if (element.id === id) {
+        return {
+          element,
+          index: i,
+          parent,
+          list
+        };
+      }
+
+      if (element.children && element.children.length) {
+        const found = this.find_element_info(id, element.children, element);
+        if (found) return found;
+      }
+    }
+
+    return null;
+  }
+
   reorder_element(source_id, target_id) {
     if (!source_id || !target_id || source_id === target_id) return;
 
-    const source_index = this.state.elements.findIndex((el) => el.id === source_id);
-    const target_index = this.state.elements.findIndex((el) => el.id === target_id);
+    const source_info = this.find_element_info(source_id);
+    const target_info = this.find_element_info(target_id);
 
-    if (source_index < 0 || target_index < 0) return;
+    if (!source_info || !target_info) return;
 
-    const [source] = this.state.elements.splice(source_index, 1);
-    this.state.elements.splice(target_index, 0, source);
+    // A container cannot contain a container
+    if (source_info.element.type === "container") {
+      if (target_info.parent !== null || target_info.element.type === "container") {
+        return;
+      }
+    }
+
+    // Target cannot be a descendant of source
+    if (this.find_element(target_id, source_info.element.children || [])) {
+      return;
+    }
+
+    // Remove source from its original location
+    const [source] = source_info.list.splice(source_info.index, 1);
+
+    // If target is a container, we drop it INTO the container
+    if (target_info.element.type === "container") {
+      target_info.element.children = target_info.element.children || [];
+      target_info.element.children.push(source);
+    } else {
+      // Otherwise, we insert it at target's position
+      let target_index = target_info.index;
+      
+      // Adjust target index if source and target were in the same list and source was before target
+      if (source_info.list === target_info.list && source_info.index < target_info.index) {
+        target_index--;
+      }
+      
+      target_info.list.splice(target_index, 0, source);
+    }
 
     this.render();
   }
