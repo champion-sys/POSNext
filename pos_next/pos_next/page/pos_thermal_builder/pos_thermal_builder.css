@@ -302,8 +302,9 @@
 }
 
 .ptb-canvas-element.ptb-active {
-  border-color: #667085;
-  background: rgba(242, 244, 247, 0.9);
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.02);
+  box-shadow: 0 0 0 1px #3b82f6;
 }
 
 .ptb-canvas-element.ptb-dragover {
@@ -314,26 +315,45 @@
 .ptb-element-tools {
   display: none;
   position: absolute;
-  top: -10px;
-  inset-inline-end: -8px;
-  z-index: 3;
-  gap: 4px;
+  top: -15px;
+  inset-inline-end: 8px;
+  z-index: 10;
+  gap: 2px;
+  background: #ffffff;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 3px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  align-items: center;
 }
 
-.ptb-canvas-element.ptb-active .ptb-element-tools {
+.ptb-canvas-element.ptb-active > .ptb-element-tools {
   display: flex;
 }
 
 .ptb-tool-btn {
-  border: 1px solid #d0d5dd;
-  background: #fff;
-  border-radius: 999px;
-  width: 22px;
-  height: 22px;
-  line-height: 18px;
-  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475467;
   cursor: pointer;
-  font-size: 12px;
+  padding: 0;
+  transition: all 0.15s ease-in-out;
+}
+
+.ptb-tool-btn:hover {
+  background-color: #f2f4f7;
+  color: #101828;
+}
+
+.ptb-tool-btn.ptb-delete:hover {
+  background-color: #fee4e2;
+  color: #d92d20;
 }
 
 .ptb-receipt-text {

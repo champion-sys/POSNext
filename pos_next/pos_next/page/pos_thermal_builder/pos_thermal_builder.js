@@ -1168,11 +1168,23 @@ class POSThermalPrintBuilder {
     return `
       <div class="ptb-canvas-element ${active}" data-id="${this.escape_attr(element.id)}" draggable="true">
         <div class="ptb-element-tools">
-          ${has_parent ? `<button class="ptb-tool-btn ptb-select-parent" title="${this.escape_attr(__("Select Parent Container"))}" type="button">↑</button>` : ""}
-          <button class="ptb-tool-btn ptb-move-up" title="${this.escape_attr(__("Move Up"))}" type="button">▲</button>
-          <button class="ptb-tool-btn ptb-move-down" title="${this.escape_attr(__("Move Down"))}" type="button">▼</button>
-          <button class="ptb-tool-btn ptb-duplicate" title="${this.escape_attr(__("Duplicate"))}" type="button">⧉</button>
-          <button class="ptb-tool-btn ptb-delete" title="${this.escape_attr(__("Delete"))}" type="button">×</button>
+          ${has_parent ? `
+            <button class="ptb-tool-btn ptb-select-parent" title="${this.escape_attr(__("Select Parent Container"))}" type="button">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M12 17V9"/><path d="M9 12l3-3 3 3"/></svg>
+            </button>
+          ` : ""}
+          <button class="ptb-tool-btn ptb-move-up" title="${this.escape_attr(__("Move Up"))}" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+          <button class="ptb-tool-btn ptb-move-down" title="${this.escape_attr(__("Move Down"))}" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <button class="ptb-tool-btn ptb-duplicate" title="${this.escape_attr(__("Duplicate"))}" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+          <button class="ptb-tool-btn ptb-delete" title="${this.escape_attr(__("Delete"))}" type="button">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+          </button>
         </div>
         ${body}
       </div>
