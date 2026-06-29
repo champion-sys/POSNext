@@ -254,6 +254,33 @@ class POSThermalPrintBuilder {
       this.dragged_id = null;
     });
 
+    this.$root.on("input", ".ptb-inline-edit", (e) => {
+      const id = $(e.currentTarget).closest(".ptb-canvas-element").data("id");
+      const element = this.find_element(id);
+      if (element) {
+        element.content = e.currentTarget.innerText;
+        this.$root.find(`#ptb-props [data-prop="content"]`).val(element.content);
+      }
+    });
+
+    this.$root.on("mouseenter", ".ptb-inline-edit", (e) => {
+      $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "false");
+    });
+
+    this.$root.on("mouseleave", ".ptb-inline-edit", (e) => {
+      if (!$(e.currentTarget).is(":focus")) {
+        $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "true");
+      }
+    });
+
+    this.$root.on("focus", ".ptb-inline-edit", (e) => {
+      $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "false");
+    });
+
+    this.$root.on("blur", ".ptb-inline-edit", (e) => {
+      $(e.currentTarget).closest(".ptb-canvas-element").attr("draggable", "true");
+    });
+
     this.$root.on("input change", "#ptb-props [data-prop]", (e) => {
       this.update_active_from_input(e.currentTarget);
     });
@@ -927,8 +954,13 @@ class POSThermalPrintBuilder {
   }
 
   set_active(id) {
+    if (this.active_id === id) return;
     this.active_id = id;
-    this.render();
+    this.$root.find(".ptb-canvas-element").removeClass("ptb-active");
+    if (id) {
+      this.$root.find(`.ptb-canvas-element[data-id="${id}"]`).addClass("ptb-active");
+    }
+    this.render_props();
   }
 
   find_element(id, list = this.state.elements) {
@@ -1130,7 +1162,7 @@ class POSThermalPrintBuilder {
     const style = this.get_preview_style(element);
 
     if (element.type === "text" || element.type === "footer_note") {
-      return `<div class="ptb-receipt-text" style="${style}">${this.escape_html(element.content)}</div>`;
+      return `<div class="ptb-receipt-text ptb-inline-edit" contenteditable="true" spellcheck="false" style="${style} outline:none;">${this.escape_html(element.content)}</div>`;
     }
 
     if (element.type === "field") {
