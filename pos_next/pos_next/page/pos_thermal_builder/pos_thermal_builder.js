@@ -154,12 +154,12 @@ class POSThermalPrintBuilder {
     this.$root.find("#ptb-code-modal").attr("dir", direction);
   }
 
-  async call(method, args = {}) {
+  async call(method, args = {}, freeze = false) {
     return new Promise((resolve, reject) => {
       frappe.call({
         method: `${this.api}.${method}`,
         args,
-        freeze: true,
+        freeze,
         callback: (r) => {
           if (r.exc) {
             reject(r.exc);
@@ -374,7 +374,7 @@ class POSThermalPrintBuilder {
       is_default: this.state.is_default || 0,
       disabled: 0,
       remarks: ""
-    });
+    }, true);
 
     this.state.template = result.name;
     this.state.template_name = result.template_name;
@@ -424,7 +424,7 @@ class POSThermalPrintBuilder {
 
     const result = await this.call("set_default_template", {
       template: this.state.template
-    });
+    }, true);
 
     this.state.is_default = 1;
 
@@ -446,7 +446,7 @@ class POSThermalPrintBuilder {
 
     const result = await this.call("generate_print_format", {
       template: this.state.template
-    });
+    }, true);
 
     const generated_html = this.generate_print_format_html();
     this.show_generated_code(generated_html);
@@ -1049,7 +1049,6 @@ class POSThermalPrintBuilder {
   get_props_html(element) {
     let html = `
       <div class="ptb-section-label">${__("General Settings")}</div>
-      ${this.input("label", __("Element Name"), element.label)}
       ${this.select("align", __("Alignment"), element.align, [
         ["right", __("Right")],
         ["center", __("Center")],
