@@ -1,0 +1,23 @@
+{
+ "content": null,
+ "creation": "2026-06-29 17:52:13.174878",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-06-29 18:02:14.409517",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "pos-thermal-builder",
+ "owner": "Administrator",
+ "page_name": "pos-thermal-builder",
+ "roles": [
+  {
+   "role": "Nexus POS Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "POS Thermal Print Builder"
+}
