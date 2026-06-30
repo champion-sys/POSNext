@@ -172,7 +172,7 @@ def update_pos_settings(pos_profile, settings):
 	if existing:
 		doc = frappe.get_doc("POS Settings", existing)
 		doc.update(settings)
-		doc.save()
+		doc.save(ignore_permissions=True)
 	else:
 		doc = frappe.new_doc("POS Settings")
 		doc.pos_profile = pos_profile
