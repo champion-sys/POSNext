@@ -37,6 +37,7 @@ class POSThermalPrintBuilder {
       template_name: "",
       paper_size: "80",
       is_default: 0,
+      receipt_outputs: this.get_default_receipt_outputs(),
       elements: []
     };
 
@@ -339,6 +340,14 @@ class POSThermalPrintBuilder {
       this.commit_temp_history();
     });
 
+    this.$root.on("input change", "#ptb-props [data-output-prop]", (e) => {
+      this.update_receipt_output_from_input(e.currentTarget);
+    });
+
+    this.$root.on("change", "#ptb-props [data-visible-context]", (e) => {
+      this.update_visible_in_from_input(e.currentTarget);
+    });
+
     this.$root.on("input change", "#ptb-props [data-prop]", (e) => {
       this.update_active_from_input(e.currentTarget);
     });
@@ -577,6 +586,7 @@ class POSThermalPrintBuilder {
     this.state.template = "";
     this.state.template_name = "";
     this.state.is_default = 0;
+    this.state.receipt_outputs = this.get_default_receipt_outputs();
     this.state.elements = [];
     this.active_id = null;
 
@@ -600,6 +610,19 @@ class POSThermalPrintBuilder {
     this.invoice_fields = (fields_result && fields_result.fields) || [];
     this.table_fields = (fields_result && fields_result.table_fields) || [];
     this.templates = templates || [];
+
+    const child_doctypes = [...new Set(
+      (this.table_fields || [])
+        .map((field) => field.options)
+        .filter(Boolean)
+    )];
+
+    await Promise.all(child_doctypes.map(async (child_doctype) => {
+      if (this.child_table_fields[child_doctype]) return;
+
+      const child = await this.call("get_child_table_fields", { child_doctype });
+      this.child_table_fields[child_doctype] = (child && child.fields) || [];
+    }));
   }
 
   async _refresh_template_options() {
@@ -616,6 +639,167 @@ class POSThermalPrintBuilder {
     this.page.fields_dict.template.df.options = options;
     this.page.fields_dict.template.refresh();
     await this.page.fields_dict.template.set_value(this.state.template || "");
+  }
+
+
+  get_default_receipt_outputs() {
+    return {
+      enabled: false,
+      page_break_between_receipts: true,
+      customer: {
+        enabled: true,
+        title: "Customer Receipt",
+        item_source: "all_items"
+      },
+      waiter: {
+        enabled: false,
+        title: "Waiter Receipt",
+        item_source: "all_items"
+      },
+      item_group: {
+        enabled: false,
+        title_prefix: "Receipt for",
+        group_by: "item_group",
+        item_source: "group_items"
+      }
+    };
+  }
+
+  normalize_receipt_outputs(receipt_outputs) {
+    const defaults = this.get_default_receipt_outputs();
+    const value = receipt_outputs || {};
+
+    return {
+      enabled: value.enabled !== undefined ? value.enabled : defaults.enabled,
+      page_break_between_receipts: value.page_break_between_receipts !== undefined
+        ? value.page_break_between_receipts
+        : defaults.page_break_between_receipts,
+      customer: Object.assign({}, defaults.customer, value.customer || {}),
+      waiter: Object.assign({}, defaults.waiter, value.waiter || {}),
+      item_group: Object.assign({}, defaults.item_group, value.item_group || {})
+    };
+  }
+
+  get_receipt_contexts() {
+    return [
+      ["single", __("Single Receipt")],
+      ["customer", __("Customer Receipt")],
+      ["waiter", __("Waiter Receipt")],
+      ["item_group", __("Item Group Receipts")]
+    ];
+  }
+
+  get_default_visible_in(type) {
+    if (["payments", "footer_note", "qr_code", "barcode"].includes(type)) {
+      return ["single", "customer"];
+    }
+
+    return ["single", "customer", "waiter", "item_group"];
+  }
+
+  get_receipt_output_value(path) {
+    const parts = String(path).split(".");
+    let current = this.state.receipt_outputs || this.get_default_receipt_outputs();
+
+    for (const part of parts) {
+      if (current == null) return null;
+      current = current[part];
+    }
+
+    return current;
+  }
+
+  set_receipt_output_value(path, value) {
+    const parts = String(path).split(".");
+    this.state.receipt_outputs = this.state.receipt_outputs || this.get_default_receipt_outputs();
+
+    let current = this.state.receipt_outputs;
+    while (parts.length > 1) {
+      const part = parts.shift();
+      current[part] = current[part] || {};
+      current = current[part];
+    }
+
+    current[parts[0]] = value;
+  }
+
+  receipt_output_checkbox(path, label) {
+    const value = this.get_receipt_output_value(path);
+
+    return `
+      <label class="ptb-check">
+        <input type="checkbox" data-output-prop="${this.escape_attr(path)}" ${value ? "checked" : ""}>
+        <span>${this.escape_html(label)}</span>
+      </label>
+    `;
+  }
+
+  receipt_output_input(path, label, value = null) {
+    const actual_value = value === null ? this.get_receipt_output_value(path) : value;
+
+    return `
+      <div class="ptb-field">
+        <label>${this.escape_html(label)}</label>
+        <input type="text" data-output-prop="${this.escape_attr(path)}" value="${this.escape_attr(actual_value ?? "")}">
+      </div>
+    `;
+  }
+
+  render_receipt_outputs_props() {
+    const outputs = this.state.receipt_outputs || this.get_default_receipt_outputs();
+
+    return `
+      <div class="ptb-section-label">${__("Receipt Outputs")}</div>
+      ${this.receipt_output_checkbox("enabled", __("Enable Multiple Receipts"))}
+
+      ${this.depends(outputs.enabled, `
+        ${this.receipt_output_checkbox("customer.enabled", __("Print Customer Receipt"))}
+        ${this.depends(outputs.customer && outputs.customer.enabled, `
+          ${this.receipt_output_input("customer.title", __("Customer Receipt Title"))}
+        `)}
+
+        ${this.receipt_output_checkbox("waiter.enabled", __("Print Waiter Receipt"))}
+        ${this.depends(outputs.waiter && outputs.waiter.enabled, `
+          ${this.receipt_output_input("waiter.title", __("Waiter Receipt Title"))}
+        `)}
+
+        ${this.receipt_output_checkbox("item_group.enabled", __("Print Item Group Receipts"))}
+        ${this.depends(outputs.item_group && outputs.item_group.enabled, `
+          ${this.receipt_output_input("item_group.title_prefix", __("Item Group Receipt Title Prefix"))}
+          ${this.receipt_output_input("item_group.group_by", __("Group By Field"), outputs.item_group.group_by || "item_group")}
+          <div class="ptb-help">${__("Usually this is item_group. You can use any field from the invoice items table.")}</div>
+        `)}
+
+        ${this.receipt_output_checkbox("page_break_between_receipts", __("Add Page Break Between Receipts"))}
+      `)}
+
+      <div class="ptb-help">
+        ${__("When multiple receipts are enabled, use the Visible In setting on each element to control where it appears.")}
+      </div>
+    `;
+  }
+
+  visible_in_html(element) {
+    const visible_in = Array.isArray(element.visible_in)
+      ? element.visible_in
+      : this.get_default_visible_in(element.type);
+
+    const options = this.get_receipt_contexts()
+      .map(([value, label]) => `
+        <label class="ptb-check">
+          <input type="checkbox" data-visible-context="${this.escape_attr(value)}" ${visible_in.includes(value) ? "checked" : ""}>
+          <span>${this.escape_html(label)}</span>
+        </label>
+      `)
+      .join("");
+
+    return `
+      <div class="ptb-section-label">${__("Visibility")}</div>
+      ${options}
+      <div class="ptb-help">
+        ${__("Choose where this element should appear when multiple receipts are generated. Single Receipt is used when multiple receipts are disabled.")}
+      </div>
+    `;
   }
 
   _set_template_name_enabled(enabled) {
@@ -653,6 +837,7 @@ class POSThermalPrintBuilder {
     this.state.is_default = ptb_cint(data.is_default);
 
     const layout = data.layout_json || {};
+    this.state.receipt_outputs = this.normalize_receipt_outputs(layout.receipt_outputs);
     this.state.elements = this.normalize_elements(layout.elements || []);
     this.active_id = null;
 
@@ -677,6 +862,7 @@ class POSThermalPrintBuilder {
     this.state.template_name = clear_name ? "" : this.state.template_name;
     this.state.paper_size = "80";
     this.state.is_default = 0;
+    this.state.receipt_outputs = this.get_default_receipt_outputs();
     this.state.elements = [];
     this.active_id = null;
 
@@ -828,6 +1014,7 @@ class POSThermalPrintBuilder {
       pos_settings: this.state.pos_settings,
       invoice_doctype: this.state.invoice_doctype,
       paper_size: this.state.paper_size,
+      receipt_outputs: this.state.receipt_outputs || this.get_default_receipt_outputs(),
       elements: this.state.elements
     };
   }
@@ -837,11 +1024,21 @@ class POSThermalPrintBuilder {
       const default_element = this.get_default_element(element.type);
       const normalized = Object.assign({}, default_element, element);
 
+      if (!Array.isArray(normalized.visible_in)) {
+        normalized.visible_in = this.get_default_visible_in(normalized.type);
+      }
+
       if (normalized.type === "items_table") {
-        normalized.split_settings = Object.assign(
+        normalized.child_doctype = normalized.child_doctype || this.get_child_doctype_for_table_field(normalized.table_fieldname || "items");
+
+        if (!Array.isArray(normalized.columns)) {
+          normalized.columns = this.get_default_item_columns_for_field(normalized.table_fieldname || "items");
+        }
+
+        normalized.extra_row = Object.assign(
           {},
-          default_element.split_settings || {},
-          element.split_settings || {}
+          default_element.extra_row || {},
+          element.extra_row || {}
         );
       }
 
@@ -882,6 +1079,106 @@ class POSThermalPrintBuilder {
     this.render();
   }
 
+
+  get_default_invoice_fieldname() {
+    if ((this.invoice_fields || []).some((field) => field.fieldname === "name")) {
+      return "name";
+    }
+
+    return (this.invoice_fields && this.invoice_fields[0] && this.invoice_fields[0].fieldname) || "name";
+  }
+
+  get_default_invoice_field_label() {
+    const fieldname = this.get_default_invoice_fieldname();
+    const field = (this.invoice_fields || []).find((df) => df.fieldname === fieldname);
+
+    if (field && field.label) {
+      return field.label;
+    }
+
+    return fieldname === "name" ? "Invoice Number" : fieldname;
+  }
+
+  get_field_meta(fieldname, fields = this.invoice_fields) {
+    const safe = this.safe_fieldname(fieldname);
+    return (fields || []).find((field) => field.fieldname === safe) || null;
+  }
+
+  get_field_label(fieldname, fields = this.invoice_fields) {
+    const field = this.get_field_meta(fieldname, fields);
+    return (field && field.label) || fieldname;
+  }
+
+  get_child_doctype_for_table_field(table_fieldname) {
+    const table_field = (this.table_fields || []).find((df) => df.fieldname === table_fieldname);
+    return (table_field && table_field.options) || "";
+  }
+
+  get_table_field_options() {
+    return (this.table_fields || [])
+      .filter((field) => field.fieldname && field.options)
+      .map((field) => {
+        let label = `${field.label || field.fieldname} (${field.fieldname})`;
+        if (field.is_custom) {
+          label += ` [${__("Custom")}]`;
+        }
+        return [field.fieldname, label];
+      });
+  }
+
+  get_child_fields_for_table(element) {
+    const child_doctype = element.child_doctype || this.get_child_doctype_for_table_field(element.table_fieldname || "items");
+    return this.child_table_fields[child_doctype] || [];
+  }
+
+  get_default_item_columns_for_field(table_fieldname = "items") {
+    const child_doctype = this.get_child_doctype_for_table_field(table_fieldname);
+    const fields = this.child_table_fields[child_doctype] || [];
+    const preferred = ["item_name", "item_code", "description", "qty", "uom", "rate", "price_list_rate", "amount"];
+    const available = new Set(fields.map((field) => field.fieldname));
+
+    const columns = preferred.filter((fieldname) => available.has(fieldname));
+
+    if (columns.length) {
+      return columns.includes("item_name")
+        ? columns.filter((fieldname) => ["item_name", "qty", "rate", "amount"].includes(fieldname))
+        : columns.slice(0, 4);
+    }
+
+    return ["item_name", "qty", "rate", "amount"];
+  }
+
+  get_extra_row_field_options(element) {
+    const options = [["", __("None")]];
+    const fields = this.get_child_fields_for_table(element);
+
+    fields.forEach((field) => {
+      let label = `${field.label || field.fieldname} (${field.fieldname})`;
+      if (field.is_custom) {
+        label += ` [${__("Custom")}]`;
+      }
+      options.push([field.fieldname, label]);
+    });
+
+    return options;
+  }
+
+  ensure_items_table_metadata(element) {
+    if (!element || element.type !== "items_table") return;
+
+    element.table_fieldname = element.table_fieldname || "items";
+    element.child_doctype = element.child_doctype || this.get_child_doctype_for_table_field(element.table_fieldname);
+
+    if (!Array.isArray(element.columns) || !element.columns.length) {
+      element.columns = this.get_default_item_columns_for_field(element.table_fieldname);
+    }
+
+    element.extra_row = Object.assign(
+      { enabled: false, fieldname: "", prefix: "#" },
+      element.extra_row || {}
+    );
+  }
+
   get_default_element(type) {
     const base = {
       id: this.make_id(),
@@ -891,7 +1188,8 @@ class POSThermalPrintBuilder {
       font_size: 11,
       bold: false,
       margin_top: 2,
-      margin_bottom: 2
+      margin_bottom: 2,
+      visible_in: this.get_default_visible_in(type)
     };
 
     const defaults = {
@@ -902,8 +1200,8 @@ class POSThermalPrintBuilder {
         bold: true
       },
       field: {
-        fieldname: "name",
-        label: "Invoice Number",
+        fieldname: this.get_default_invoice_fieldname(),
+        label: this.get_default_invoice_field_label(),
         show_label: true,
         translate_label: true,
         align: "right"
@@ -964,6 +1262,13 @@ class POSThermalPrintBuilder {
         align: "center",
         bold: false
       },
+      receipt_title: {
+        use_receipt_context_title: true,
+        custom_title: "",
+        font_size: 14,
+        align: "center",
+        bold: true
+      },
       qr_code: {
         content_type: "document_field",
         static_value: "",
@@ -988,29 +1293,18 @@ class POSThermalPrintBuilder {
       items_table: {
         show_header: true,
         table_fieldname: "items",
-        child_doctype: "",
-        columns: ["item_name", "qty", "rate", "amount"],
-        rate_field: "rate",
-        amount_mode: "amount",
-        show_item_remarks: true,
+        child_doctype: this.get_child_doctype_for_table_field("items"),
+        columns: this.get_default_item_columns_for_field("items"),
+        extra_row: {
+          enabled: false,
+          fieldname: "",
+          prefix: "#"
+        },
         header_bg_color: "#f2f0f0",
         header_text_color: "#000000",
         header_border_color: "#000000",
         font_size: 10,
-        align: "right",
-        split_settings: {
-          enabled: false,
-          split_by: "item_group",
-          print_customer_receipt: true,
-          customer_receipt_title: "Customer Receipt",
-          print_waiter_receipt: true,
-          waiter_receipt_title: "Waiter Receipt",
-          print_group_receipts: true,
-          group_receipt_title_prefix: "Receipt for",
-          add_page_break_between_receipts: true,
-          include_totals_in_group_receipts: false,
-          include_payments_in_group_receipts: false
-        }
+        align: "right"
       },
       totals: {
         show_net_total: true,
@@ -1047,6 +1341,7 @@ class POSThermalPrintBuilder {
       container: "Container",
       details_table: "Details Table",
       footer_note: "Footer Note",
+      receipt_title: "Receipt Title",
       qr_code: "QR Code",
       barcode: "Barcode",
       items_table: "Items Table",
@@ -1364,11 +1659,41 @@ class POSThermalPrintBuilder {
     `;
   }
 
+  get_preview_receipt_title() {
+    const outputs = this.state.receipt_outputs || this.get_default_receipt_outputs();
+
+    if (!outputs.enabled) {
+      return __("Single Receipt");
+    }
+
+    if (outputs.customer && outputs.customer.enabled) {
+      return outputs.customer.title || __("Customer Receipt");
+    }
+
+    if (outputs.waiter && outputs.waiter.enabled) {
+      return outputs.waiter.title || __("Waiter Receipt");
+    }
+
+    if (outputs.item_group && outputs.item_group.enabled) {
+      return `${outputs.item_group.title_prefix || __("Receipt for")} Food`;
+    }
+
+    return __("Receipt Title");
+  }
+
   render_preview_body(element) {
     const style = this.get_preview_style(element);
 
     if (element.type === "text" || element.type === "footer_note") {
       return `<div class="ptb-receipt-text ptb-inline-edit" contenteditable="true" spellcheck="false" style="${style} outline:none;">${this.escape_html(element.content)}</div>`;
+    }
+
+    if (element.type === "receipt_title") {
+      const title = element.use_receipt_context_title
+        ? this.get_preview_receipt_title(element)
+        : (element.custom_title || "Receipt Title");
+
+      return `<div class="ptb-receipt-text ptb-inline-edit" contenteditable="true" spellcheck="false" data-prop="custom_title" style="${style} outline:none;">${this.escape_html(title)}</div>`;
     }
 
     if (element.type === "field") {
@@ -1549,8 +1874,10 @@ class POSThermalPrintBuilder {
   }
 
   render_preview_items_table(element) {
+    this.ensure_items_table_metadata(element);
+
     const columns = element.columns || [];
-    const labels = this.get_item_column_labels();
+    const labels = this.get_item_column_labels(element);
 
     const thead = element.show_header
       ? `
@@ -1564,16 +1891,22 @@ class POSThermalPrintBuilder {
 
     const rows = this.sample_doc.items
       .map((row) => {
-        return `<tr>${columns.map((c) => `<td>${this.escape_html(this.get_sample_item_value(row, c, element))}</td>`).join("")}</tr>`;
+        const main_row = `<tr>${columns.map((c) => `<td>${this.escape_html(this.get_sample_item_value(row, c, element))}</td>`).join("")}</tr>`;
+
+        if (element.extra_row && element.extra_row.enabled && element.extra_row.fieldname && row[element.extra_row.fieldname]) {
+          return `
+            ${main_row}
+            <tr>
+              <td colspan="${columns.length || 1}">${this.escape_html(element.extra_row.prefix || "")}${this.escape_html(row[element.extra_row.fieldname])}</td>
+            </tr>
+          `;
+        }
+
+        return main_row;
       })
       .join("");
 
-    const split_badge = element.split_settings && element.split_settings.enabled
-      ? `<div class="ptb-receipt-text ptb-split-badge" style="font-size:9px;text-align:center;">${__("Receipt splitting is enabled")}</div>`
-      : "";
-
     return `
-      ${split_badge}
       <table class="ptb-preview-table" style="font-size:${ptb_cint(element.font_size)}px;">
         ${thead}
         <tbody>${rows}</tbody>
@@ -1637,15 +1970,15 @@ class POSThermalPrintBuilder {
   }
 
   get_sample_item_value(row, column, element) {
-    if (column === "amount" && element.amount_mode === "price_list_rate_times_qty") {
+    const fieldname = this.safe_fieldname(column);
+
+    if (!fieldname) return "";
+
+    if (fieldname === "amount" && element.amount_mode === "price_list_rate_times_qty") {
       return ptb_flt(row.price_list_rate) * ptb_flt(row.qty);
     }
 
-    if (column === "rate" && element.rate_field === "price_list_rate") {
-      return row.price_list_rate;
-    }
-
-    return row[column] ?? "";
+    return row[fieldname] ?? "";
   }
 
   get_preview_style(element) {
@@ -1664,8 +1997,9 @@ class POSThermalPrintBuilder {
     const $empty = this.$root.find("#ptb-props-empty");
 
     if (!element) {
-      $form.empty().hide();
-      $empty.show();
+      $empty.hide();
+      $form.show();
+      $form.html(this.render_receipt_outputs_props());
       return;
     }
 
@@ -1686,12 +2020,24 @@ class POSThermalPrintBuilder {
       ${this.number("margin_top", __("Top Margin"), element.margin_top)}
       ${this.number("margin_bottom", __("Bottom Margin"), element.margin_bottom)}
       ${this.checkbox("bold", __("Bold"), element.bold)}
+      ${this.visible_in_html(element)}
     `;
 
     if (element.type === "text" || element.type === "footer_note") {
       html += `
         <div class="ptb-section-label">${__("Text Properties")}</div>
         ${this.textarea("content", __("Text"), element.content)}
+      `;
+    }
+
+    if (element.type === "receipt_title") {
+      html += `
+        <div class="ptb-section-label">${__("Receipt Title Properties")}</div>
+        ${this.checkbox("use_receipt_context_title", __("Use Receipt Output Title"), element.use_receipt_context_title)}
+        ${this.depends(!element.use_receipt_context_title, `
+          ${this.input("custom_title", __("Custom Title"), element.custom_title || "")}
+        `)}
+        <div class="ptb-help">${__("When multiple receipts are enabled, this element prints the title of the current receipt output.")}</div>
       `;
     }
 
@@ -1884,18 +2230,17 @@ class POSThermalPrintBuilder {
   }
 
   get_items_table_props_html(element) {
+    this.ensure_items_table_metadata(element);
+
+    const table_options = this.get_table_field_options();
+    const child_fields = this.get_child_fields_for_table(element);
+
     return `
       <div class="ptb-section-label">${__("Items Table Settings")}</div>
+      ${this.select("table_fieldname", __("Items Table Field"), element.table_fieldname || "items", table_options.length ? table_options : [["items", "Items (items)"]])}
+      <div class="ptb-help">${__("The available columns below are loaded from the selected child table according to the selected Invoice DocType.")}</div>
+
       ${this.checkbox("show_header", __("Show Table Header"), element.show_header)}
-      ${this.checkbox("show_item_remarks", __("Show Item Remarks"), element.show_item_remarks)}
-      ${this.select("rate_field", __("Rate Field"), element.rate_field, [
-      ["rate", __("Rate")],
-      ["price_list_rate", __("Price List Rate")]
-    ])}
-      ${this.select("amount_mode", __("Amount Mode"), element.amount_mode, [
-      ["amount", __("Amount Field")],
-      ["price_list_rate_times_qty", __("Price List Rate x Quantity")]
-    ])}
 
       <div class="ptb-section-label">${__("Table Header Style")}</div>
       ${this.color("header_bg_color", __("Header Background Color"), element.header_bg_color)}
@@ -1905,31 +2250,15 @@ class POSThermalPrintBuilder {
       <div class="ptb-section-label">${__("Items Table Columns")}</div>
       ${this.item_columns_html(element)}
 
-      <div class="ptb-section-label">${__("Receipt Splitting")}</div>
-      ${this.checkbox("split_settings.enabled", __("Enable Split by Item Group"), element.split_settings?.enabled)}
+      <div class="ptb-section-label">${__("Extra Row")}</div>
+      ${this.checkbox("extra_row.enabled", __("Show Extra Row Under Item"), element.extra_row?.enabled)}
+      ${this.depends(element.extra_row?.enabled, `
+        ${this.select("extra_row.fieldname", __("Extra Row Field"), element.extra_row?.fieldname || "", this.get_extra_row_field_options(element))}
+        ${this.input("extra_row.prefix", __("Extra Row Prefix"), element.extra_row?.prefix || "#")}
+      `)}
 
-      ${this.depends(element.split_settings?.enabled, `
-        ${this.checkbox("split_settings.print_customer_receipt", __("Print Customer Receipt"), element.split_settings?.print_customer_receipt)}
-
-        ${this.depends(element.split_settings?.print_customer_receipt, `
-          ${this.input("split_settings.customer_receipt_title", __("Customer Receipt Title"), element.split_settings?.customer_receipt_title)}
-        `)}
-
-        ${this.checkbox("split_settings.print_waiter_receipt", __("Print Waiter Receipt"), element.split_settings?.print_waiter_receipt)}
-
-        ${this.depends(element.split_settings?.print_waiter_receipt, `
-          ${this.input("split_settings.waiter_receipt_title", __("Waiter Receipt Title"), element.split_settings?.waiter_receipt_title)}
-        `)}
-
-        ${this.checkbox("split_settings.print_group_receipts", __("Print Item Group Receipts"), element.split_settings?.print_group_receipts)}
-
-        ${this.depends(element.split_settings?.print_group_receipts, `
-          ${this.input("split_settings.group_receipt_title_prefix", __("Item Group Receipt Title Prefix"), element.split_settings?.group_receipt_title_prefix)}
-        `)}
-
-        ${this.checkbox("split_settings.add_page_break_between_receipts", __("Add Page Break Between Receipts"), element.split_settings?.add_page_break_between_receipts)}
-        ${this.checkbox("split_settings.include_totals_in_group_receipts", __("Include Totals in Group Receipts"), element.split_settings?.include_totals_in_group_receipts)}
-        ${this.checkbox("split_settings.include_payments_in_group_receipts", __("Include Payments in Group Receipts"), element.split_settings?.include_payments_in_group_receipts)}
+      ${this.depends(!child_fields.length, `
+        <div class="ptb-help">${__("No child table fields were loaded. Save and refresh if this is a newly customized child table.")}</div>
       `)}
     `;
   }
@@ -2002,25 +2331,47 @@ class POSThermalPrintBuilder {
   }
 
   item_columns_html(element) {
-    const labels = this.get_item_column_labels();
+    this.ensure_items_table_metadata(element);
+
+    const fields = this.get_child_fields_for_table(element);
     const selected = element.columns || [];
 
-    return Object.keys(labels)
-      .map((fieldname) => `
-        <label class="ptb-check">
-          <input type="checkbox" data-column="${this.escape_attr(fieldname)}" ${selected.includes(fieldname) ? "checked" : ""}>
-          <span>${this.escape_html(labels[fieldname])}</span>
-        </label>
-      `)
+    if (!fields.length) {
+      return `<div class="ptb-help">${__("No fields available for the selected table.")}</div>`;
+    }
+
+    return fields
+      .filter((field) => field.fieldname)
+      .map((field) => {
+        let label = `${field.label || field.fieldname} (${field.fieldname})`;
+
+        if (field.hidden) {
+          label += ` [${__("Hidden")}]`;
+        }
+
+        if (field.is_custom) {
+          label += ` [${__("Custom")}]`;
+        }
+
+        return `
+          <label class="ptb-check">
+            <input type="checkbox" data-column="${this.escape_attr(field.fieldname)}" ${selected.includes(field.fieldname) ? "checked" : ""}>
+            <span>${this.escape_html(label)}</span>
+          </label>
+        `;
+      })
       .join("");
   }
 
   get_field_options(fields) {
+    const system = [];
     const standard = [];
     const custom = [];
+    const seen = new Set();
 
     (fields || []).forEach((field) => {
-      if (!field || !field.fieldname) return;
+      if (!field || !field.fieldname || seen.has(field.fieldname)) return;
+      seen.add(field.fieldname);
 
       let label = `${field.label || field.fieldname} (${field.fieldname})`;
 
@@ -2028,26 +2379,39 @@ class POSThermalPrintBuilder {
         label += ` [${__("Hidden")}]`;
       }
 
-      if (field.is_custom) {
+      if (field.is_system) {
+        system.push([field.fieldname, label]);
+      } else if (field.is_custom) {
         custom.push([field.fieldname, `${label} [${__("Custom")}]`]);
       } else {
         standard.push([field.fieldname, label]);
       }
     });
 
-    return [...standard, ...custom];
+    return [...system, ...standard, ...custom];
   }
 
-  get_item_column_labels() {
-    return {
-      item_code: "Item Code",
-      item_name: "Item Name",
-      description: "Description",
-      qty: "Quantity",
-      uom: "UOM",
-      rate: "Rate",
-      amount: "Amount"
-    };
+  get_item_column_labels(element = null) {
+    const labels = {};
+    const fields = element ? this.get_child_fields_for_table(element) : [];
+
+    fields.forEach((field) => {
+      labels[field.fieldname] = field.label || field.fieldname;
+    });
+
+    return Object.assign(
+      {
+        item_code: "Item Code",
+        item_name: "Item Name",
+        description: "Description",
+        qty: "Quantity",
+        uom: "UOM",
+        rate: "Rate",
+        price_list_rate: "Price List Rate",
+        amount: "Amount"
+      },
+      labels
+    );
   }
 
   details_rows_to_text(rows) {
@@ -2069,6 +2433,47 @@ class POSThermalPrintBuilder {
         };
       })
       .filter((row) => row.label && row.fieldname);
+  }
+
+  update_receipt_output_from_input(input) {
+    const $input = $(input);
+    const prop = $input.data("output-prop");
+
+    let value;
+
+    if ($input.attr("type") === "checkbox") {
+      value = $input.is(":checked") ? 1 : 0;
+    } else {
+      value = $input.val();
+    }
+
+    const current_value = this.get_receipt_output_value(prop);
+    if (current_value === value) return;
+
+    this.set_receipt_output_value(prop, value);
+    this.render();
+  }
+
+  update_visible_in_from_input(input) {
+    const element = this.find_element(this.active_id);
+    if (!element) return;
+
+    const context = $(input).data("visible-context");
+    if (!context) return;
+
+    element.visible_in = Array.isArray(element.visible_in)
+      ? element.visible_in
+      : this.get_default_visible_in(element.type);
+
+    if ($(input).is(":checked")) {
+      if (!element.visible_in.includes(context)) {
+        element.visible_in.push(context);
+      }
+    } else {
+      element.visible_in = element.visible_in.filter((value) => value !== context);
+    }
+
+    this.schedule_canvas_render();
   }
 
   update_active_from_input(input) {
@@ -2115,6 +2520,12 @@ class POSThermalPrintBuilder {
       }
     }
 
+    if (element.type === "items_table" && prop === "table_fieldname") {
+      element.child_doctype = this.get_child_doctype_for_table_field(value);
+      element.columns = this.get_default_item_columns_for_field(value);
+      element.extra_row = Object.assign({ enabled: false, fieldname: "", prefix: "#" }, element.extra_row || {}, { fieldname: "" });
+    }
+
     if (element.type === "qr_code" || element.type === "barcode") {
       const code_props = ["content_type", "static_value", "url", "fieldname", "fields", "custom_jinja", "barcode_type"];
       if (code_props.includes(prop)) {
@@ -2129,8 +2540,8 @@ class POSThermalPrintBuilder {
     const should_rerender_props =
       $input.attr("type") === "checkbox" ||
       input.tagName === "SELECT" ||
-      prop.includes("split_settings.") ||
-      ["source_type", "content_type", "show_title"].includes(prop);
+      prop.includes("extra_row.") ||
+      ["table_fieldname", "source_type", "content_type", "show_title", "use_receipt_context_title"].includes(prop);
 
     if (should_rerender_props) {
       this.render();
@@ -2206,11 +2617,11 @@ class POSThermalPrintBuilder {
 
   generate_print_format_html() {
     const paper = this.state.paper_size || "80";
-    const split_element = this.find_first_element_by_type("items_table");
+    const outputs = this.state.receipt_outputs || this.get_default_receipt_outputs();
 
-    const body = split_element && split_element.split_settings && split_element.split_settings.enabled
-      ? this.render_print_split_receipts(split_element)
-      : `<div class="thermal-receipt">${this.render_print_elements(this.state.elements, "doc.items", {})}</div>`;
+    const body = outputs.enabled
+      ? this.render_print_receipt_outputs(outputs)
+      : `<div class="thermal-receipt">${this.render_print_elements(this.state.elements, "doc.items", { mode: "single", receipt_title: __("Single Receipt") })}</div>`;
 
     return `
 <style>
@@ -2306,39 +2717,41 @@ ${body}
 `.trim();
   }
 
-  render_print_split_receipts(split_element) {
-    const s = split_element.split_settings || {};
+  render_print_receipt_outputs(outputs) {
+    const add_page_break = outputs.page_break_between_receipts ? "true" : "false";
 
-    const customer_title = s.customer_receipt_title || "Customer Receipt";
-    const waiter_title = s.waiter_receipt_title || "Waiter Receipt";
-    const group_prefix = s.group_receipt_title_prefix || "Receipt for";
-    const add_page_break = s.add_page_break_between_receipts ? "true" : "false";
-
-    const customer_receipt = s.print_customer_receipt
+    const customer_receipt = outputs.customer && outputs.customer.enabled
       ? `
 {% if ptb.has_previous and ${add_page_break} %}<div class="page-break"></div>{% endif %}
 {% set ptb.has_previous = true %}
 <div class="thermal-receipt">
-  ${this.render_split_receipt_title(customer_title)}
-  ${this.render_print_elements(this.state.elements, "doc.items", { mode: "customer" })}
+  ${this.render_print_elements(this.state.elements, "doc.items", {
+        mode: "customer",
+        receipt_title: outputs.customer.title || "Customer Receipt"
+      })}
 </div>`
       : "";
 
-    const waiter_receipt = s.print_waiter_receipt
+    const waiter_receipt = outputs.waiter && outputs.waiter.enabled
       ? `
 {% if ptb.has_previous and ${add_page_break} %}<div class="page-break"></div>{% endif %}
 {% set ptb.has_previous = true %}
 <div class="thermal-receipt">
-  ${this.render_split_receipt_title(waiter_title)}
-  ${this.render_print_elements(this.state.elements, "doc.items", { mode: "waiter" })}
+  ${this.render_print_elements(this.state.elements, "doc.items", {
+        mode: "waiter",
+        receipt_title: outputs.waiter.title || "Waiter Receipt"
+      })}
 </div>`
       : "";
 
-    const group_receipts = s.print_group_receipts
+    const group_by = this.safe_fieldname(outputs.item_group && outputs.item_group.group_by ? outputs.item_group.group_by : "item_group");
+    const group_prefix = outputs.item_group && outputs.item_group.title_prefix ? outputs.item_group.title_prefix : "Receipt for";
+
+    const item_group_receipts = outputs.item_group && outputs.item_group.enabled
       ? `
 {% set item_groups = {} %}
 {% for item in doc.items %}
-  {% set group_name = item.item_group or _("No Item Group") %}
+  {% set group_name = item.get("${group_by}") or _("No Item Group") %}
   {% if group_name not in item_groups %}
     {% set _ = item_groups.update({group_name: []}) %}
   {% endif %}
@@ -2349,11 +2762,9 @@ ${body}
   {% if ptb.has_previous and ${add_page_break} %}<div class="page-break"></div>{% endif %}
   {% set ptb.has_previous = true %}
   <div class="thermal-receipt">
-    ${this.render_split_receipt_title(`${this.escape_html(group_prefix)} {{ group_name }}`, true)}
     ${this.render_print_elements(this.state.elements, "group_items", {
-        mode: "group",
-        include_totals: Boolean(s.include_totals_in_group_receipts),
-        include_payments: Boolean(s.include_payments_in_group_receipts)
+        mode: "item_group",
+        receipt_title: `${group_prefix} {{ group_name }}`
       })}
   </div>
 {% endfor %}`
@@ -2363,7 +2774,7 @@ ${body}
 {% set ptb = namespace(has_previous=false) %}
 ${customer_receipt}
 ${waiter_receipt}
-${group_receipts}
+${item_group_receipts}
 `.trim();
   }
 
@@ -2381,16 +2792,17 @@ ${group_receipts}
   }
 
   render_print_elements(elements, item_source, context) {
+    const mode = context && context.mode ? context.mode : "single";
+
     return (elements || [])
       .filter((element) => {
-        if (context.mode === "group") {
-          if (element.type === "payments" && !context.include_payments) return false;
-          if ((element.type === "totals" || element.type === "taxes") && !context.include_totals) return false;
-        }
+        const visible_in = Array.isArray(element.visible_in)
+          ? element.visible_in
+          : this.get_default_visible_in(element.type);
 
-        return true;
+        return visible_in.includes(mode);
       })
-      .map((element) => this.render_print_element(element, item_source, context))
+      .map((element) => this.render_print_element(element, item_source, context || {}))
       .join("\n");
   }
 
@@ -2399,6 +2811,20 @@ ${group_receipts}
 
     if (element.type === "text" || element.type === "footer_note") {
       return `<div class="thermal-text" style="${style}">${this.escape_html(element.content || "")}</div>`;
+    }
+
+    if (element.type === "receipt_title") {
+      const title = element.use_receipt_context_title
+        ? (context.receipt_title || "")
+        : (element.custom_title || "");
+
+      if (!title) return "";
+
+      const title_html = title.includes("{{")
+        ? title
+        : this.render_label(title, element.translate_label !== false);
+
+      return `<div class="thermal-text" style="${style}">${title_html}</div>`;
     }
 
     if (element.type === "field") {
@@ -2537,14 +2963,17 @@ ${group_receipts}
   }
 
   render_print_items_table(element, item_source) {
-    const labels = this.get_item_column_labels();
+    this.ensure_items_table_metadata(element);
+
+    const labels = this.get_item_column_labels(element);
     const columns = (element.columns || [])
       .map((column) => this.safe_fieldname(column))
       .filter(Boolean);
 
     if (!columns.length) return "";
 
-    const source = item_source === "group_items" ? "group_items" : "doc.items";
+    const table_fieldname = this.safe_fieldname(element.table_fieldname || "items");
+    const source = item_source === "group_items" ? "group_items" : `(doc.get("${table_fieldname}") or [])`;
     const font_size = ptb_cint(element.font_size || 10);
     const header_bg = this.safe_css_color(element.header_bg_color, "#f2f0f0");
     const header_text = this.safe_css_color(element.header_text_color, "#000000");
@@ -2563,11 +2992,15 @@ ${group_receipts}
       .map((c) => `<td>${this.get_item_cell_jinja(c, element)}</td>`)
       .join("\n      ");
 
-    const remarks = element.show_item_remarks
+    const extra_row_field = element.extra_row && element.extra_row.enabled
+      ? this.safe_fieldname(element.extra_row.fieldname)
+      : "";
+
+    const extra_row = extra_row_field
       ? `
-      {% if row.get("remarks") %}
+      {% if row.get("${extra_row_field}") %}
       <tr>
-        <td colspan="${columns.length || 1}">#{{ row.get("remarks") }}</td>
+        <td colspan="${columns.length || 1}">${this.escape_html(element.extra_row.prefix || "")}{{ row.get("${extra_row_field}") }}</td>
       </tr>
       {% endif %}`
       : "";
@@ -2580,7 +3013,7 @@ ${group_receipts}
     <tr>
       ${cells}
     </tr>
-    ${remarks}
+    ${extra_row}
     {% endfor %}
   </tbody>
 </table>`.trim();
@@ -2789,221 +3222,320 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
     this.$root.find("#ptb-code-modal").removeClass("ptb-hidden");
   }
 
-  print_test() {
-    const split_element = this.find_first_element_by_type("items_table");
-    const is_split_enabled = split_element && split_element.split_settings && split_element.split_settings.enabled;
-    
-    let content_html = "";
-    if (is_split_enabled) {
-      content_html = this.generate_split_preview_html(split_element);
-    } else {
-      const $clone = this.$root.find("#ptb-paper").clone();
-      $clone.find(".ptb-element-tools, .ptb-empty, .ptb-container-empty").remove();
-      $clone.find(".ptb-canvas-element").removeClass("ptb-active ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
-      $clone.find("[contenteditable]").removeAttr("contenteditable");
-      content_html = $clone[0].outerHTML;
-    }
+print_test() {
+  const outputs = this.state.receipt_outputs || this.get_default_receipt_outputs();
 
-    const paper_size = this.state.paper_size || "80";
-    const paper_width = paper_size === "58" ? "58mm" : "80mm";
-    
-    const stylesheets = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map(el => el.outerHTML)
-      .join("\n");
+  let content_html = "";
 
-    const print_window = window.open("", "_blank", "width=800,height=600");
-    if (!print_window) {
-      frappe.show_alert({ message: __("Popup blocker prevented print test"), indicator: "orange" });
-      return;
-    }
+  if (outputs.enabled) {
+    content_html = this.generate_receipt_outputs_preview_html(outputs);
+  } else {
+    const $clone = this.$root.find("#ptb-paper").clone();
 
-    print_window.document.write(`
-      <html>
-        <head>
-          <title>${__("Print Test")}</title>
-          ${stylesheets}
-          <style>
-            @page {
-              size: ${paper_width} auto;
-              margin: 0;
-            }
+    $clone.removeAttr("id");
+    $clone.addClass("ptb-print-test-paper");
+    $clone.find(".ptb-element-tools, .ptb-empty, .ptb-container-empty").remove();
+    $clone.find(".ptb-canvas-element").removeClass("ptb-active ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
+    $clone.find("[contenteditable]").removeAttr("contenteditable");
+
+    content_html = `
+      <div class="ptb-print-test-page">
+        ${$clone[0].outerHTML}
+      </div>
+    `;
+  }
+
+  const paper_size = this.state.paper_size || "80";
+  const paper_width = paper_size === "58" ? "58mm" : "80mm";
+
+  const print_window = window.open("", "_blank", "width=420,height=700");
+
+  if (!print_window) {
+    frappe.show_alert({
+      message: __("Popup blocker prevented print test"),
+      indicator: "orange"
+    });
+    return;
+  }
+
+  print_window.document.write(`
+    <html>
+      <head>
+        <title>${__("Print Test")}</title>
+        <style>
+          @page {
+            size: ${paper_width} auto;
+            margin: 0;
+          }
+
+          html,
+          body {
+            width: ${paper_width};
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+            overflow: visible !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          .ptb-print-test-document {
+            display: block !important;
+            width: ${paper_width} !important;
+            max-width: ${paper_width} !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+          }
+
+          .ptb-print-test-page {
+            display: block !important;
+            width: ${paper_width} !important;
+            max-width: ${paper_width} !important;
+            min-width: ${paper_width} !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            float: none !important;
+            clear: both !important;
+            page-break-after: always;
+            break-after: page;
+          }
+
+          .ptb-print-test-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+
+          .ptb-paper,
+          .ptb-print-test-paper {
+            display: block !important;
+            width: ${paper_width} !important;
+            max-width: ${paper_width} !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 2mm !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-family: Tahoma, Arial, sans-serif !important;
+            direction: rtl !important;
+          }
+
+          .ptb-canvas-element {
+            display: block !important;
+            width: 100% !important;
+            clear: both !important;
+            float: none !important;
+            padding: 0 !important;
+            margin: 0 0 2px 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+          }
+
+          .ptb-element-tools,
+          .ptb-empty,
+          .ptb-container-empty,
+          .ptb-split-badge {
+            display: none !important;
+          }
+
+          .ptb-receipt-text {
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+
+          .ptb-receipt-row {
+            display: flex !important;
+            justify-content: space-between !important;
+            gap: 8px !important;
+            width: 100% !important;
+          }
+
+          .ptb-receipt-row span:last-child {
+            text-align: left !important;
+            direction: ltr !important;
+          }
+
+          .ptb-preview-table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+          }
+
+          .ptb-preview-table th,
+          .ptb-preview-table td {
+            border-bottom: 1px solid #777 !important;
+            padding: 3px 2px !important;
+            vertical-align: top !important;
+          }
+
+          .ptb-preview-table td:last-child,
+          .ptb-preview-table th:last-child {
+            text-align: left !important;
+            direction: ltr !important;
+          }
+
+          .ptb-divider {
+            border-top: 1px dashed #000 !important;
+            height: 1px !important;
+            margin: 6px 0 !important;
+          }
+
+          .ptb-image-preview {
+            display: block !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+          }
+
+          .ptb-container-preview {
+            display: block !important;
+            width: 100% !important;
+          }
+
+          @media print {
+            html,
             body {
-              margin: 0;
-              padding: 0;
-              background: #ffffff;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            .ptb-paper {
               width: ${paper_width} !important;
-              max-width: ${paper_width} !important;
-              margin: 0 auto 20px auto !important;
-              box-shadow: none !important;
-              border: none !important;
-              padding: 4px !important;
-              background: #ffffff !important;
             }
-            .ptb-canvas-element {
-              padding: 0 !important;
-              margin: 0 !important;
-              border: none !important;
-              box-shadow: none !important;
-            }
-            .ptb-split-badge {
-              display: none !important;
-            }
-            .page-break {
+
+            .ptb-print-test-page {
               page-break-after: always;
               break-after: page;
             }
-            @media print {
-              body, html {
-                width: ${paper_width};
-              }
-              .ptb-paper {
-                width: 100% !important;
-                max-width: 100% !important;
-                margin: 0 0 10px 0 !important;
-                padding: 0 !important;
-              }
-              .ptb-split-badge {
-                display: none !important;
-              }
+
+            .ptb-print-test-page:last-child {
+              page-break-after: auto;
+              break-after: auto;
             }
-          </style>
-        </head>
-        <body>
-          <div class="ptb-shell">
-            <div class="ptb-workspace" style="display:block; padding:0; background:transparent;">
-              <div class="ptb-designer" style="display:block; padding:0; background:transparent;">
-                <div class="ptb-canvas-wrap" style="display:block; padding:0; background:transparent;">
-                  ${content_html}
-                </div>
-              </div>
-            </div>
-          </div>
-          <script>
-            window.onload = function() {
-              setTimeout(function() {
-                window.print();
-                window.close();
-              }, 300);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    print_window.document.close();
-    print_window.focus();
-  }
+          }
+        </style>
+      </head>
 
-  generate_split_preview_html(split_element) {
-    const s = split_element.split_settings || {};
-    const customer_title = s.customer_receipt_title || "Customer Receipt";
-    const waiter_title = s.waiter_receipt_title || "Waiter Receipt";
-    const group_prefix = s.group_receipt_title_prefix || "Receipt for";
-    const add_page_break = s.add_page_break_between_receipts;
+      <body>
+        <div class="ptb-print-test-document">
+          ${content_html}
+        </div>
 
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 300);
+          };
+        </script>
+      </body>
+    </html>
+  `);
+
+  print_window.document.close();
+}
+
+  generate_receipt_outputs_preview_html(outputs) {
     let html = "";
     let has_previous = false;
+    const add_page_break = Boolean(outputs.page_break_between_receipts);
 
-    const render_receipt_part = (title, items_filter_fn, hide_elements_selector_fn) => {
+    const render_part = (mode, title, items_filter_fn = null) => {
       const $clone = this.$root.find("#ptb-paper").clone();
-      
+
       $clone.find(".ptb-element-tools, .ptb-empty, .ptb-container-empty").remove();
       $clone.find(".ptb-canvas-element").removeClass("ptb-active ptb-dragover ptb-dragover-top ptb-dragover-bottom ptb-dragover-inside");
       $clone.find("[contenteditable]").removeAttr("contenteditable");
 
-      if (hide_elements_selector_fn) {
-        hide_elements_selector_fn($clone);
-      }
+      $clone.find(".ptb-canvas-element").each((_, el) => {
+        const id = $(el).data("id");
+        const element = this.find_element(id);
+        const visible_in = element && Array.isArray(element.visible_in)
+          ? element.visible_in
+          : element ? this.get_default_visible_in(element.type) : [];
 
-      if (title) {
-        $clone.prepend(`<div class="ptb-receipt-text" style="font-size:12px; font-weight:bold; text-align:center; margin-bottom:8px; border-bottom:1px dashed #d0d5dd; padding-bottom:4px;">${this.escape_html(title)}</div>`);
-      }
+        if (!visible_in.includes(mode)) {
+          $(el).remove();
+        }
+      });
+
+      $clone.find(".ptb-canvas-element").each((_, el) => {
+        const id = $(el).data("id");
+        const element = this.find_element(id);
+
+        if (element && element.type === "receipt_title") {
+          $(el).find(".ptb-receipt-text").text(title || "");
+        }
+      });
 
       if (items_filter_fn) {
-        const $table = $clone.find(".ptb-preview-table");
-        if ($table.length) {
+        $clone.find(".ptb-canvas-element").each((_, el) => {
+          const id = $(el).data("id");
+          const element = this.find_element(id);
+          if (!element || element.type !== "items_table") return;
+
+          const $table = $(el).find(".ptb-preview-table");
           const $tbody = $table.find("tbody");
           const filtered_items = this.sample_doc.items.filter(items_filter_fn);
-          
-          if (filtered_items.length === 0) {
-            return "";
+
+          if (!filtered_items.length) {
+            $(el).remove();
+            return;
           }
 
-          const col_names = (split_element.columns || []).map(c => this.safe_fieldname(c)).filter(Boolean);
-          
+          const col_names = (element.columns || []).map(c => this.safe_fieldname(c)).filter(Boolean);
           let rows_html = "";
+
           for (const row of filtered_items) {
-            rows_html += `<tr>${col_names.map((c) => `<td>${this.escape_html(this.get_sample_item_value(row, c, split_element))}</td>`).join("")}</tr>`;
+            rows_html += `<tr>${col_names.map((c) => `<td>${this.escape_html(this.get_sample_item_value(row, c, element))}</td>`).join("")}</tr>`;
           }
+
           $tbody.html(rows_html);
-        }
+        });
       }
 
-      return $clone[0].outerHTML;
+      $clone.removeAttr("id");
+      $clone.addClass("ptb-print-test-paper");
+
+      return `
+        <div class="ptb-print-test-page">
+          ${$clone[0].outerHTML}
+        </div>
+      `;
     };
 
-    if (s.print_customer_receipt) {
-      const part = render_receipt_part(customer_title, null, null);
-      if (part) {
-        if (has_previous && add_page_break) html += '<div class="page-break"></div>';
-        html += part;
-        has_previous = true;
+    const add_part = (part) => {
+      if (!part) return;
+      if (has_previous && add_page_break) {
+        html += '<div class="page-break"></div>';
       }
+      html += part;
+      has_previous = true;
+    };
+
+    if (outputs.customer && outputs.customer.enabled) {
+      add_part(render_part("customer", outputs.customer.title || __("Customer Receipt")));
     }
 
-    if (s.print_waiter_receipt) {
-      const part = render_receipt_part(waiter_title, null, null);
-      if (part) {
-        if (has_previous && add_page_break) html += '<div class="page-break"></div>';
-        html += part;
-        has_previous = true;
-      }
+    if (outputs.waiter && outputs.waiter.enabled) {
+      add_part(render_part("waiter", outputs.waiter.title || __("Waiter Receipt")));
     }
 
-    if (s.print_group_receipts) {
+    if (outputs.item_group && outputs.item_group.enabled) {
+      const group_by = outputs.item_group.group_by || "item_group";
       const groups = {};
-      for (const item of this.sample_doc.items) {
-        const g = item.item_group || "No Item Group";
-        groups[g] = groups[g] || [];
-        groups[g].push(item);
-      }
 
-      for (const group_name of Object.keys(groups)) {
-        const title = `${group_prefix} ${group_name}`;
-        const part = render_receipt_part(
-          title,
-          (item) => (item.item_group || "No Item Group") === group_name,
-          ($c) => {
-            if (!s.include_payments_in_group_receipts) {
-              $c.find(".ptb-canvas-element").each((_, el) => {
-                const id = $(el).data("id");
-                const item_el = this.find_element(id);
-                if (item_el && item_el.type === "payments") {
-                  $(el).remove();
-                }
-              });
-            }
-            if (!s.include_totals_in_group_receipts) {
-              $c.find(".ptb-canvas-element").each((_, el) => {
-                const id = $(el).data("id");
-                const item_el = this.find_element(id);
-                if (item_el && (item_el.type === "totals" || item_el.type === "taxes")) {
-                  $(el).remove();
-                }
-              });
-            }
-          }
-        );
+      this.sample_doc.items.forEach((item) => {
+        const group_name = item[group_by] || __("No Item Group");
+        groups[group_name] = groups[group_name] || [];
+        groups[group_name].push(item);
+      });
 
-        if (part) {
-          if (has_previous && add_page_break) html += '<div class="page-break"></div>';
-          html += part;
-          has_previous = true;
-        }
-      }
+      Object.keys(groups).forEach((group_name) => {
+        const title = `${outputs.item_group.title_prefix || __("Receipt for")} ${group_name}`;
+        add_part(render_part("item_group", title, (item) => (item[group_by] || __("No Item Group")) === group_name));
+      });
     }
 
     return html;

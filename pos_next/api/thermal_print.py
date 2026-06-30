@@ -205,6 +205,56 @@ def get_pos_settings_context(pos_settings):
     }
 
 
+def _system_invoice_fields():
+    return [
+        {
+            "fieldname": "name",
+            "label": "Invoice Number",
+            "fieldtype": "Data",
+            "options": None,
+            "is_custom": 0,
+            "is_system": 1,
+            "hidden": 0,
+        },
+        {
+            "fieldname": "owner",
+            "label": "Owner",
+            "fieldtype": "Data",
+            "options": None,
+            "is_custom": 0,
+            "is_system": 1,
+            "hidden": 0,
+        },
+        {
+            "fieldname": "creation",
+            "label": "Created On",
+            "fieldtype": "Datetime",
+            "options": None,
+            "is_custom": 0,
+            "is_system": 1,
+            "hidden": 0,
+        },
+        {
+            "fieldname": "modified",
+            "label": "Last Modified On",
+            "fieldtype": "Datetime",
+            "options": None,
+            "is_custom": 0,
+            "is_system": 1,
+            "hidden": 0,
+        },
+        {
+            "fieldname": "docstatus",
+            "label": "Document Status",
+            "fieldtype": "Int",
+            "options": None,
+            "is_custom": 0,
+            "is_system": 1,
+            "hidden": 0,
+        },
+    ]
+
+
 @frappe.whitelist()
 def get_invoice_doctype_fields(invoice_doctype):
     invoice_doctype = _normalize_invoice_doctype(invoice_doctype)
@@ -229,6 +279,11 @@ def get_invoice_doctype_fields(invoice_doctype):
 
     fields = []
     table_fields = []
+    seen_fields = set()
+
+    for field in _system_invoice_fields():
+        fields.append(field)
+        seen_fields.add(field["fieldname"])
 
     for df in meta.fields:
         if not df.fieldname:
@@ -244,12 +299,17 @@ def get_invoice_doctype_fields(invoice_doctype):
                     "fieldtype": df.fieldtype,
                     "options": df.options,
                     "is_custom": is_custom,
+                    "is_system": 0,
                     "hidden": cint(df.hidden),
+                    "idx": cint(df.idx),
                 }
             )
             continue
 
         if df.fieldtype in excluded_fieldtypes:
+            continue
+
+        if df.fieldname in seen_fields:
             continue
 
         fields.append(
@@ -259,18 +319,18 @@ def get_invoice_doctype_fields(invoice_doctype):
                 "fieldtype": df.fieldtype,
                 "options": df.options,
                 "is_custom": is_custom,
+                "is_system": 0,
                 "hidden": cint(df.hidden),
+                "idx": cint(df.idx),
             }
         )
-
-    fields = sorted(fields, key=lambda x: (x.get("is_custom", 0), x.get("label") or ""))
+        seen_fields.add(df.fieldname)
 
     return {
         "doctype": invoice_doctype,
         "fields": fields,
         "table_fields": table_fields,
     }
-
 
 @frappe.whitelist()
 def get_child_table_fields(child_doctype):
@@ -311,17 +371,16 @@ def get_child_table_fields(child_doctype):
                 "fieldtype": df.fieldtype,
                 "options": df.options,
                 "is_custom": 1 if df.fieldname in custom_fieldnames else 0,
+                "is_system": 0,
                 "hidden": cint(df.hidden),
+                "idx": cint(df.idx),
             }
         )
-
-    fields = sorted(fields, key=lambda x: (x.get("is_custom", 0), x.get("label") or ""))
 
     return {
         "doctype": child_doctype,
         "fields": fields,
     }
-
 
 @frappe.whitelist()
 def list_templates(pos_settings, invoice_doctype=None):
@@ -577,7 +636,7 @@ def get_qr_data_uri(value, box_size=4, border=2):
     try:
         import qrcode
     except ImportError:
-        frappe.throw(_("The 'qrcode' library is required to generate QR codes. Please contact your system administrator."))
+        return ""
 
     qr = qrcode.QRCode(
         version=None,
@@ -609,7 +668,7 @@ def get_barcode_data_uri(value, barcode_type="code128"):
         import barcode
         from barcode.writer import ImageWriter
     except ImportError:
-        frappe.throw(_("The 'barcode' library is required to generate barcodes. Please contact your system administrator."))
+        return ""
 
     try:
         barcode_class = barcode.get_barcode_class(barcode_type)
