@@ -19,6 +19,15 @@ body {
 	font-family: inherit;
 }
 
+/* Ensure explicit Tailwind font overrides preserve Saudi Riyal symbol font */
+.font-mono {
+	font-family: "SaudiRiyalSymbol", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+}
+
+.font-sans {
+	font-family: "SaudiRiyalSymbol", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif !important;
+}
+
 /* Ensure frappe-ui dialogs render above sticky mobile navigation */
 .dialog-overlay {
 	z-index: 400 !important;
