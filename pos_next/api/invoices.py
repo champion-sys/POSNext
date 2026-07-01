@@ -707,6 +707,21 @@ def update_invoice(data):
                 if pos_profile_doc.currency and not invoice_doc.get("currency"):
                     invoice_doc.currency = pos_profile_doc.currency
 
+                # Copy retail fields that ERPNext's POS Invoice skips when calling set_missing_values(for_validate=True)
+                for fieldname in (
+                    "taxes_and_charges",
+                    "tax_category",
+                    "write_off_account",
+                    "write_off_cost_center",
+                    "cost_center",
+                    "letter_head",
+                    "tc_name",
+                    "select_print_heading",
+                    "company_address",
+                ):
+                    if hasattr(pos_profile_doc, fieldname) and getattr(pos_profile_doc, fieldname) and not invoice_doc.get(fieldname):
+                        invoice_doc.set(fieldname, getattr(pos_profile_doc, fieldname))
+
                 # Copy accounting dimensions from POS Profile
                 if hasattr(pos_profile_doc, "branch") and pos_profile_doc.branch:
                     invoice_doc.branch = pos_profile_doc.branch
