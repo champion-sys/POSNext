@@ -20,7 +20,7 @@ class POSOpeningShift(Document):
         # Check for another open POS Opening Shift for this POS Profile
         existing_shift = frappe.db.get_value(
             "POS Opening Shift",
-            {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name]},
+            {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name], "docstatus": ["!=", 2]},
             ["name", "user"],
             as_dict=True
         )
