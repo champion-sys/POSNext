@@ -2,6 +2,17 @@
 @import "frappe-ui/style.css";
 @import "@abdulrysr/saudi-riyal-new-symbol-font/style.css";
 
+@font-face {
+  font-family: 'Tajawal';
+  src: url('./assets/fonts/SND-Tajawal-Medium.ttf') format('truetype');
+  font-style: bold;
+  font-display: swap;
+}
+
+* {
+	font-family: "Tajawal", sans-serif !important;
+}
+
 /* CSS Custom Properties for consistent z-index layering */
 :root {
 	--z-dialog-overlay: 400;
