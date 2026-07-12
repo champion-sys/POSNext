@@ -1,0 +1,9 @@
+<svg width="101" height="100" viewBox="0 0 101 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+
+    <path d="M72.0506 0H29.1935C13.4139 0 0.62207 12.7919 0.62207 28.5714V71.4286C0.62207 87.2081 13.4139 100 29.1935 100H72.0506C87.8302 100 100.622 87.2081 100.622 71.4286V28.5714C100.622 12.7919 87.8302 0 72.0506 0Z" fill="#EA580C"></path>
+
+    <text x="50.5" y="58" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="24" font-weight="700">
+        POS
+    </text>
+
+</svg>

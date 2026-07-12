@@ -37,6 +37,9 @@ class POSThermalPrintBuilder {
       template_name: "",
       paper_size: "80",
       is_default: 0,
+      company: "",
+      company_logo: "",
+      show_all_compatible_templates: 1,
       receipt_outputs: this.get_default_receipt_outputs(),
       elements: []
     };
@@ -154,6 +157,10 @@ class POSThermalPrintBuilder {
     this.page.add_inner_button(__("Save As"), () => this.handle_async(() => this.save_as_template()));
     this.page.add_inner_button(__("Set Default"), () => this.handle_async(() => this.set_default_template()));
     this.page.add_inner_button(__("Generate Print Format"), () => this.handle_async(() => this.generate_print_format()));
+    this.page.add_inner_button(
+      __("Apply to All Active POS Settings"),
+      () => this.handle_async(() => this.apply_to_all_active_pos_settings())
+    );
   }
 
   bind() {
@@ -578,6 +585,11 @@ class POSThermalPrintBuilder {
     if (token !== this._switch_token) return;
 
     this.state.invoice_doctype = context.invoice_doctype || "POS Invoice";
+    this.state.company = context.company || "";
+    this.state.company_logo = context.company_logo || "";
+
+    this.sample_doc.company = this.state.company || __("Company");
+    this.sample_doc.company_logo = this.state.company_logo || "";
 
     await this._load_pos_settings_data(pos_settings, this.state.invoice_doctype);
 
@@ -594,6 +606,11 @@ class POSThermalPrintBuilder {
       await this.page.fields_dict.pos_settings.set_value(pos_settings);
       await this.page.fields_dict.invoice_doctype.set_value(this.state.invoice_doctype);
       await this.page.fields_dict.template_name.set_value("");
+      if (this.page.fields_dict.show_all_compatible_templates) {
+        await this.page.fields_dict.show_all_compatible_templates.set_value(
+          this.state.show_all_compatible_templates ? 1 : 0
+        );
+      }
       this._set_template_name_enabled(true);
       await this._refresh_template_options();
     });
@@ -604,7 +621,11 @@ class POSThermalPrintBuilder {
   async _load_pos_settings_data(pos_settings, invoice_doctype) {
     const [fields_result, templates] = await Promise.all([
       this.call("get_invoice_doctype_fields", { invoice_doctype }),
-      this.call("list_templates", { pos_settings, invoice_doctype })
+      this.call("list_templates", {
+        pos_settings,
+        invoice_doctype,
+        include_all_compatible: 1
+      })
     ]);
 
     this.invoice_fields = (fields_result && fields_result.fields) || [];
@@ -629,10 +650,14 @@ class POSThermalPrintBuilder {
     const options = [{ value: "", label: __("New Template") }];
 
     this.templates.forEach((row) => {
-      const suffix = row.is_default ? ` - ${__("Default")}` : "";
+      const default_suffix = row.is_default ? ` - ${__("Default")}` : "";
+      const pos_suffix = row.is_current_pos_settings
+        ? ""
+        : ` - ${row.pos_settings || ""}`;
+
       options.push({
         value: row.name,
-        label: `${row.template_name}${suffix}`
+        label: `${row.template_name}${pos_suffix}${default_suffix}`
       });
     });
 
@@ -915,7 +940,8 @@ class POSThermalPrintBuilder {
 
       const saved_templates = await this.call("list_templates", {
         pos_settings: this.state.pos_settings,
-        invoice_doctype: this.state.invoice_doctype
+        invoice_doctype: this.state.invoice_doctype,
+        include_all_compatible: 1
       });
 
       this.templates = saved_templates || [];
@@ -975,7 +1001,8 @@ class POSThermalPrintBuilder {
 
     const default_templates = await this.call("list_templates", {
       pos_settings: this.state.pos_settings,
-      invoice_doctype: this.state.invoice_doctype
+      invoice_doctype: this.state.invoice_doctype,
+      include_all_compatible: 1
     });
 
     this.templates = default_templates || [];
@@ -989,6 +1016,34 @@ class POSThermalPrintBuilder {
       : __("Template set as default");
 
     frappe.show_alert({ message, indicator: "green" });
+  }
+
+  async apply_to_all_active_pos_settings() {
+    await this.save_template();
+
+    frappe.confirm(
+      __(
+        "This will assign the generated Print Format of this template to all active POS Settings with the same Invoice DocType. Continue?"
+      ),
+      async () => {
+        const result = await this.call("apply_template_to_all_active_pos_settings", {
+          template: this.state.template
+        }, true);
+
+        frappe.msgprint({
+          title: __("Template Applied"),
+          message: __(
+            "Print Format {0} was assigned to {1} POS Profiles. Skipped: {2}",
+            [
+              result.print_format,
+              result.updated_count || 0,
+              result.skipped_count || 0
+            ]
+          ),
+          indicator: "green"
+        });
+      }
+    );
   }
 
   async generate_print_format() {
@@ -1210,7 +1265,7 @@ class POSThermalPrintBuilder {
         source_type: "company_logo",
         image_url: "",
         file_url: "",
-        width: 36,
+        width: 23,
         align: "center"
       },
       divider: {
@@ -1711,7 +1766,23 @@ class POSThermalPrintBuilder {
       const src = element.source_type === "url" ? element.image_url : element.file_url;
 
       if (element.source_type === "company_logo") {
-        return `<div class="ptb-image-placeholder" style="${style}">${__("Company Logo")}</div>`;
+        if (this.state.company_logo) {
+          return `
+            <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+              <img class="ptb-image-preview" src="${this.escape_attr(this.state.company_logo)}" style="width:${ptb_cint(element.width)}mm;">
+            </div>
+          `;
+        }
+
+        return `
+          <div class="ptb-receipt-text" style="
+            ${style};
+            font-size:${ptb_cint(element.font_size || 14)}px;
+            font-weight:700;
+          ">
+            ${this.escape_html(this.state.company || this.sample_doc.company || __("Company"))}
+          </div>
+        `;
       }
 
       if (!src) {
@@ -1783,47 +1854,124 @@ class POSThermalPrintBuilder {
     }
 
     if (element.type === "qr_code" || element.type === "barcode") {
+      const value = this.get_preview_code_value(element) || "123456";
+      const validation_message = this.get_barcode_validation_message(element, value);
+
+      if (validation_message) {
+        return `
+          <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+            <div class="ptb-code-warning">
+              ${this.escape_html(validation_message)}
+            </div>
+          </div>
+        `;
+      }
+
       if (!element._preview_data_uri && !element._is_fetching_preview) {
         element._is_fetching_preview = true;
-        const value = this.get_preview_code_value(element) || "123456";
-        const method = element.type === "qr_code" ? "pos_next.api.thermal_print.get_qr_data_uri" : "pos_next.api.thermal_print.get_barcode_data_uri";
+
+        const method = element.type === "qr_code"
+          ? "pos_next.api.thermal_print.get_qr_data_uri"
+          : "pos_next.api.thermal_print.get_barcode_data_uri";
+
         const args = { value: value };
+
         if (element.type === "barcode") {
-            args.barcode_type = element.barcode_type || "code128";
+          args.barcode_type = element.barcode_type || "code128";
         }
-        
+
         frappe.call({
           method: method,
           args: args,
           callback: (r) => {
             element._is_fetching_preview = false;
+
             if (r.message) {
               element._preview_data_uri = r.message;
+              this.render_canvas();
+            } else {
+              element._preview_data_uri = "";
               this.render_canvas();
             }
           },
           error: () => {
             element._is_fetching_preview = false;
+            element._preview_data_uri = "";
+            this.render_canvas();
           }
         });
       }
 
       if (element._preview_data_uri) {
-         return `
-          <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
-             <img class="thermal-qr" src="${element._preview_data_uri}" style="width:${ptb_cint(element.width)}mm; ${element.type === 'barcode' ? 'max-height:' + (ptb_cint(element.width)/2) + 'mm;' : ''}">
-          </div>
-         `;
-      } else {
-        const type_label = element.type === "qr_code" ? __("QR Code") : __("Barcode");
         return `
           <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
-            <div class="ptb-qr-placeholder" style="width:${ptb_cint(element.width)}mm; min-height:${element.type === "qr_code" ? ptb_cint(element.width) : ptb_cint(element.width) / 2}mm;">
-              ${type_label}...
-            </div>
+            <img class="thermal-qr" src="${this.escape_attr(element._preview_data_uri)}" style="width:${ptb_cint(element.width)}mm; ${element.type === "barcode" ? "max-height:" + Math.max(8, Math.round(ptb_cint(element.width) / 2)) + "mm;" : ""}">
           </div>
         `;
       }
+
+      const type_label = element.type === "qr_code" ? __("QR Code") : __("Barcode");
+
+      return `
+        <div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+          <div class="ptb-qr-placeholder" style="width:${ptb_cint(element.width)}mm; min-height:${element.type === "qr_code" ? ptb_cint(element.width) : Math.max(8, Math.round(ptb_cint(element.width) / 2))}mm;">
+            ${type_label}...
+          </div>
+        </div>
+      `;
+    }
+
+    return "";
+  }
+
+  normalize_barcode_type(barcode_type) {
+    return String(barcode_type || "code128")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  is_numeric_barcode_type(barcode_type) {
+    const value = this.normalize_barcode_type(barcode_type);
+
+    return [
+      "ean",
+      "ean8",
+      "ean13",
+      "upc",
+      "upca",
+      "isbn",
+      "isbn10",
+      "isbn13",
+      "issn"
+    ].includes(value);
+  }
+
+  get_barcode_validation_message(element, value) {
+    if (!element || element.type !== "barcode") return "";
+
+    const barcode_type = this.normalize_barcode_type(element.barcode_type || "code128");
+    const raw_value = String(value || "");
+
+    if (!this.is_numeric_barcode_type(barcode_type)) {
+      return "";
+    }
+
+    if (!/^\d+$/.test(raw_value)) {
+      return __("{0} accepts numbers only. Use Code 128 for invoice numbers.", [
+        element.barcode_type || "EAN"
+      ]);
+    }
+
+    if (barcode_type === "ean13" && ![12, 13].includes(raw_value.length)) {
+      return __("EAN-13 requires 12 or 13 digits.");
+    }
+
+    if (barcode_type === "ean8" && ![7, 8].includes(raw_value.length)) {
+      return __("EAN-8 requires 7 or 8 digits.");
+    }
+
+    if ((barcode_type === "upc" || barcode_type === "upca") && ![11, 12].includes(raw_value.length)) {
+      return __("UPC-A requires 11 or 12 digits.");
     }
 
     return "";
@@ -2529,7 +2677,8 @@ class POSThermalPrintBuilder {
     if (element.type === "qr_code" || element.type === "barcode") {
       const code_props = ["content_type", "static_value", "url", "fieldname", "fields", "custom_jinja", "barcode_type"];
       if (code_props.includes(prop)) {
-        element._preview_data_uri = null;
+        element._preview_data_uri = "";
+        element._is_fetching_preview = false;
       }
     }
 
@@ -2940,14 +3089,22 @@ ${item_group_receipts}
   }
 
   render_print_image(element) {
-    const width = ptb_cint(element.width || 36);
+    const width = ptb_cint(element.width || 23);
+    const align = this.css_align(element.align);
+    const margin_top = ptb_cint(element.margin_top);
+    const margin_bottom = ptb_cint(element.margin_bottom);
+    const font_size = ptb_cint(element.font_size || 14);
 
     if (element.source_type === "company_logo") {
       return `
-{% set company_logo = frappe.db.get_value("Company", doc.company, "company_logo") %}
+{% set company_logo = frappe.db.get_value("Company", doc.company, "company_logo") if doc.company else "" %}
 {% if company_logo %}
-<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+<div style="text-align:${align}; margin:${margin_top}px 0 ${margin_bottom}px;">
   <img class="thermal-logo" src="{{ company_logo }}" style="width:${width}mm;">
+</div>
+{% else %}
+<div class="thermal-text" style="text-align:${align};font-size:${font_size}px;font-weight:700;margin:${margin_top}px 0 ${margin_bottom}px;">
+  {{ doc.company or "" }}
 </div>
 {% endif %}`.trim();
     }
@@ -2957,7 +3114,7 @@ ${item_group_receipts}
     if (!src) return "";
 
     return `
-<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+<div style="text-align:${align}; margin:${margin_top}px 0 ${margin_bottom}px;">
   <img class="thermal-logo" src="${this.escape_attr(src)}" style="width:${width}mm;">
 </div>`.trim();
   }
@@ -3107,24 +3264,37 @@ ${element.show_header ? `<div class="thermal-text" style="font-weight:700; font-
   render_print_qr_code(element) {
     const width = ptb_cint(element.width || 26);
     const code_value = this.get_qr_value_jinja(element);
+    const align = this.css_align(element.align);
+    const margin_top = ptb_cint(element.margin_top);
+    const margin_bottom = ptb_cint(element.margin_bottom);
 
     if (element.type === "barcode") {
-        const barcode_type = this.escape_jinja_string(element.barcode_type || "code128");
-        return `
+      const barcode_type = this.escape_jinja_string(element.barcode_type || "code128");
+      const max_height = Math.max(8, Math.round(width / 2));
+
+      return `
 {% set ptb_code_value = ${code_value} %}
-{% set ptb_code_data_uri = frappe.get_attr("pos_next.api.thermal_print.get_barcode_data_uri")(ptb_code_value, "${barcode_type}") %}
+{% if get_barcode_data_uri is defined %}
+  {% set ptb_code_data_uri = get_barcode_data_uri(ptb_code_value, "${barcode_type}") %}
+{% else %}
+  {% set ptb_code_data_uri = "" %}
+{% endif %}
 {% if ptb_code_data_uri %}
-<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
-  <img class="thermal-qr" src="{{ ptb_code_data_uri }}" style="width:${width}mm; max-height:${width/2}mm;">
+<div style="text-align:${align}; margin:${margin_top}px 0 ${margin_bottom}px;">
+  <img class="thermal-qr" src="{{ ptb_code_data_uri }}" style="width:${width}mm; max-height:${max_height}mm;">
 </div>
 {% endif %}`.trim();
     }
 
     return `
 {% set ptb_qr_value = ${code_value} %}
-{% set ptb_qr_data_uri = frappe.get_attr("pos_next.api.thermal_print.get_qr_data_uri")(ptb_qr_value) %}
+{% if get_qr_data_uri is defined %}
+  {% set ptb_qr_data_uri = get_qr_data_uri(ptb_qr_value) %}
+{% else %}
+  {% set ptb_qr_data_uri = "" %}
+{% endif %}
 {% if ptb_qr_data_uri %}
-<div style="text-align:${this.css_align(element.align)}; margin:${ptb_cint(element.margin_top)}px 0 ${ptb_cint(element.margin_bottom)}px;">
+<div style="text-align:${align}; margin:${margin_top}px 0 ${margin_bottom}px;">
   <img class="thermal-qr" src="{{ ptb_qr_data_uri }}" style="width:${width}mm;">
 </div>
 {% endif %}`.trim();
@@ -3597,6 +3767,7 @@ print_test() {
     return {
       name: "ACC-PSINV-2026-00001",
       company: "Sanad Digital",
+      company_logo: "",
       customer: "Cash Customer",
       posting_date: "2026-06-29",
       posting_time: "14:30:00",

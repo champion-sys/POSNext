@@ -742,3 +742,28 @@
     display: none !important;
   }
 }
+
+.ptb-show-all-compatible-templates-field {
+  max-width: 155px;
+  min-width: 145px;
+}
+
+.ptb-show-all-compatible-templates-field .control-input-wrapper,
+.ptb-show-all-compatible-templates-field .control-input {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.ptb-code-warning {
+  display: inline-block;
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed #f59e0b;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}

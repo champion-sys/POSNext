@@ -114,6 +114,24 @@ def _get_print_format_name(template_name):
     return "POS Thermal - {0}".format(template_name)
 
 
+def _apply_thermal_print_format_settings(print_format):
+    if frappe.get_meta("Print Format").has_field("disable_pagination"):
+        print_format.disable_pagination = 1
+
+    if frappe.get_meta("Print Format").has_field("with_letterhead"):
+        print_format.with_letterhead = 0
+
+    if frappe.get_meta("Print Format").has_field("page_number"):
+        print_format.page_number = "Hide"
+
+    if frappe.get_meta("Print Format").has_field("font_size"):
+        print_format.font_size = 11
+
+    for fieldname in ("margin_top", "margin_bottom", "margin_left", "margin_right"):
+        if frappe.get_meta("Print Format").has_field(fieldname):
+            setattr(print_format, fieldname, 0)
+
+
 def _generate_or_update_print_format(doc):
     if not doc.generated_html:
         frappe.throw(_("Generated HTML is empty"))
@@ -131,10 +149,12 @@ def _generate_or_update_print_format(doc):
         print_format.custom_format = 1
         print_format.disabled = 0
         print_format.html = doc.generated_html
-
+        
         if frappe.get_meta("Print Format").has_field("print_format_name"):
             print_format.print_format_name = print_format_name
 
+        _apply_thermal_print_format_settings(print_format)
+    
         print_format.save(ignore_permissions=True)
     else:
         print_format = frappe.new_doc("Print Format")
@@ -151,6 +171,9 @@ def _generate_or_update_print_format(doc):
         print_format.custom_format = 1
         print_format.disabled = 0
         print_format.html = doc.generated_html
+
+        _apply_thermal_print_format_settings(print_format)
+
         print_format.insert(ignore_permissions=True)
 
     return print_format
@@ -198,9 +221,20 @@ def get_pos_settings_context(pos_settings):
     pos_profile = frappe.db.get_value("POS Settings", pos_settings, "pos_profile")
     invoice_doctype = _get_invoice_doctype_from_pos_settings(pos_settings)
 
+    company = None
+    company_logo = None
+
+    if pos_profile and frappe.db.exists("POS Profile", pos_profile):
+        company = frappe.db.get_value("POS Profile", pos_profile, "company")
+
+    if company and frappe.db.exists("Company", company):
+        company_logo = frappe.db.get_value("Company", company, "company_logo")
+
     return {
         "pos_settings": pos_settings,
         "pos_profile": pos_profile,
+        "company": company,
+        "company_logo": company_logo,
         "invoice_doctype": invoice_doctype,
     }
 
@@ -383,7 +417,7 @@ def get_child_table_fields(child_doctype):
     }
 
 @frappe.whitelist()
-def list_templates(pos_settings, invoice_doctype=None):
+def list_templates(pos_settings, invoice_doctype=None, include_all_compatible=0):
     _get_pos_settings_doc(pos_settings)
     _ensure_pos_settings_access(pos_settings, "read")
 
@@ -392,23 +426,38 @@ def list_templates(pos_settings, invoice_doctype=None):
 
     invoice_doctype = _normalize_invoice_doctype(invoice_doctype)
 
+    filters = {
+        "invoice_doctype": invoice_doctype,
+        "disabled": 0,
+    }
+
+    if not cint(include_all_compatible):
+        filters["pos_settings"] = pos_settings
+
     templates = frappe.get_all(
         "POS Thermal Print Template",
-        filters={
-            "pos_settings": pos_settings,
-            "invoice_doctype": invoice_doctype,
-            "disabled": 0,
-        },
+        filters=filters,
         fields=[
             "name",
             "template_name",
             "paper_size",
+            "pos_settings",
+            "invoice_doctype",
             "is_default",
             "print_format",
             "modified",
         ],
         order_by="is_default desc, modified desc",
     )
+
+    for row in templates:
+        row["pos_profile"] = frappe.db.get_value(
+            "POS Settings",
+            row.pos_settings,
+            "pos_profile",
+        )
+
+        row["is_current_pos_settings"] = 1 if row.pos_settings == pos_settings else 0
 
     return templates
 
@@ -584,6 +633,83 @@ def set_default_template(template):
 
 
 @frappe.whitelist()
+def apply_template_to_all_active_pos_settings(template):
+    doc = _get_template_doc(template)
+    _ensure_pos_settings_access(doc.pos_settings, "write")
+
+    print_format = _generate_or_update_print_format(doc)
+
+    pos_settings_meta = frappe.get_meta("POS Settings")
+    pos_profile_meta = frappe.get_meta("POS Profile")
+
+    if not pos_profile_meta.has_field("print_format"):
+        frappe.throw(_("POS Profile does not have print_format field"))
+
+    filters = {}
+
+    if pos_settings_meta.has_field("enabled"):
+        filters["enabled"] = 1
+
+    pos_settings_list = frappe.get_all(
+        "POS Settings",
+        filters=filters,
+        fields=["name", "pos_profile"],
+        order_by="modified desc",
+    )
+
+    updated = []
+    skipped = []
+
+    for row in pos_settings_list:
+        target_invoice_doctype = _get_invoice_doctype_from_pos_settings(row.name)
+
+        if target_invoice_doctype != doc.invoice_doctype:
+            skipped.append(
+                {
+                    "pos_settings": row.name,
+                    "reason": "Different Invoice DocType",
+                    "invoice_doctype": target_invoice_doctype,
+                }
+            )
+            continue
+
+        if not row.pos_profile:
+            skipped.append(
+                {
+                    "pos_settings": row.name,
+                    "reason": "Missing POS Profile",
+                }
+            )
+            continue
+
+        frappe.db.set_value(
+            "POS Profile",
+            row.pos_profile,
+            "print_format",
+            print_format.name,
+            update_modified=True,
+        )
+
+        updated.append(
+            {
+                "pos_settings": row.name,
+                "pos_profile": row.pos_profile,
+                "print_format": print_format.name,
+            }
+        )
+
+    return {
+        "template": doc.name,
+        "invoice_doctype": doc.invoice_doctype,
+        "print_format": print_format.name,
+        "updated_count": len(updated),
+        "skipped_count": len(skipped),
+        "updated": updated,
+        "skipped": skipped,
+    }
+
+
+@frappe.whitelist()
 def get_default_template(pos_settings, invoice_doctype=None):
     _get_pos_settings_doc(pos_settings)
     _ensure_pos_settings_access(pos_settings, "read")
@@ -663,30 +789,62 @@ def get_barcode_data_uri(value, barcode_type="code128"):
     if not value:
         return ""
 
+    raw_value = str(value).strip()
+    barcode_type = str(barcode_type or "code128").lower().replace("-", "").replace("_", "")
+
     try:
-        # pip install python-barcode
         import barcode
         from barcode.writer import ImageWriter
     except ImportError:
         return ""
 
     try:
-        barcode_class = barcode.get_barcode_class(barcode_type)
-    except barcode.errors.BarcodeNotFoundError:
-        barcode_class = barcode.get_barcode_class("code128")
+        if barcode_type in ("ean", "ean13"):
+            digits = "".join(ch for ch in raw_value if ch.isdigit())
+            if len(digits) not in (12, 13):
+                return ""
+            raw_value = digits[:12] if len(digits) == 13 else digits
+            barcode_class = barcode.get_barcode_class("ean13")
 
-    # Disable text under barcode for cleaner receipt look
+        elif barcode_type == "ean8":
+            digits = "".join(ch for ch in raw_value if ch.isdigit())
+            if len(digits) not in (7, 8):
+                return ""
+            raw_value = digits[:7] if len(digits) == 8 else digits
+            barcode_class = barcode.get_barcode_class("ean8")
+
+        elif barcode_type in ("upc", "upca"):
+            digits = "".join(ch for ch in raw_value if ch.isdigit())
+            if len(digits) not in (11, 12):
+                return ""
+            raw_value = digits[:11] if len(digits) == 12 else digits
+            barcode_class = barcode.get_barcode_class("upca")
+
+        else:
+            barcode_class = barcode.get_barcode_class("code128")
+            raw_value = str(value)
+
+    except Exception:
+        try:
+            barcode_class = barcode.get_barcode_class("code128")
+            raw_value = str(value)
+        except Exception:
+            return ""
+
     options = {
         "write_text": False,
         "module_height": 8.0,
-        "quiet_zone": 2.0
+        "quiet_zone": 2.0,
     }
 
-    code = barcode_class(str(value), writer=ImageWriter())
-    
-    buffer = io.BytesIO()
-    code.write(buffer, options=options)
-    
-    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    try:
+        code = barcode_class(raw_value, writer=ImageWriter())
 
-    return "data:image/png;base64,{0}".format(encoded)
+        buffer = io.BytesIO()
+        code.write(buffer, options=options)
+
+        encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        return "data:image/png;base64,{0}".format(encoded)
+
+    except Exception:
+        return ""

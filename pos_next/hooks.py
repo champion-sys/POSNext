@@ -87,6 +87,12 @@ doctype_js = {
 # 	"methods": "pos_next.utils.jinja_methods",
 # 	"filters": "pos_next.utils.jinja_filters"
 # }
+jinja = {
+    "methods": [
+        "pos_next.api.thermal_print.get_qr_data_uri",
+        "pos_next.api.thermal_print.get_barcode_data_uri",
+    ]
+}
 
 # Fixtures
 # --------
