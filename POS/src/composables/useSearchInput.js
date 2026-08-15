@@ -1,11 +1,44 @@
 import { ref, watch, nextTick, onUnmounted } from "vue"
 import { QueuedMutex } from "@/utils/mutex"
 
+// ---- localStorage persistence ----
+// Scanner/auto-add are device traits, not account settings: one till has a
+// barcode gun wired up, the next one doesn't. Keep them local like the QZ
+// printer name rather than in the POS Settings DocType.
+
+const SCANNER_ENABLED_KEY = "pos_scanner_enabled"
+const AUTO_ADD_ENABLED_KEY = "pos_auto_add_enabled"
+
+function _loadFlag(key) {
+	try {
+		return localStorage.getItem(key) === "1"
+	} catch {
+		return false
+	}
+}
+
+function _saveFlag(key, value) {
+	try {
+		if (value) {
+			localStorage.setItem(key, "1")
+		} else {
+			localStorage.removeItem(key)
+		}
+	} catch {
+		// localStorage unavailable
+	}
+}
+
 /**
  * Composable for search input, barcode scanning, and auto-add logic.
  *
  * Owns all search-input state, timers, and event handlers with proper
  * concurrency control.  Extracted from ItemsSelector.vue.
+ *
+ * Persistence:
+ *   - `scannerEnabled` / `autoAddEnabled` are restored from localStorage on
+ *     creation and written back whenever they change, so a reload doesn't
+ *     silently drop the cashier back into manual mode.
  *
  * Concurrency model:
  *   - On Enter (or auto-add timeout), the barcode is **snapshotted** from the
@@ -26,8 +59,14 @@ import { QueuedMutex } from "@/utils/mutex"
 export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialogOpen }) {
 	// --- Reactive state (exposed) ---
 	const searchInputRef = ref(null)
-	const scannerEnabled = ref(false)
-	const autoAddEnabled = ref(false)
+	const scannerEnabled = ref(_loadFlag(SCANNER_ENABLED_KEY))
+	const autoAddEnabled = ref(_loadFlag(AUTO_ADD_ENABLED_KEY))
+
+	// Restored state must satisfy the toggles' invariant: auto-add implies the
+	// scanner is on. Guards against a partial/hand-edited localStorage pair.
+	if (autoAddEnabled.value) {
+		scannerEnabled.value = true
+	}
 
 	// --- Internal (non-reactive) ---
 	let autoSearchTimer = null
@@ -197,6 +236,17 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 		}
 	}
 
+	// ---- Persistence watcher ----
+	// Both toggles mutate the two refs together; a combined watcher persists
+	// the pair once per tick instead of firing twice.
+	const stopPersistWatcher = watch(
+		[scannerEnabled, autoAddEnabled],
+		([scanner, autoAdd]) => {
+			_saveFlag(SCANNER_ENABLED_KEY, scanner)
+			_saveFlag(AUTO_ADD_ENABLED_KEY, autoAdd)
+		},
+	)
+
 	// ---- Dialog-close watcher ----
 	// Refocuses the search bar when all dialogs close (scanner/auto-add modes)
 	const stopDialogWatcher = watch(isAnyDialogOpen, (isOpen, wasOpen) => {
@@ -208,6 +258,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 	// ---- Cleanup ----
 	function cleanup() {
 		clearAutoSearchTimer()
+		stopPersistWatcher()
 		stopDialogWatcher()
 	}
 
