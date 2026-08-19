@@ -70,6 +70,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 
 	// --- Internal (non-reactive) ---
 	let autoSearchTimer = null
+	let refocusRetryTimer = null
 	const barcodeQueue = new QueuedMutex({ timeout: 10000, name: "BarcodeSearch" })
 
 	// ---- Timer helpers ----
@@ -78,6 +79,13 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 		if (autoSearchTimer) {
 			clearTimeout(autoSearchTimer)
 			autoSearchTimer = null
+		}
+	}
+
+	function clearRefocusRetryTimer() {
+		if (refocusRetryTimer) {
+			clearTimeout(refocusRetryTimer)
+			refocusRetryTimer = null
 		}
 	}
 
@@ -90,6 +98,41 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 				searchInputRef.value.select()
 			}
 		})
+	}
+
+	/** True when focus sits in an editable element other than the search input. */
+	function isOtherEditableFocused() {
+		const el = document.activeElement
+		if (!el || el === searchInputRef.value) return false
+		return (
+			el.tagName === "INPUT" ||
+			el.tagName === "TEXTAREA" ||
+			el.tagName === "SELECT" ||
+			el.isContentEditable
+		)
+	}
+
+	/**
+	 * Refocus after a dialog closes. HeadlessUI/frappe-ui dialogs restore
+	 * focus to their trigger button after the leave transition (~200 ms),
+	 * which would override an immediate refocus — so focus now, then retry
+	 * once after the transition settles. The retry re-checks state so it
+	 * never fires into a reopened dialog or steals from a field the user
+	 * has meanwhile started typing in.
+	 */
+	function refocusAfterDialogClose() {
+		focusSearchInput()
+		clearRefocusRetryTimer()
+		refocusRetryTimer = setTimeout(() => {
+			refocusRetryTimer = null
+			if (
+				!isAnyDialogOpen.value &&
+				(scannerEnabled.value || autoAddEnabled.value) &&
+				!isOtherEditableFocused()
+			) {
+				focusSearchInput()
+			}
+		}, 250)
 	}
 
 	// ---- Clear ----
@@ -251,13 +294,42 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 	// Refocuses the search bar when all dialogs close (scanner/auto-add modes)
 	const stopDialogWatcher = watch(isAnyDialogOpen, (isOpen, wasOpen) => {
 		if (wasOpen && !isOpen && (scannerEnabled.value || autoAddEnabled.value)) {
-			focusSearchInput()
+			refocusAfterDialogClose()
 		}
 	})
+
+	// ---- Global refocus listeners (scanner/auto-add modes) ----
+
+	// Dialogs kept out of the global dialog registry (POSSale locals, so the
+	// divider/shortcut behavior tied to isAnyDialogOpen stays unchanged)
+	// announce their close via this event instead.
+	function handleUntrackedDialogClosed() {
+		if (isAnyDialogOpen.value) return
+		if (!(scannerEnabled.value || autoAddEnabled.value)) return
+		refocusAfterDialogClose()
+	}
+
+	// Returning to the POS window — e.g. from the /printview popup or the OS
+	// print dialog. Never steals focus from a field the user is typing in.
+	function handleWindowFocus() {
+		if (isAnyDialogOpen.value) return
+		if (!(scannerEnabled.value || autoAddEnabled.value)) return
+		if (isOtherEditableFocused()) return
+		focusSearchInput()
+	}
+
+	window.addEventListener("pos-next:dialog-closed", handleUntrackedDialogClosed)
+	window.addEventListener("focus", handleWindowFocus)
 
 	// ---- Cleanup ----
 	function cleanup() {
 		clearAutoSearchTimer()
+		clearRefocusRetryTimer()
+		window.removeEventListener(
+			"pos-next:dialog-closed",
+			handleUntrackedDialogClosed,
+		)
+		window.removeEventListener("focus", handleWindowFocus)
 		stopPersistWatcher()
 		stopDialogWatcher()
 	}

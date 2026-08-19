@@ -1296,6 +1296,26 @@ const showInvoiceManagement = ref(false);
 const showInvoiceDetail = ref(false);
 const selectedInvoiceForView = ref(null);
 
+// These five dialogs are deliberately NOT in the global dialog registry
+// (registering them would also hide the dividers and suppress keyboard
+// shortcuts via isAnyDialogOpen). The search input still needs to refocus
+// when they close, so announce that via an event it listens for.
+watch(
+	[
+		showPromotionManagement,
+		showPOSSettings,
+		showStockLookup,
+		showInvoiceManagement,
+		showInvoiceDetail,
+	],
+	(open, wasOpen) => {
+		const anyJustClosed = open.some((isOpen, i) => wasOpen[i] && !isOpen);
+		if (anyJustClosed && !open.some(Boolean)) {
+			window.dispatchEvent(new CustomEvent("pos-next:dialog-closed"));
+		}
+	},
+);
+
 // Invoice history data (used by InvoiceManagement component)
 const invoiceHistoryData = ref([]);
 
