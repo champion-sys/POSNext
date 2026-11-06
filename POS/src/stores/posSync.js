@@ -177,11 +177,6 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		stockStore.setQueued(sumQueuedStock(rows, stockStore.warehouse))
 	}
 
-	/** A sale the server answered for has left the device, whatever came of it */
-	function countUnsent() {
-		return pendingInvoicesList.value.filter((row) => !row.server_status).length
-	}
-
 	function markSynced() {
 		lastSyncedAt.value = Date.now()
 		localStorage.setItem(LAST_SYNC_KEY, String(lastSyncedAt.value))
@@ -283,12 +278,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		try {
 			const stockStore = useStockStore()
 			const soldCodes = Array.from(stockStore.queued.keys())
-			const unsentBefore = countUnsent()
 			const result = await syncOfflineInvoices(options)
 			isWaitingForServer = result.waiting > 0
 			await updatePendingCount()
 
-			if (result.success > 0 || countUnsent() < unsentBefore) markSynced()
+			// A sale the server took has left the device, even if it is still working on it
+			if (result.success > 0 || result.delivered > 0) markSynced()
 
 			// The server's numbers now include these sales
 			if (result.success > 0 && soldCodes.length > 0) {

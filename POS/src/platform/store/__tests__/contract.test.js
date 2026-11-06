@@ -961,6 +961,142 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect(row.error).toBe("No stock")
 		})
 
+		describe("counting how each sale ended", () => {
+			const statusChecks = () =>
+				callServer.mock.calls.filter(([method]) => method.endsWith("get_status")).length
+
+			const saleThatSynced = () =>
+				new Promise((resolve) => {
+					window.addEventListener("offlineInvoicesSynced", (event) => resolve(event.detail), { once: true })
+				})
+
+			it("counts a sale the first response finished, with no status check", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "synced", invoice: "SINV-1" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(0)
+				expect(statusChecks()).toBe(0)
+				expect(await store.getOfflineInvoiceCount()).toBe(0)
+			})
+
+			it("counts a duplicate as a sale that is on the server", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "duplicate", invoice: "SINV-1" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(0)
+				expect((await store.getQueuedInvoice(offline_id)).server_invoice).toBe("SINV-1")
+			})
+
+			it("tells the POS when the first response finished a sale", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "synced", invoice: "SINV-1" }])
+				const announced = saleThatSynced()
+
+				await syncOfflineInvoices()
+
+				expect((await announced).success).toBe(1)
+			})
+
+			it("counts each sale of a batch once, whichever answer finished it", async () => {
+				const first = await store.saveOfflineInvoice(invoice())
+				const second = await store.saveOfflineInvoice(invoice())
+				const third = await store.saveOfflineInvoice(invoice())
+				answers(
+					[
+						{ offline_id: first.offline_id, status: "synced", invoice: "SINV-1" },
+						{ offline_id: second.offline_id, status: "duplicate", invoice: "SINV-2" },
+						{ offline_id: third.offline_id, status: "received" },
+					],
+					[{ offline_id: third.offline_id, status: "synced", invoice: "SINV-3" }],
+				)
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(3)
+				expect(result.failed).toBe(0)
+			})
+
+			it.each([
+				["needs_review", "No stock"],
+				["conflict", "A different invoice was already stored under this offline_id"],
+			])("reports %s from the first response once, as a failure", async (status, message) => {
+				const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status, message }], [{ offline_id, status: "needs_review", message }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(0)
+				expect(result.failed).toBe(1)
+				expect(result.errors).toHaveLength(1)
+				expect(result.errors[0]).toMatchObject({ invoiceId: id, offlineId: offline_id, customer: "CUST-1" })
+				expect(result.errors[0].error.message).toBe(message)
+			})
+
+			it("does not count a sale again on the next sync", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers(
+					[{ offline_id, status: "needs_review", message: "No stock" }],
+					[{ offline_id, status: "needs_review", message: "No stock" }],
+				)
+
+				await syncOfflineInvoices()
+				const result = await syncOfflineInvoices()
+
+				expect(result.failed).toBe(0)
+				expect(result.errors).toEqual([])
+			})
+
+			it("counts a sale once when a later one cannot be recorded", async () => {
+				const { localStore } = await import("@/platform/store")
+				const first = await store.saveOfflineInvoice(invoice())
+				const second = await store.saveOfflineInvoice(invoice())
+				answers([
+					{ offline_id: first.offline_id, status: "synced", invoice: "SINV-1" },
+					{ offline_id: second.offline_id, status: "synced", invoice: "SINV-2" },
+				])
+				const realUpdate = localStore.updateQueuedInvoice
+				let updates = 0
+				const spy = vi.spyOn(localStore, "updateQueuedInvoice").mockImplementation(async (...args) => {
+					updates++
+					if (updates === 2) throw new Error("Storage is full")
+					return realUpdate(...args)
+				})
+
+				const result = await syncOfflineInvoices()
+				spy.mockRestore()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(1)
+				expect(result.errors.map((entry) => entry.offlineId)).toEqual([second.offline_id])
+			})
+
+			it("reports a sale the server took but has not finished as delivered", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				callServer.mockImplementation(async (method) => {
+					if (method.endsWith("push")) return { results: [{ offline_id, status: "received" }] }
+					throw new Error("Status is not available")
+				})
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.delivered).toBe(1)
+				expect(result.success).toBe(0)
+			})
+
+			it("does not report a rejected sale as delivered", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "rejected", message: "Bad" }])
+
+				expect((await syncOfflineInvoices()).delivered).toBe(0)
+			})
+		})
+
 		it("finds a queued invoice by its offline id", async () => {
 			const { getOfflineInvoiceByOfflineId } = await import("@/utils/offline/sync")
 			const { offline_id } = await store.saveOfflineInvoice(invoice())
