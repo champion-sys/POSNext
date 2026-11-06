@@ -3,7 +3,9 @@ import {
 	QUEUE_FAILED,
 	QUEUE_RECEIVED,
 	QUEUE_REVIEW,
+	QUEUE_SALE_STANDS,
 	QUEUE_SENDING,
+	QUEUE_VOIDING,
 	QUEUE_WAITING,
 	formatSyncTime,
 	getQueueRowState,
@@ -52,6 +54,47 @@ describe("queue counts", () => {
 
 	it("counts failed and reviewed sales as needing a person", () => {
 		expect(rows.filter(needsAttention)).toHaveLength(2)
+	})
+})
+
+describe("a void request", () => {
+	const voiding = { void_reason: "Wrong sale" }
+	const stands = { ...voiding, server_status: "sale_stands", server_invoice: "SINV-1" }
+
+	it("reads as waiting to be voided, sending or not", () => {
+		expect(getQueueRowState(voiding)).toBe(QUEUE_VOIDING)
+		expect(getQueueRowState(voiding, true)).toBe(QUEUE_VOIDING)
+	})
+
+	it("reads the same on a row the server holds, until the server answers", () => {
+		expect(getQueueRowState({ ...voiding, server_status: "needs_review", sync_failed: true })).toBe(QUEUE_VOIDING)
+		expect(getQueueRowState({ ...voiding, server_status: "received" })).toBe(QUEUE_VOIDING)
+	})
+
+	it("counts as waiting to send, because the request has not reached the server", () => {
+		expect(isWaitingToSend(voiding)).toBe(true)
+		expect(needsAttention(voiding)).toBe(false)
+	})
+
+	it("needs a person once the server keeps refusing it", () => {
+		const refused = { ...voiding, sync_failed: true }
+
+		expect(isWaitingToSend(refused)).toBe(false)
+		expect(needsAttention(refused)).toBe(true)
+	})
+
+	it("needs a person when it came too late, and goes first in the list", () => {
+		expect(getQueueRowState(stands)).toBe(QUEUE_SALE_STANDS)
+		expect(needsAttention(stands)).toBe(true)
+		expect(isWaitingToSend(stands)).toBe(false)
+		expect(sortQueueRows([{ timestamp: 1 }, { ...stands, timestamp: 2 }])[0].server_status).toBe("sale_stands")
+	})
+
+	it("is over once the cashier has seen that the sale stands", () => {
+		const seen = { ...voiding, synced: true, server_status: "synced" }
+
+		expect(getQueueRowState(seen)).toBe(QUEUE_RECEIVED)
+		expect(needsAttention(seen)).toBe(false)
 	})
 })
 

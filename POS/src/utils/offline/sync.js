@@ -4,6 +4,7 @@ import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
 import { offlineState } from "./offlineState"
 import {
+	SALE_STANDS,
 	buildSyncEnvelope,
 	classifySyncError,
 	getQueueUpdateForResult,
@@ -218,6 +219,17 @@ const getDeviceId = () => {
 }
 
 /**
+ * Tell the POS a record has reached its end, so it can stop using what stood for it.
+ * @param {Object} row - Queue row
+ * @param {string} status - How it ended
+ * @param {string} [name] - What the server made of it, none when it was voided
+ */
+export const announceRecordEnded = (row, status, name) => {
+	removeOfflineReceiptPayload(row.offline_id)
+	window.dispatchEvent(new CustomEvent("offlineEntitySynced", { detail: { row, status, name } }))
+}
+
+/**
  * Apply the server's answer about one sale to its queue row
  * @param {Object} row - Queue row
  * @param {Object} result - Server result
@@ -227,14 +239,35 @@ const applyResult = async (row, result) => {
 	const updates = getQueueUpdateForResult(result)
 	if (!updates) return null
 
+	// A void asked for while this answer was on its way has the last word
+	if ((await localStore.getQueuedInvoice(row.offline_id))?.void_reason) return null
+
 	await localStore.updateQueuedInvoice(row.id, updates)
-	if (updates.synced) {
-		removeOfflineReceiptPayload(row.offline_id)
-		window.dispatchEvent(new CustomEvent("offlineEntitySynced", {
-			detail: { row, status: updates.server_status, name: updates.server_invoice },
-		}))
-	}
+	if (updates.synced) announceRecordEnded(row, updates.server_status, updates.server_invoice)
 	return updates.server_status
+}
+
+/**
+ * Settle a void request with the server's answer. Any other answer leaves it waiting,
+ * so the next sync asks again.
+ * @param {Object} row - Queue row
+ * @param {Object} answer - Server result
+ * @param {Object} result - Totals to update
+ */
+const applyVoidAnswer = async (row, answer, result) => {
+	if (answer.status === "voided") {
+		await localStore.deleteOfflineInvoice(row.id)
+		announceRecordEnded(row, "voided")
+		result.voided++
+		result.delivered++
+	} else if (answer.status === SALE_STANDS) {
+		await localStore.updateQueuedInvoice(row.id, getQueueUpdateForResult(answer))
+		announceRecordEnded(row, SALE_STANDS, answer.invoice)
+		result.saleStands++
+		result.delivered++
+	} else {
+		result.voidsWaiting++
+	}
 }
 
 /**
@@ -359,12 +392,23 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 
 		log.info(`Starting sync of ${pendingInvoices.length} invoice(s)`)
 
-		const result = { success: 0, failed: 0, skipped: 0, waiting: 0, delivered: 0, errors: [] }
+		const result = {
+			success: 0,
+			failed: 0,
+			skipped: 0,
+			waiting: 0,
+			delivered: 0,
+			voided: 0,
+			saleStands: 0,
+			voidsWaiting: 0,
+			errors: [],
+		}
 		// A manual sync does not wait for a failed invoice's backoff
 		const now = Date.now()
 		const unsent = pendingInvoices.filter(
 			(row) =>
-				!row.server_status &&
+				// A void is asked for whatever the server holds, until it has answered
+				(row.void_reason ? row.server_status !== SALE_STANDS : !row.server_status) &&
 				!heldFromSync.has(row.offline_id) &&
 				(force || (row.next_attempt_at || 0) <= now),
 		)
@@ -380,6 +424,8 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 					if (answer?.status === "rejected") {
 						await handleSyncFailure(row, answer.message)
 						result.failed++
+					} else if (answer && row.void_reason) {
+						await applyVoidAnswer(row, answer, result)
 					} else if (answer) {
 						const status = await applyResult(row, answer)
 						if (status) result.delivered++
@@ -412,7 +458,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 
 		// Give the background job a moment, the rest is picked up by the next sync
 		for (let poll = 0; poll < SYNC_CONFIG.STATUS_POLLS; poll++) {
-			const held = (await getOfflineInvoices()).filter((row) => row.server_status)
+			const held = (await getOfflineInvoices()).filter((row) => row.server_status && !row.void_reason)
 			if (!held.length) break
 
 			try {
@@ -424,6 +470,8 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 			}
 			await sleep(SYNC_CONFIG.STATUS_POLL_DELAY_MS)
 		}
+
+		result.waiting += result.voidsWaiting
 
 		// Let the POS replace local batch and serial figures with server values
 		if (result.success > 0 && typeof window !== "undefined") {

@@ -675,7 +675,7 @@
 				:is-syncing="offlineStore.isSyncing"
 				:currency="shiftStore.profileCurrency"
 				@sync-all="handleSyncAll"
-				@delete-invoice="handleDeleteOfflineInvoice"
+				@void-invoice="handleVoidOfflineInvoice"
 				@edit-invoice="handleEditOfflineInvoice"
 				@print-invoice="handlePrintInvoice"
 				@refresh="offlineStore.loadPendingInvoices"
@@ -1009,19 +1009,7 @@
 					</div>
 				</template>
 				<template #actions>
-					<div class="flex justify-between items-center w-full">
-						<Button
-							v-if="
-								uiStore.errorRetryAction === 'sync' &&
-								uiStore.errorRetryActionData?.failedInvoiceId
-							"
-							variant="outline"
-							theme="red"
-							@click="handleDeleteFailedInvoice"
-						>
-							{{ __("Delete Invoice") }}
-						</Button>
-						<div v-else></div>
+					<div class="flex justify-end items-center w-full">
 						<div class="flex gap-2">
 							<Button variant="subtle" @click="uiStore.clearError()">
 								{{ __("Close") }}
@@ -2236,19 +2224,6 @@ function handleProceedToPayment() {
 	uiStore.showPaymentDialog = true;
 }
 
-async function handleDeleteFailedInvoice() {
-	if (!uiStore.errorRetryActionData?.failedInvoiceId) return;
-
-	const invoiceId = uiStore.errorRetryActionData.failedInvoiceId;
-	uiStore.clearError();
-
-	try {
-		await offlineStore.deleteOfflineInvoice(invoiceId);
-	} catch (error) {
-		// Error is handled in the store
-	}
-}
-
 async function handleErrorRetry() {
 	// clearError forgets the action too
 	const retryAction = uiStore.errorRetryAction;
@@ -3061,7 +3036,7 @@ async function handleEditOfflineInvoice(invoice) {
 		const row = offlineStore.pendingInvoicesList.find(
 			(candidate) => candidate.offline_id === invoice.offline_id,
 		);
-		if (!row || row.server_status) {
+		if (!row || row.server_status || row.void_reason) {
 			showWarning(__("This invoice can no longer be edited. It may already have reached the server"));
 			return;
 		}
@@ -3114,19 +3089,15 @@ async function handleEditOfflineInvoice(invoice) {
 	}
 }
 
-async function handleDeleteOfflineInvoice(invoiceId) {
+async function handleVoidOfflineInvoice(invoiceId, reason) {
+	if (!posSettingsStore.allowDeleteOfflineInvoice) {
+		showWarning(__("Deletion of offline invoices is disabled in POS Settings"));
+		return;
+	}
 	try {
-		if (!posSettingsStore.allowDeleteOfflineInvoice) {
-			showWarning(__("Deletion of offline invoices is disabled in POS Settings"));
-			return;
-		}
-		if (offlineStore.isSyncing) {
-			showWarning(__("Cannot delete while syncing — please wait for sync to finish."));
-			return;
-		}
-		await offlineStore.deleteOfflineInvoice(invoiceId);
-	} catch (error) {
-		log.error("Error deleting offline invoice:", error);
+		await offlineStore.requestVoid(invoiceId, reason);
+	} catch {
+		// The store has told the cashier
 	}
 }
 
@@ -3151,12 +3122,11 @@ async function handleSyncAll() {
 			uiStore.showError(
 				errorContext.title,
 				__(
-					"Failed to sync invoice for {0}\n\n{1}\n\nYou can delete this invoice from the offline queue if you don't need it.",
+					"Failed to sync invoice for {0}\n\n{1}\n\nYou can void this invoice from the offline queue if you don't need it.",
 					[firstError.customer, errorContext.message]
 				),
 				errorContext.technicalDetails || __("Invoice ID: {0}", [firstError.invoiceId]),
-				"sync",
-				{ failedInvoiceId: firstError.invoiceId }
+				"sync"
 			);
 		} else if (result.failed > 0) {
 			showWarning(__("{0} invoice(s) failed to sync", [result.failed]));

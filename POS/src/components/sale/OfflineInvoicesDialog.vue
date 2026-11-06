@@ -87,6 +87,13 @@
 						>
 							{{ invoice.error }}
 						</p>
+						<p
+							v-if="invoice.void_reason"
+							:dir="getTextDirection(invoice.void_reason)"
+							class="mt-1 px-2 py-1 text-sm bg-gray-50 text-gray-800 rounded break-words"
+						>
+							{{ __("Reason: {0}", [invoice.void_reason]) }}
+						</p>
 
 						<div class="mt-1 flex items-center justify-between gap-2">
 							<div class="flex flex-wrap items-center gap-1 min-w-0">
@@ -99,8 +106,16 @@
 								</span>
 							</div>
 							<div class="flex items-center flex-shrink-0">
+								<Button
+									v-if="invoice.server_status === SALE_STANDS"
+									variant="outline"
+									class="!h-11"
+									@click="syncStore.acknowledgeSaleStands(invoice.id)"
+								>
+									{{ __("I Understand") }}
+								</Button>
 								<button
-									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status && isSale(invoice) && !invoice.data.is_return"
+									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status && !invoice.void_reason && isSale(invoice) && !invoice.data.is_return"
 									@click="editInvoice(invoice)"
 									:disabled="isSyncing || invoice.data?.was_printed"
 									class="w-11 h-11 flex items-center justify-center hover:bg-blue-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -131,7 +146,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
-									v-if="isSale(invoice) && settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
+									v-if="isSale(invoice) && !invoice.void_reason && settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
 									class="w-11 h-11 flex items-center justify-center hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 									:aria-label="__('Print receipt')"
@@ -141,12 +156,12 @@
 									</svg>
 								</button>
 								<button
-									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && getEntity(invoice) !== ENTITY_SHIFT_CLOSE"
-									@click="deleteInvoice(invoice)"
+									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && !invoice.void_reason && getEntity(invoice) !== ENTITY_SHIFT_CLOSE"
+									@click="askToVoid(invoice)"
 									:disabled="isSyncing"
 									class="w-11 h-11 flex items-center justify-center hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-									:title="isSyncing ? __('Sync in progress — deletion disabled') : __('Delete')"
-									:aria-label="__('Delete')"
+									:title="isSyncing ? __('Sync in progress — voiding disabled') : __('Void')"
+									:aria-label="__('Void')"
 								>
 									<svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
@@ -233,40 +248,61 @@
 		</template>
 	</Dialog>
 
-	<!-- Delete Confirmation Dialog -->
-	<Dialog v-model="showDeleteConfirm" :options="{ title: __('Delete From Queue'), size: 'md' }">
+	<!-- Void Request Dialog -->
+	<Dialog v-model="showVoidDialog" :options="{ title: __('Void Record'), size: 'md' }">
 		<template #body-content>
-			<div v-if="invoiceToDelete" class="flex flex-col gap-3 sm:gap-4">
+			<div v-if="invoiceToVoid" class="flex flex-col gap-3 sm:gap-4">
 				<div class="flex items-start gap-2 sm:gap-3">
 					<svg class="w-5 h-5 sm:w-6 sm:h-6 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
 					</svg>
 					<div class="min-w-0 flex-1">
-						<p class="text-gray-900 font-medium mb-2 text-sm sm:text-base">{{ __('Delete this record from the queue?') }}</p>
+						<p class="text-gray-900 font-medium mb-2 text-sm sm:text-base">{{ __('Ask the server to void this record?') }}</p>
 						<div class="bg-gray-50 rounded-lg p-2.5 sm:p-3 flex flex-col gap-1 text-xs sm:text-sm">
 							<div class="flex justify-between gap-2">
 								<span class="text-gray-600">{{ __('Customer:') }}</span>
-								<span class="font-semibold truncate">{{ getRowTitle(invoiceToDelete) }}</span>
+								<span class="font-semibold truncate">{{ getRowTitle(invoiceToVoid) }}</span>
 							</div>
-							<template v-if="isSale(invoiceToDelete)">
+							<template v-if="isSale(invoiceToVoid)">
 								<div class="flex justify-between gap-2">
 									<span class="text-gray-600">{{ __('Amount:') }}</span>
-									<span class="font-semibold">{{ formatCurrency(invoiceToDelete.data.grand_total) }}</span>
+									<span class="font-semibold">{{ formatCurrency(invoiceToVoid.data.grand_total) }}</span>
 								</div>
 								<div class="flex justify-between gap-2">
 									<span class="text-gray-600">{{ __('Items:') }}</span>
-									<span class="font-semibold">{{ invoiceToDelete.data.items?.length || 0 }}</span>
+									<span class="font-semibold">{{ invoiceToVoid.data.items?.length || 0 }}</span>
 								</div>
 							</template>
 						</div>
-						<p class="text-red-600 text-xs sm:text-sm mt-3">{{ __('This action cannot be undone.') }}</p>
+						<label class="block mt-3">
+							<span class="block text-gray-900 font-medium text-sm mb-1">{{ __('Reason') }}</span>
+							<textarea
+								v-model="voidReason"
+								rows="2"
+								maxlength="500"
+								dir="auto"
+								required
+								class="w-full p-2 text-sm border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+							></textarea>
+						</label>
+						<p class="text-red-600 text-xs sm:text-sm mt-2">
+							{{ __('This cannot be undone. It stays in the queue until the server answers. If the server already has it, it stands and you will be told here.') }}
+						</p>
 					</div>
 				</div>
 			</div>
 		</template>
 		<template #actions>
-			<Button variant="subtle" @click="showDeleteConfirm = false" class="w-full sm:w-auto !h-11">{{ __('Cancel') }}</Button>
-			<Button variant="solid" theme="red" @click="confirmDelete" class="w-full sm:w-auto !h-11">{{ __('Delete') }}</Button>
+			<Button variant="subtle" @click="showVoidDialog = false" class="w-full sm:w-auto !h-11">{{ __('Cancel') }}</Button>
+			<Button
+				variant="solid"
+				theme="red"
+				:disabled="!voidReason.trim()"
+				@click="confirmVoid"
+				class="w-full sm:w-auto !h-11"
+			>
+				{{ __('Void') }}
+			</Button>
 		</template>
 	</Dialog>
 </template>
@@ -287,11 +323,14 @@ import {
 	ENTITY_SHIFT_CLOSE,
 	getEntity,
 } from "@/utils/offline/entities"
+import { SALE_STANDS } from "@/utils/offline/invoicePayload"
 import {
 	QUEUE_FAILED,
 	QUEUE_RECEIVED,
 	QUEUE_REVIEW,
+	QUEUE_SALE_STANDS,
 	QUEUE_SENDING,
+	QUEUE_VOIDING,
 	QUEUE_WAITING,
 	formatSyncTime,
 	getQueueRowState,
@@ -334,7 +373,7 @@ const props = defineProps({
 const emit = defineEmits([
 	"update:modelValue",
 	"sync-all",
-	"delete-invoice",
+	"void-invoice",
 	"edit-invoice",
 	"print-invoice",
 	"refresh",
@@ -353,8 +392,9 @@ const { showWarning } = useToast()
 const invoices = computed(() => sortQueueRows(props.pendingInvoices))
 const selectedInvoice = ref(null)
 const showDetails = ref(false)
-const showDeleteConfirm = ref(false)
-const invoiceToDelete = ref(null)
+const showVoidDialog = ref(false)
+const invoiceToVoid = ref(null)
+const voidReason = ref("")
 
 const STATE_STYLES = {
 	[QUEUE_WAITING]: {
@@ -392,6 +432,20 @@ const STATE_STYLES = {
 		note: "text-red-800",
 		icon: CROSS_ICON,
 	},
+	[QUEUE_VOIDING]: {
+		label: __("Waiting to be voided"),
+		badge: "bg-orange-50 text-orange-800 border-orange-300",
+		edge: "border-s-orange-500",
+		note: "text-orange-800",
+		icon: CLOCK_ICON,
+	},
+	[QUEUE_SALE_STANDS]: {
+		label: __("Not voided"),
+		badge: "bg-red-50 text-red-800 border-red-300",
+		edge: "border-s-red-500",
+		note: "text-red-800 font-semibold",
+		icon: ALERT_ICON,
+	},
 }
 
 function stateOf(invoice) {
@@ -401,6 +455,12 @@ function stateOf(invoice) {
 function stateNote(invoice) {
 	const tries = invoice.retry_count || 0
 	switch (getQueueRowState(invoice, props.isSyncing)) {
+		case QUEUE_SALE_STANDS:
+			return saleStandsNote(invoice)
+		case QUEUE_VOIDING:
+			return props.isOffline
+				? __("It holds no stock now. The server will be asked when the connection returns.")
+				: __("It holds no stock now. It stays here until the server answers.")
 		case QUEUE_REVIEW:
 			return __("A manager needs to review it on the server.")
 		case QUEUE_FAILED:
@@ -415,6 +475,17 @@ function stateNote(invoice) {
 				? __("Saved on this device. It will be sent when the connection returns.")
 				: __("Saved on this device. It will be sent shortly.")
 	}
+}
+
+function saleStandsNote(invoice) {
+	if (!isSale(invoice)) {
+		return __("This record was already on the server, so it was not voided. It stands. Tell a manager.")
+	}
+	return invoice.server_invoice
+		? __("This sale was already on the server as {0}, so it was not voided. It stands. Tell a manager.", [
+				invoice.server_invoice,
+			])
+		: __("This sale was already on the server, so it was not voided. It stands. Tell a manager.")
 }
 
 const summaryStyle = computed(() => {
@@ -527,26 +598,23 @@ function syncAll() {
 	emit("sync-all")
 }
 
-function deleteInvoice(invoice) {
+function askToVoid(invoice) {
 	if (!settingsStore.allowDeleteOfflineInvoice) {
 		showWarning(__("Deletion of offline invoices is disabled in POS Settings"))
 		return
 	}
 	if (props.isSyncing) return
-	invoiceToDelete.value = invoice
-	showDeleteConfirm.value = true
+	invoiceToVoid.value = invoice
+	voidReason.value = ""
+	showVoidDialog.value = true
 }
 
-async function confirmDelete() {
-	if (invoiceToDelete.value) {
-		// Close dialog immediately for better UX
-		showDeleteConfirm.value = false
-		const invoiceId = invoiceToDelete.value.id
-		invoiceToDelete.value = null
+function confirmVoid() {
+	const reason = voidReason.value.trim()
+	if (!invoiceToVoid.value || !reason) return
 
-		// Emit the delete event and let parent handle the refresh
-		// The watcher on pendingInvoices will update the list automatically
-		emit("delete-invoice", invoiceId)
-	}
+	showVoidDialog.value = false
+	emit("void-invoice", invoiceToVoid.value.id, reason)
+	invoiceToVoid.value = null
 }
 </script>

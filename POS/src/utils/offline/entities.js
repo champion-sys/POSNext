@@ -7,7 +7,7 @@
  * @module utils/offline/entities
  */
 
-import { formatLocalPosting } from "./invoicePayload"
+import { formatLocalPosting, isVoidPending } from "./invoicePayload"
 
 export const ENTITY_INVOICE = "invoice"
 export const ENTITY_CUSTOMER = "customer"
@@ -131,7 +131,7 @@ export function buildPaymentPayload({ invoice, payments, posProfile, shift, cash
 export function sumQueuedPayments(rows) {
 	const totals = new Map()
 	for (const row of rows) {
-		if (getEntity(row) !== ENTITY_PAYMENT) continue
+		if (getEntity(row) !== ENTITY_PAYMENT || row.void_reason) continue
 		const amount = (row.data?.payments || []).reduce(
 			(sum, payment) => sum + (Number(payment.amount) || 0),
 			0,
@@ -195,6 +195,7 @@ export function countQueuedCouponUses(rows, code, customer) {
 	const uses = rows.filter(
 		(row) =>
 			getEntity(row) === ENTITY_INVOICE &&
+			!row.void_reason &&
 			String(row.data?.coupon_code || "").toUpperCase() === target,
 	)
 	return {
@@ -267,7 +268,7 @@ export function subtractQueuedReturns(doc, rows) {
 	const returned = new Map()
 	for (const row of rows) {
 		const data = row.data || {}
-		if (getEntity(row) !== ENTITY_INVOICE || !data.is_return) continue
+		if (getEntity(row) !== ENTITY_INVOICE || !data.is_return || isVoidPending(row)) continue
 		if (data.return_against !== doc.return_against && data.return_against !== doc._offline_id) continue
 		if (row.synced && row.timestamp <= (doc._cached_at || 0)) continue
 
@@ -303,6 +304,7 @@ export function isReturnableQueueRow(row) {
 		data.doctype !== "Sales Order" &&
 		!row.superseded &&
 		!row.sync_failed &&
+		!isVoidPending(row) &&
 		row.server_status !== "voided"
 	)
 }
