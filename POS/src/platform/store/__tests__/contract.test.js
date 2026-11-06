@@ -155,15 +155,28 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect(await store.getOfflineInvoiceCount()).toBe(0)
 		})
 
-		// The web's worker client retries with a backoff before it gives up
-		it("refuses a second sale with the same id and keeps the first", { timeout: 15000 }, async () => {
-			await store.saveOfflineInvoice(invoice({ offline_id: "same", customer: "FIRST" }))
+		it("answers a repeated save with the first, because a save that timed out may have landed", async () => {
+			const first = await store.saveOfflineInvoice(invoice({ offline_id: "same", customer: "FIRST" }))
 
-			await expect(store.saveOfflineInvoice(invoice({ offline_id: "same", customer: "SECOND" }))).rejects.toThrow()
+			const repeat = await store.saveOfflineInvoice(invoice({ offline_id: "same", customer: "SECOND" }))
 
+			expect(repeat).toEqual(first)
 			const rows = await store.getOfflineInvoices()
 			expect(rows).toHaveLength(1)
 			expect(rows[0].data.customer).toBe("FIRST")
+			expect(sumQueuedStock(rows).get("A")).toBe(24)
+		})
+
+		it("retires the original once when the save of an edit is repeated", async () => {
+			const original = await store.saveOfflineInvoice(invoice())
+			const options = { supersedesId: original.id }
+			const edit = invoice({ offline_id: "edit" })
+
+			await store.saveOfflineInvoice(edit, options)
+			expect(await store.saveOfflineInvoice(edit, options)).toMatchObject({ success: true, offline_id: "edit" })
+
+			expect((await store.getOfflineInvoices()).map((row) => row.offline_id)).toEqual(["edit"])
+			expect((await store.getQueuedInvoice(original.offline_id)).replaced_by).toBe("edit")
 		})
 
 		it("lists sales oldest first", async () => {
@@ -1789,5 +1802,40 @@ describe("reaching the server for stock", () => {
 		const [url, { headers }] = stockCall()
 		expect(url).toBe("/api/method/pos_next.api.items.get_stock_quantities")
 		expect(headers.Authorization).toBeUndefined()
+	})
+})
+
+describe("a save the web's worker client gave up waiting for", () => {
+	/** Saves the sale but loses the answer, the way a worker busy past the timeout does */
+	class AnswerLostWorker extends InProcessWorker {
+		async postMessage(message) {
+			if (message.type !== "SAVE_INVOICE" || this.answerLost) return super.postMessage(message)
+
+			this.answerLost = true
+			const deliver = this.onmessage
+			this.onmessage = null
+			await super.postMessage(message)
+			this.onmessage = deliver
+		}
+	}
+
+	afterEach(() => {
+		vi.useRealTimers()
+		vi.unstubAllGlobals()
+	})
+
+	it("is sent again and leaves one sale, reported as saved", async () => {
+		vi.resetModules()
+		stubFetch()
+		const store = await openWebStore()
+		vi.stubGlobal("Worker", AnswerLostWorker)
+		await store.getOfflineInvoiceCount()
+
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] })
+		const saving = store.saveOfflineInvoice(invoice({ offline_id: "pos_offline_from_the_cart" }))
+		await vi.advanceTimersByTimeAsync(31000)
+
+		expect(await saving).toMatchObject({ success: true, offline_id: "pos_offline_from_the_cart" })
+		expect((await store.getOfflineInvoices()).map((row) => row.offline_id)).toEqual(["pos_offline_from_the_cart"])
 	})
 })

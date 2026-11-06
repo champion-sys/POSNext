@@ -67,6 +67,16 @@ describe("the SQLite store", () => {
 			expect(await store.getOfflineInvoiceCount()).toBe(5)
 		})
 
+		it("is kept once when the same save runs twice at the same time", async () => {
+			const data = invoice({ offline_id: "same" })
+
+			const [first, second] = await Promise.all([store.saveOfflineInvoice(data), store.saveOfflineInvoice(data)])
+
+			expect(second).toEqual(first)
+			expect(await store.getOfflineInvoiceCount()).toBe(1)
+			expect(await outbox.availableStock("A", "W1")).toBe(76)
+		})
+
 		it("releases its hold when an edit retires it", async () => {
 			const original = await store.saveOfflineInvoice(invoice())
 

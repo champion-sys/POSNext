@@ -424,6 +424,13 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 		const queue = db.table("invoice_queue")
 		let id
 		await db.transaction("rw", queue, async () => {
+			// The client re-sends a save it timed out on, and that save may have landed
+			const existing = await queue.where("offline_id").equals(offlineId).first()
+			if (existing) {
+				id = existing.id
+				return
+			}
+
 			id = await queue.add({
 				offline_id: offlineId,
 				entity: ENTITY_INVOICE,
