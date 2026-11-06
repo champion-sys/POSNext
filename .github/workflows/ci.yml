@@ -106,9 +106,21 @@ jobs:
         working-directory: /home/runner/frappe-bench
         run: |
           bench --site test_site set-config allow_tests true
-          bench --site test_site run-tests --app pos_next
+          set -o pipefail
+          bench --site test_site run-tests --app pos_next 2>&1 | tee test-output.log
         env:
           TYPE: server
+
+      # The run log needs a signed-in user, while annotations can be read by anyone
+      - name: Report Failed Tests
+        if: failure()
+        working-directory: /home/runner/frappe-bench
+        run: |
+          { grep -E '^(ERROR|FAIL)[: ]|^[A-Za-z_.]*(Error|Exception): ' test-output.log || tail -n 30 test-output.log; } \
+            | cut -c1-170 | awk '!seen[$0]++' | head -n 80 | split -l 16 - failed-part-
+          for part in failed-part-*; do
+            echo "::error title=Server tests::$(sed ':a;N;$!ba;s/\n/%0A/g' "$part")"
+          done
 
   frontend:
     name: Frontend
