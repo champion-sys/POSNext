@@ -16,6 +16,7 @@ from pos_next.services import sync_inbox
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
 MANAGER_ROLES = ("Nexus POS Manager", "System Manager")
+ITEM_SAVEPOINT = "pos_sync_item"
 
 #: Server statuses as the device understands them
 _CLIENT_STATUS = {
@@ -57,6 +58,26 @@ def _rejected(item, message):
         "status": "rejected",
         "message": message,
     }
+
+
+def _discard_item(exc):
+    """Undo a failed item, so the rest of the batch can still land.
+
+    Returns:
+        str: What to tell the device about this item
+    """
+    try:
+        frappe.db.rollback(save_point=ITEM_SAVEPOINT)
+    except Exception:
+        # A deadlock ends the transaction and its savepoints. Earlier items have committed.
+        frappe.db.rollback()
+
+    frappe.clear_messages()
+    if isinstance(exc, frappe.PermissionError):
+        return str(exc)
+
+    frappe.log_error(title="POS Sync Push Item")
+    return _("The server could not store this record")
 
 
 def _assert_manager():
@@ -114,13 +135,14 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
             continue
 
         try:
+            # Not frappe.database.savepoint: ingest commits, and releasing one then raises
+            frappe.db.savepoint(ITEM_SAVEPOINT)
             _assert_may_upload(item)
-        except frappe.PermissionError as exc:
-            frappe.clear_messages()
-            results.append(_rejected(item, str(exc)))
+            name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
+        except Exception as exc:
+            results.append(_rejected(item, _discard_item(exc)))
             continue
 
-        name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
         if conflict:
             results.append(
                 {

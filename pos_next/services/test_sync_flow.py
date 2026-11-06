@@ -6,12 +6,14 @@
 import json
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import frappe
 from rq.timeouts import JobTimeoutException
 
 from pos_next.api import sync as sync_api
+from pos_next.pos_next.doctype.offline_invoice_sync import offline_invoice_sync
 from pos_next.services import sync_inbox
 from pos_next.services.sync_entities import DOCTYPE
 
@@ -35,6 +37,7 @@ class FakeInbox:
         self.assigned = {"Main": {"cashier@example.com"}}
         self.device_profiles = ["Main"]
         self.shifts = {}
+        self.savepoints = {}
 
     @staticmethod
     def _matches(row, filters):
@@ -98,10 +101,20 @@ class FakeInbox:
         return name
 
     def commit(self):
-        pass
+        self.savepoints.clear()
 
-    def rollback(self, **_kwargs):
-        pass
+    def savepoint(self, name):
+        self.savepoints[name] = {key: frappe._dict(row) for key, row in self.rows.items()}
+
+    def release_savepoint(self, name):
+        del self.savepoints[name]
+
+    def rollback(self, save_point=None, **_kwargs):
+        """As on MariaDB, a savepoint does not outlive its transaction."""
+        if save_point:
+            self.rows = self.savepoints[save_point]
+        else:
+            self.savepoints.clear()
 
     def count(self, *_args, **_kwargs):
         return 0
@@ -811,6 +824,64 @@ class TestUploadAccess(Upload):
     def test_a_browser_has_no_device_list(self):
         self.inbox.device_profiles = ["Elsewhere"]
         self.assertEqual(self.push(self.item())[SALE]["status"], "received")
+
+
+class TestOneBadItem(Upload):
+    def setUp(self):
+        super().setUp()
+        patcher = patch("frappe.log_error")
+        self.log_error = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_it_does_not_lose_the_others(self):
+        results = self.push(
+            self.item("pos_offline_first"),
+            self.item("pos_offline_bad", depends_on=5),
+            self.item("pos_offline_last"),
+        )
+
+        self.assertEqual(results["pos_offline_first"]["status"], "received")
+        self.assertEqual(results["pos_offline_bad"]["status"], "rejected")
+        self.assertEqual(results["pos_offline_bad"]["message"], "The server could not store this record")
+        self.assertEqual(results["pos_offline_last"]["status"], "received")
+        self.assertEqual(
+            [row.offline_id for row in self.inbox.rows.values()], ["pos_offline_first", "pos_offline_last"]
+        )
+
+    def test_the_reason_reaches_the_error_log(self):
+        self.push(self.item(depends_on=5))
+        self.log_error.assert_called_once()
+
+    def test_what_it_wrote_is_undone(self):
+        with patch.object(sync_inbox, "_get_edit_conflict", side_effect=RuntimeError("Mid write")):
+            results = self.push(self.item())
+
+        self.assertEqual(results[SALE]["status"], "rejected")
+        self.assertEqual(self.inbox.rows, {})
+
+    def test_a_deadlock_that_ended_the_transaction_is_survived(self):
+        def deadlock(*_args):
+            self.inbox.savepoints.clear()
+            raise RuntimeError("Deadlock found when trying to get lock")
+
+        with patch.object(sync_inbox, "ingest", side_effect=deadlock):
+            results = self.push(self.item())
+
+        self.assertEqual(results[SALE]["status"], "rejected")
+
+    def test_a_refusal_is_not_an_error_to_log(self):
+        self.push(self.item(pos_profile="Other"))
+        self.log_error.assert_not_called()
+
+    def test_it_leaves_no_message_for_the_whole_response(self):
+        frappe.local.message_log = ["left by frappe.throw"]
+        self.push(self.item(depends_on=5))
+        self.assertEqual(frappe.local.message_log, [])
+
+    def test_a_shift_manifest_fits_however_long_the_shift_was(self):
+        doctype = json.loads(Path(offline_invoice_sync.__file__).with_suffix(".json").read_text())
+        field = next(field for field in doctype["fields"] if field["fieldname"] == "depends_on")
+        self.assertEqual(field["fieldtype"], "Long Text")
 
 
 class TestNewCustomerJourney(Flow):

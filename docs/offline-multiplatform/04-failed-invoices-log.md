@@ -51,7 +51,7 @@ flowchart LR
 | `traceback` | Code | للمطورين |
 | `error_fingerprint` | Data، مفهرس | تجميع الأخطاء المتشابهة |
 | `attempts`، `next_retry_at` | Int، Datetime | إعادة المحاولة |
-| `depends_on` | Data | المرجع المنتظر |
+| `depends_on` | Long Text | المراجع المنتظرة، وتشمل قائمة فواتير الوردية عند إقفالها |
 | `resolution`، `resolution_note` | Select، Small Text | ماذا فُعل ولماذا |
 | `resolved_by`، `resolved_at` | Link، Datetime | التدقيق |
 | `attempt_log` | Table | سجل كل محاولة |
