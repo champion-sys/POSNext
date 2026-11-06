@@ -13,13 +13,18 @@ import hashlib
 import json
 import time
 from collections import namedtuple
+from contextlib import contextmanager
 
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 
 from pos_next.services import sync_classifier, sync_entities
-from pos_next.services.sync_classifier import TotalMismatchError, WaitingForDependencyError
+from pos_next.services.sync_classifier import (
+    CashierUnavailableError,
+    TotalMismatchError,
+    WaitingForDependencyError,
+)
 from pos_next.services.sync_entities import (
     DOCTYPE,
     ENTITY_CUSTOMER,
@@ -148,6 +153,32 @@ def _sum_payments(payload):
     return sum(flt(row.get("amount")) for row in payload.get("payments") or [])
 
 
+@contextmanager
+def _as_cashier(row):
+    """Run a block under the cashier's session, so what it creates is theirs.
+
+    Only the handler runs here: the record itself is written under the session that
+    processes it, so it never depends on the cashier's permissions. set_user replaces the
+    session's id and data and clears form_dict, which a request still needs afterwards.
+    """
+    if not row.cashier or not frappe.db.get_value("User", row.cashier, "enabled"):
+        raise CashierUnavailableError(
+            _("The cashier of this record is disabled or no longer exists: {0}").format(row.cashier or "-")
+        )
+
+    session = frappe.local.session
+    user, sid, data = session.user, session.sid, session.data
+    form_dict = frappe.local.form_dict
+
+    frappe.set_user(row.cashier)
+    try:
+        yield
+    finally:
+        frappe.set_user(user)
+        session.sid, session.data = sid, data
+        frappe.local.form_dict = form_dict
+
+
 def process(name):
     """Turn one stored record into what it stands for on the server.
 
@@ -176,7 +207,8 @@ def process(name):
 
     started = time.monotonic()
     try:
-        result = handler.create(row)
+        with _as_cashier(row):
+            result = handler.create(row)
         _mark_synced(name, result, "synced", started)
         frappe.db.commit()  # nosemgrep: the document and its Synced status commit as one
     except Exception as exc:
@@ -243,7 +275,6 @@ def _create_invoice(row):
     pos_profile = payload.get("pos_profile") or row.pos_profile
     doctype = payload.get("doctype") or row.invoice_doctype or "Sales Invoice"
     payload.setdefault("doctype", doctype)
-    payload["owner"] = row.cashier
 
     from pos_next.api.invoices import _assert_invoice_write_access
 
@@ -253,9 +284,7 @@ def _create_invoice(row):
         sync_entities.align_return(payload)
 
     data = {"offline_id": row.offline_id}
-    result = process_invoice(
-        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier, queued=True
-    )
+    result = process_invoice(payload, data, doctype, pos_profile, offline_id=row.offline_id, queued=True)
     _assert_totals_match(row, result, pos_profile)
     return {**result, "doctype": doctype, "customer": payload.get("customer")}
 

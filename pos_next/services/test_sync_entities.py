@@ -59,6 +59,7 @@ class NoSiteTestCase(unittest.TestCase):
 
         frappe.local.session = Mock(user="uploader@example.com")
         frappe.local.db = Mock()
+        frappe.local.form_dict = frappe._dict()
         self.addCleanup(setattr, frappe.local, "session", None)
         self.addCleanup(setattr, frappe.local, "db", None)
 

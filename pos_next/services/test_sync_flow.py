@@ -25,6 +25,7 @@ class FakeInbox:
 
     def __init__(self):
         self.rows = {}
+        self.disabled_users = set()
 
     @staticmethod
     def _matches(row, filters):
@@ -46,6 +47,8 @@ class FakeInbox:
         return [row for row in self.rows.values() if self._matches(row, filters)]
 
     def get_value(self, doctype, filters=None, fieldname="name", as_dict=False, **_kwargs):
+        if doctype == "User":
+            return 0 if filters in self.disabled_users else 1
         if doctype != DOCTYPE:
             return None
 
@@ -95,6 +98,7 @@ class Flow(unittest.TestCase):
         self.inbox = FakeInbox()
         frappe.local.db = self.inbox
         frappe.local.session = Mock(user="cashier@example.com")
+        frappe.local.form_dict = frappe._dict()
         self.addCleanup(setattr, frappe.local, "db", None)
         self.addCleanup(setattr, frappe.local, "session", None)
 
@@ -141,6 +145,108 @@ class Flow(unittest.TestCase):
 
     def _age(self, name, hours=2):
         self._row(name)["received_at"] = datetime.now() - timedelta(hours=hours)
+
+
+class TestCashierSession(Flow):
+    """What a queued record creates belongs to its cashier, not to whoever runs the job."""
+
+    finished = {"name": "SINV-1", "doctype": "Sales Invoice", "grand_total": 0}
+
+    def _process(self, name, create):
+        handler = sync_inbox._Entity(create, Mock(return_value=None), ())
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": handler}):
+            return sync_inbox.process(name)
+
+    def _stored_sale(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        self._row(name)["cashier"] = "sara@example.com"
+        frappe.local.session.user = "Administrator"
+        return name
+
+    def test_every_entity_runs_as_the_cashier(self):
+        users = []
+
+        def create(row):
+            users.append(frappe.session.user)
+            return self.finished
+
+        for entity in ("invoice", "customer", "payment", "shift_close"):
+            name = self._send(f"pos_offline_{entity}", {"pos_profile": "Main"}, entity)
+            self._row(name)["cashier"] = "sara@example.com"
+            handler = sync_inbox._Entity(create, Mock(return_value=None), ())
+            frappe.local.session.user = "Administrator"
+            with patch.dict(sync_inbox._ENTITIES, {entity: handler}):
+                sync_inbox.process(name)
+
+        self.assertEqual(users, ["sara@example.com"] * 4)
+
+    def test_the_user_comes_back_after_success(self):
+        self._process(self._stored_sale(), Mock(return_value=self.finished))
+        self.assertEqual(frappe.session.user, "Administrator")
+
+    def test_the_user_comes_back_after_a_failure(self):
+        name = self._stored_sale()
+        self._process(name, Mock(side_effect=frappe.ValidationError("Closed period")))
+
+        self.assertEqual(frappe.session.user, "Administrator")
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+
+    def test_the_record_is_written_outside_the_cashiers_session(self):
+        name = self._stored_sale()
+        writers = []
+        sync_inbox._log_attempt.side_effect = lambda *_args, **_kwargs: writers.append(frappe.session.user)
+
+        self._process(name, Mock(return_value=self.finished))
+
+        self.assertEqual(writers, ["Administrator"])
+
+    def test_a_request_keeps_its_session_and_arguments(self):
+        name = self._stored_sale()
+        session = frappe.local.session
+        sid, data = session.sid, session.data
+        form_dict = frappe.local.form_dict
+
+        self._process(name, Mock(return_value=self.finished))
+
+        self.assertIs(session.sid, sid)
+        self.assertIs(session.data, data)
+        self.assertIs(frappe.local.form_dict, form_dict)
+
+    def test_a_disabled_cashier_needs_a_person(self):
+        name = self._stored_sale()
+        self.inbox.disabled_users.add("sara@example.com")
+        create = Mock(return_value=self.finished)
+
+        self._process(name, create)
+
+        create.assert_not_called()
+        row = self._row(name)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "CashierUnavailableError")
+        self.assertEqual(row.error_class, "business")
+        self.assertIn("sara@example.com", row.error_message)
+        self.assertEqual(frappe.session.user, "Administrator")
+
+    def test_a_record_without_a_cashier_needs_a_person(self):
+        name = self._stored_sale()
+        self._row(name)["cashier"] = None
+
+        self._process(name, Mock(return_value=self.finished))
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "CashierUnavailableError")
+
+    def test_the_sale_does_not_try_to_set_its_own_owner(self):
+        name = self._stored_sale()
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
+        ):
+            process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}
+            sync_inbox.process(name)
+
+        self.assertNotIn("owner", process_invoice.call_args.args[0])
+        self.assertEqual(process_invoice.call_args.kwargs, {"offline_id": SALE, "queued": True})
 
 
 class TestNewCustomerJourney(Flow):
