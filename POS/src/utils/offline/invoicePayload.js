@@ -189,3 +189,18 @@ export function getQueueUpdateForResult(result) {
 			return null
 	}
 }
+
+const BASE_RETRY_DELAY_MS = 5000
+const MAX_RETRY_DELAY_MS = 30 * 60 * 1000
+
+/**
+ * How long a failed invoice waits before the next attempt. The random spread stops a
+ * whole shop of devices retrying at the same moment after an outage.
+ * @param {number} attempts - Failed attempts so far
+ * @param {() => number} [random]
+ * @returns {number} Milliseconds
+ */
+export function getRetryDelayMs(attempts, random = Math.random) {
+	const delay = Math.min(MAX_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS * 3 ** attempts)
+	return Math.round(delay * (0.7 + random() * 0.6))
+}

@@ -85,6 +85,7 @@
   "enable_session_lock",
   "session_lock_timeout",
   "section_break_sync",
+  "sync_interval_minutes",
   "sync_total_tolerance",
   "barcode_tab",
   "barcode_rules"
@@ -551,6 +552,14 @@
    "label": "Invoice Sync"
   },
   {
+   "fieldname": "sync_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Sync Interval (Minutes)",
+   "default": "5",
+   "non_negative": 1,
+   "description": "How often devices send queued invoices. They also send them after every sale, on opening and on reconnecting."
+  },
+  {
    "fieldname": "sync_total_tolerance",
    "fieldtype": "Float",
    "label": "Total Difference Tolerance",
@@ -631,7 +640,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-06 18:00:00.000000",
+ "modified": "2026-11-06 19:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

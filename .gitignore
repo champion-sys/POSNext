@@ -68,3 +68,6 @@ TODO.md
 *.jpeg
 missing.txt
 .agents
+# Desktop app build output
+POS/desktop/renderer/
+POS/desktop/dist/

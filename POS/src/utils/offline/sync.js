@@ -7,13 +7,11 @@ import {
 	buildSyncEnvelope,
 	classifySyncError,
 	getQueueUpdateForResult,
+	getRetryDelayMs,
 	withOfflinePosting,
 } from "./invoicePayload"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
-import { generateOfflineId, generateUUID } from "./uuid"
-
-// Re-export for backwards compatibility
-export { generateOfflineId }
+import { generateUUID } from "./uuid"
 
 // Create namespaced logger for sync operations
 const log = logger.create("Sync")
@@ -83,35 +81,6 @@ export const isOffline = () => {
 // ============================================================================
 
 /**
- * Save invoice to offline queue with unique offline_id for deduplication
- * @param {Object} invoiceData - Invoice data to save
- * @returns {Promise<{success: boolean, id: number, offline_id: string}>}
- */
-export const saveOfflineInvoice = async (invoiceData) => {
-	if (!invoiceData.items?.length) {
-		throw new Error("Cannot save empty invoice")
-	}
-
-	// Clean data (remove reactive properties) and add offline_id
-	const cleanData = JSON.parse(JSON.stringify(invoiceData))
-	const offlineId = generateOfflineId()
-	cleanData.offline_id = offlineId
-
-	const id = await db.invoice_queue.add({
-		offline_id: offlineId,
-		data: cleanData,
-		timestamp: Date.now(),
-		synced: false,
-		retry_count: 0,
-	})
-
-	await updateLocalStock(cleanData.items)
-
-	log.info(`Invoice saved to offline queue`, { offline_id: offlineId })
-	return { success: true, id, offline_id: offlineId }
-}
-
-/**
  * Get all pending (unsynced) offline invoices
  * @returns {Promise<Array>}
  */
@@ -143,34 +112,6 @@ export const getOfflineInvoiceByOfflineId = async (offlineId) => {
 }
 
 /**
- * Get count of pending offline invoices
- * @returns {Promise<number>}
- */
-export const getOfflineInvoiceCount = async () => {
-	try {
-		return await db.invoice_queue.filter((inv) => !inv.synced && !inv.superseded).count()
-	} catch (error) {
-		log.error("Failed to get offline invoice count", error)
-		return 0
-	}
-}
-
-/**
- * Delete an offline invoice by ID
- * @param {number} id - Invoice queue ID
- * @returns {Promise<boolean>}
- */
-export const deleteOfflineInvoice = async (id) => {
-	try {
-		await db.invoice_queue.delete(id)
-		return true
-	} catch (error) {
-		log.error("Failed to delete offline invoice", { id, error })
-		return false
-	}
-}
-
-/**
  * Wait for a specified duration
  * @param {number} ms - Milliseconds to wait
  * @returns {Promise<void>}
@@ -188,7 +129,11 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
  */
 const handleSyncFailure = async (invoice, errorMessage) => {
 	const newRetryCount = (invoice.retry_count || 0) + 1
-	const updates = { retry_count: newRetryCount, error: errorMessage }
+	const updates = {
+		retry_count: newRetryCount,
+		error: errorMessage,
+		next_attempt_at: Date.now() + getRetryDelayMs(newRetryCount),
+	}
 
 	if (newRetryCount >= SYNC_CONFIG.MAX_RETRY_COUNT) {
 		updates.sync_failed = true
@@ -325,9 +270,11 @@ const refreshServerStatus = async (rows, result) => {
  * Uses a mutex to ensure only one sync operation runs at a time.
  * Concurrent callers will wait for the ongoing sync and receive its result.
  *
+ * @param {Object} [options]
+ * @param {boolean} [options.force] - Retry invoices still waiting out a backoff
  * @returns {Promise<{success: number, failed: number, skipped: number, errors: Array}>}
  */
-export const syncOfflineInvoices = async () => {
+export const syncOfflineInvoices = async ({ force = false } = {}) => {
 	if (isOffline()) {
 		log.debug("Cannot sync while offline")
 		return { success: 0, failed: 0, skipped: 0, errors: [] }
@@ -342,8 +289,12 @@ export const syncOfflineInvoices = async () => {
 
 		log.info(`Starting sync of ${pendingInvoices.length} invoice(s)`)
 
-		const result = { success: 0, failed: 0, skipped: 0, errors: [] }
-		const unsent = pendingInvoices.filter((row) => !row.server_status)
+		const result = { success: 0, failed: 0, skipped: 0, waiting: 0, errors: [] }
+		// A manual sync does not wait for a failed invoice's backoff
+		const now = Date.now()
+		const unsent = pendingInvoices.filter(
+			(row) => !row.server_status && (force || (row.next_attempt_at || 0) <= now),
+		)
 
 		for (let i = 0; i < unsent.length; i += SYNC_CONFIG.BATCH_SIZE) {
 			const batch = unsent.slice(i, i + SYNC_CONFIG.BATCH_SIZE)
@@ -388,8 +339,8 @@ export const syncOfflineInvoices = async () => {
 			if (!held.length) break
 
 			try {
-				const waiting = await refreshServerStatus(held, result)
-				if (waiting === 0) break
+				result.waiting = await refreshServerStatus(held, result)
+				if (result.waiting === 0) break
 			} catch (error) {
 				log.warn("Could not read sync status", { error })
 				break
@@ -423,80 +374,6 @@ const cleanupSyncedInvoices = async () => {
 	await db.invoice_queue
 		.filter((inv) => inv.synced && inv.timestamp < cutoff)
 		.delete()
-}
-
-// ============================================================================
-// LOCAL STOCK OPERATIONS
-// ============================================================================
-
-/**
- * Update local stock after invoice
- * @param {Array} items - Invoice items
- */
-export const updateLocalStock = async (items) => {
-	if (!items?.length) return
-
-	try {
-		for (const item of items) {
-			if (!item.item_code || !item.warehouse) continue
-
-			const currentStock = await db.stock.get({
-				item_code: item.item_code,
-				warehouse: item.warehouse,
-			})
-
-			const qty = item.quantity || item.qty || 0
-			const newQty = (currentStock?.qty || 0) - qty
-
-			await db.stock.put({
-				item_code: item.item_code,
-				warehouse: item.warehouse,
-				qty: newQty,
-				updated_at: Date.now(),
-			})
-		}
-	} catch (error) {
-		log.error("Failed to update local stock", error)
-	}
-}
-
-/**
- * Get local stock for an item
- * @param {string} itemCode - Item code
- * @param {string} warehouse - Warehouse
- * @returns {Promise<number>}
- */
-export const getLocalStock = async (itemCode, warehouse) => {
-	try {
-		const stock = await db.stock.get({ item_code: itemCode, warehouse })
-		return stock?.qty || 0
-	} catch (error) {
-		log.error("Failed to get local stock", { item_code: itemCode, warehouse, error })
-		return 0
-	}
-}
-
-// ============================================================================
-// OFFLINE PAYMENT OPERATIONS
-// ============================================================================
-
-/**
- * Save payment to offline queue
- * @param {Object} paymentData - Payment data
- * @returns {Promise<boolean>}
- */
-export const saveOfflinePayment = async (paymentData) => {
-	const cleanData = JSON.parse(JSON.stringify(paymentData))
-
-	await db.payment_queue.add({
-		data: cleanData,
-		timestamp: Date.now(),
-		synced: false,
-		retry_count: 0,
-	})
-
-	log.info("Payment saved to offline queue")
-	return true
 }
 
 // ============================================================================

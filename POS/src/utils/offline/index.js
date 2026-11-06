@@ -1,6 +1,6 @@
 // Main offline module - exports all offline functionality
 
-export { db, initDB, checkDBHealth, getSetting, setSetting } from "./db"
+export { db, initDB, getSetting, setSetting } from "./db"
 
 // Centralized offline state manager (single source of truth)
 export {
@@ -15,14 +15,8 @@ export {
 
 export {
 	pingServer,
-	saveOfflineInvoice,
 	getOfflineInvoices,
-	getOfflineInvoiceCount,
 	syncOfflineInvoices,
-	deleteOfflineInvoice,
-	updateLocalStock,
-	getLocalStock,
-	saveOfflinePayment,
 	cacheInvoiceHistory,
 	getCachedInvoiceHistory,
 	clearInvoiceHistoryCache,

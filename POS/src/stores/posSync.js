@@ -29,14 +29,15 @@ import { logger } from "@/utils/logger"
 import { sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
 
 const log = logger.create('POSSync')
 
-/** Safety net: queued invoices go out on this interval whatever else happens */
-const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000
+/** How often to check whether the periodic sync from POS Settings is due */
+const SYNC_TICK_MS = 60 * 1000
 
 /** Wait for the app to settle before the sync on opening */
 const STARTUP_SYNC_DELAY_MS = 5000
@@ -64,6 +65,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	const pendingInvoicesList = ref([])
 
 	let isListeningForResults = false
+	let lastAutoSyncAt = Date.now()
+	let isWaitingForServer = false
 
 	/** Track previous offline state for detecting online/offline transitions */
 	let wasOffline = offlineState.isOffline
@@ -173,6 +176,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		const { session } = await import("@/data/session")
 		if (!session.isLoggedIn || isOffline.value || isSyncing.value) return
 
+		lastAutoSyncAt = Date.now()
 		listenForServerResults()
 
 		await updatePendingCount()
@@ -203,7 +207,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * Sync pending invoices to the server
 	 * @throws {Error} If called while offline
 	 */
-	async function syncPending() {
+	async function syncPending(options = {}) {
 		if (isOffline.value) {
 			throw new Error("Cannot sync while offline")
 		}
@@ -212,7 +216,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		try {
 			const stockStore = useStockStore()
 			const soldCodes = Array.from(stockStore.queued.keys())
-			const result = await syncOfflineInvoices()
+			const result = await syncOfflineInvoices(options)
+			isWaitingForServer = result.waiting > 0
 			await updatePendingCount()
 
 			// The server's numbers now include these sales
@@ -281,6 +286,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			const result = await offlineWorker.saveOfflineInvoice(invoiceData, options)
 			await updatePendingCount()
 			warnIfStorageNotPersistent()
+			autoSync().catch((error) => log.error('Sync after saving failed', error))
 			log.info('Invoice saved offline successfully')
 			return result || { success: true }
 		} catch (error) {
@@ -328,7 +334,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		}
 
 		try {
-			const result = await syncPending()
+			const result = await syncPending({ force: true })
 
 			if (result.success > 0) {
 				showSuccess(__('{0} invoice(s) synced successfully', [result.success]))
@@ -500,7 +506,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	// Yesterday's queue must not wait for a reconnect that never comes
 	setTimeout(autoSync, STARTUP_SYNC_DELAY_MS)
-	setInterval(autoSync, AUTO_SYNC_INTERVAL_MS)
+	setInterval(() => {
+		const intervalMs = usePOSSettingsStore().syncIntervalMinutes * 60 * 1000
+		// Without a socket, this is how a sale the server is working on gets its result
+		if (isWaitingForServer || Date.now() - lastAutoSyncAt >= intervalMs) autoSync()
+	}, SYNC_TICK_MS)
 
 	// =========================================================================
 	// EXPORTS

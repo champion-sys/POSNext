@@ -1,13 +1,7 @@
+import { readIdentity } from "@/platform/identity"
 import router from "@/router"
 import { createResource } from "frappe-ui"
 import { computed, reactive } from "vue"
-
-const getCookie = (key) => {
-	const cookies = new Map(
-		document.cookie.split("; ").filter(Boolean).map((c) => c.split("=").map(decodeURIComponent))
-	)
-	return cookies.get(key) || null
-}
 
 export const userData = reactive({
 	userId: null,
@@ -15,12 +9,10 @@ export const userData = reactive({
 	userImage: null,
 
 	refresh() {
-		const userId = getCookie("user_id")
-		const fullName = getCookie("full_name")
-		const userImage = getCookie("user_image")
+		const { userId, fullName, userImage } = readIdentity()
 
 		// Only update if we have valid data (not Guest)
-		if (userId && userId !== "Guest") {
+		if (userId) {
 			this.userId = userId
 			this.fullName = fullName
 			this.userImage = userImage

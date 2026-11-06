@@ -270,6 +270,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	)
 
 	const invoiceType = computed(() => settings.value.invoice_type || "Sales Invoice")
+	const syncIntervalMinutes = computed(() => Number(settings.value.sync_interval_minutes) || 5)
 
 	// Hardcoded for testing — controls whether item group tabs get distinct colors
 	const coloredItemGroups = ref(true)
@@ -559,6 +560,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		hideImages,
 		coloredItemGroups,
 		invoiceType,
+		syncIntervalMinutes,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,

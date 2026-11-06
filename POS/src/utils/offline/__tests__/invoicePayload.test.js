@@ -4,6 +4,7 @@ import {
 	classifySyncError,
 	formatLocalPosting,
 	getQueueUpdateForResult,
+	getRetryDelayMs,
 	getSaleSignature,
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -205,5 +206,23 @@ describe("getQueueUpdateForResult", () => {
 
 	it("leaves the row alone for a status it does not know", () => {
 		expect(getQueueUpdateForResult({ status: "rejected" })).toBeNull()
+	})
+})
+
+describe("getRetryDelayMs", () => {
+	const middle = () => 0.5
+
+	it("waits longer after each failure", () => {
+		expect(getRetryDelayMs(1, middle)).toBe(15000)
+		expect(getRetryDelayMs(2, middle)).toBe(45000)
+	})
+
+	it("stops growing at 30 minutes", () => {
+		expect(getRetryDelayMs(20, middle)).toBe(30 * 60 * 1000)
+	})
+
+	it("spreads devices apart", () => {
+		expect(getRetryDelayMs(1, () => 0)).toBe(10500)
+		expect(getRetryDelayMs(1, () => 1)).toBe(19500)
 	})
 })

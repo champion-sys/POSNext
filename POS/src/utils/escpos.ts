@@ -1,3 +1,4 @@
+import { serverUrl } from "@/platform/runtime"
 import { logger } from "./logger"
 import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
 import { printerService } from "../services/printerService"
@@ -573,11 +574,7 @@ const BLANK_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC
 
 async function fetchAsDataURL(url: string): Promise<string> {
 	try {
-		const absoluteUrl = url.startsWith("/")
-			? window.location.origin + url
-			: (url.startsWith("http") ? url : window.location.origin + "/" + url)
-
-		const res = await fetch(absoluteUrl)
+		const res = await fetch(serverUrl(url))
 		if (!res.ok) throw new Error("Fetch failed")
 		const blob = await res.blob()
 		return new Promise((resolve, reject) => {

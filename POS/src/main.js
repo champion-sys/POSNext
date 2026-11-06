@@ -22,6 +22,8 @@ import {
 	getCSRFTokenFromCookie,
 	onCSRFTokenRefresh,
 } from "./utils/csrf"
+import { installHttpBridge } from "./platform/http"
+import { isNative } from "./platform/runtime"
 import { logger } from "./utils/logger"
 import { offlineWorker } from "./utils/offline/workerClient"
 import translationPlugin from "./utils/translation"
@@ -46,11 +48,15 @@ import "./index.css"
 
 const log = logger.create("Main")
 
+// Before anything can make a request
+installHttpBridge()
+
 // =============================================================================
 // PWA Service Worker Registration
 // =============================================================================
 
-if ("serviceWorker" in navigator) {
+// The desktop and Android apps ship their files, so they have nothing to cache
+if (!isNative && "serviceWorker" in navigator) {
 	window.addEventListener(
 		"load",
 		() => {
@@ -147,6 +153,9 @@ async function initializeApp() {
 	// -------------------------------------------------------------------------
 
 	const csrfPromise = (async () => {
+		// CSRF protects cookies, and the native apps send a token instead
+		if (isNative) return true
+
 		const existingToken = getCSRFTokenFromCookie()
 		if (existingToken) {
 			log.debug("CSRF token found in cookie")

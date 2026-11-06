@@ -154,50 +154,6 @@ export const initDB = async () => {
 }
 
 /**
- * Verifies database health and attempts recovery if needed.
- * Handles VersionError and InvalidStateError by recreating the database.
- * @returns {Promise<boolean>} True if database is healthy or recovered
- */
-export const checkDBHealth = async () => {
-	try {
-		await db.settings.get("health_check")
-		return true
-	} catch (error) {
-		log.error("Database health check failed:", error)
-
-		// Try to reopen
-		try {
-			if (db.isOpen()) {
-				db.close()
-			}
-			await db.open()
-			log.info("Database reopened successfully")
-			return true
-		} catch (reopenError) {
-			log.error("Failed to reopen database:", reopenError)
-
-			// If corrupted, recreate
-			if (
-				reopenError.name === "VersionError" ||
-				reopenError.name === "InvalidStateError"
-			) {
-				log.warn("Database appears corrupted, recreating...")
-				try {
-					await Dexie.delete("pos_next_offline")
-					await db.open()
-					log.success("Database recreated successfully")
-					return true
-				} catch (recreateError) {
-					log.error("Failed to recreate database:", recreateError)
-					return false
-				}
-			}
-			return false
-		}
-	}
-}
-
-/**
  * Retrieves a setting value from the database.
  * @param {string} key - Setting key to retrieve
  * @param {*} [defaultValue=null] - Value to return if key not found
@@ -288,38 +244,6 @@ export const clearCachedData = async (options = {}) => {
 	} catch (error) {
 		log.error("Error clearing cached data:", error)
 		return { success: false, error: error.message, cleared: results }
-	}
-}
-
-/**
- * NUCLEAR OPTION: Delete entire database and recreate
- * Use with caution - clears EVERYTHING including invoices and drafts
- * @returns {Promise<boolean>} - Success status
- */
-export const nukeDatabase = async () => {
-	try {
-		log.warn("NUKING DATABASE - All data will be lost!")
-
-		// Close database connection
-		if (db.isOpen()) {
-			db.close()
-		}
-
-		// Delete entire database
-		await Dexie.delete("pos_next_offline")
-
-		// Clear localStorage schema tracking
-		localStorage.removeItem("pos_next_schema_hash")
-		localStorage.removeItem("pos_next_schema_version")
-
-		// Recreate database
-		await db.open()
-
-		log.success("Database nuked and recreated successfully")
-		return true
-	} catch (error) {
-		log.error("Error nuking database:", error)
-		return false
 	}
 }
 

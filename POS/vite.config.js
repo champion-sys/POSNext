@@ -1,5 +1,5 @@
 import path from "node:path"
-import { promises as fs } from "node:fs"
+import { promises as fs, readFileSync } from "node:fs"
 import vue from "@vitejs/plugin-vue"
 import frappeui from "frappe-ui/vite"
 import { defineConfig } from "vite"
@@ -8,6 +8,16 @@ import { viteStaticCopy } from "vite-plugin-static-copy"
 
 // Get build version from environment or use timestamp
 const buildVersion = process.env.POS_NEXT_BUILD_VERSION || Date.now().toString()
+
+/** Socket port on a dev bench. Read here so building does not need a bench. */
+function getSocketioPort() {
+	try {
+		const configPath = path.resolve(__dirname, "../../../sites/common_site_config.json")
+		return JSON.parse(readFileSync(configPath, "utf8")).socketio_port || 9000
+	} catch {
+		return 9000
+	}
+}
 const enableSourceMap = process.env.POS_NEXT_ENABLE_SOURCEMAP === "true"
 
 /**
@@ -240,6 +250,7 @@ export default defineConfig({
 	},
 	define: {
 		__BUILD_VERSION__: JSON.stringify(buildVersion),
+		__SOCKETIO_PORT__: getSocketioPort(),
 	},
 	test: {
 		environment: "jsdom",

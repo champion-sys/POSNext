@@ -2,17 +2,13 @@ import router from "@/router"
 import { createResource } from "frappe-ui"
 import { computed, reactive } from "vue"
 
+import { readIdentity } from "@/platform/identity"
 import { ensureCSRFToken } from "@/utils/csrf"
 import { cleanupUserSession } from "@/utils/sessionCleanup"
 import { userResource, userData } from "./user"
 
 export function sessionUser() {
-	const cookies = new URLSearchParams(document.cookie.split("; ").join("&"))
-	let _sessionUser = cookies.get("user_id")
-	if (_sessionUser === "Guest") {
-		_sessionUser = null
-	}
-	return _sessionUser
+	return readIdentity().userId
 }
 
 export const session = reactive({

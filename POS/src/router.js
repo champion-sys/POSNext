@@ -22,7 +22,7 @@ const routes = [
 ]
 
 const router = createRouter({
-	history: createWebHistory("/pos"),
+	history: createWebHistory(import.meta.env.VITE_ROUTER_BASE ?? "/pos"),
 	routes,
 })
 

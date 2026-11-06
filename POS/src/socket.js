@@ -1,5 +1,5 @@
 import { io } from "socket.io-client"
-import { socketio_port } from "../../../../sites/common_site_config.json"
+import { getServerUrl } from "@/platform/runtime"
 
 let socket = null
 
@@ -19,9 +19,9 @@ export function initSocket(siteNameOverride) {
 			window.location.hostname
 
 		const host = window.location.hostname
-		const port = window.location.port ? `:${socketio_port}` : ""
+		const port = window.location.port ? `:${__SOCKETIO_PORT__}` : ""
 		const protocol = port ? "http" : "https"
-		const url = `${protocol}://${host}${port}/${siteName}`
+		const url = `${getServerUrl() || `${protocol}://${host}${port}`}/${siteName}`
 
 		console.log("Initializing socket (lazy connection):", url)
 

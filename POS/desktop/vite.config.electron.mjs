@@ -34,5 +34,8 @@ export default defineConfig({
 	},
 	define: {
 		__BUILD_VERSION__: JSON.stringify(`desktop-${Date.now()}`),
+		__SOCKETIO_PORT__: 9000,
+		"import.meta.env.VITE_PLATFORM": JSON.stringify("electron"),
+		"import.meta.env.VITE_ROUTER_BASE": JSON.stringify("/"),
 	},
 })
