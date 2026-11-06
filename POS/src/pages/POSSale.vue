@@ -1111,6 +1111,7 @@ import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
+	supportsOfflineId,
 	shouldQueueCheckout,
 	withOfflinePosting,
 } from "@/utils/offline/invoicePayload";
@@ -2509,6 +2510,7 @@ async function handlePaymentCompleted(paymentData) {
 		if (
 			!offlineStore.isOffline &&
 			!posSettingsStore.disableOfflineMode &&
+			supportsOfflineId(cartStore.targetDoctype) &&
 			isNetworkFailure(error)
 		) {
 			try {

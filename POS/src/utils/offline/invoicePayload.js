@@ -226,6 +226,18 @@ export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit, usesGif
 }
 
 /**
+ * When to stop waiting for a checkout. Only a doctype the server can dedupe may give up,
+ * because giving up sends the sale again through the queue while the first request runs.
+ * @param {string} doctype
+ * @param {number} [timeoutMs]
+ * @param {number} [now]
+ * @returns {number|null} Milliseconds since the epoch, null to wait for the server
+ */
+export function getCheckoutDeadline(doctype, timeoutMs, now = Date.now()) {
+	return timeoutMs && supportsOfflineId(doctype) ? now + timeoutMs : null
+}
+
+/**
  * Stop waiting for a request at a deadline. The request itself keeps going, which is
  * safe because the sale keeps its offline_id when it moves to the queue.
  * @param {Promise} promise

@@ -2,7 +2,12 @@ import { createResource } from "frappe-ui"
 import { computed, ref, toRaw } from "vue"
 import { isOffline, getCachedItem, getSetting, setSetting } from "@/utils/offline"
 import { generateOfflineId } from "@/utils/offline/uuid"
-import { getSaleSignature, supportsOfflineId, withDeadline } from "@/utils/offline/invoicePayload"
+import {
+	getCheckoutDeadline,
+	getSaleSignature,
+	supportsOfflineId,
+	withDeadline,
+} from "@/utils/offline/invoicePayload"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
@@ -1103,7 +1108,7 @@ export function useInvoice() {
 		 * @param {Object} [options]
 		 * @param {number} [options.timeoutMs] - Longest the cashier waits for both steps
 		 */
-		const deadlineAt = timeoutMs ? Date.now() + timeoutMs : null
+		const deadlineAt = getCheckoutDeadline(targetDoctype, timeoutMs)
 
 		return await submitMutex.withLock(async () => {
 			// Check if already submitting (belt and suspenders with mutex)
@@ -1307,6 +1312,10 @@ export function useInvoice() {
 	 * If a POS Profile is active and has a default customer, it will be pre-selected.
 	 */
 	async function clearCart() {
+		// The next sale may look identical, and sharing an id would make the server treat it
+		// as this one
+		checkoutIdentity = null
+
 		// Return all serial numbers back to cache before clearing
 		for (const item of invoiceItems.value) {
 			if (item.has_serial_no && item.serial_no) {

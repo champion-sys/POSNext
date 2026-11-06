@@ -10,6 +10,7 @@ import {
 	isNetworkFailure,
 	shouldQueueCheckout,
 	sumQueuedStock,
+	getCheckoutDeadline,
 	supportsOfflineId,
 	SYNC_AFTER_PAYMENT,
 	SYNC_PERIODIC,
@@ -73,6 +74,22 @@ describe("getSaleSignature", () => {
 		expect(getSaleSignature({ ...sale, items: [{ ...sale.items[0], qty: 2 }] })).not.toBe(base)
 		expect(getSaleSignature({ ...sale, discount_amount: 0 })).not.toBe(base)
 		expect(getSaleSignature({ ...sale, payments: [] })).not.toBe(base)
+	})
+})
+
+describe("getCheckoutDeadline", () => {
+	it("gives up on a sale the server can dedupe", () => {
+		expect(getCheckoutDeadline("Sales Invoice", 8000, 1000)).toBe(9000)
+		expect(getCheckoutDeadline("POS Invoice", 8000, 1000)).toBe(9000)
+	})
+
+	it("waits for a Sales Order, which a second request would duplicate", () => {
+		expect(getCheckoutDeadline("Sales Order", 8000, 1000)).toBeNull()
+	})
+
+	it("waits when no timeout is set", () => {
+		expect(getCheckoutDeadline("Sales Invoice", 0, 1000)).toBeNull()
+		expect(getCheckoutDeadline("Sales Invoice", undefined, 1000)).toBeNull()
 	})
 })
 
