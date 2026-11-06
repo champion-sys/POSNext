@@ -354,6 +354,25 @@
 												:label="__('Allow Partial Payment')"
 												:description="__('Enable partial payment for invoices')"
 											/>
+											<SelectField
+												v-model="settings.sync_mode"
+												:label="__('Invoice Sync')"
+												:options="syncModeOptions"
+												:description="__('When invoices reach the server. Invoices are never lost if the connection drops.')"
+											/>
+											<NumberField
+												v-if="settings.sync_mode === 'Periodic'"
+												v-model="settings.sync_interval_minutes"
+												:label="__('Sync Interval (Minutes)')"
+												:min="1"
+											/>
+											<NumberField
+												v-if="settings.sync_mode === 'Realtime'"
+												v-model="settings.realtime_timeout_seconds"
+												:label="__('Wait for the Server (Seconds)')"
+												:description="__('After this, the receipt prints and the invoice is sent in the background.')"
+												:min="1"
+											/>
 											<SystemPrinterSettings v-if="isDesktop" />
 											<CheckboxField
 												v-else
@@ -588,6 +607,12 @@ import { useQzTray } from "@/composables/useQzTray"
 
 
 const isDesktop = PLATFORM === ELECTRON
+
+const syncModeOptions = [
+	{ label: __("Realtime: wait for the server at each sale"), value: "Realtime" },
+	{ label: __("After Payment: print first, send right away"), value: "After Payment" },
+	{ label: __("Periodic: send in batches"), value: "Periodic" },
+]
 const log = logger.create('POSSettings')
 const { detectSettingsChanges, updateSettingsSnapshot, emitStockSyncConfigured } = usePOSEvents()
 const { showSuccess, showError } = useToast()

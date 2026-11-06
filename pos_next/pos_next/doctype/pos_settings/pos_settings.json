@@ -85,7 +85,9 @@
   "enable_session_lock",
   "session_lock_timeout",
   "section_break_sync",
+  "sync_mode",
   "sync_interval_minutes",
+  "realtime_timeout_seconds",
   "sync_total_tolerance",
   "barcode_tab",
   "barcode_rules"
@@ -552,12 +554,30 @@
    "label": "Invoice Sync"
   },
   {
+   "fieldname": "sync_mode",
+   "fieldtype": "Select",
+   "label": "Sync Mode",
+   "options": "Realtime\nAfter Payment\nPeriodic",
+   "default": "Realtime",
+   "description": "Realtime waits for the server at each sale. After Payment prints first and sends right away. Periodic sends in batches."
+  },
+  {
    "fieldname": "sync_interval_minutes",
    "fieldtype": "Int",
    "label": "Sync Interval (Minutes)",
    "default": "5",
    "non_negative": 1,
-   "description": "How often devices send queued invoices. They also send them after every sale, on opening and on reconnecting."
+   "description": "How often devices send queued invoices. They also send them on opening and on reconnecting.",
+   "depends_on": "eval:doc.sync_mode=='Periodic'"
+  },
+  {
+   "fieldname": "realtime_timeout_seconds",
+   "fieldtype": "Int",
+   "label": "Realtime Timeout (Seconds)",
+   "default": "8",
+   "non_negative": 1,
+   "depends_on": "eval:doc.sync_mode=='Realtime'",
+   "description": "How long a cashier waits before the receipt prints and the invoice is sent in the background."
   },
   {
    "fieldname": "sync_total_tolerance",
@@ -640,7 +660,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-06 19:00:00.000000",
+ "modified": "2026-11-06 20:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

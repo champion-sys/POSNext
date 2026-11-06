@@ -1,6 +1,7 @@
 import { createResource } from "frappe-ui"
 import { defineStore } from "pinia"
 import { computed, ref, watch } from "vue"
+import { SYNC_REALTIME } from "@/utils/offline/invoicePayload"
 import { useBootstrapStore } from "./bootstrap"
 import { setCurrencyPrecision } from "@/utils/currency"
 
@@ -271,6 +272,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 
 	const invoiceType = computed(() => settings.value.invoice_type || "Sales Invoice")
 	const syncIntervalMinutes = computed(() => Number(settings.value.sync_interval_minutes) || 5)
+	const syncMode = computed(() => settings.value.sync_mode || SYNC_REALTIME)
+	const realtimeTimeoutSeconds = computed(() => Number(settings.value.realtime_timeout_seconds) || 8)
 
 	// Hardcoded for testing — controls whether item group tabs get distinct colors
 	const coloredItemGroups = ref(true)
@@ -561,6 +564,8 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		coloredItemGroups,
 		invoiceType,
 		syncIntervalMinutes,
+		syncMode,
+		realtimeTimeoutSeconds,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,

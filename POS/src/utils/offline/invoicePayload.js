@@ -204,3 +204,41 @@ export function getRetryDelayMs(attempts, random = Math.random) {
 	const delay = Math.min(MAX_RETRY_DELAY_MS, BASE_RETRY_DELAY_MS * 3 ** attempts)
 	return Math.round(delay * (0.7 + random() * 0.6))
 }
+
+export const SYNC_REALTIME = "Realtime"
+export const SYNC_AFTER_PAYMENT = "After Payment"
+export const SYNC_PERIODIC = "Periodic"
+
+/**
+ * Whether a checkout should be saved locally and sent afterwards, instead of making
+ * the cashier wait for the server. Sales Orders and customer credit need the server
+ * at the moment of the sale, so they never go through the queue while online.
+ * @param {{mode: string, doctype: string, usesCustomerCredit: boolean}} checkout
+ * @returns {boolean}
+ */
+export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit }) {
+	return mode !== SYNC_REALTIME && supportsOfflineId(doctype) && !usesCustomerCredit
+}
+
+/**
+ * Stop waiting for a request at a deadline. The request itself keeps going, which is
+ * safe because the sale keeps its offline_id when it moves to the queue.
+ * @param {Promise} promise
+ * @param {number|null} deadlineAt - Milliseconds since the epoch, null to wait forever
+ * @returns {Promise}
+ */
+export function withDeadline(promise, deadlineAt) {
+	if (!deadlineAt) return promise
+
+	let timer
+	const deadline = new Promise((_, reject) => {
+		timer = setTimeout(
+			() => reject(Object.assign(new Error("The server took too long to answer"), { name: "AbortError" })),
+			Math.max(0, deadlineAt - Date.now()),
+		)
+	})
+
+	// A late failure belongs to nobody once the deadline has passed
+	promise.catch(() => {})
+	return Promise.race([promise, deadline]).finally(() => clearTimeout(timer))
+}

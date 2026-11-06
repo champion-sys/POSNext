@@ -1108,6 +1108,7 @@ import { useSerialNumberStore } from "@/stores/serialNumber";
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
+	shouldQueueCheckout,
 	withOfflinePosting,
 } from "@/utils/offline/invoicePayload";
 import { cacheInvoiceHistory, getCachedInvoiceHistory } from "@/utils/offline/sync";
@@ -2323,7 +2324,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		try {
 			await handlePrintInvoice({ name: offlineReceiptName }, true);
 			showSuccess(
-				__("Invoice {0} saved offline and sent to printer — will sync when online", [
+				__("Invoice {0} saved and sent to printer. It will reach the server shortly", [
 					offlineReceiptName,
 				]),
 			);
@@ -2331,14 +2332,14 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			log.error("Offline auto-print error:", error);
 			uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
 			showWarning(
-				__("Invoice {0} saved offline but print failed — open Print from the success dialog", [
+				__("Invoice {0} saved but print failed. Open Print from the success dialog", [
 					offlineReceiptName,
 				]),
 			);
 		}
 	} else {
 		uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
-		showSuccess(__("Invoice saved offline. Will sync when online"));
+		showSuccess(__("Invoice saved. It will reach the server shortly"));
 	}
 }
 
@@ -2389,14 +2390,24 @@ async function handlePaymentCompleted(paymentData) {
 		// Delete draft if it exists (since we're submitting/saving invoice)
 		draftIdToDelete = cartStore.currentDraftId;
 
-		if (offlineStore.isOffline) {
+		const queueCheckout =
+			offlineStore.isOffline ||
+			shouldQueueCheckout({
+				mode: posSettingsStore.syncMode,
+				doctype: cartStore.targetDoctype,
+				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
+			});
+
+		if (queueCheckout) {
 			await saveCheckoutOffline(paymentData, customerValue, draftIdToDelete);
 		} else {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code);
 			const soldBatches = cartStore.invoiceItems.filter((item) => item.batch_no);
 
-			const result = await cartStore.submitInvoice();
+			const result = await cartStore.submitInvoice({
+				timeoutMs: posSettingsStore.realtimeTimeoutSeconds * 1000,
+			});
 
 			if (result) {
 				uiStore.clearLastOfflinePrintDoc();

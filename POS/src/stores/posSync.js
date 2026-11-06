@@ -26,7 +26,7 @@ import {
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
-import { sumQueuedStock } from "@/utils/offline/invoicePayload"
+import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { usePOSSettingsStore } from "@/stores/posSettings"
@@ -286,7 +286,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			const result = await offlineWorker.saveOfflineInvoice(invoiceData, options)
 			await updatePendingCount()
 			warnIfStorageNotPersistent()
-			autoSync().catch((error) => log.error('Sync after saving failed', error))
+
+			// Periodic mode batches sales on purpose, for weak connections
+			if (usePOSSettingsStore().syncMode !== SYNC_PERIODIC) {
+				autoSync().catch((error) => log.error('Sync after saving failed', error))
+			}
 			log.info('Invoice saved offline successfully')
 			return result || { success: true }
 		} catch (error) {

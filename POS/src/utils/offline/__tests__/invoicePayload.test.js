@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
 	buildSyncEnvelope,
 	classifySyncError,
@@ -8,8 +8,13 @@ import {
 	getSaleSignature,
 	getShiftCloseDecision,
 	isNetworkFailure,
+	shouldQueueCheckout,
 	sumQueuedStock,
 	supportsOfflineId,
+	SYNC_AFTER_PAYMENT,
+	SYNC_PERIODIC,
+	SYNC_REALTIME,
+	withDeadline,
 	withOfflinePosting,
 } from "../invoicePayload"
 
@@ -224,5 +229,62 @@ describe("getRetryDelayMs", () => {
 	it("spreads devices apart", () => {
 		expect(getRetryDelayMs(1, () => 0)).toBe(10500)
 		expect(getRetryDelayMs(1, () => 1)).toBe(19500)
+	})
+})
+
+describe("shouldQueueCheckout", () => {
+	const sale = { doctype: "Sales Invoice", usesCustomerCredit: false }
+
+	it("waits for the server in realtime mode", () => {
+		expect(shouldQueueCheckout({ ...sale, mode: SYNC_REALTIME })).toBe(false)
+	})
+
+	it("queues in the other modes", () => {
+		expect(shouldQueueCheckout({ ...sale, mode: SYNC_AFTER_PAYMENT })).toBe(true)
+		expect(shouldQueueCheckout({ ...sale, mode: SYNC_PERIODIC })).toBe(true)
+	})
+
+	it("keeps Sales Orders and customer credit on the server", () => {
+		expect(shouldQueueCheckout({ mode: SYNC_PERIODIC, doctype: "Sales Order", usesCustomerCredit: false })).toBe(false)
+		expect(shouldQueueCheckout({ ...sale, mode: SYNC_PERIODIC, usesCustomerCredit: true })).toBe(false)
+	})
+})
+
+describe("withDeadline", () => {
+	it("passes the result through", async () => {
+		await expect(withDeadline(Promise.resolve("ok"), Date.now() + 1000)).resolves.toBe("ok")
+	})
+
+	it("waits forever without a deadline", () => {
+		const promise = Promise.resolve("ok")
+		expect(withDeadline(promise, null)).toBe(promise)
+	})
+
+	it("gives up as a network failure, so the sale moves to the queue", async () => {
+		vi.useFakeTimers()
+		const pending = withDeadline(new Promise(() => {}), Date.now() + 3000)
+		const assertion = pending.catch((error) => error)
+		await vi.advanceTimersByTimeAsync(3000)
+		const error = await assertion
+		vi.useRealTimers()
+
+		expect(error.name).toBe("AbortError")
+		expect(isNetworkFailure(error)).toBe(true)
+	})
+
+	it("ignores a request that fails after the deadline", async () => {
+		const unhandled = vi.fn()
+		process.on("unhandledRejection", unhandled)
+
+		let fail
+		const request = new Promise((_, reject) => {
+			fail = reject
+		})
+		await withDeadline(request, Date.now()).catch(() => {})
+		fail(new Error("late"))
+		await new Promise((resolve) => setTimeout(resolve, 10))
+
+		process.off("unhandledRejection", unhandled)
+		expect(unhandled).not.toHaveBeenCalled()
 	})
 })

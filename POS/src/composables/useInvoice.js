@@ -2,7 +2,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref, toRaw } from "vue"
 import { isOffline, getCachedItem, getSetting, setSetting } from "@/utils/offline"
 import { generateOfflineId } from "@/utils/offline/uuid"
-import { getSaleSignature, supportsOfflineId } from "@/utils/offline/invoicePayload"
+import { getSaleSignature, supportsOfflineId, withDeadline } from "@/utils/offline/invoicePayload"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
@@ -1085,6 +1085,7 @@ export function useInvoice() {
 		targetDoctype = "Sales Invoice",
 		deliveryDate = null,
 		writeOffAmount = 0,
+		{ timeoutMs = 0 } = {},
 	) {
 		/**
 		 * Two-step submission process with mutex protection:
@@ -1099,7 +1100,11 @@ export function useInvoice() {
 		 * @param {string} targetDoctype - The document type to create (Sales Invoice or Sales Order)
 		 * @param {string|null} deliveryDate - Delivery date for Sales Orders
 		 * @param {number} writeOffAmount - Amount to write off (small remaining balances)
+		 * @param {Object} [options]
+		 * @param {number} [options.timeoutMs] - Longest the cashier waits for both steps
 		 */
+		const deadlineAt = timeoutMs ? Date.now() + timeoutMs : null
+
 		return await submitMutex.withLock(async () => {
 			// Check if already submitting (belt and suspenders with mutex)
 			if (isSubmitting.value) {
@@ -1116,9 +1121,10 @@ export function useInvoice() {
 				const { invoiceData, redeemedCustomerCredit, customerCreditDict } =
 					buildInvoicePayload(targetDoctype, deliveryDate)
 
-				const draftInvoice = await updateInvoiceResource.submit({
-					data: invoiceData,
-				})
+				const draftInvoice = await withDeadline(
+					updateInvoiceResource.submit({ data: invoiceData }),
+					deadlineAt,
+				)
 
 				let invoiceDoc = draftInvoice
 				if (
@@ -1163,10 +1169,10 @@ export function useInvoice() {
 				}
 
 				try {
-					const result = await submitInvoiceResource.submit({
-						invoice: invoiceDoc,
-						data: submitData,
-					})
+					const result = await withDeadline(
+						submitInvoiceResource.submit({ invoice: invoiceDoc, data: submitData }),
+						deadlineAt,
+					)
 
 					// Check if resource has error (frappe-ui pattern)
 					if (submitInvoiceResource.error) {

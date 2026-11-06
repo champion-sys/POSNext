@@ -55,7 +55,9 @@ POS_SETTINGS_FIELDS = [
 	"custom_allow_print_offline_invoice",
 	"role_allowed_to_access_settings_in_pos",
 	"invoice_type",
-	"sync_interval_minutes"
+	"sync_mode",
+	"sync_interval_minutes",
+	"realtime_timeout_seconds"
 ]
 
 # Default POS Settings values
@@ -97,7 +99,9 @@ DEFAULT_POS_SETTINGS = {
 	"custom_allow_access_to_previous_invoices": 0,
 	"allow_print_previous_invoices": 0,
 	"allow_delete_offline_invoice": 0,
+	"sync_mode": "Realtime",
 	"sync_interval_minutes": 5,
+	"realtime_timeout_seconds": 8,
 	"custom_allow_edit_offline_invoice": 1,
 	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None,
