@@ -308,6 +308,24 @@ class TestCreatePayment(NoSiteTestCase):
         self._create()
         self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
 
+    def test_a_cashiers_high_role_does_not_carry_the_uploader_to_another_profile(self):
+        with self.assertRaises(frappe.PermissionError):
+            with (
+                patch("pos_next.api.invoices._assert_invoice_write_access", self._refuse_uploader),
+                patch("pos_next.api.partial_payments.post_queued_payments") as post,
+                patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            ):
+                frappe.local.db.get_value.return_value = "Other"
+                sync_entities.create_payment(
+                    _row(entity="payment", payload=self.payload, uploaded_by="uploader@example.com")
+                )
+        post.assert_not_called()
+
+    @staticmethod
+    def _refuse_uploader(_doctype, pos_profile, user):
+        if user == "uploader@example.com":
+            raise frappe.PermissionError(pos_profile)
+
     def test_a_wallet_cannot_be_spent_offline(self):
         with self.assertRaises(frappe.ValidationError):
             self._create(wallet_modes=["Card"])
@@ -898,6 +916,13 @@ class TestCloseShift(NoSiteTestCase):
         self._close()
         self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
         self.assertEqual(self.role.call_args.args[1], "cashier@example.com")
+
+    def test_the_uploader_is_held_to_the_profile_of_the_shift(self):
+        self._close(_row(entity="shift_close", payload=self.payload, uploaded_by="uploader@example.com"))
+        self.assertEqual(
+            [call.args for call in self.access.call_args_list],
+            [("Sales Invoice", "Main", "cashier@example.com"), ("Sales Invoice", "Main", "uploader@example.com")],
+        )
 
     def test_a_cashier_without_the_role_stops_it(self):
         with self.assertRaises(frappe.PermissionError):

@@ -429,5 +429,31 @@ class TestClearingAccess(NoSiteTestCase):
         )
 
 
+class TestDeviceProfiles(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        self.addCleanup(setattr, frappe.local, "pos_device", None)
+
+    @patch("pos_next.auth.frappe.get_all")
+    def test_a_browser_has_no_list_to_check(self, get_all):
+        frappe.local.pos_device = None
+        auth.assert_device_allows_profile("Main")
+        get_all.assert_not_called()
+
+    @patch("pos_next.auth.frappe.get_all", return_value=["Main"])
+    def test_a_profile_on_the_list_passes(self, get_all):
+        frappe.local.pos_device = "device-1"
+
+        auth.assert_device_allows_profile("Main")
+
+        self.assertEqual(get_all.call_args.kwargs["filters"], {"parent": "device-1", "parenttype": "POS Device"})
+
+    @patch("pos_next.auth.frappe.get_all", return_value=["Main"])
+    def test_a_profile_taken_off_the_list_is_refused(self, _get_all):
+        frappe.local.pos_device = "device-1"
+        with self.assertRaises(frappe.PermissionError):
+            auth.assert_device_allows_profile("Other")
+
+
 if __name__ == "__main__":
     unittest.main()

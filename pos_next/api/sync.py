@@ -9,6 +9,8 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
+from pos_next.api.invoices import _assert_invoice_write_access
+from pos_next.auth import assert_device_allows_profile
 from pos_next.services import sync_inbox
 
 PROTOCOL_VERSION = 1
@@ -33,16 +35,28 @@ def _parse_list(value):
 
 
 def _assert_pos_user():
-    """Storing a sale moves no money, so any POS user may upload a colleague's queue.
-
-    Whether the sale may post is decided for the cashier when it is processed.
-    """
+    """Open the sync API to POS users. What each of them may reach is checked per profile."""
     user = frappe.session.user
     if user == "Guest":
         frappe.throw(_("Please log in"), frappe.AuthenticationError)
     if frappe.db.exists("POS Profile User", {"user": user}) or frappe.has_permission("POS Profile", "write"):
         return
     frappe.throw(_("You are not assigned to a POS Profile"), frappe.PermissionError)
+
+
+def _assert_may_upload(item):
+    """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
+    pos_profile = sync_inbox.get_item_profile(item)
+    assert_device_allows_profile(pos_profile)
+    _assert_invoice_write_access("Sales Invoice", pos_profile)
+
+
+def _rejected(item, message):
+    return {
+        "offline_id": item.get("offline_id") if isinstance(item, dict) else None,
+        "status": "rejected",
+        "message": message,
+    }
 
 
 def _assert_manager():
@@ -96,13 +110,14 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
     for item in items:
         problem = sync_inbox.validate_envelope(item)
         if problem:
-            results.append(
-                {
-                    "offline_id": item.get("offline_id") if isinstance(item, dict) else None,
-                    "status": "rejected",
-                    "message": problem,
-                }
-            )
+            results.append(_rejected(item, problem))
+            continue
+
+        try:
+            _assert_may_upload(item)
+        except frappe.PermissionError as exc:
+            frappe.clear_messages()
+            results.append(_rejected(item, str(exc)))
             continue
 
         name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)

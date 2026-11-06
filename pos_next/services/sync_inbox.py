@@ -67,16 +67,37 @@ def validate_envelope(item):
         return "Missing offline_id"
     if not isinstance(item.get("payload"), dict):
         return "Missing payload"
-    if not item.get("pos_profile") and not item["payload"].get("pos_profile"):
+    pos_profile = get_item_profile(item)
+    if not pos_profile or not isinstance(pos_profile, str):
         return "Missing pos_profile"
+    # The upload is checked against one, and an invoice posts under the other
+    if item["payload"].get("pos_profile") not in (None, "", pos_profile):
+        return _("The record and its payload name different POS Profiles")
     if (item.get("entity") or ENTITY_INVOICE) not in sync_entities.ENTITIES:
         return "Unknown entity"
     return None
 
 
+def get_item_profile(item):
+    return item.get("pos_profile") or item["payload"].get("pos_profile")
+
+
 def _link_or_none(doctype, name):
     """A sale must be stored even when its master record is gone."""
     return name if name and frappe.db.exists(doctype, name) else None
+
+
+def _resolve_cashier(claimed, uploaded_by, pos_profile):
+    """Who a record belongs to.
+
+    A shared device can upload a colleague's sale, so the envelope may name someone else,
+    but only someone assigned to the POS Profile. Having high roles is not enough: the
+    claim comes from the request, and a role would let any POS user act as its holder.
+    """
+    is_colleague = isinstance(claimed, str) and frappe.db.exists(
+        "POS Profile User", {"parent": pos_profile, "user": claimed}
+    )
+    return claimed if is_colleague else uploaded_by
 
 
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
@@ -97,7 +118,7 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         return existing.name, conflict
 
     serialized = frappe.as_json(payload, indent=1)
-    pos_profile = item.get("pos_profile") or payload.get("pos_profile")
+    pos_profile = get_item_profile(item)
     totals = item.get("client_totals") or {}
 
     doc = frappe.get_doc(
@@ -112,7 +133,7 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
             "shift": _link_or_none(
                 "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
             ),
-            "cashier": _link_or_none("User", item.get("cashier")) or uploaded_by,
+            "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
             "uploaded_by": uploaded_by,
             "device_id": device_id,
             "client_created_at": _parse_datetime(item.get("created_at_device")),

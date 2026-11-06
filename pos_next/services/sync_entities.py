@@ -143,6 +143,18 @@ def has_pending_close(opening_shift):
     )
 
 
+def _assert_target_access(row, pos_profile):
+    """Check everyone behind a record against the POS Profile of the document it acts on.
+
+    That profile comes from the server, while the upload was checked against the one in
+    the envelope. A cashier's high role must not reach a profile their uploader cannot.
+    """
+    from pos_next.api.invoices import _assert_invoice_write_access
+
+    for user in filter(None, (row.cashier, row.uploaded_by)):
+        _assert_invoice_write_access("Sales Invoice", pos_profile, user)
+
+
 def find_customer(offline_id):
     name = frappe.db.get_value("Customer", {"offline_id": offline_id}, "name")
     return {"name": name, "doctype": "Customer", "customer": name} if name else None
@@ -193,7 +205,6 @@ def create_payment(row):
     Stored once under its offline_id and keyed by it on the Payment Entry, so a resend
     or a second worker cannot take the money twice.
     """
-    from pos_next.api.invoices import _assert_invoice_write_access
     from pos_next.api.partial_payments import post_queued_payments
     from pos_next.api.utilities import get_wallet_payment_modes
 
@@ -203,8 +214,7 @@ def create_payment(row):
     if not invoice_name or not payments:
         raise SyncContractError(_("The payment has no invoice or no amounts"))
 
-    pos_profile = frappe.db.get_value("Sales Invoice", invoice_name, "pos_profile") or row.pos_profile
-    _assert_invoice_write_access("Sales Invoice", pos_profile, row.cashier)
+    _assert_target_access(row, frappe.db.get_value("Sales Invoice", invoice_name, "pos_profile") or row.pos_profile)
 
     wallet_modes = set(get_wallet_payment_modes())
     if any(payment.get("mode_of_payment") in wallet_modes for payment in payments):
@@ -258,7 +268,6 @@ def close_shift(row):
     The totals are worked out here, from what the server holds. The device only says
     what the cashier counted, and when.
     """
-    from pos_next.api.invoices import _assert_invoice_write_access
     from pos_next.api.shifts import assert_may_close_shift
     from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
         make_closing_shift_from_opening,
@@ -271,7 +280,7 @@ def close_shift(row):
         raise SyncContractError(_("Shift {0} does not exist").format(opening_shift))
 
     opening = frappe.get_doc("POS Opening Shift", opening_shift)
-    _assert_invoice_write_access("Sales Invoice", opening.pos_profile, row.cashier)
+    _assert_target_access(row, opening.pos_profile)
     assert_may_close_shift(opening, row.cashier)
 
     closing = json.loads(

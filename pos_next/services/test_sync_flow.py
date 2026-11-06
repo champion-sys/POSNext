@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import frappe
 
+from pos_next.api import sync as sync_api
 from pos_next.services import sync_inbox
 from pos_next.services.sync_entities import DOCTYPE
 
@@ -20,12 +21,18 @@ CLOSE = "pos_offline_close-1"
 PAYMENT = "pos_offline_payment-1"
 
 
+def _raise(message, exc=frappe.ValidationError, **_kwargs):
+    raise exc(message)
+
+
 class FakeInbox:
     """Answers the queries the inbox makes, and stands in for the rest of the database."""
 
     def __init__(self):
         self.rows = {}
         self.disabled_users = set()
+        self.assigned = {"Main": {"cashier@example.com"}}
+        self.device_profiles = ["Main"]
 
     @staticmethod
     def _matches(row, filters):
@@ -64,6 +71,9 @@ class FakeInbox:
         return frappe._dict({field: row.get(field) for field in fieldname})
 
     def get_all(self, doctype, filters=None, fields=None, pluck=None, as_list=False, **_kwargs):
+        if doctype == "POS Device Profile":
+            return list(self.device_profiles)
+
         rows = self._find(filters or {})
         if pluck:
             return [row.get(pluck) for row in rows]
@@ -76,6 +86,9 @@ class FakeInbox:
         self.rows[name].update(values)
 
     def exists(self, doctype, name=None):
+        if doctype == "POS Profile User":
+            profiles = [name["parent"]] if "parent" in name else self.assigned
+            return any(name["user"] in self.assigned.get(profile, ()) for profile in profiles)
         return name
 
     def commit(self):
@@ -247,6 +260,131 @@ class TestCashierSession(Flow):
 
         self.assertNotIn("owner", process_invoice.call_args.args[0])
         self.assertEqual(process_invoice.call_args.kwargs, {"offline_id": SALE, "queued": True})
+
+
+class Upload(Flow):
+    """Through the real push, with the access rules and only the database faked."""
+
+    def setUp(self):
+        super().setUp()
+        self.profile_writers = set()
+        frappe.local.session.user = "lina@example.com"
+        self.inbox.assigned = {"Main": {"lina@example.com", "sara@example.com"}, "Other": {"omar@example.com"}}
+        self.addCleanup(setattr, frappe.local, "pos_device", None)
+
+        for target, replacement in (
+            ("frappe.throw", _raise),
+            ("frappe.has_permission", self._has_permission),
+            ("frappe.utils.now", lambda: "2026-11-06 12:00:00"),
+            ("pos_next.api.invoices._", lambda text: text),
+            ("pos_next.api.sync._", lambda text: text),
+            ("pos_next.auth._", lambda text: text),
+        ):
+            patcher = patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _has_permission(self, _doctype, _ptype, user=None):
+        return (user or frappe.session.user) in self.profile_writers
+
+    @staticmethod
+    def item(offline_id=SALE, pos_profile="Main", cashier="lina@example.com", **values):
+        return {
+            "offline_id": offline_id,
+            "pos_profile": pos_profile,
+            "cashier": cashier,
+            "payload": {"pos_profile": pos_profile},
+            **values,
+        }
+
+    def push(self, *items):
+        return {result["offline_id"]: result for result in sync_api.push(list(items))["results"]}
+
+    def stored(self, offline_id=SALE):
+        return next(row for row in self.inbox.rows.values() if row.offline_id == offline_id)
+
+
+class TestUploadAccess(Upload):
+    def test_a_colleague_on_the_profile_can_upload_a_sale(self):
+        self.push(self.item(cashier="sara@example.com"))
+
+        self.assertEqual(self.stored().cashier, "sara@example.com")
+        self.assertEqual(self.stored().uploaded_by, "lina@example.com")
+
+    def test_a_claim_to_be_someone_outside_the_profile_is_dropped(self):
+        self.push(self.item(cashier="omar@example.com"))
+        self.assertEqual(self.stored().cashier, "lina@example.com")
+
+    def test_high_roles_do_not_make_someone_a_cashier_here(self):
+        self.profile_writers.add("Administrator")
+
+        self.push(self.item(cashier="Administrator"))
+
+        self.assertEqual(self.stored().cashier, "lina@example.com")
+
+    def test_a_claim_that_is_not_a_name_cannot_become_a_filter(self):
+        self.push(self.item(cashier=["like", "%"]))
+        self.assertEqual(self.stored().cashier, "lina@example.com")
+
+    def test_no_claim_means_the_uploader(self):
+        self.push(self.item(cashier=None))
+        self.assertEqual(self.stored().cashier, "lina@example.com")
+
+    def test_an_uploader_outside_the_profile_is_refused_alone(self):
+        results = self.push(
+            self.item("pos_offline_theirs", pos_profile="Other", cashier="omar@example.com"),
+            self.item("pos_offline_mine"),
+        )
+
+        self.assertEqual(results["pos_offline_theirs"]["status"], "rejected")
+        self.assertIn("Other", results["pos_offline_theirs"]["message"])
+        self.assertEqual(results["pos_offline_mine"]["status"], "received")
+        self.assertEqual([row.offline_id for row in self.inbox.rows.values()], ["pos_offline_mine"])
+
+    def test_a_refusal_leaves_no_message_for_the_whole_response(self):
+        frappe.local.message_log = ["left by frappe.throw"]
+        self.push(self.item(pos_profile="Other"))
+        self.assertEqual(frappe.local.message_log, [])
+
+    def test_a_manager_who_can_write_the_profile_may_upload(self):
+        self.profile_writers.add("lina@example.com")
+
+        results = self.push(self.item(pos_profile="Other", cashier="omar@example.com"))
+
+        self.assertEqual(results[SALE]["status"], "received")
+        self.assertEqual(self.stored().cashier, "omar@example.com")
+
+    def test_the_payload_cannot_name_another_profile_than_the_one_checked(self):
+        item = self.item()
+        item["payload"]["pos_profile"] = "Other"
+
+        results = self.push(item)
+
+        self.assertEqual(results[SALE]["status"], "rejected")
+        self.assertEqual(self.inbox.rows, {})
+
+    def test_a_profile_that_is_not_a_name_is_refused(self):
+        results = self.push(self.item(pos_profile=["like", "%"]))
+
+        self.assertEqual(results[SALE]["status"], "rejected")
+        self.assertEqual(self.inbox.rows, {})
+
+    def test_a_device_cannot_upload_outside_its_profiles(self):
+        frappe.local.pos_device = "device-1"
+        self.inbox.device_profiles = ["Elsewhere"]
+
+        results = self.push(self.item())
+
+        self.assertEqual(results[SALE]["status"], "rejected")
+        self.assertEqual(self.inbox.rows, {})
+
+    def test_a_device_can_upload_for_its_own_profiles(self):
+        frappe.local.pos_device = "device-1"
+        self.assertEqual(self.push(self.item())[SALE]["status"], "received")
+
+    def test_a_browser_has_no_device_list(self):
+        self.inbox.device_profiles = ["Elsewhere"]
+        self.assertEqual(self.push(self.item())[SALE]["status"], "received")
 
 
 class TestNewCustomerJourney(Flow):

@@ -62,8 +62,8 @@ def _assert_invoice_write_access(doctype, pos_profile, user=None):
     the only authorization on those paths. The doctype comes from the client.
 
     Args:
-        user: Whose access to check. Defaults to the session user. Queued invoices
-            pass the cashier who made the sale, who may not be the one uploading.
+        user: Whose access to check. Defaults to the session user. A queued record
+            also checks the colleague who uploaded it, who is not the session user then.
     """
     user = user or frappe.session.user
 

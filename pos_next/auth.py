@@ -84,6 +84,25 @@ def require_device():
     return device
 
 
+def assert_device_allows_profile(pos_profile):
+    """Hold a device to its POS Profiles. A manager can change them after a sign-in.
+
+    A browser has no device, so this leaves it alone.
+    """
+    device = getattr(frappe.local, "pos_device", None)
+    if not device:
+        return
+
+    allowed = frappe.get_all(
+        "POS Device Profile", filters={"parent": device, "parenttype": "POS Device"}, pluck="pos_profile"
+    )
+    if pos_profile not in allowed:
+        frappe.throw(
+            _("This device is not allowed to work with POS Profile {0}").format(pos_profile),
+            frappe.PermissionError,
+        )
+
+
 def validate():
     """auth_hooks entry: turn a cashier grant into that cashier's session."""
     token = _bearer_token()

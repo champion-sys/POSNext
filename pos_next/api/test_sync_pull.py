@@ -125,6 +125,7 @@ class NoSiteTestCase(unittest.TestCase):
             ("frappe.throw", _raise),
             ("pos_next.api.sync_pull._", lambda text: text),
             ("pos_next.api.sync._", lambda text: text),
+            ("pos_next.auth._", lambda text: text),
             ("frappe.has_permission", Mock(return_value=False)),
             ("frappe.get_all", _get_all),
             ("frappe.get_cached_doc", lambda *_args: self.profile),
@@ -225,6 +226,26 @@ class TestAccess(NoSiteTestCase):
     def test_unknown_entity_is_rejected(self):
         with self.assertRaises(frappe.ValidationError):
             pull("Sales Invoice", "Main")
+
+    def test_a_device_is_held_to_its_profiles(self):
+        frappe.local.pos_device = "device-1"
+        self.addCleanup(setattr, frappe.local, "pos_device", None)
+
+        with patch("frappe.get_all", return_value=["Elsewhere"]):
+            with self.assertRaises(frappe.PermissionError):
+                pull("items", "Main")
+            with self.assertRaises(frappe.PermissionError):
+                get_manifest("Main")
+
+    def test_a_device_reaches_the_profiles_on_its_list(self):
+        frappe.local.pos_device = "device-1"
+        self.addCleanup(setattr, frappe.local, "pos_device", None)
+
+        with patch("pos_next.auth.frappe.get_all", return_value=["Main"]):
+            self.assertEqual(pull("items", "Main")["rows"], [])
+
+    def test_a_browser_has_no_device_list(self):
+        self.assertEqual(pull("items", "Main")["rows"], [])
 
 
 class TestCursor(NoSiteTestCase):
