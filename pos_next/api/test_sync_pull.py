@@ -9,9 +9,10 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 import frappe
+from frappe.database.utils import EmptyQueryValues
 
 from pos_next.api import sync_pull
-from pos_next.api.pos_profile import get_taxes
+from pos_next.api.pos_profile import get_pos_profile_data, get_taxes
 from pos_next.api.sync_pull import _decode_cursor, get_manifest, pull, record_rename
 
 NOW = datetime(2026, 11, 6, 12, 0, 0)
@@ -57,9 +58,15 @@ class SqliteDb:
         self.connection.executescript(SCHEMA)
         self.exists = Mock(return_value="row-1")
 
-    def sql(self, query, values=None, as_dict=False, **_kwargs):
+    def sql(self, query, values=EmptyQueryValues, as_dict=False, **_kwargs):
+        # As frappe.db.sql does: only its sentinel means no values, and None is one value
+        if values is EmptyQueryValues:
+            values = ()
+        elif not isinstance(values, tuple | list | dict):
+            values = (values,)
+
         query = re.sub(r"%\((\w+)\)s", r":\1", query).replace("%s", "?")
-        rows = self.connection.execute(query, values or ()).fetchall()
+        rows = self.connection.execute(query, values).fetchall()
         return [frappe._dict(dict(row)) for row in rows] if as_dict else [tuple(row) for row in rows]
 
     def insert(self, table, **values):
@@ -569,6 +576,47 @@ class TestCustomers(NoSiteTestCase):
         self.assertEqual([row["name"] for page in pages for row in page["rows"]], ["C1", "C2", "C3"])
 
 
+class TestManagerOutsideTheProfile(NoSiteTestCase):
+    """Allowed by the role alone, with no POS Profile User row to find."""
+
+    def setUp(self):
+        super().setUp()
+        self.db.exists = Mock(return_value=None)
+
+        for target, replacement in (
+            ("frappe.has_permission", Mock(return_value=True)),
+            ("pos_next.api.pos_profile._", lambda text: text),
+            ("frappe.get_doc", lambda doctype, name: frappe._dict(doctype=doctype, name=name, company="Co")),
+            ("pos_next.api.pos_profile.get_pos_settings", lambda _name: {"allow_returns": 1}),
+            ("pos_next.api.items.get_item_groups", lambda _name: [{"item_group": "Food"}]),
+        ):
+            patcher = patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_receives_the_profile_instead_of_failing_the_entity(self):
+        page = pull("pos_profile", "Main")
+
+        row = page["rows"][0]
+        self.assertEqual(row["pos_profile"].name, "Main")
+        self.assertEqual(row["company"].name, "Co")
+        self.assertEqual(row["pos_settings"], {"allow_returns": 1})
+        self.assertEqual(row["item_groups_hierarchy"], [{"item_group": "Food"}])
+        self.assertFalse(page["has_more"])
+
+    def test_manifest_answers_too(self):
+        self.assertIsInstance(get_manifest("Main")["pos_profile"], str)
+
+    def test_someone_without_the_role_is_still_refused(self):
+        with patch("frappe.has_permission", Mock(return_value=False)):
+            with self.assertRaises(frappe.PermissionError):
+                pull("pos_profile", "Main")
+
+    def test_the_browser_endpoint_keeps_its_own_check(self):
+        with self.assertRaises(frappe.ValidationError):
+            get_pos_profile_data("Main")
+
+
 class TestWholeSets(NoSiteTestCase):
     def test_taxes_come_as_one_page(self):
         with patch("pos_next.api.sync_pull._get_tax_rows", return_value=[{"rate": 15}]):
@@ -581,7 +629,7 @@ class TestWholeSets(NoSiteTestCase):
             self.assertEqual(pull("payment_methods", "Main")["rows"], [{"mode_of_payment": "Cash"}])
 
     def test_profile_data_comes_as_one_row(self):
-        with patch("pos_next.api.sync_pull.get_pos_profile_data", return_value={"pos_profile": {}}):
+        with patch("pos_next.api.sync_pull._get_profile_data", return_value={"pos_profile": {}}):
             self.assertEqual(pull("pos_profile", "Main")["rows"], [{"pos_profile": {}}])
 
     def test_offers_come_as_one_page(self):
