@@ -10,6 +10,9 @@ const POSTING_DOCTYPES = ["Sales Invoice", "POS Invoice"]
 const AUTH_ERROR_TYPES = ["AuthenticationError", "SessionExpired", "CSRFTokenError"]
 const GATEWAY_STATUSES = [502, 503, 504]
 
+// frappe.is_whitelisted names the method in bold. The words around it are translated.
+const GUEST_REFUSAL = /<strong>pos_next\.api\.[\w.]+<\/strong>/
+
 const pad = (value) => String(value).padStart(2, "0")
 
 /**
@@ -89,6 +92,20 @@ export function isNetworkFailure(error) {
 }
 
 /**
+ * Frappe stops a Guest before the method runs, with the same PermissionError a cashier gets
+ * for what they may not do. A PIN session that reaches the server is a Guest, and the sale
+ * itself is fine.
+ * @param {Error|Object} error
+ * @returns {boolean}
+ */
+function isGuestRefusal(error) {
+	return (
+		error?.exc_type === "PermissionError" &&
+		(error.messages || []).some((message) => GUEST_REFUSAL.test(message))
+	)
+}
+
+/**
  * Decide who a sync failure belongs to.
  * @param {Error|Object} error
  * @returns {"network"|"auth"|"invoice"} network and auth pause the queue;
@@ -96,7 +113,9 @@ export function isNetworkFailure(error) {
  */
 export function classifySyncError(error) {
 	if (isNetworkFailure(error)) return "network"
-	if (getStatus(error) === 401 || AUTH_ERROR_TYPES.includes(error?.exc_type)) return "auth"
+	if (getStatus(error) === 401 || AUTH_ERROR_TYPES.includes(error?.exc_type) || isGuestRefusal(error)) {
+		return "auth"
+	}
 	return "invoice"
 }
 
