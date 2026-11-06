@@ -240,7 +240,11 @@
 					<div class="flex items-center gap-2">
 						<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
 						<p class="text-sm font-semibold text-red-600">
-							{{ __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName]) }}
+							{{
+								btStore.activePrinter?.type === "network"
+									? __("Wi-Fi printer '{0}' is disconnected.", [btStore.savedPrinterName])
+									: __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName])
+							}}
 						</p>
 					</div>
 					<div class="flex items-center gap-0 flex-shrink-0">
@@ -1100,7 +1104,8 @@ import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
-import { getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
+import { canUseBrowserPrint, getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
+import { usesNativeLink } from "@/platform/printing/transport";
 import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
@@ -1254,6 +1259,9 @@ async function reconnectBtPrinter() {
 
 		if (connectedAny) {
 			showSuccess(__("Connected to printers successfully."));
+		} else if (usesNativeLink()) {
+			// Scanning here would overwrite a saved Classic or Wi-Fi printer with a BLE one
+			showError(__("Could not reach the printer. Check that it is on and in range."));
 		} else {
 			// Fallback: Trigger browser devices list selector based on active type
 			const type = btStore.activePrinter?.type || "bluetooth";
@@ -3300,6 +3308,10 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 				return;
 			} catch (error) {
 				log.error("Thermal print routing failed, falling back to browser/silent:", error);
+				if (!canUseBrowserPrint(PLATFORM)) {
+					showError(error.message || __("Printing failed. Check the printer and try again."));
+					return;
+				}
 				showWarning(__("Thermal printing failed. Attempting browser/silent fallback..."));
 			}
 		}

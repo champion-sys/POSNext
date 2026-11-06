@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">POS Next</string>
+    <string name="title_activity_main">POS Next</string>
+    <string name="package_name">digital.sanad.posnext</string>
+    <string name="custom_url_scheme">digital.sanad.posnext</string>
+</resources>

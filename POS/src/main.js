@@ -23,6 +23,7 @@ import {
 	onCSRFTokenRefresh,
 } from "./utils/csrf"
 import { installHttpBridge } from "./platform/http"
+import { installAppLifecycle } from "./platform/lifecycle"
 import { isNative } from "./platform/runtime"
 import { logger } from "./utils/logger"
 import { offlineWorker } from "./utils/offline/workerClient"
@@ -233,6 +234,7 @@ async function initializeApp() {
 	log.debug("Registering router, auth state:", session.isLoggedIn)
 	app.use(router)
 	app.mount("#app")
+	installAppLifecycle()
 
 	// -------------------------------------------------------------------------
 	// Scheduled CSRF Token Refresh (every 30 minutes)

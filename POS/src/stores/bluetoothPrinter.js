@@ -1,3 +1,4 @@
+import { wifiDeviceId } from "@/platform/printing/transport"
 import { defineStore } from "pinia"
 import { ref, watch, computed } from "vue"
 
@@ -186,6 +187,12 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		return uniqueId
 	}
 
+	function addNetworkPrinter({ name, host, port }) {
+		const uniqueId = setSavedPrinter(wifiDeviceId({ host, port }), name, "network")
+		Object.assign(activePrinter.value, { host, port })
+		return uniqueId
+	}
+
 	function clearSavedPrinter() {
 		const idToRemove = activePrinterId.value
 		if (idToRemove) {
@@ -273,6 +280,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 
 		// Actions
 		setSavedPrinter,
+		addNetworkPrinter,
 		clearSavedPrinter,
 		setPrinterConfig,
 		setConnected,
