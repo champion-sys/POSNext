@@ -1110,6 +1110,7 @@ import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
 import { useSerialNumberStore } from "@/stores/serialNumber";
+import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/entities";
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -1828,8 +1829,25 @@ watch(
 
 window.addEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
 
+// A customer added offline may still be in the cart when the server settles its name
+function handleEntitySynced({ detail }) {
+	if (detail.row.entity !== ENTITY_CUSTOMER) return;
+
+	const current = cartStore.customer;
+	if ((current?.name || current) !== detail.row.offline_id) return;
+
+	if (detail.name) {
+		cartStore.setCustomer(current?.name ? { ...current, name: detail.name, is_local: 0 } : detail.name);
+	} else {
+		cartStore.setDefaultCustomer();
+	}
+}
+
+window.addEventListener("offlineEntitySynced", handleEntitySynced);
+
 onUnmounted(() => {
 	window.removeEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
+	window.removeEventListener("offlineEntitySynced", handleEntitySynced);
 	window.removeEventListener("resize", () => {
 		uiStore.setWindowWidth(window.innerWidth);
 		updateLayoutBounds();
@@ -2027,9 +2045,13 @@ async function handleShiftOpened() {
 	showSuccess(__("You can now start making sales"));
 }
 
-async function handleShiftClosed() {
+async function handleShiftClosed(closing) {
 	uiStore.showCloseShiftDialog = false;
-	showSuccess(__("Shift closed successfully"));
+	showSuccess(
+		closing?.queued
+			? __("Shift close saved. It completes on the server once every invoice has arrived")
+			: __("Shift closed successfully"),
+	);
 
 	// Check if logout should happen after closing shift
 	if (logoutAfterClose.value) {
@@ -2253,6 +2275,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		cashier: session.user,
 		company: shiftStore.profileCompany,
 		customer: customerValue || shiftStore.profileCustomer,
+		customer_name: cartStore.customer?.customer_name,
 		grand_total: cartStore.grandTotal,
 		total_tax: cartStore.totalTax,
 		total_discount: cartStore.totalDiscount,
@@ -2404,6 +2427,8 @@ async function handlePaymentCompleted(paymentData) {
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
 				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
+				usesGiftCard: cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card",
+				hasLocalCustomer: isLocalName(customerValue),
 			});
 
 		if (queueCheckout) {
@@ -2639,7 +2664,15 @@ async function ensureInvoicesSyncedBeforeClose() {
 
 	await offlineStore.loadPendingInvoices();
 	const pending = offlineStore.pendingInvoicesList;
-	const decision = getShiftCloseDecision(pending, offlineStore.isOffline);
+	const decision = getShiftCloseDecision(
+		pending,
+		offlineStore.isOffline,
+		posSettingsStore.allowOfflineShiftClose,
+	);
+
+	if (decision === "queue") {
+		return true;
+	}
 
 	if (decision === "confirm") {
 		const confirmed = window.confirm(
@@ -2963,6 +2996,12 @@ async function handleEditOfflineInvoice(invoice) {
 			return;
 		}
 
+		await offlineStore.loadPendingInvoices();
+		if (getDependentRows(offlineStore.pendingInvoicesList, invoice.offline_id).length > 0) {
+			showWarning(__("A return or a shift close depends on this invoice, so it cannot be edited"));
+			return;
+		}
+
 		cartStore.clearCart();
 
 		const invoiceData = invoice.data;
@@ -3230,6 +3269,11 @@ async function loadInvoiceHistoryData() {
 		// Cache invoices for offline use
 		if (result && result.length > 0) {
 			cacheInvoiceHistory(result, shiftStore.profileName);
+		}
+		if (posSettingsStore.allowOfflineReturns) {
+			offlineStore.refreshReturnDocuments(shiftStore.profileName).catch((error) => {
+				log.error("Error keeping invoices for offline returns:", error);
+			});
 		}
 	} catch (error) {
 		log.error("Error loading invoice history:", error);

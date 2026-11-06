@@ -31,7 +31,7 @@ from pos_next.api.invoices import (
 )
 
 
-def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting_user=None):
+def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting_user=None, queued=False):
     """Create the draft if needed, then submit it.
 
     Args:
@@ -41,18 +41,21 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
         pos_profile: POS Profile name
         offline_id: Stable id of the sale
         acting_user: The cashier, when it differs from the session user
+        queued: The sale already happened offline. Only the sync queue passes this.
 
     Returns:
         dict: Summary of the submitted invoice
     """
     invoice_name = invoice.get("name")
+    coupon_overrun = None
 
     # Get or create invoice
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
-        created = save_invoice_draft(json.dumps(invoice), acting_user)
+        created = save_invoice_draft(json.dumps(invoice), acting_user, queued=queued)
         if not created or not isinstance(created, dict):
             frappe.throw(_("Failed to create invoice draft"))
         invoice_name = created.get("name")
+        coupon_overrun = created.get("coupon_overrun")
         if not invoice_name:
             frappe.throw(_("Failed to get invoice name from draft"))
         invoice_doc = frappe.get_doc(doctype, invoice_name)
@@ -200,6 +203,9 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
     # Include offline_id in response for client-side tracking
     if offline_id:
         result["offline_id"] = offline_id
+
+    if coupon_overrun:
+        result["coupon_overrun"] = coupon_overrun
 
     return result
 

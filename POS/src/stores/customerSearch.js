@@ -1,5 +1,6 @@
 import { call } from "@/utils/apiWrapper"
 import { isOffline } from "@/utils/offline"
+import { ENTITY_CUSTOMER } from "@/utils/offline/entities"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
 import { useRealtimeCustomers } from "@/composables/useRealtimeCustomers"
@@ -315,6 +316,31 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 			log.error("Error caching newly created customer:", error)
 		}
 	}
+
+	/**
+	 * The server has decided what a customer added offline became, so the
+	 * temporary entry gives way to the real one, or goes when it was voided.
+	 */
+	async function finishLocalCustomer(localName, name) {
+		const local = allCustomers.value.find((cust) => cust.name === localName)
+		allCustomers.value = allCustomers.value.filter((cust) => cust.name !== localName)
+		await offlineWorker.deleteCustomers([localName])
+
+		if (name && local) {
+			await addCustomerToCache({ ...local, name, is_local: 0 })
+		} else {
+			searchIndex.value.clear()
+			resultCache.value.clear()
+		}
+	}
+
+	window.addEventListener("offlineEntitySynced", ({ detail }) => {
+		if (detail.row.entity === ENTITY_CUSTOMER) {
+			finishLocalCustomer(detail.row.offline_id, detail.name).catch((error) => {
+				log.error("Error replacing a local customer:", error)
+			})
+		}
+	})
 
 	// Real-time Push Integration
 	const { onCustomerUpdate } = useRealtimeCustomers()

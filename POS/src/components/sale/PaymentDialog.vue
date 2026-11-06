@@ -262,7 +262,7 @@
 					</div>
 
 					<!-- Outstanding Balance Row (full width, two columns) -->
-					<div v-if="customerCreditEnabled && totalAvailableCredit !== 0" :class="[
+					<div v-if="customerCreditEnabled && !isOffline && totalAvailableCredit !== 0" :class="[
 						'rounded-none border p-2 flex items-center justify-between',
 						totalAvailableCredit < 0
 							? 'bg-red-50/50 border-red-200'
@@ -614,6 +614,12 @@
 								</svg>
 							</button>
 						</div>
+						<p
+							v-if="showOnlineOnlyNotice"
+							:class="['mb-2 px-2 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-start', isSmallMobile ? 'text-[10px]' : 'text-xs']"
+						>
+							{{ ONLINE_ONLY_MESSAGE }}
+						</p>
 						<div v-if="loadingPaymentMethods" class="flex items-center gap-2">
 							<div :class="['animate-spin rounded-full border-b-2 border-blue-500', isSmallMobile ? 'h-4 w-4' : 'h-5 w-5']"></div>
 							<span :class="['text-gray-500', isSmallMobile ? 'text-xs' : 'text-sm']">{{ __('Loading...') }}</span>
@@ -626,7 +632,8 @@
 								@pointerup="onPaymentMethodUp(method)"
 								@pointerleave="onPaymentMethodCancel"
 								@pointercancel="onPaymentMethodCancel"
-								:disabled="isWalletPaymentMethod(method.mode_of_payment) && availableWalletBalance <= 0 && getMethodTotal(method.mode_of_payment) === 0"
+								:disabled="isOnlineOnlyMethod(method) || (isWalletPaymentMethod(method.mode_of_payment) && availableWalletBalance <= 0 && getMethodTotal(method.mode_of_payment) === 0)"
+								:title="isOnlineOnlyMethod(method) ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold select-none touch-none',
 									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-2.5 lg:px-4 h-8 text-xs lg:h-11 lg:text-sm',
@@ -653,11 +660,12 @@
 							<button
 								v-if="customerCreditEnabled && (remainingAvailableCredit > 0 || getMethodTotal('Customer Credit') > 0)"
 								@click="applyCustomerCredit"
-								:disabled="remainingAmount === 0 || remainingAvailableCredit === 0"
+								:disabled="isOffline || remainingAmount === 0 || remainingAvailableCredit === 0"
+								:title="isOffline ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold',
 									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-2.5 lg:px-4 h-8 text-xs lg:h-11 lg:text-sm',
-									remainingAmount === 0 || remainingAvailableCredit === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
+									isOffline || remainingAmount === 0 || remainingAvailableCredit === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
 									getMethodTotal('Customer Credit') > 0
 										? 'border-black bg-black text-white'
 										: 'border-gray-300 bg-white hover:bg-gray-50 text-gray-900'
@@ -1083,6 +1091,7 @@ import {
 	roundCurrency,
 } from "@/utils/currency"
 import { getPaymentIcon } from "@/utils/payment"
+import { hasOnlineOnlyPayment, isLocalName } from "@/utils/offline/entities"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
 import { Dialog, createResource, call } from "frappe-ui"
@@ -1096,6 +1105,8 @@ import { useQuickAmounts } from "@/composables/useQuickAmounts"
 const log = logger.create("PaymentDialog")
 const settingsStore = usePOSSettingsStore()
 const { showWarning, showInfo } = useToast()
+
+const ONLINE_ONLY_MESSAGE = __("Wallet and customer credit need a connection, because only the server knows the balance. Use another payment method.")
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -1501,6 +1512,21 @@ function isWalletPaymentMethod(methodName) {
 	return walletPaymentMethods.value.has(methodName)
 }
 
+function isOnlineOnlyMethod(method) {
+	return props.isOffline && isWalletPaymentMethod(method.mode_of_payment)
+}
+
+// A balance only the server knows, which a customer still in the queue does not have yet
+const canAskForBalances = computed(() => {
+	const customerName = props.customer?.name || props.customer
+	return !props.isOffline && !isLocalName(customerName)
+})
+
+function getDefaultPaymentMethod() {
+	const usable = paymentMethods.value.filter((method) => !isOnlineOnlyMethod(method))
+	return usable.find((method) => method.default) || usable[0]
+}
+
 // Check if a payment method is a cash payment (allows overpayment/change)
 function isCashPaymentMethod(method) {
 	if (!method) return false
@@ -1526,9 +1552,10 @@ const availableWalletBalance = computed(() => {
 // Filter payment methods - hide wallet methods when loyalty is not enabled
 const filteredPaymentMethods = computed(() => {
 	return paymentMethods.value.filter((method) => {
-		// If it's a wallet payment method, only show when loyalty/wallet is enabled
+		// If it's a wallet payment method, only show when loyalty/wallet is enabled.
+		// Offline that is unknown, so it stays visible but disabled, with the reason.
 		if (isWalletPaymentMethod(method.mode_of_payment)) {
-			return walletInfo.value.wallet_enabled
+			return props.isOffline || walletInfo.value.wallet_enabled
 		}
 		return true
 	})
@@ -1738,8 +1765,10 @@ async function loadPaymentMethods() {
 		const cached = await offlineWorker.getCachedPaymentMethods(props.posProfile)
 		if (cached && cached.length > 0) {
 			paymentMethods.value = cached
-			const defaultMethod = paymentMethods.value.find((m) => m.default)
-			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
+			walletPaymentMethods.value = new Set(
+				cached.filter((method) => method.is_wallet_payment).map((method) => method.mode_of_payment),
+			)
+			lastSelectedMethod.value = getDefaultPaymentMethod()
 			autoFillNumpad()
 		}
 	}
@@ -1776,6 +1805,10 @@ const totalPaid = computed(() => {
 const customerCreditEnabled = computed(() => {
 	return props.allowCreditSale || props.allowCustomerCreditPayment
 })
+
+const showOnlineOnlyNotice = computed(
+	() => props.isOffline && (customerCreditEnabled.value || walletPaymentMethods.value.size > 0),
+)
 
 const totalAvailableCredit = computed(() => {
 	// Use net_balance: negative means customer has credit, positive means they owe
@@ -1985,6 +2018,11 @@ const isExactAmountValid = computed(() => {
 })
 
 const canComplete = computed(() => {
+	// The connection can drop with a wallet or credit payment already entered
+	if (props.isOffline && hasOnlineOnlyPayment(paymentEntries.value, walletPaymentMethods.value)) {
+		return false
+	}
+
 	// Check sales person validation first (mandatory when enabled)
 	if (!isSalesPersonValid.value) {
 		return false
@@ -2103,7 +2141,7 @@ watch(
 	],
 	([customer, company, allowCreditSale, allowCustomerCreditPayment]) => {
 		const creditEnabled = allowCreditSale || allowCustomerCreditPayment
-		if (creditEnabled && customer && company) {
+		if (creditEnabled && customer && company && canAskForBalances.value) {
 			log.debug("[PaymentDialog] Pre-fetching customer balance for:", customer)
 			customerBalanceResource.fetch()
 			customerCreditResource.fetch()
@@ -2130,7 +2168,7 @@ watch(show, (newVal) => {
 		// any redemptions made by other cashiers since the last open.
 		const creditEnabled =
 			props.allowCreditSale || props.allowCustomerCreditPayment
-		if (creditEnabled && props.customer && props.company) {
+		if (creditEnabled && props.customer && props.company && canAskForBalances.value) {
 			customerBalanceResource.fetch()
 			customerCreditResource.fetch()
 		}
@@ -2153,8 +2191,7 @@ watch(show, (newVal) => {
 
 		// Set default payment method if already loaded
 		if (paymentMethods.value.length > 0 && !lastSelectedMethod.value) {
-			const defaultMethod = paymentMethods.value.find((m) => m.default)
-			lastSelectedMethod.value = defaultMethod || paymentMethods.value[0]
+			lastSelectedMethod.value = getDefaultPaymentMethod()
 		}
 		autoFillNumpad()
 
@@ -2166,7 +2203,7 @@ watch(show, (newVal) => {
 		}
 
 		// Load wallet info if customer is selected
-		if (props.customer && props.company) {
+		if (props.customer && props.company && canAskForBalances.value) {
 			log.debug("[PaymentDialog] Loading wallet info...")
 			loadingWallet.value = true
 			walletInfoResource.fetch()
@@ -2268,6 +2305,11 @@ function quickAddPayment(method) {
 
 	let amt = remainingAmount.value
 	let isPartialWalletPayment = false
+
+	if (isOnlineOnlyMethod(method)) {
+		showWarning(ONLINE_ONLY_MESSAGE)
+		return
+	}
 
 	// Wallet payment validation: limit to available balance
 	if (isWalletPaymentMethod(method.mode_of_payment)) {
@@ -2499,6 +2541,11 @@ function applyCustomerCredit() {
 		remainingAmount: remainingAmount.value,
 		currentEntries: paymentEntries.value.length,
 	})
+
+	if (props.isOffline) {
+		showWarning(ONLINE_ONLY_MESSAGE)
+		return
+	}
 
 	if (remainingAmount.value === 0 || totalAvailableCredit.value === 0) return
 

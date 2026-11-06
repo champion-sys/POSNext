@@ -158,7 +158,7 @@
 					<Button
 						variant="solid"
 						@click="handleCreate"
-						:loading="createCustomerResource.loading || updateCustomerResource.loading || checkingPermission"
+						:loading="createCustomerResource.loading || updateCustomerResource.loading || checkingPermission || savingOffline"
 						:disabled="!customerData.customer_name || !hasPermission"
 					>
 						{{ isEditMode ? __("Save Changes") : __("Create Customer") }}
@@ -181,16 +181,25 @@
  * - Auto-sets territory based on selected country
  * - Permission checking before allowing creation
  * - Lazy loads countries data when dialog opens (not on app startup)
+ * - Offline, the customer joins the sync queue and the sale goes on with a local name
  */
 
+import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { usePOSPermissions } from "@/composables/usePermissions"
+import { shiftState } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import { useCountriesStore } from "@/stores/countries"
+import { usePOSSyncStore } from "@/stores/posSync"
 import { logger } from "@/utils/logger"
+import { getSetting, setSetting } from "@/utils/offline/db"
+import { isLocalName } from "@/utils/offline/entities"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 const log = logger.create("CreateCustomerDialog")
+
+const CAN_CREATE_KEY = "pos_next_can_create_customer"
+const FORM_OPTIONS_KEY = "customer_form_options"
 
 // =============================================================================
 // Composables & Stores
@@ -199,6 +208,8 @@ const log = logger.create("CreateCustomerDialog")
 const countriesStore = useCountriesStore()
 const { canCreateCustomer } = usePOSPermissions()
 const { showSuccess, showError } = useToast()
+const { isOffline } = useOfflineStatus()
+const offlineStore = usePOSSyncStore()
 
 // =============================================================================
 // Props & Emits
@@ -219,6 +230,7 @@ const emit = defineEmits(["update:modelValue", "customer-created", "customer-upd
 
 const hasPermission = ref(true)
 const checkingPermission = ref(false)
+const savingOffline = ref(false)
 const selectedCountryCode = ref("")
 const phoneNumber = ref("")
 const showCountryDropdown = ref(false)
@@ -391,8 +403,18 @@ const createListResource = (doctype, onSuccess) =>
 		onError: (err) => log.error(`Error loading ${doctype}`, err),
 	})
 
-const customerGroupsResource = createListResource("Customer Group", (names) => (customerGroups.value = names))
-const territoriesResource = createListResource("Territory", (names) => (territories.value = names))
+/** The lists come from the server, so the last ones seen fill the form offline */
+const saveFormOptions = () =>
+	setSetting(FORM_OPTIONS_KEY, { customerGroups: [...customerGroups.value], territories: [...territories.value] })
+
+const customerGroupsResource = createListResource("Customer Group", (names) => {
+	customerGroups.value = names
+	saveFormOptions()
+})
+const territoriesResource = createListResource("Territory", (names) => {
+	territories.value = names
+	saveFormOptions()
+})
 
 const posProfileResource = createResource({
 	url: "frappe.client.get_value",
@@ -415,7 +437,18 @@ const posProfileResource = createResource({
 
 const loadDialogData = async () => {
 	// Lazy load countries (non-blocking)
-	countriesStore.loadCountries()
+	countriesStore.loadCountries().catch((err) => log.debug("Countries not loaded", err))
+
+	if (isOffline.value) {
+		const options = await getSetting(FORM_OPTIONS_KEY)
+		if (options) {
+			customerGroups.value = options.customerGroups
+			territories.value = options.territories
+		}
+		hasPermission.value = localStorage.getItem(CAN_CREATE_KEY) === "1"
+		setCountryFromName(shiftState.value.pos_profile?.country)
+		return
+	}
 
 	// Load form options
 	await territoriesResource.reload()
@@ -434,6 +467,7 @@ const checkPermissions = async () => {
 	checkingPermission.value = true
 	try {
 		hasPermission.value = await canCreateCustomer()
+		localStorage.setItem(CAN_CREATE_KEY, hasPermission.value ? "1" : "0")
 	} catch (err) {
 		log.error("Permission check failed", err)
 		hasPermission.value = false
@@ -447,9 +481,32 @@ const handleCreate = async () => {
 		return showError(__("Customer Name is required"))
 	}
 	if (isEditMode.value) {
+		if (isOffline.value || isLocalName(props.customer.name)) {
+			return showError(__("Changing a customer needs a connection, and the customer must have reached the server"))
+		}
 		await updateCustomerResource.submit()
+	} else if (isOffline.value) {
+		await createCustomerOffline()
 	} else {
 		await createCustomerResource.submit()
+	}
+}
+
+const createCustomerOffline = async () => {
+	savingOffline.value = true
+	try {
+		const customer = await offlineStore.saveCustomerOffline(customerData.value, {
+			posProfile: props.posProfile,
+			company: shiftState.value.company?.name,
+		})
+		showSuccess(__("Customer {0} saved. It will reach the server shortly", [customer.customer_name]))
+		emit("customer-created", customer)
+		show.value = false
+	} catch (error) {
+		log.error("Error saving customer offline", error)
+		showError(error.message || __("Failed to create customer"))
+	} finally {
+		savingOffline.value = false
 	}
 }
 

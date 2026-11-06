@@ -153,13 +153,13 @@
 								</div>
 
 								<!-- Offline Warning -->
-								<div v-if="isOffline()" class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 flex items-center gap-3">
+								<div v-if="isOffline" class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 flex items-center gap-3">
 									<svg class="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
 									</svg>
 									<div class="flex-1 text-start">
 										<p class="text-sm font-medium text-yellow-800">{{ __('You are offline') }}</p>
-										<p class="text-xs text-yellow-700">{{ __('Payments cannot be added while offline. Connect to the internet to add payments.') }}</p>
+										<p class="text-xs text-yellow-700">{{ __('Payments are saved on this device and reach the server when you are back online.') }}</p>
 									</div>
 								</div>
 
@@ -208,11 +208,13 @@
 															{{ formatDate(invoice.posting_date) }} {{ formatTime(invoice.posting_time) }}
 														</div>
 													</div>
+													<p v-if="invoice.queued_payment" class="mt-1 text-xs font-medium text-amber-700 text-start">
+														{{ __('{0} waiting to reach the server', [formatCurrency(invoice.queued_payment)]) }}
+													</p>
 												</div>
 												<button
 													@click="selectInvoiceForPayment(invoice)"
-													:disabled="loadingInvoiceDetails || isOffline()"
-													:title="isOffline() ? __('Payments cannot be added while offline') : ''"
+													:disabled="loadingInvoiceDetails || invoice.outstanding_amount <= 0"
 													class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 												>
 													<LoadingIndicator v-if="loadingInvoiceDetails" class="w-4 h-4" />
@@ -547,7 +549,7 @@
 		:customer="selectedInvoice?.customer_name || selectedInvoice?.customer"
 		:pos-profile="posProfile"
 		:currency="currency"
-		:is-offline="false"
+		:is-offline="isOffline"
 		:allow-partial-payment="true"
 		@payment-completed="handlePaymentCompleted"
 	/>
@@ -557,8 +559,10 @@
 import InvoiceFilters from "@/components/invoices/InvoiceFilters.vue"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
 import { useInvoiceFilters } from "@/composables/useInvoiceFilters"
+import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useInvoiceFiltersStore } from "@/stores/invoiceFilters"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSSyncStore } from "@/stores/posSync"
 import { usePOSUIStore } from "@/stores/posUI"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
@@ -566,7 +570,6 @@ import { useFormatters } from "@/composables/useFormatters"
 import { useToast } from "@/composables/useToast"
 import { Button, call, LoadingIndicator } from "frappe-ui"
 import { computed, onMounted, ref, watch } from "vue"
-import { isOffline } from "@/utils/offline/offlineState"
 import {
 	cacheUnpaidInvoices,
 	getCachedUnpaidInvoices,
@@ -580,6 +583,8 @@ const { showSuccess, showError } = useToast()
 const { formatDate, formatDateTime, formatTime } = useFormatters()
 const settingsStore = usePOSSettingsStore()
 const uiStore = usePOSUIStore()
+const offlineStore = usePOSSyncStore()
+const { isOffline } = useOfflineStatus()
 
 
 const props = defineProps({
@@ -838,7 +843,7 @@ async function loadUnpaidInvoices() {
 			limit: 100,
 		})
 		if (cachedInvoices && cachedInvoices.length > 0) {
-			unpaidInvoices.value = cachedInvoices
+			unpaidInvoices.value = await offlineStore.withQueuedPayments(cachedInvoices)
 			loading.value = false // Hide skeleton once we have cached data
 			log.debug("Loaded", cachedInvoices.length, "unpaid invoices from cache (instant)")
 		}
@@ -847,7 +852,7 @@ async function loadUnpaidInvoices() {
 	}
 
 	// If offline, we're done - use only cached data
-	if (isOffline()) {
+	if (isOffline.value) {
 		log.info("Offline mode - using cached unpaid invoices")
 		loading.value = false
 		return
@@ -864,7 +869,7 @@ async function loadUnpaidInvoices() {
 			},
 		)
 
-		unpaidInvoices.value = result || []
+		unpaidInvoices.value = await offlineStore.withQueuedPayments(result || [])
 
 		// Cache for offline use
 		if (result && result.length > 0) {
@@ -897,7 +902,7 @@ async function loadUnpaidSummary() {
 	}
 
 	// If offline, we're done - use only cached data
-	if (isOffline()) {
+	if (isOffline.value) {
 		log.info("Offline mode - using cached unpaid summary")
 		return
 	}
@@ -930,13 +935,20 @@ async function loadUnpaidSummary() {
 const loadingInvoiceDetails = ref(false)
 
 async function selectInvoiceForPayment(invoice) {
+	if (isOffline.value) {
+		selectedInvoice.value = invoice
+		showPaymentDialog.value = true
+		return
+	}
+
 	loadingInvoiceDetails.value = true
 	try {
 		// Fetch full invoice details including items for the payment dialog
 		const details = await call("pos_next.api.partial_payments.get_partial_payment_details", {
 			invoice_name: invoice.name,
 		})
-		selectedInvoice.value = details
+		const [withQueued] = await offlineStore.withQueuedPayments([details])
+		selectedInvoice.value = withQueued
 		showPaymentDialog.value = true
 	} catch (error) {
 		log.error("Error loading invoice details:", error)
@@ -948,8 +960,25 @@ async function selectInvoiceForPayment(invoice) {
 	}
 }
 
+async function queuePayment(paymentData) {
+	try {
+		await offlineStore.savePaymentOffline(selectedInvoice.value, paymentData.payments)
+		showSuccess(__("Payment saved. It will reach the server shortly"))
+		await loadUnpaidInvoices()
+		selectedInvoice.value = null
+	} catch (error) {
+		log.error("Error saving payment offline:", error)
+		showError(error.message || __("Failed to add payment"))
+	}
+}
+
 async function handlePaymentCompleted(paymentData) {
 	if (!selectedInvoice.value) return
+
+	if (isOffline.value) {
+		await queuePayment(paymentData)
+		return
+	}
 
 	try {
 		await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {

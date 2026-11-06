@@ -112,6 +112,38 @@ def create_customer(
     if not customer_name:
         frappe.throw(_("Customer name is required"))
 
+    customer = insert_customer(
+        customer_name,
+        mobile_no=mobile_no,
+        email_id=email_id,
+        customer_group=customer_group,
+        territory=territory,
+        company=company,
+        pos_profile=pos_profile,
+    )
+    return customer.as_dict()
+
+
+def insert_customer(
+    customer_name,
+    mobile_no=None,
+    email_id=None,
+    customer_group=None,
+    territory=None,
+    company=None,
+    pos_profile=None,
+    offline_id=None,
+    ignore_permissions=False,
+):
+    """Insert a customer. The caller decides who may do so.
+
+    Args:
+        offline_id: The queue record it came from, whose unique index stops a second copy
+        ignore_permissions: The queue checks the cashier, who may not be the session user
+
+    Returns:
+        Document: The new customer
+    """
     loyalty_program = get_default_loyalty_program_from_settings(
         company=company,
         pos_profile=pos_profile,
@@ -129,6 +161,9 @@ def create_customer(
             "loyalty_program": loyalty_program,
         }
     )
+    if offline_id:
+        customer.offline_id = offline_id
+    customer.flags.ignore_permissions = ignore_permissions
 
     frappe.flags.pos_next_customer_company = company
     frappe.flags.pos_next_customer_pos_profile = pos_profile
@@ -138,7 +173,7 @@ def create_customer(
         frappe.flags.pos_next_customer_company = None
         frappe.flags.pos_next_customer_pos_profile = None
 
-    return customer.as_dict()
+    return customer
 
 
 def get_default_loyalty_program(company):

@@ -1,10 +1,10 @@
 # Copyright (c) 2026, BrainWise and contributors
 # For license information, please see license.txt
 
-"""The server side of invoice sync.
+"""The server side of the sync queue.
 
-Every queued invoice is stored here, in its own transaction, before it is
-processed. A failure therefore always leaves a record with the original payload,
+Every queued record, sale or otherwise, is stored here in its own transaction before it
+is processed. A failure therefore always leaves a record with the original payload,
 which Frappe's rollback on error would otherwise erase. The transaction boundaries
 below are the point of this module: the commits are deliberate.
 """
@@ -12,21 +12,30 @@ below are the point of this module: the commits are deliberate.
 import hashlib
 import json
 import time
+from collections import namedtuple
 
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 
-from pos_next.services import sync_classifier
-from pos_next.services.sync_classifier import SyncContractError, TotalMismatchError
+from pos_next.services import sync_classifier, sync_entities
+from pos_next.services.sync_classifier import TotalMismatchError, WaitingForDependencyError
+from pos_next.services.sync_entities import (
+    DOCTYPE,
+    ENTITY_CUSTOMER,
+    ENTITY_INVOICE,
+    ENTITY_PAYMENT,
+    ENTITY_SHIFT_CLOSE,
+    FINAL_STATES,
+)
 
-DOCTYPE = "Offline Invoice Sync"
-
-FINAL_STATES = ("Synced", "Resolved", "Voided")
 REVIEW = "Needs Review"
 
 #: Rows left in Processing longer than this belong to a crashed worker
 STALE_PROCESSING_MINUTES = 10
+
+#: A device sends its queue in one go, so a dependency this late is not on its way
+MISSING_DEPENDENCY_MINUTES = 30
 
 #: Set by the client after the invoice is queued, so they are not part of the sale
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
@@ -55,6 +64,8 @@ def validate_envelope(item):
         return "Missing payload"
     if not item.get("pos_profile") and not item["payload"].get("pos_profile"):
         return "Missing pos_profile"
+    if (item.get("entity") or ENTITY_INVOICE) not in sync_entities.ENTITIES:
+        return "Unknown entity"
     return None
 
 
@@ -64,7 +75,7 @@ def _link_or_none(doctype, name):
 
 
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
-    """Store one invoice and commit, before anything can fail on its contents.
+    """Store one record and commit, before anything can fail on its contents.
 
     Returns:
         tuple[str, bool]: The record name, and whether this payload conflicts with
@@ -89,10 +100,13 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
             "doctype": DOCTYPE,
             "offline_id": offline_id,
             "status": "Received",
+            "entity": item.get("entity") or ENTITY_INVOICE,
             "invoice_doctype": payload.get("doctype") or "Sales Invoice",
             "pos_profile": _link_or_none("POS Profile", pos_profile),
             "customer": _link_or_none("Customer", payload.get("customer")),
-            "shift": _link_or_none("POS Opening Shift", payload.get("posa_pos_opening_shift")),
+            "shift": _link_or_none(
+                "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+            ),
             "cashier": _link_or_none("User", item.get("cashier")) or uploaded_by,
             "uploaded_by": uploaded_by,
             "device_id": device_id,
@@ -103,10 +117,11 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
             "payload": serialized,
             "original_payload": serialized,
             "payload_hash": payload_hash,
+            "coupon_code": payload.get("coupon_code"),
             "seq": cint(item.get("seq")),
             "client_version": client_version,
             "protocol_version": cint(protocol_version),
-            "depends_on": "\n".join(item.get("depends_on") or []),
+            "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
         }
     )
     doc.flags.ignore_permissions = True
@@ -134,9 +149,9 @@ def _sum_payments(payload):
 
 
 def process(name):
-    """Turn one stored invoice into a submitted invoice.
+    """Turn one stored record into what it stands for on the server.
 
-    The invoice and the Synced status commit together. On failure everything is
+    The document and the Synced status commit together. On failure everything is
     rolled back first, and the failure is then written in a fresh transaction.
     """
     row = _lock(name)
@@ -146,10 +161,12 @@ def process(name):
         frappe.db.commit()  # nosemgrep: release the row lock
         return row
 
-    # Crash safety: the invoice may exist while its status update was lost
-    existing = find_invoice_by_offline_id(row.offline_id)
+    handler = _get_handler(row)
+
+    # Crash safety: the document may exist while its status update was lost
+    existing = handler.find(row.offline_id)
     if existing:
-        recovered = _mark_synced(name, existing["name"], existing["doctype"], existing["grand_total"], "recovered")
+        recovered = _mark_synced(name, existing, "recovered")
         frappe.db.commit()  # nosemgrep: finish the update the crash interrupted
         return recovered
 
@@ -159,12 +176,12 @@ def process(name):
 
     started = time.monotonic()
     try:
-        result = _create_invoice(row)
-        _mark_synced(name, result["name"], result["doctype"], result["grand_total"], "synced", started)
-        frappe.db.commit()  # nosemgrep: the invoice and its Synced status commit as one
+        result = handler.create(row)
+        _mark_synced(name, result, "synced", started)
+        frappe.db.commit()  # nosemgrep: the document and its Synced status commit as one
     except Exception as exc:
         traceback = frappe.get_traceback()
-        frappe.db.rollback()  # nosemgrep: discard the partial invoice before recording why
+        frappe.db.rollback()  # nosemgrep: discard the partial document before recording why
         frappe.clear_messages()
         _handle_failure(name, attempts, exc, traceback, started)
         frappe.db.commit()  # nosemgrep: the failure survives, unlike a write inside the request
@@ -177,18 +194,38 @@ def _lock(name):
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True, for_update=True)
 
 
-def _is_blocked(row):
-    """Hold an invoice until the records it depends on have finished."""
+def _get_handler(row):
+    return _ENTITIES.get(row.entity) or _ENTITIES[ENTITY_INVOICE]
+
+
+def _get_unfinished_dependencies(row):
+    """What a record still waits for.
+
+    Returns:
+        dict[str, str | None]: The status of each one, None when it never arrived
+    """
     dependencies = [line.strip() for line in (row.depends_on or "").splitlines() if line.strip()]
     if not dependencies:
-        return False
+        return {}
 
-    finished = frappe.get_all(
-        DOCTYPE,
-        filters={"offline_id": ["in", dependencies], "status": ["in", FINAL_STATES]},
-        pluck="offline_id",
+    statuses = dict(
+        frappe.get_all(
+            DOCTYPE,
+            filters={"offline_id": ["in", dependencies]},
+            fields=["offline_id", "status"],
+            as_list=True,
+        )
     )
-    if len(finished) == len(dependencies):
+    return {
+        offline_id: statuses.get(offline_id)
+        for offline_id in dependencies
+        if statuses.get(offline_id) not in FINAL_STATES
+    }
+
+
+def _is_blocked(row):
+    """Hold a record until the records it depends on have finished."""
+    if cint(row.accept_unfinished) or not _get_unfinished_dependencies(row):
         return False
 
     if row.status != "Blocked":
@@ -200,10 +237,8 @@ def _is_blocked(row):
 def _create_invoice(row):
     from pos_next.services.invoice_processor import process_invoice
 
-    try:
-        payload = json.loads(row.payload)
-    except (TypeError, ValueError) as exc:
-        raise SyncContractError(_("The stored payload is not valid JSON")) from exc
+    payload = sync_entities.load_payload(row)
+    sync_entities.resolve_local_names(payload)
 
     pos_profile = payload.get("pos_profile") or row.pos_profile
     doctype = payload.get("doctype") or row.invoice_doctype or "Sales Invoice"
@@ -214,12 +249,15 @@ def _create_invoice(row):
 
     _assert_invoice_write_access(doctype, pos_profile, row.cashier)
 
+    if payload.get("is_return") and payload.get("return_against"):
+        sync_entities.align_return(payload)
+
     data = {"offline_id": row.offline_id}
     result = process_invoice(
-        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier
+        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier, queued=True
     )
     _assert_totals_match(row, result, pos_profile)
-    return {**result, "doctype": doctype}
+    return {**result, "doctype": doctype, "customer": payload.get("customer")}
 
 
 def _assert_totals_match(row, result, pos_profile):
@@ -240,26 +278,39 @@ def _assert_totals_match(row, result, pos_profile):
         )
 
 
-def _mark_synced(name, invoice_name, doctype, grand_total, outcome, started=None):
-    frappe.db.set_value(
-        DOCTYPE,
-        name,
-        {
-            "status": "Synced",
-            "sales_invoice": invoice_name,
-            "invoice_doctype": doctype,
-            "server_grand_total": flt(grand_total),
-            "processed_at": now_datetime(),
-            "synced_at": now_datetime(),
-            "next_retry_at": None,
-            "error_class": None,
-            "error_code": None,
-            "error_message": None,
-            "error_fingerprint": None,
-            "traceback": None,
-        },
-    )
-    _log_attempt(name, outcome, started=started)
+def _mark_synced(name, result, outcome, started=None):
+    """Record what a row became.
+
+    Args:
+        name: Record name
+        result: The document: name, doctype, and optionally grand_total, customer, note
+            and coupon_overrun
+        outcome: For the attempt log
+        started: When the attempt began
+    """
+    values = {
+        "status": "Synced",
+        "sales_invoice": result["name"],
+        "invoice_doctype": result["doctype"],
+        "server_grand_total": flt(result.get("grand_total")),
+        "processed_at": now_datetime(),
+        "synced_at": now_datetime(),
+        "next_retry_at": None,
+        "error_class": None,
+        "error_code": None,
+        "error_message": None,
+        "error_fingerprint": None,
+        "traceback": None,
+    }
+    if result.get("customer"):
+        values["customer"] = result["customer"]
+    if result.get("coupon_overrun"):
+        values["coupon_overrun"] = result["coupon_overrun"]
+
+    frappe.db.set_value(DOCTYPE, name, values)
+    _log_attempt(name, outcome, message=result.get("note"), started=started)
+    if result.get("coupon_overrun"):
+        _log_attempt(name, "coupon overrun", message=result["coupon_overrun"])
     _notify_uploader(name)
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
 
@@ -269,10 +320,10 @@ def _handle_failure(name, attempts, exc, traceback, started):
 
     # The unique index caught a concurrent submission of the same sale
     if isinstance(exc, frappe.DuplicateEntryError | frappe.UniqueValidationError):
-        row = frappe.db.get_value(DOCTYPE, name, ["offline_id"], as_dict=True)
-        existing = find_invoice_by_offline_id(row.offline_id)
+        row = frappe.db.get_value(DOCTYPE, name, ["offline_id", "entity"], as_dict=True)
+        existing = _get_handler(row).find(row.offline_id)
         if existing:
-            _mark_synced(name, existing["name"], existing["doctype"], existing["grand_total"], "recovered")
+            _mark_synced(name, existing, "recovered")
             return
 
     delay = sync_classifier.next_retry_minutes(result.error_class, attempts)
@@ -373,6 +424,18 @@ def find_invoice_by_offline_id(offline_id):
     return None
 
 
+_Entity = namedtuple("_Entity", ["create", "find", "doctypes"])
+
+_ENTITIES = {
+    ENTITY_INVOICE: _Entity(_create_invoice, find_invoice_by_offline_id, ("Sales Invoice", "POS Invoice")),
+    ENTITY_CUSTOMER: _Entity(sync_entities.create_customer, sync_entities.find_customer, ("Customer",)),
+    ENTITY_PAYMENT: _Entity(sync_entities.create_payment, sync_entities.find_payment, ("Payment Entry",)),
+    ENTITY_SHIFT_CLOSE: _Entity(
+        sync_entities.close_shift, sync_entities.find_shift_close, ("POS Closing Shift",)
+    ),
+}
+
+
 def get_duplicate_response(offline_id):
     """The response for a sale already on the server, for the online checkout.
 
@@ -462,6 +525,41 @@ def process_profile_queue(pos_profile=None):
         process(name)
 
 
+def _flag_if_stuck(row):
+    """Hand a waiting record to a person once what it needs will not come by itself."""
+    if get_datetime(row.received_at) > add_to_date(now_datetime(), minutes=-MISSING_DEPENDENCY_MINUTES):
+        return
+
+    unfinished = _get_unfinished_dependencies(row)
+    missing = [offline_id for offline_id, status in unfinished.items() if status is None]
+    in_review = [offline_id for offline_id, status in unfinished.items() if status == REVIEW]
+
+    if missing:
+        message = _("{0} record(s) this depends on never reached the server: {1}").format(
+            len(missing), ", ".join(missing)
+        )
+    elif in_review and row.entity == ENTITY_SHIFT_CLOSE:
+        message = _("{0} invoice(s) of this shift need review first: {1}").format(
+            len(in_review), ", ".join(in_review)
+        )
+    else:
+        return
+
+    _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
+
+
+def _release_arrived_rows():
+    """A record held for a missing dependency continues when that dependency arrives."""
+    waiting = frappe.get_all(
+        DOCTYPE,
+        filters={"status": REVIEW, "error_code": WaitingForDependencyError.__name__},
+        fields=["name", "depends_on"],
+    )
+    for row in waiting:
+        if not _get_unfinished_dependencies(row):
+            frappe.db.set_value(DOCTYPE, row.name, "status", "Received", update_modified=True)
+
+
 def sweep():
     """Recover work nothing else will pick up. Runs every minute."""
     stale_before = add_to_date(now_datetime(), minutes=-STALE_PROCESSING_MINUTES)
@@ -477,6 +575,10 @@ def sweep():
         row = frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
         if not _is_blocked(row):
             frappe.db.set_value(DOCTYPE, name, "status", "Received", update_modified=True)
+        else:
+            _flag_if_stuck(row)
+
+    _release_arrived_rows()
 
     frappe.db.commit()  # nosemgrep: scheduled job boundary
 
@@ -534,16 +636,26 @@ def reprocess(name, note=None):
     return process(name)
 
 
+def _is_usable_document(doctype, name):
+    if frappe.get_meta(doctype).is_submittable:
+        return frappe.db.get_value(doctype, name, "docstatus") == 1
+    return bool(frappe.db.exists(doctype, name))
+
+
 def link_existing_invoice(name, invoice_name, doctype, note):
-    """Close a review because the sale was entered by hand."""
+    """Close a review because the record was entered by hand.
+
+    Records waiting for this one continue with the linked document.
+    """
     if not note:
         frappe.throw(_("A note is required"))
-    if doctype not in ("Sales Invoice", "POS Invoice"):
-        frappe.throw(_("Document type {0} is not allowed here").format(doctype))
 
     row = _review_row(name)
-    if frappe.db.get_value(doctype, invoice_name, "docstatus") != 1:
-        frappe.throw(_("Invoice {0} is not submitted").format(invoice_name))
+    if doctype not in _get_handler(row).doctypes:
+        frappe.throw(_("Document type {0} is not allowed here").format(doctype))
+
+    if not _is_usable_document(doctype, invoice_name):
+        frappe.throw(_("{0} {1} does not exist or is not submitted").format(doctype, invoice_name))
 
     _stamp_resolution(row, "Linked to existing invoice", note)
     row.status = "Resolved"
@@ -569,27 +681,28 @@ def void(name, note):
 
 
 def apply_fix(name, fix, values):
-    """Correct the payload of an invoice under review.
+    """Correct the payload of a record under review.
 
     The original payload never changes, and every fix leaves a line in the attempt log.
 
     Args:
         name: Record name
-        fix: One of the keys in _FIXES
+        fix: One of the keys in _FIXES for the record's entity
         values: The fix's inputs
 
     Returns:
         Document: The updated record
     """
-    if fix not in _FIXES:
+    row = _review_row(name)
+    fixes = _FIXES[row.entity or ENTITY_INVOICE]
+    if fix not in fixes:
         frappe.throw(_("Unknown fix {0}").format(fix))
 
-    row = _review_row(name)
-    if fix == "accept_total_difference":
-        row.accept_total_difference = 1
+    if fixes[fix] is None:
+        row.set(fix, 1)
     else:
         payload = json.loads(row.payload)
-        _FIXES[fix](payload, values)
+        fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
 
     row.flags.ignore_links = True
@@ -605,6 +718,7 @@ def _fix_posting_date(payload, values):
 
 def _fix_customer(payload, values):
     payload["customer"] = values["customer"]
+    payload.pop("customer_name", None)
 
 
 def _fix_warehouse(payload, values):
@@ -641,13 +755,49 @@ def _items_matching(payload, item_code):
     ]
 
 
+def _fix_remove_coupon(payload, _values):
+    """The sale stays as it was paid. Only the coupon's usage is no longer counted."""
+    payload.pop("coupon_code", None)
+
+
+def _fix_payment_amount(payload, values):
+    for row in payload.get("payments") or []:
+        if row.get("mode_of_payment") == values["mode_of_payment"]:
+            row["amount"] = flt(values["amount"])
+
+
+def _fix_customer_group(payload, values):
+    payload["customer_group"] = values["customer_group"]
+
+
+def _fix_territory(payload, values):
+    payload["territory"] = values["territory"]
+
+
+#: None marks a manager's approval, kept in the row's field of the same name
 _FIXES = {
-    "posting_date": _fix_posting_date,
-    "customer": _fix_customer,
-    "warehouse": _fix_warehouse,
-    "replace_item": _fix_replace_item,
-    "batch": _fix_batch,
-    "payment_mode": _fix_payment_mode,
-    "shift": _fix_shift,
-    "accept_total_difference": None,
+    ENTITY_INVOICE: {
+        "posting_date": _fix_posting_date,
+        "customer": _fix_customer,
+        "warehouse": _fix_warehouse,
+        "replace_item": _fix_replace_item,
+        "batch": _fix_batch,
+        "payment_mode": _fix_payment_mode,
+        "shift": _fix_shift,
+        "remove_coupon": _fix_remove_coupon,
+        "accept_total_difference": None,
+    },
+    ENTITY_CUSTOMER: {
+        "customer_group": _fix_customer_group,
+        "territory": _fix_territory,
+    },
+    ENTITY_PAYMENT: {
+        "posting_date": _fix_posting_date,
+        "payment_mode": _fix_payment_mode,
+        "payment_amount": _fix_payment_amount,
+        "shift": _fix_shift,
+    },
+    ENTITY_SHIFT_CLOSE: {
+        "accept_unfinished": None,
+    },
 }

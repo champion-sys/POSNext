@@ -90,6 +90,9 @@
   "sync_interval_minutes",
   "realtime_timeout_seconds",
   "sync_total_tolerance",
+  "disable_offline_coupons",
+  "allow_offline_returns",
+  "allow_offline_shift_close",
   "barcode_tab",
   "barcode_rules"
  ],
@@ -595,6 +598,27 @@
    "description": "The largest difference allowed between the total on the device and on the server. A larger difference sends the invoice to review."
   },
   {
+   "fieldname": "disable_offline_coupons",
+   "fieldtype": "Check",
+   "label": "Disable Coupons While Offline",
+   "default": "0",
+   "description": "Coupons are checked against the last copy on the device, so a limit can be passed while offline. The sale is accepted and the overrun is recorded for audit."
+  },
+  {
+   "fieldname": "allow_offline_returns",
+   "fieldtype": "Check",
+   "label": "Allow Returns While Offline",
+   "default": "0",
+   "description": "Return invoices saved on the device, under the same rules as online. Refunds are paid before the server can confirm them."
+  },
+  {
+   "fieldname": "allow_offline_shift_close",
+   "fieldtype": "Check",
+   "label": "Allow Closing the Shift While Offline",
+   "default": "0",
+   "description": "The cashier enters the counted amounts on the device. The closing is finalized on the server once every invoice of the shift has arrived."
+  },
+  {
    "fieldname": "barcode_tab",
    "fieldtype": "Tab Break",
    "label": "Barcode"
@@ -668,7 +692,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-06 21:00:00.000000",
+ "modified": "2026-11-07 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

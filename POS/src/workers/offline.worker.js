@@ -21,6 +21,7 @@
 // chunk loaded on demand here cannot be served from the cache on an offline start.
 import Dexie from 'dexie'
 import { logger } from '../utils/logger'
+import { ENTITY_INVOICE, getInvoiceDependencies } from "../utils/offline/entities"
 import { generateOfflineId } from '../utils/offline/uuid'
 import { pullStateKey } from '../core/sync/pullEngine'
 
@@ -430,6 +431,8 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 		await db.transaction("rw", queue, async () => {
 			id = await queue.add({
 				offline_id: offlineId,
+				entity: ENTITY_INVOICE,
+				depends_on: getInvoiceDependencies(invoiceData),
 				data: invoiceData,
 				timestamp: Date.now(),
 				synced: false,
@@ -455,6 +458,42 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 	} catch (error) {
 		log.error("Error saving offline invoice", error)
 		throw error
+	}
+}
+
+// Queue a record that is not a sale, in the same table so that the queue's order
+// keeps it ahead of the sales that need it
+async function saveQueueEntity({ entity, data, dependsOn = [] }) {
+	try {
+		const db = await initDB()
+		const offlineId = data.offline_id || generateOfflineId()
+
+		const id = await db.table("invoice_queue").add({
+			offline_id: offlineId,
+			entity,
+			depends_on: dependsOn,
+			data: { ...data, offline_id: offlineId },
+			timestamp: Date.now(),
+			synced: false,
+			retry_count: 0,
+		})
+
+		log.info(`Queued ${entity} with offline_id: ${offlineId}`)
+		return { success: true, id, offline_id: offlineId }
+	} catch (error) {
+		log.error(`Error queueing ${entity}`, error)
+		throw error
+	}
+}
+
+// Every row still on the device, including those that have synced
+async function getQueueRows() {
+	try {
+		const db = await initDB()
+		return await db.table("invoice_queue").filter((row) => !row.superseded).toArray()
+	} catch (error) {
+		log.error("Error reading the queue", error)
+		return []
 	}
 }
 
@@ -1809,6 +1848,14 @@ self.onmessage = async (event) => {
 
 			case "SAVE_INVOICE":
 				result = await saveOfflineInvoice(payload.invoiceData, payload.options)
+				break
+
+			case "SAVE_QUEUE_ENTITY":
+				result = await saveQueueEntity(payload)
+				break
+
+			case "GET_QUEUE_ROWS":
+				result = await getQueueRows()
 				break
 
 			case "SEARCH_ITEMS":

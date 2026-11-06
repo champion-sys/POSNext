@@ -11,6 +11,8 @@ from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 
+from pos_next.services.sync_entities import is_local_name
+
 
 # ==========================================
 # Constants for field names (avoid typos and enable refactoring)
@@ -639,6 +641,16 @@ def validate_return_items(original_invoice_name, return_items, doctype="Sales In
     Uses query builder for parameterized queries. Fetches invoice details, original
     item quantities, and already-returned quantities in 3 queries total.
     """
+    return _validate_return_items(original_invoice_name, return_items, doctype)
+
+
+def _validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice", as_of=None):
+    """The checks of validate_return_items.
+
+    Args:
+        as_of: The day of a queued return, which is when the return period counts.
+            Kept out of the whitelisted method, so a request cannot set it.
+    """
     from frappe.utils import date_diff, getdate
     from frappe.query_builder.functions import Sum, Abs
 
@@ -669,7 +681,7 @@ def validate_return_items(original_invoice_name, return_items, doctype="Sales In
         )
 
         if return_validity_days > 0:
-            days_since_invoice = date_diff(getdate(nowdate()), getdate(invoice_info.posting_date))
+            days_since_invoice = date_diff(getdate(as_of or nowdate()), getdate(invoice_info.posting_date))
             if days_since_invoice > return_validity_days:
                 return {
                     "valid": False,
@@ -738,8 +750,51 @@ def update_invoice(data):
     return save_invoice_draft(data)
 
 
-def save_invoice_draft(data, acting_user=None):
-    """Create or update an invoice draft on behalf of acting_user."""
+def _apply_coupon(invoice_doc, coupon_code, queued):
+    """Check an invoice's coupon and note it on the invoice.
+
+    Args:
+        invoice_doc: The invoice
+        coupon_code: Code of a POS Coupon
+        queued: Whether the sale has already happened offline
+
+    Returns:
+        str | None: How a queued sale went over the coupon's limit
+    """
+    from pos_next.pos_next.doctype.pos_coupon.pos_coupon import check_coupon_code
+
+    coupon_result = check_coupon_code(
+        coupon_code,
+        customer=invoice_doc.customer,
+        company=invoice_doc.company,
+        queued_on=invoice_doc.get("posting_date") if queued else None,
+    )
+
+    if not coupon_result or not coupon_result.get("valid"):
+        error_msg = coupon_result.get("msg", "Invalid coupon code") if coupon_result else "Invalid coupon code"
+        frappe.throw(_(error_msg))
+
+    if not queued:
+        # Store coupon code on invoice for tracking
+        invoice_doc.coupon_code = coupon_code
+        return None
+
+    # ERPNext's own field links to its Coupon Code doctype, which would refuse this code
+    # or apply limits of its own. The customer already has the discount either way.
+    invoice_doc.coupon_code = None
+    invoice_doc.pos_coupon_code = coupon_code
+    return coupon_result.get("overrun")
+
+
+def save_invoice_draft(data, acting_user=None, queued=False):
+    """Create or update an invoice draft on behalf of acting_user.
+
+    Args:
+        data: Invoice payload
+        acting_user: The cashier, when it differs from the session user
+        queued: The sale already happened offline. Only the sync queue passes this. It is
+            never read from the payload, so an online checkout cannot claim it.
+    """
     try:
         data = json.loads(data) if isinstance(data, str) else data
 
@@ -815,16 +870,20 @@ def save_invoice_draft(data, acting_user=None):
         if (data.get("is_return") or invoice_doc.get("is_return")) and invoice_doc.get(
             "return_against"
         ):
-            validation = validate_return_items(
+            validation = _validate_return_items(
                 invoice_doc.return_against,
                 [d.as_dict() for d in invoice_doc.items],
                 doctype=invoice_doc.doctype,
+                as_of=invoice_doc.get("posting_date") if queued else None,
             )
             if not validation.get("valid"):
                 frappe.throw(validation.get("message"))
 
         # Ensure customer exists
         customer_name = invoice_doc.get("customer")
+        if is_local_name(customer_name):
+            frappe.throw(_("Customer {0} has not reached the server yet").format(customer_name))
+
         if customer_name and not frappe.db.exists("Customer", customer_name):
             try:
                 cust = frappe.get_doc(
@@ -1010,23 +1069,11 @@ def save_invoice_draft(data, acting_user=None):
 
         # Validate and track POS Coupon if coupon_code is provided
         coupon_code = data.get("coupon_code")
+        coupon_overrun = None
         if coupon_code:
             # Validate POS Coupon exists and is valid
             if frappe.db.table_exists("POS Coupon"):
-                from pos_next.pos_next.doctype.pos_coupon.pos_coupon import check_coupon_code
-
-                coupon_result = check_coupon_code(
-                    coupon_code,
-                    customer=invoice_doc.customer,
-                    company=invoice_doc.company
-                )
-
-                if not coupon_result or not coupon_result.get("valid"):
-                    error_msg = coupon_result.get("msg", "Invalid coupon code") if coupon_result else "Invalid coupon code"
-                    frappe.throw(_(error_msg))
-
-                # Store coupon code on invoice for tracking
-                invoice_doc.coupon_code = coupon_code
+                coupon_overrun = _apply_coupon(invoice_doc, coupon_code, queued)
 
         # Validate stock availability before saving draft
         # is_stock_item may not be set on unsaved doc items (frontend doesn't send it),
@@ -1054,7 +1101,7 @@ def save_invoice_draft(data, acting_user=None):
         invoice_doc.docstatus = 0
         invoice_doc.save()
 
-        return invoice_doc.as_dict()
+        return {**invoice_doc.as_dict(), "coupon_overrun": coupon_overrun}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Update Invoice Error")
         raise
@@ -1979,6 +2026,16 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             - _original_invoice: Reference data from original invoice (payments, amounts)
             - Each item includes original_qty, already_returned, and remaining_qty
     """
+    return _prepare_return_invoice(invoice_name, pos_opening_shift)
+
+
+def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
+    """The work of prepare_return_invoice.
+
+    Args:
+        as_of: The day of a queued return, which is when the return period counts.
+            Kept out of the whitelisted method, so a request cannot set it.
+    """
     from frappe.utils import date_diff, getdate
     from frappe.query_builder.functions import Sum, Abs, Coalesce
     from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
@@ -2042,7 +2099,7 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         )
 
         if return_validity_days > 0:
-            days_since_invoice = date_diff(getdate(nowdate()), getdate(invoice_info.posting_date))
+            days_since_invoice = date_diff(getdate(as_of or nowdate()), getdate(invoice_info.posting_date))
             if days_since_invoice > return_validity_days:
                 frappe.throw(
                     _("Return period has expired. Invoice {0} was created {1} days ago. "
@@ -2211,6 +2268,95 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         frappe.throw(_("All items from this invoice have already been returned"))
 
     return return_dict
+
+
+#: What a device needs to process a return with no server to ask
+_RETURN_DOCUMENT_FIELDS = (
+    "doctype",
+    "return_against",
+    "customer",
+    "customer_name",
+    "company",
+    "pos_profile",
+    "_original_invoice",
+)
+_RETURN_ITEM_FIELDS = (
+    "item_code",
+    "item_name",
+    "qty",
+    "rate",
+    "price_list_rate",
+    "rate_with_tax",
+    "tax_per_unit",
+    "tax_included_in_rate",
+    "discount_per_unit",
+    "uom",
+    "warehouse",
+    "conversion_factor",
+    "sales_invoice_item",
+    "pos_invoice_item",
+    "original_qty",
+    "already_returned",
+    "remaining_qty",
+)
+
+
+def _trim_return_document(document, rules):
+    trimmed = {fieldname: document.get(fieldname) for fieldname in _RETURN_DOCUMENT_FIELDS}
+    trimmed["_return_rules"] = rules
+    trimmed["sales_team"] = [
+        {"sales_person": row.get("sales_person"), "allocated_percentage": row.get("allocated_percentage")}
+        for row in document.get("sales_team") or []
+    ]
+    trimmed["items"] = [
+        {fieldname: item.get(fieldname) for fieldname in _RETURN_ITEM_FIELDS}
+        for item in document.get("items") or []
+    ]
+    return trimmed
+
+
+@frappe.whitelist()
+def get_offline_return_documents(pos_profile, pos_opening_shift=None, limit=100):
+    """Prepared returns of recent invoices, for a device to work from while offline.
+
+    Each one carries the return rules of its own POS Profile, which may not be the
+    one the device is on.
+
+    Args:
+        pos_profile: The device's POS Profile
+        pos_opening_shift: The current shift, so foreign payment modes get remapped
+        limit: How many invoices
+
+    Returns:
+        list[dict]: Empty unless the POS Profile allows offline returns
+    """
+    _assert_invoice_write_access(DOCTYPE_SALES_INVOICE, pos_profile)
+
+    if not cint(frappe.db.get_value(DOCTYPE_POS_SETTINGS, {"pos_profile": pos_profile}, "allow_offline_returns")):
+        return []
+
+    rules_by_profile = {}
+    documents = []
+
+    for invoice in get_returnable_invoices(min(cint(limit), 200), pos_profile):
+        try:
+            document = _prepare_return_invoice(invoice.name, pos_opening_shift)
+        except frappe.ValidationError:
+            frappe.clear_messages()
+            continue
+
+        profile = document.get("pos_profile")
+        if profile not in rules_by_profile:
+            rules_by_profile[profile] = frappe.db.get_value(
+                DOCTYPE_POS_SETTINGS,
+                {"pos_profile": profile, "enabled": 1},
+                ["allow_return", "return_validity_days"],
+                as_dict=True,
+            ) or {}
+
+        documents.append(_trim_return_document(document, rules_by_profile[profile]))
+
+    return documents
 
 
 @frappe.whitelist()
