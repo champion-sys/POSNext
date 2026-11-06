@@ -329,7 +329,10 @@ def _return_to_queue(name, attempts):
 
     Only from Processing, because the limit can land just after its commit went through.
     """
-    frappe.db.rollback()  # nosemgrep: discard the partial document
+    # The limit can cut a query in half, which leaves the connection out of sync. Closing it
+    # also discards the partial document.
+    frappe.db.close()
+    frappe.db.connect()
     frappe.clear_messages()
     frappe.db.set_value(
         DOCTYPE, {"name": name, "status": "Processing"}, {"status": "Received", "attempts": attempts - 1}

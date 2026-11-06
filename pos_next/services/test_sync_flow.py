@@ -109,6 +109,13 @@ class FakeInbox:
     def release_savepoint(self, name):
         del self.savepoints[name]
 
+    def close(self):
+        """A closed connection loses what it had not committed."""
+        self.rollback()
+
+    def connect(self):
+        pass
+
     def rollback(self, save_point=None, **_kwargs):
         """As on MariaDB, a savepoint does not outlive its transaction."""
         if save_point:
@@ -598,14 +605,15 @@ class TestJobTimeout(Flow):
 
         self.assertEqual(self._row(name).attempts, 2)
 
-    def test_the_partial_document_is_discarded_before_the_row_goes_back(self):
+    def test_a_new_connection_carries_the_write_a_cut_query_would_break(self):
         name = self._send(SALE, {"pos_profile": "Main"})
         statuses = []
-        self.inbox.rollback = lambda **_kwargs: statuses.append(self._row(name).status)
+        self.inbox.close = lambda: statuses.append(self._row(name).status)
 
         self._time_out(name)
 
         self.assertEqual(statuses, ["Processing"])
+        self.assertEqual(self._row(name).status, "Received")
 
     def test_a_sale_that_committed_just_before_the_limit_stays_synced(self):
         name = self._send(SALE, {"pos_profile": "Main"})
