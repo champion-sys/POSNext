@@ -953,14 +953,14 @@ function resetForm() {
 function populateFormFromCoupon(coupon) {
 	form.value = {
 		coupon_name: coupon.coupon_name || "",
-		coupon_type: coupon.coupon_type || __('Promotional'),
+		coupon_type: coupon.coupon_type || 'Promotional',
 		coupon_code: coupon.coupon_code || "",
-		discount_type: coupon.discount_type || __('Percentage'),
+		discount_type: coupon.discount_type || 'Percentage',
 		discount_percentage: coupon.discount_percentage || null,
 		discount_amount: coupon.discount_amount || null,
 		min_amount: coupon.min_amount || null,
 		max_amount: coupon.max_amount || null,
-		apply_on: coupon.apply_on || __('Grand Total'),
+		apply_on: coupon.apply_on || 'Grand Total',
 		customer: coupon.customer || "",
 		campaign: coupon.campaign || "",
 		valid_from: coupon.valid_from || "",

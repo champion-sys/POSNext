@@ -2292,7 +2292,7 @@ function _upsertPaymentEntry(method, amt) {
 		paymentEntries.value.push({
 			mode_of_payment: method.mode_of_payment,
 			amount: roundCurrency(amt),
-			type: method.type || __("Cash"),
+			type: method.type || "Cash",
 			is_wallet_payment: isWalletPaymentMethod(method.mode_of_payment),
 		})
 	}

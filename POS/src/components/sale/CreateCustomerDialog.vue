@@ -349,8 +349,8 @@ const createCustomerResource = createResource({
 		customer_name: customerData.value.customer_name,
 		mobile_no: customerData.value.mobile_no || "",
 		email_id: customerData.value.email_id || "",
-		customer_group: customerData.value.customer_group || __("Individual"),
-		territory: customerData.value.territory || __("All Territories"),
+		customer_group: customerData.value.customer_group || "Individual",
+		territory: customerData.value.territory || "All Territories",
 		pos_profile: props.posProfile,
 	}),
 	onSuccess: (data) => {
@@ -371,8 +371,8 @@ const updateCustomerResource = createResource({
 		name: props.customer?.name,
 		fieldname: {
 			customer_name: customerData.value.customer_name,
-			customer_group: customerData.value.customer_group || __("Individual"),
-			territory: customerData.value.territory || __("All Territories"),
+			customer_group: customerData.value.customer_group || "Individual",
+			territory: customerData.value.territory || "All Territories",
 			mobile_no: customerData.value.mobile_no || "",
 			email_id: customerData.value.email_id || "",
 		},
