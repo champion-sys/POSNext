@@ -8,6 +8,7 @@ import frappe
 from pos_next.services import sync_classifier as sc
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
+    EditConflictError,
     ShiftClosedError,
     SyncContractError,
     TotalMismatchError,
@@ -41,7 +42,7 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(classify(frappe.PermissionError("No access")).error_class, sc.BUSINESS)
 
     def test_what_only_a_person_can_settle_has_a_stable_code_and_no_retry(self):
-        for error in (CashierUnavailableError, ShiftClosedError):
+        for error in (CashierUnavailableError, EditConflictError, ShiftClosedError):
             result = classify(error("مغلقة"))
             self.assertEqual(result.error_class, sc.BUSINESS)
             self.assertEqual(result.error_code, error.__name__)

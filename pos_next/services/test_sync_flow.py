@@ -367,6 +367,84 @@ class TestRecordWithoutPayload(Flow):
         self.assertEqual(row.status, sync_inbox.REVIEW)
 
 
+class TestEditOfASaleOnTheServer(Flow):
+    def _edit(self):
+        return self._send(LATE_SALE, {"pos_profile": "Main", "edited_from": SALE})
+
+    def test_it_waits_for_a_manager_and_is_not_processed(self):
+        self._send(SALE, {"pos_profile": "Main"})
+
+        name = self._edit()
+
+        row = self._row(name)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "EditConflictError")
+        self.assertEqual(row.error_class, "business")
+        self.assertIn(SALE, row.error_message)
+        self.assertNotIn(name, sync_inbox._due_rows())
+        sync_inbox._notify_managers.assert_called_once()
+
+        create = Mock()
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": sync_inbox._Entity(create, Mock(return_value=None), ())}):
+            sync_inbox.process(name)
+        create.assert_not_called()
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+
+    def test_the_original_counts_whatever_became_of_it(self):
+        for status in ("Received", "Processing", "Needs Review", "Synced", "Resolved"):
+            self.inbox.rows.clear()
+            original = self._send(SALE, {"pos_profile": "Main"})
+            self._row(original)["status"] = status
+
+            self.assertEqual(self._row(self._edit()).status, sync_inbox.REVIEW, status)
+
+    def test_an_invoice_counts_without_a_record(self):
+        with patch.object(sync_inbox, "find_invoice_by_offline_id", return_value={"name": "SINV-1"}):
+            name = self._edit()
+
+        self.assertEqual(self._row(name).error_code, "EditConflictError")
+
+    def test_an_invoice_counts_even_if_its_record_was_voided(self):
+        self._row(self._send(SALE, {"pos_profile": "Main"}))["status"] = "Voided"
+
+        with patch.object(sync_inbox, "find_invoice_by_offline_id", return_value={"name": "SINV-1"}):
+            name = self._edit()
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+
+    def test_an_edit_of_a_voided_record_goes_ahead(self):
+        self._row(self._send(SALE, {"pos_profile": "Main"}))["status"] = "Voided"
+        self.assertEqual(self._row(self._edit()).status, "Received")
+
+    def test_an_edit_of_a_sale_that_never_arrived_goes_ahead(self):
+        self.assertEqual(self._row(self._edit()).status, "Received")
+
+    def test_a_sale_that_is_not_an_edit_goes_ahead(self):
+        name = self._send(LATE_SALE, {"pos_profile": "Main", "edited_from": None})
+        self.assertEqual(self._row(name).status, "Received")
+
+    def test_a_resend_of_the_edit_stays_where_it_is(self):
+        self._send(SALE, {"pos_profile": "Main"})
+        name = self._edit()
+
+        self.assertEqual(self._edit(), name)
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+
+    def test_a_manager_who_keeps_the_edit_can_post_it(self):
+        self._send(SALE, {"pos_profile": "Main"})
+        name = self._edit()
+        self._row(name)["status"] = "Received"
+
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
+        ):
+            process_invoice.return_value = {"name": "SINV-2", "grand_total": 0}
+            sync_inbox.process(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+
+
 class TestClosedShift(Flow):
     def _post(self, payload):
         name = self._send(SALE, {"pos_profile": "Main", **payload})

@@ -22,6 +22,7 @@ from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 from pos_next.services import sync_classifier, sync_entities
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
+    EditConflictError,
     ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
@@ -163,6 +164,28 @@ def _adopt_payload(name, fields):
     return adopted or row.payload_hash == fields["payload_hash"]
 
 
+def _holds_sale(offline_id):
+    """Whether a sale reached the server, as a record that stands or as an invoice."""
+    status = frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}, "status")
+    return bool(status and status != "Voided") or bool(find_invoice_by_offline_id(offline_id))
+
+
+def _get_edit_conflict(payload):
+    """Spot an edit of a sale that already reached the server.
+
+    A device offers an edit while it thinks the sale is unsent. If the push landed and only
+    its response was lost, the edit arrives under a new offline_id and both would post.
+    """
+    original = payload.get("edited_from")
+    if isinstance(original, str) and _holds_sale(original):
+        return EditConflictError(
+            _("This edits sale {0}, which the server already holds. A manager must decide which one stands.").format(
+                original
+            )
+        )
+    return None
+
+
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
     """Store one record and commit, before anything can fail on its contents.
 
@@ -200,6 +223,11 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
     except (frappe.DuplicateEntryError, frappe.UniqueValidationError):
         frappe.db.rollback()  # nosemgrep: another request stored it first
         return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}), False
+
+    # In this transaction, so no worker can see the row before it is held back
+    edit_conflict = _get_edit_conflict(item["payload"])
+    if edit_conflict:
+        _handle_failure(doc.name, 1, edit_conflict, None, None)
 
     frappe.db.commit()  # nosemgrep: the sale must survive anything that happens next
     return doc.name, False
