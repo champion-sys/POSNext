@@ -632,6 +632,9 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
  * Renders the single unified print format inside a local popup template layout view.
  */
 export function printInvoiceCustom(invoiceData) {
+	// The desktop app opens no new windows, and its printing needs none
+	if (PLATFORM === ELECTRON) return silentPrintInvoiceFromDoc(invoiceData)
+
 	const printWindow = window.open("", "_blank", "width=350,height=600")
 	if (!printWindow) {
 		log.error("Cannot open print window — popup blocked.")

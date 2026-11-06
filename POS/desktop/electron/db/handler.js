@@ -14,6 +14,7 @@ const READ_STATEMENT = /^\s*(SELECT|WITH)\b/i
  * @param {string} url - The URL of the frame that sent the request
  */
 function isAppPage(url) {
+	if (!URL.canParse(url)) return false
 	const { protocol, host } = new URL(url)
 	return protocol === "app:" && host === "pos"
 }
