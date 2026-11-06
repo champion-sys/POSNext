@@ -1,0 +1,118 @@
+.sync-center {
+	display: flex;
+	flex-direction: column;
+	gap: var(--margin-md);
+	width: 100%;
+	padding-block: var(--padding-md);
+}
+
+.sync-center-card {
+	padding: var(--padding-md);
+	background-color: var(--card-bg);
+	border: 1px solid var(--border-color);
+	border-radius: var(--border-radius-md);
+}
+
+.sync-center-message {
+	padding-block: 48px;
+	text-align: center;
+}
+
+.sync-center-title {
+	margin: 0 0 var(--margin-sm);
+	font-size: var(--text-base);
+	font-weight: 600;
+}
+
+.sync-center-count {
+	font-size: 24px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.sync-center-headline {
+	display: flex;
+	align-items: center;
+	gap: var(--margin-md);
+	width: 100%;
+	min-height: 64px;
+	padding: var(--padding-md);
+	border: 1px solid transparent;
+	border-radius: var(--border-radius-md);
+	font-size: var(--text-lg);
+	font-weight: 600;
+	text-align: start;
+}
+
+.sync-center-headline.is-review {
+	color: var(--text-on-red);
+	background-color: var(--bg-red);
+	border-color: currentColor;
+	cursor: pointer;
+}
+
+.sync-center-headline.is-clear {
+	color: var(--text-on-green);
+	background-color: var(--bg-green);
+}
+
+.sync-center-groups {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: var(--margin-md);
+}
+
+.sync-center-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: var(--margin-sm);
+}
+
+.sync-center-tile {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-height: 72px;
+	padding: var(--padding-sm);
+	color: var(--text-color);
+	background-color: var(--control-bg);
+	border: 1px solid transparent;
+	border-radius: var(--border-radius);
+	text-align: start;
+	cursor: pointer;
+}
+
+.sync-center-tile:hover,
+.sync-center-tile:focus-visible {
+	border-color: var(--border-color);
+}
+
+.sync-center-tile.is-empty .sync-center-count {
+	color: var(--text-muted);
+	font-weight: 400;
+}
+
+.sync-center-group-count {
+	font-size: var(--text-lg);
+	font-weight: 700;
+}
+
+.sync-center-cause {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
+	overflow-wrap: anywhere;
+}
+
+.sync-center-nowrap {
+	white-space: nowrap;
+}
+
+.sync-center-actions {
+	text-align: end;
+}
+
+.sync-center-actions .btn {
+	min-height: 36px;
+}

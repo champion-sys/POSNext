@@ -5,6 +5,9 @@
 
 import { ref, computed, onMounted, onUnmounted } from "vue"
 
+/** The dialog's title bar and margins, so a full dialog still fits the screen */
+const DIALOG_CHROME_HEIGHT = 208
+
 export function useResponsivePayment() {
 	// Viewport dimension tracking
 	const viewportWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1200)
@@ -47,8 +50,7 @@ export function useResponsivePayment() {
 			return "none"
 		}
 		// Desktop: use fixed pixel calculation
-		const availableHeight = height - 100
-		return `${Math.min(Math.max(500, availableHeight), height - 80)}px`
+		return `${Math.max(500, height - DIALOG_CHROME_HEIGHT)}px`
 	})
 
 	// Dynamic column heights based on viewport
@@ -59,12 +61,11 @@ export function useResponsivePayment() {
 			return "auto"
 		}
 		// Desktop: calculate based on available space
-		const availableHeight = height - 160 // Header + padding + action buttons
-		return `${Math.max(400, Math.min(availableHeight, height - 120))}px`
+		return `${Math.max(400, height - DIALOG_CHROME_HEIGHT)}px`
 	})
 
 	// Check if we're in compact mode (small screens)
-	const isCompactMode = computed(() => viewportHeight.value < 700 || viewportWidth.value < 1024)
+	const isCompactMode = computed(() => viewportHeight.value < 800 || viewportWidth.value < 1024)
 
 	// Check if we're on a very small mobile screen
 	const isSmallMobile = computed(() => viewportWidth.value < 360 || viewportHeight.value < 600)

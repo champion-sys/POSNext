@@ -10,7 +10,7 @@
 					@click="handleAllFilterClick"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 min-h-[44px] rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
@@ -27,7 +27,7 @@
 					@click="handleFilterClick(option.value)"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-3 py-3.5 min-h-[44px] rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-black text-white border-none'
 							: 'border-none hover:brightness-90 active:brightness-75',
@@ -118,7 +118,7 @@
 						type="text"
 						:placeholder="searchPlaceholder"
 						:class="[
-							'w-full text-[11px] h-[40px] sm:text-sm border-1 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-16 sm:pe-24 focus:outline-none transition-all rounded-none border-white',
+							'w-full text-[11px] h-11 sm:text-sm border-1 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-24 focus:outline-none transition-all rounded-none border-white',
 							autoAddEnabled
 								? 'border-blue-600 bg-blue-50 focus:border-blue-700'
 								: scannerEnabled
@@ -133,7 +133,7 @@
 							@click="toggleBarcodeScanner"
 							data-nav="search-bar"
 							:class="[
-								'w-[39px] h-[39px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
+								'w-11 h-11 p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
 								scannerEnabled
 									? 'bg-green-500 hover:bg-green-700 text-white border-green-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
@@ -149,7 +149,7 @@
 							@click="toggleAutoAdd"
 							data-nav="search-bar"
 							:class="[
-								'w-[39px] h-[39px] p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
+								'w-11 h-11 p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
 								autoAddEnabled
 									? 'bg-blue-500 hover:bg-blue-500 text-white border-blue-500 text-blue-500'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
@@ -164,12 +164,12 @@
 						</button>
 					</div>
 				</div>
-				<div class="flex items-center gap-0 border-r border-l border-gray-300 flex-shrink-0">
+				<div class="flex items-center gap-0 border-x border-gray-300 flex-shrink-0">
 					<button
 						@click="setViewMode('grid')"
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-11 h-11 flex justify-center items-center',
 							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('Grid View')"
@@ -183,7 +183,7 @@
 						@click="setViewMode('list')"
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-[40px] h-[40px] flex justify-center items-center',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-11 h-11 flex justify-center items-center',
 							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('List View')"
@@ -202,7 +202,7 @@
 						data-sort-button
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-1.5 h-[40px] w-[40px] rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
+							'p-1.5 sm:p-1.5 h-11 w-11 rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
 							sortBy
 								? 'bg-blue-50 border-blue-600 text-blue-700 shadow-none'
 								: 'bg-white border-black text-gray-800 hover:bg-gray-100 active:bg-gray-200'
@@ -235,7 +235,7 @@
 								<button
 									@click="handleSortToggle(null)"
 									:class="[
-										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group outline-none',
+										'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group outline-none',
 										!sortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
 										focusedSortIndex === 0 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
@@ -256,7 +256,7 @@
 									:key="option.field"
 									@click="handleSortToggle(option.field)"
 									:class="[
-										'w-full px-3 py-2 text-sm transition-colors flex items-center justify-between group outline-none',
+										'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group outline-none',
 										sortBy === option.field ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
 										focusedSortIndex === index + 1 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
@@ -489,7 +489,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -504,7 +504,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -521,7 +521,7 @@
 								@click="goToPage(page)"
 								data-nav="pagination"
 								:class="[
-									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
+									'min-w-[44px] min-h-[44px] px-1.5 sm:px-2.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
 										? 'bg-black text-white border-gray-300'
 										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -536,7 +536,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -551,7 +551,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -719,7 +719,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -734,7 +734,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -751,7 +751,7 @@
 								@click="goToPage(page)"
 								data-nav="pagination"
 								:class="[
-									'min-w-[28px] sm:min-w-[32px] px-1.5 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
+									'min-w-[44px] min-h-[44px] px-1.5 sm:px-2.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
 										? 'bg-black text-white border-black'
 										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -766,7 +766,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -781,7 +781,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 py-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'

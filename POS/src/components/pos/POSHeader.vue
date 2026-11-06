@@ -2,7 +2,7 @@
 	<div
 		class="bg-white border-b border-gray-300 sticky top-0 z-[200]"
 	>
-		<div class="flex py-0 h-[40px] items-stretch">
+		<div class="flex py-0 h-[44px] items-stretch">
 			<!-- Main Header Content -->
 			<div class="flex-1 flex justify-between items-stretch gap-0 pe-0">
 				<!-- Left Side: Brand Info -->
@@ -50,48 +50,15 @@
 
 				<!-- Right Side: Controls -->
 				<div class="flex items-stretch flex-shrink-0">
-					<!-- WiFi/Offline Status -->
-					<button
-						v-if="!disableOfflineMode"
-						@click="$emit('sync-click')"
-						:class="[
-							'px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center',
-							isSyncing ? 'animate-pulse' : ''
-						]"
-						:title="isOffline ? __('Offline ({0} pending)', [pendingInvoicesCount]) : __('Online - Click to sync')"
-						:aria-label="isOffline ? __('Offline mode active') : __('Online mode active')"
-					>
-						<svg
-							v-if="!isOffline"
-							class="w-4 h-4 sm:w-5 sm:h-5 text-green-600"
-							fill="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
-						</svg>
-						<svg
-							v-else
-							class="w-4 h-4 sm:w-5 sm:h-5 text-orange-600"
-							fill="none"
-							stroke="currentColor"
-							viewBox="0 0 24 24"
-						>
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414"/>
-						</svg>
-						<span
-							v-if="pendingInvoicesCount > 0"
-							class="absolute top-1.5 end-1.5 bg-orange-600 text-white text-[8px] font-bold rounded-none w-4 h-4 flex items-center justify-center border border-white"
-						>
-							{{ pendingInvoicesCount }}
-						</span>
-					</button>
+					<!-- Sales queue and connection -->
+					<SyncStatusIndicator v-if="!disableOfflineMode" />
 
 					<!-- Cache Status Indicator -->
 					<div class="relative h-full flex items-center">
 						<button
 							@click="showCacheTooltip = !showCacheTooltip"
 							@blur="handleBlur"
-							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 							:aria-label="getCacheAriaLabel()"
 						>
 							<svg
@@ -127,13 +94,11 @@
 						<div
 							v-if="showCacheTooltip"
 							@mousedown.prevent
-							class="absolute top-full mt-1.5 z-[999] w-[90vw] max-w-[240px] sm:max-w-[260px]"
-							:style="{ left: '50%', transform: 'translateX(-50%)' }"
+							class="absolute top-full end-0 mt-1.5 z-[999] w-[90vw] max-w-[240px] sm:max-w-[260px]"
 						>
 							<div class="bg-white text-gray-900 text-xs rounded-none border border-gray-300 shadow-md py-2 px-2.5 sm:px-3">
 								<!-- Arrow -->
-								<div class="absolute bottom-full mb-px left-1/2 -translate-x-1/2"
-								>
+								<div class="absolute bottom-full mb-px end-4">
 									<div class="border-[5px] sm:border-4 border-transparent border-b-gray-300"></div>
 								</div>
 
@@ -185,7 +150,7 @@
 										@click="handleClearCacheClick"
 										:disabled="isOffline"
 										:class="[
-											'w-full px-2 py-1.5 sm:py-2 rounded-none transition-colors font-bold text-[10px] sm:text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5',
+											'w-full min-h-[44px] px-2 py-1.5 sm:py-2 rounded-none transition-colors font-bold text-[10px] sm:text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5',
 											isOffline
 												? 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
 												: 'border border-red-600 text-red-600 hover:bg-red-600 hover:text-white bg-white active:scale-95'
@@ -207,7 +172,7 @@
 						<button
 							:title="silentPrintEnabled ? (qzConnected ? __('Silent Print: Connected') : __('Silent Print: Disconnected')) : __('Print Invoice')"
 							@click="$emit('printer-click')"
-							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 						>
 							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" :d="printerIcon" />
@@ -225,7 +190,7 @@
 						<button
 							@click="showQueueTooltip = !showQueueTooltip"
 							@blur="handleQueueBlur"
-							class="px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 							:title="__('Bluetooth Print Queue')"
 						>
 							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -247,12 +212,11 @@
 						<div
 							v-if="showQueueTooltip"
 							@mousedown.prevent
-							class="absolute top-full mt-1.5 z-[999] w-[90vw] max-w-[280px]"
-							:style="{ left: '50%', transform: 'translateX(-50%)' }"
+							class="absolute top-full end-0 mt-1.5 z-[999] w-[90vw] max-w-[280px]"
 						>
 							<div class="bg-white text-gray-900 text-xs rounded border border-gray-300 shadow-lg py-2.5 px-3 flex flex-col gap-2">
 								<!-- Arrow -->
-								<div class="absolute bottom-full mb-px left-1/2 -translate-x-1/2">
+								<div class="absolute bottom-full mb-px end-4">
 									<div class="border-[5px] border-transparent border-b-gray-300"></div>
 								</div>
 
@@ -276,7 +240,7 @@
 								</div>
 
 								<!-- Queue list -->
-								<div class="max-h-[160px] overflow-y-auto flex flex-col gap-1.5 pr-0.5 scrollbar-thin">
+								<div class="max-h-[160px] overflow-y-auto flex flex-col gap-1.5 pe-0.5 scrollbar-thin">
 									<div v-if="queueJobs.length === 0" class="text-center py-4 text-gray-400 italic">
 										{{ __('No jobs in queue') }}
 									</div>
@@ -306,10 +270,11 @@
 												<button
 													v-if="job.status === 'pending' || job.status === 'failed'"
 													@click="cancelJob(job.id)"
-													class="text-red-500 hover:text-red-700 font-bold p-0.5 rounded hover:bg-red-50 transition-colors"
+													class="w-11 h-11 -m-3 flex items-center justify-center text-red-500 hover:text-red-700 font-bold rounded hover:bg-red-50 transition-colors touch-manipulation"
 													:title="__('Cancel Job')"
+													:aria-label="__('Cancel Job')"
 												>
-													<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 														<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
 													</svg>
 												</button>
@@ -323,14 +288,14 @@
 									<button
 										@click="clearQueue"
 										:disabled="queueJobs.length === 0"
-										class="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider text-center text-gray-600 hover:text-red-600 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
+										class="flex-1 min-h-[44px] py-1 text-[10px] font-bold uppercase tracking-wider text-center text-gray-600 hover:text-red-600 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
 									>
 										{{ __('Clear All') }}
 									</button>
 									<button
 										@click="retryFailed"
 										:disabled="failedJobsCount === 0"
-										class="flex-1 py-1 text-[10px] font-bold uppercase tracking-wider text-center text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed rounded transition-colors"
+										class="flex-1 min-h-[44px] py-1 text-[10px] font-bold uppercase tracking-wider text-center text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed rounded transition-colors"
 									>
 										{{ __('Retry Failed') }}
 									</button>
@@ -343,7 +308,7 @@
 					<button
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
-						class="touch-manipulation px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center"
+						class="touch-manipulation min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
 					>
 						<svg :class="['w-3.5 h-3.5 sm:w-4 sm:h-4', isRefreshing ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -363,6 +328,7 @@
 <script setup>
 import StatusBadge from "@/components/common/StatusBadge.vue"
 import LanguageSwitcher from "@/components/common/LanguageSwitcher.vue"
+import SyncStatusIndicator from "@/components/pos/SyncStatusIndicator.vue"
 import { DEFAULT_LOCALE } from "@/utils/currency"
 import { ref, onMounted, onUnmounted, computed } from "vue"
 import { version } from "../../../package.json"
@@ -450,7 +416,6 @@ const showCacheTooltip = ref(false)
 const appVersion = version
 
 const emit = defineEmits([
-	"sync-click",
 	"printer-click",
 	"refresh-click",
 	"menu-click",
@@ -491,14 +456,6 @@ const props = defineProps({
 	isOffline: {
 		type: Boolean,
 		default: false,
-	},
-	isSyncing: {
-		type: Boolean,
-		default: false,
-	},
-	pendingInvoicesCount: {
-		type: Number,
-		default: 0,
 	},
 	isAnyDialogOpen: {
 		type: Boolean,

@@ -106,7 +106,7 @@
 								d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
 							/>
 						</svg>
-						<span>{{ __("Offline Invoices") }}</span>
+						<span>{{ __("Offline Queue") }}</span>
 						<span
 							class="ms-auto text-[10px] font-bold bg-orange-600 text-white px-1.5 py-0.5 rounded-none border border-orange-700"
 						>
@@ -214,8 +214,6 @@
 					:has-open-shift="shiftStore.hasOpenShift"
 					:profile-name="shiftStore.profileName"
 					:is-offline="offlineStore.isOffline"
-					:is-syncing="offlineStore.isSyncing"
-					:pending-invoices-count="offlineStore.pendingInvoicesCount"
 					:is-any-dialog-open="uiStore.isAnyDialogOpen"
 					:cache-syncing="itemStore.cacheSyncing"
 					:cache-stats="itemStore.cacheStats"
@@ -224,7 +222,6 @@
 					:silent-print-enabled="posSettingsStore.silentPrint"
 					:qz-connected="qzConnected"
 					:disable-offline-mode="posSettingsStore.disableOfflineMode"
-					@sync-click="handleSyncClick"
 					@printer-click="openHistoryDialog"
 					@refresh-click="handleRefresh"
 					@clear-cache="handleClearCache"
@@ -502,7 +499,7 @@
 			<div
 				v-else
 				class="flex-1 flex items-center justify-center bg-gray-50 p-6"
-				style="max-height: calc(100vh - var(--header-height, 40px))"
+				style="max-height: calc(100vh - var(--header-height, 44px))"
 			>
 				<div class="bg-white border border-gray-300 rounded-none p-8 text-center max-w-sm w-full mx-auto">
 					<div
@@ -1367,7 +1364,8 @@ watch(
 	() => shiftStore.profileName,
 	(newProfile) => {
 		if (newProfile) {
-			warehousesResource.reload();
+			// The resource's onError already logs a failure
+			warehousesResource.reload().catch(() => {});
 		}
 	},
 	{ immediate: true }
@@ -2227,7 +2225,7 @@ async function handleErrorRetry() {
 	} else if (uiStore.errorRetryAction === "sync") {
 		await offlineStore.loadPendingInvoices();
 		setTimeout(() => {
-			handleSyncClick();
+			uiStore.showOfflineInvoicesDialog = true;
 		}, 300);
 	}
 }
@@ -3052,16 +3050,6 @@ async function handleDeleteOfflineInvoice(invoiceId) {
 	} catch (error) {
 		log.error("Error deleting offline invoice:", error);
 	}
-}
-
-async function handleSyncClick() {
-	if (offlineStore.hasPendingInvoices) {
-		await offlineStore.loadPendingInvoices();
-		uiStore.showOfflineInvoicesDialog = true;
-		return;
-	}
-
-	showSuccess(__("No pending invoices to sync"));
 }
 
 async function handleSyncAll() {

@@ -30,7 +30,7 @@
 								type="date"
 								v-model="deliveryDate"
 								:min="today"
-								class="flex-1 h-8 border border-gray-300 rounded-none px-2 text-sm focus:outline-none focus:border-black bg-white"
+								class="flex-1 h-11 border border-gray-300 rounded-none px-2 text-sm focus:outline-none focus:border-black bg-white"
 							/>
 						</div>
 					</div>
@@ -54,7 +54,7 @@
 								</div>
 								<button
 									@click="clearSalesPersons"
-									class="text-gray-500 hover:text-black p-1 rounded-none hover:bg-gray-200"
+									class="w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 touch-manipulation"
 									:title="__('Change sales person')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,7 +73,7 @@
 									<!-- Refresh: re-fetch sales persons from server -->
 									<button
 										@click.prevent="refreshSalesPersons"
-										class="ms-auto p-0.5 text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors"
+										class="ms-auto w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
 										:class="{ 'animate-spin': loadingSalesPersons }"
 										:title="__('Refresh sales persons')"
 										:disabled="loadingSalesPersons"
@@ -90,7 +90,7 @@
 										:placeholder="loadingSalesPersons ? __('Loading...') : __('Select sales person...')"
 										@focus="onSalesPersonFocus"
 										@blur="handleSalesPersonBlur"
-										class="w-full px-3 py-2 ps-3 pe-8 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
+										class="w-full h-11 px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
 										:class="!isSalesPersonValid ? 'border-red-300' : 'border-gray-300'"
 									/>
 									<svg
@@ -109,7 +109,7 @@
 											v-for="person in availableSalesPersons"
 											:key="person.name"
 											@mousedown.prevent="addSalesPerson(person)"
-											class="flex items-center justify-between p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-xs"
+											class="flex items-center justify-between min-h-[44px] p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
 										>
 											<span class="font-medium text-gray-900">{{ person.sales_person_name || person.name }}</span>
 											<span v-if="person.commission_rate" class="text-gray-500 text-[10px]">
@@ -150,7 +150,7 @@
 									<!-- Refresh: re-fetch sales persons from server -->
 									<button
 										@click.prevent="refreshSalesPersons"
-										class="ms-1 p-0.5 text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors"
+										class="ms-1 w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
 										:class="{ 'animate-spin': loadingSalesPersons }"
 										:title="__('Refresh sales persons')"
 										:disabled="loadingSalesPersons"
@@ -175,7 +175,7 @@
 										: __('Select sales person...'))"
 									@focus="onSalesPersonFocus"
 									@blur="handleSalesPersonBlur"
-									class="w-full px-3 py-2 ps-3 pe-8 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
+									class="w-full h-11 px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
 									:class="!isSalesPersonValid ? 'border-red-300' : 'border-gray-300'"
 								/>
 								<svg
@@ -195,7 +195,7 @@
 										v-for="person in availableSalesPersons"
 										:key="person.name"
 										@mousedown.prevent="addSalesPerson(person)"
-										class="flex items-center justify-between p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-xs"
+										class="flex items-center justify-between min-h-[44px] p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
 									>
 										<span class="font-medium text-gray-900">{{ person.sales_person_name || person.name }}</span>
 										<span v-if="person.commission_rate" class="text-gray-500 text-[10px]">
@@ -228,7 +228,7 @@
 								<div
 									v-for="person in selectedSalesPersons"
 									:key="person.sales_person"
-									class="inline-flex items-center gap-1 px-2 py-1 bg-gray-200 border border-gray-300 rounded-none text-xs"
+									class="inline-flex items-center gap-1 ps-2 min-h-[44px] bg-gray-200 border border-gray-300 rounded-none text-xs"
 								>
 									<span class="font-medium text-gray-900 truncate max-w-[120px]">
 										{{ person.sales_person_name || person.sales_person }}
@@ -238,7 +238,8 @@
 									</span>
 									<button
 										@click="removeSalesPerson(person.sales_person)"
-										class="text-gray-500 hover:text-black"
+										class="w-11 h-11 flex items-center justify-center text-gray-500 hover:text-black touch-manipulation"
+										:aria-label="__('Remove')"
 									>
 										<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
 											<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -250,7 +251,7 @@
 								<button
 									v-if="selectedSalesPersons.length > 1"
 									@click="clearSalesPersons"
-									class="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-700"
+									class="inline-flex items-center gap-1 px-2 min-h-[44px] text-xs text-red-600 hover:text-red-700 touch-manipulation"
 								>
 									<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -303,7 +304,7 @@
 									type="button"
 									v-if="settingsStore.showOffers"
 									@click="emit('show-offers')"
-									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-none bg-green-50 border border-black hover:bg-green-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-[44px] rounded-none bg-green-50 border border-black hover:bg-green-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('View all available offers')"
 								>
 									<svg
@@ -331,7 +332,7 @@
 									type="button"
 									v-if="settingsStore.showCoupon"
 									@click="emit('show-coupon')"
-									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-none bg-purple-50 border border-black hover:bg-purple-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-[44px] rounded-none bg-purple-50 border border-black hover:bg-purple-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('Apply coupon or gift card')"
 								>
 									<svg
@@ -393,43 +394,14 @@
 							{{ __('No items') }}
 						</div>
 
-						<div v-if="paymentEntries.length > 0" :class="isSmallMobile ? 'mb-1 mt-2' : 'mb-1.5 mt-3 lg:mb-3'">
-						<div :class="['text-start px-2 font-semibold text-gray-500 uppercase tracking-wide flex justify-between', isSmallMobile ? 'text-[10px] mb-1' : 'text-xs mb-1.5']">
-							<span>{{ __('Applied Payments') }}</span>
-						</div>
-						<div class="space-y-1.5 overflow-y-auto max-h-32 pr-1">
-							<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white p-1.5 lg:p-2 rounded-none border border-gray-300">
-								<div class="text-xs lg:text-sm font-medium text-gray-700 flex items-center gap-1.5 truncate">
-									<span class="truncate">{{ __(entry.mode_of_payment) }}</span>
-								</div>
-								<div class="flex items-center gap-1.5 shrink-0">
-									<span class="text-xs text-gray-500">{{ currencySymbol }}</span>
-									<input
-										type="number"
-										v-model.number="entry.amount"
-										min="0"
-										step="0.01"
-										class="w-20 lg:w-24 px-1.5 py-1 text-xs lg:text-sm font-semibold text-right border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
-										@change="handlePaymentEntryChange(entry)"
-										@focus="$event.target.select()"
-									/>
-									<button @click="removePaymentEntry(index)" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded-none transition-colors" :title="__('Remove')">
-										<svg class="w-4 h-4 lg:w-4 lg:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-										</svg>
-									</button>
-								</div>
-							</div>
-						</div>
-					</div>
 
 						<!-- Remarks Breakdown -->
 						<div class="border-t border-gray-200 bg-white px-3 py-2">
-							<label class="text-xs font-bold uppercase tracking-wider text-gray-600 mb-1 block">{{ __('Remarks') }}</label>
 							<textarea
 								v-model="remarks"
 								rows="2"
-								class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
+								:aria-label="__('Remarks')"
+								class="w-full min-h-[44px] px-2 py-1.5 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
 								:placeholder="__('Add invoice remarks here')"
 							></textarea>
 						</div>
@@ -456,7 +428,7 @@
 										<button
 											@click="decrementDiscount"
 											:disabled="localAdditionalDiscount <= 0"
-											class="h-9 w-9 flex items-center justify-center text-orange-600 hover:bg-orange-100 disabled:text-gray-300 disabled:hover:bg-transparent transition-colors flex-shrink-0 rounded-none"
+											class="h-11 w-11 flex items-center justify-center text-orange-600 hover:bg-orange-100 disabled:text-gray-300 disabled:hover:bg-transparent transition-colors flex-shrink-0 rounded-none touch-manipulation"
 										>
 											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
@@ -471,12 +443,12 @@
 											min="0"
 											:max="additionalDiscountType === 'percentage' ? 100 : subtotal"
 											step="1"
-											class="flex-1 h-9 px-1 text-sm font-semibold text-center bg-transparent border-none focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+											class="flex-1 min-w-0 h-11 px-1 text-sm font-semibold text-center bg-transparent border-none focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 										/>
 										<!-- Increment Button -->
 										<button
 											@click="incrementDiscount"
-											class="h-9 w-9 flex items-center justify-center text-orange-600 hover:bg-orange-100 transition-colors flex-shrink-0 rounded-none"
+											class="h-11 w-11 flex items-center justify-center text-orange-600 hover:bg-orange-100 transition-colors flex-shrink-0 rounded-none touch-manipulation"
 										>
 											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -487,7 +459,7 @@
 									<button
 										@click="additionalDiscountType = 'percentage'; handleAdditionalDiscountTypeChange()"
 										:class="[
-											'h-9 rounded-none text-sm font-bold transition-colors',
+											'h-11 rounded-none text-sm font-bold transition-colors touch-manipulation',
 											additionalDiscountType === 'percentage'
 												? 'bg-black text-white'
 												: 'bg-white text-orange-600 border border-orange-400 hover:bg-orange-100'
@@ -499,7 +471,7 @@
 									<button
 										@click="additionalDiscountType = 'amount'; handleAdditionalDiscountTypeChange()"
 										:class="[
-											'h-9 rounded-none text-sm font-bold transition-colors',
+											'h-11 rounded-none text-sm font-bold transition-colors touch-manipulation',
 											additionalDiscountType === 'amount'
 												? 'bg-black text-white'
 												: 'bg-white text-orange-600 border border-orange-400 hover:bg-orange-100'
@@ -533,7 +505,7 @@
 
 						<!-- Payment Status - Two Equal Halves -->
 						<div class="border-t border-gray-200">
-							<div class="grid grid-cols-2 divide-x divide-gray-200">
+							<div class="grid grid-cols-2 divide-x rtl:divide-x-reverse divide-gray-200">
 								<!-- Paid (Left Half) -->
 								<div :class="['bg-blue-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
 									<div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{{ __('Paid') }}</div>
@@ -594,7 +566,7 @@
 						'lg:col-span-3 bg-gray-50 rounded-none border border-gray-300 flex flex-col overflow-hidden',
 						isSmallMobile ? 'p-0' : 'p-0'
 					]"
-					:style="isMobileView ? {} : { minHeight: rightColumnMinHeight }"
+					:style="isMobileView ? {} : { minHeight: rightColumnMinHeight, maxHeight: dialogContentMaxHeight }"
 				>
 					<!-- Scrollable top section: payment methods + quick amounts + numpad -->
 					<div :class="['flex-1 overflow-y-auto', isSmallMobile ? 'p-1.5' : 'p-2 lg:p-3']">
@@ -606,7 +578,7 @@
 							<button
 								v-if="paymentEntries.length > 0"
 								@click="clearAll"
-								:class="['text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none border border-transparent transition-colors', isSmallMobile ? 'p-1' : 'p-1.5']"
+								:class="['flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none border border-transparent transition-colors touch-manipulation', isSmallMobile ? 'p-1' : 'w-11 h-11']"
 								:title="__('Clear all payments')"
 							>
 								<svg :class="isSmallMobile ? 'w-4 h-4' : 'w-5 h-5'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -636,7 +608,7 @@
 								:title="isOnlineOnlyMethod(method) ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold select-none touch-none',
-									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-2.5 lg:px-4 h-8 text-xs lg:h-11 lg:text-sm',
+									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-11 min-w-[44px] text-sm',
 									lastSelectedMethod?.mode_of_payment === method.mode_of_payment
 										? 'border-black bg-black text-white'
 										: isWalletPaymentMethod(method.mode_of_payment) && availableWalletBalance <= 0
@@ -644,7 +616,7 @@
 											: 'border-gray-300 bg-white hover:bg-gray-50 text-gray-900'
 								]"
 							>
-								<span class="truncate max-w-[80px] lg:max-w-none">{{ __(method.mode_of_payment) }}</span>
+								<span class="truncate max-w-[160px] lg:max-w-none">{{ __(method.mode_of_payment) }}</span>
 								<!-- Wallet Balance Badge -->
 								<span v-if="isWalletPaymentMethod(method.mode_of_payment) && walletInfo.wallet_enabled"
 									:class="['font-bold rounded-none', isSmallMobile ? 'text-[8px] px-1 py-0.5' : 'text-[10px] px-1.5 py-0.5', lastSelectedMethod?.mode_of_payment === method.mode_of_payment ? 'text-black bg-white' : 'text-gray-700 bg-gray-200']">
@@ -664,7 +636,7 @@
 								:title="isOffline ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold',
-									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-2.5 lg:px-4 h-8 text-xs lg:h-11 lg:text-sm',
+									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-11 min-w-[44px] text-sm',
 									isOffline || remainingAmount === 0 || remainingAvailableCredit === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
 									getMethodTotal('Customer Credit') > 0
 										? 'border-black bg-black text-white'
@@ -695,6 +667,35 @@
 								</span>
 							</div>
 						</div>
+
+						<!-- Applied Payments -->
+						<div v-if="paymentEntries.length > 0" :class="isSmallMobile ? 'mt-1' : 'mt-2'">
+							<div :class="['text-start font-semibold text-gray-500 uppercase tracking-wide', isSmallMobile ? 'text-[10px] mb-0.5' : 'text-xs mb-1']">
+								{{ __('Applied Payments') }}
+							</div>
+							<div class="flex flex-col gap-1 overflow-y-auto max-h-[92px]">
+								<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white ps-2 rounded-none border border-gray-300">
+									<span class="text-sm font-medium text-gray-700 truncate">{{ __(entry.mode_of_payment) }}</span>
+									<div class="flex items-center gap-1.5 shrink-0">
+										<span class="text-xs text-gray-500">{{ currencySymbol }}</span>
+										<input
+											type="number"
+											v-model.number="entry.amount"
+											min="0"
+											step="0.01"
+											class="w-24 h-11 px-1.5 text-sm font-semibold text-end border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
+											@change="handlePaymentEntryChange(entry)"
+											@focus="$event.target.select()"
+										/>
+										<button @click="removePaymentEntry(index)" class="w-11 h-11 flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none transition-colors touch-manipulation" :title="__('Remove')" :aria-label="__('Remove')">
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+											</svg>
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 
 					<!-- Quick Amounts Area (Desktop) - Consistent layout for all payment methods -->
@@ -713,7 +714,7 @@
 								:disabled="isQuickAmountDisabled(amount)"
 								:class="[
 									'font-bold rounded-none border transition-all',
-									isCompactMode ? 'px-2 py-2 text-sm' : 'px-2 py-2 text-sm',
+									'px-2 min-h-[44px] text-sm touch-manipulation',
 									isQuickAmountDisabled(amount)
 										? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 										: 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900 active:bg-gray-200'
@@ -740,7 +741,7 @@
 									:disabled="isQuickAmountDisabled(amount)"
 									:class="[
 										'font-bold rounded-none border transition-colors',
-										isSmallMobile ? 'py-1 text-[10px]' : 'py-1.5 text-xs',
+										isSmallMobile ? 'py-1 text-[10px]' : 'min-h-[44px] text-sm touch-manipulation',
 										isQuickAmountDisabled(amount)
 											? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 											: 'bg-white border-gray-300 text-gray-900 active:bg-gray-100'
@@ -768,7 +769,7 @@
 										:disabled="isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)"
 										:class="[
 											'w-full border rounded-none focus:outline-none font-semibold focus:border-black',
-											isSmallMobile ? 'h-7 ps-5 pe-1.5 text-xs' : 'h-8 ps-6 pe-2 text-sm',
+											isSmallMobile ? 'h-7 ps-5 pe-1.5 text-xs' : 'h-11 ps-6 pe-2 text-sm',
 											isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)
 												? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 												: 'bg-white border-gray-300 focus:border-black'
@@ -780,7 +781,7 @@
 									:disabled="(isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)) || !mobileCustomAmount || mobileCustomAmount <= 0"
 									:class="[
 										'font-semibold rounded-none border border-black transition-all flex-shrink-0',
-										isSmallMobile ? 'h-7 px-2 text-[10px]' : 'h-8 px-3 text-xs',
+										isSmallMobile ? 'h-7 px-2 text-[10px]' : 'h-11 px-4 text-sm touch-manipulation',
 										(isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)) || !mobileCustomAmount || mobileCustomAmount <= 0
 											? 'bg-gray-100 border-gray-200 text-gray-400'
 											: 'bg-black text-white active:bg-gray-900'
@@ -1066,13 +1067,13 @@
 				<div class="flex gap-2.5 justify-end">
 					<button
 						@click="resolveOverpayConfirm(false)"
-						class="px-4 py-1.5 rounded-none border border-black text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors"
+						class="px-4 min-h-[44px] rounded-none border border-black text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
 					>
 						{{ __("Cancel") }}
 					</button>
 					<button
 						@click="resolveOverpayConfirm(true)"
-						class="px-4 py-1.5 rounded-none border border-black text-sm font-semibold text-white bg-black hover:bg-gray-900 active:bg-black transition-colors"
+						class="px-4 min-h-[44px] rounded-none border border-black text-sm font-semibold text-white bg-black hover:bg-gray-900 active:bg-black transition-colors touch-manipulation"
 					>
 						{{ __("Continue") }}
 					</button>

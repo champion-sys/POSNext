@@ -39,6 +39,12 @@ body {
 	z-index: 500 !important;
 }
 
+/* frappe-ui draws the dialog close button at 28px, too small to tap reliably */
+.dialog-content div:has(> header) + button {
+	min-width: 44px;
+	min-height: 44px;
+}
+
 /* Mobile touch optimizations - removes 300ms tap delay and improves scrolling */
 .touch-manipulation {
 	touch-action: manipulation;

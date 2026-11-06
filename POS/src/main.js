@@ -224,7 +224,8 @@ async function initializeApp() {
 		if (isNative && !getCashierGrant()) return sessionUser()
 
 		try {
-			if (!userResource.loading) userResource.fetch()
+			// The outcome is read from the promise below
+			if (!userResource.loading) userResource.fetch().catch(() => {})
 			await userResource.promise
 			return sessionUser()
 		} catch (error) {

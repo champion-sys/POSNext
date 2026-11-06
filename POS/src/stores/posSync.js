@@ -51,6 +51,7 @@ import { SYNC_PERIODIC, formatLocalPosting, sumQueuedStock } from "@/utils/offli
 import { offlineState } from "@/utils/offline/offlineState"
 import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { isWaitingToSend, needsAttention } from "@/utils/syncQueue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { useStockStore } from "@/stores/stock"
@@ -69,6 +70,7 @@ const STARTUP_SYNC_DELAY_MS = 5000
 const PULL_INTERVAL_MS = 15 * 60 * 1000
 
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
+const LAST_SYNC_KEY = "pos_next_last_invoice_sync"
 
 const COUPONS_CACHE_PREFIX = "offline_coupons_"
 const RETURN_DOCUMENTS_CACHE_PREFIX = "offline_return_documents_"
@@ -93,6 +95,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/** List of pending invoices for display */
 	const pendingInvoicesList = ref([])
+
+	/** When a sale last reached the server from this device */
+	const lastSyncedAt = ref(Number(localStorage.getItem(LAST_SYNC_KEY)) || null)
 
 	let isListeningForResults = false
 	let lastAutoSyncAt = Date.now()
@@ -139,6 +144,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/** Whether there are any pending invoices to sync */
 	const hasPendingInvoices = computed(() => pendingInvoicesCount.value > 0)
 
+	/** Sales that exist only on this device, on their way to the server */
+	const queuedCount = computed(() => pendingInvoicesList.value.filter(isWaitingToSend).length)
+
+	/** Invoices that will not clear until a person looks at them */
+	const reviewCount = computed(() => pendingInvoicesList.value.filter(needsAttention).length)
+
 	// =========================================================================
 	// INTERNAL HELPERS
 	// =========================================================================
@@ -156,11 +167,24 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
-	 * Hold stock for queued sales, so the same units cannot be sold twice
+	 * Keep the rows current and hold stock for queued sales, so the same units
+	 * cannot be sold twice
 	 */
 	async function refreshQueuedStock() {
 		const stockStore = useStockStore()
-		stockStore.setQueued(sumQueuedStock(await getPending(), stockStore.warehouse))
+		const rows = await getPending()
+		pendingInvoicesList.value = rows
+		stockStore.setQueued(sumQueuedStock(rows, stockStore.warehouse))
+	}
+
+	/** A sale the server answered for has left the device, whatever came of it */
+	function countUnsent() {
+		return pendingInvoicesList.value.filter((row) => !row.server_status).length
+	}
+
+	function markSynced() {
+		lastSyncedAt.value = Date.now()
+		localStorage.setItem(LAST_SYNC_KEY, String(lastSyncedAt.value))
 	}
 
 	/**
@@ -259,9 +283,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		try {
 			const stockStore = useStockStore()
 			const soldCodes = Array.from(stockStore.queued.keys())
+			const unsentBefore = countUnsent()
 			const result = await syncOfflineInvoices(options)
 			isWaitingForServer = result.waiting > 0
 			await updatePendingCount()
+
+			if (result.success > 0 || countUnsent() < unsentBefore) markSynced()
 
 			// The server's numbers now include these sales
 			if (result.success > 0 && soldCodes.length > 0) {
@@ -513,10 +540,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		try {
 			await deletePending(invoiceId)
 			await loadPendingInvoices()
-			showSuccess(__("Offline invoice deleted successfully"))
+			showSuccess(__("Removed from the queue"))
 		} catch (error) {
 			log.error('Failed to delete offline invoice', error)
-			showError(error.message || __("Failed to delete offline invoice"))
+			showError(error.message || __("Could not remove it from the queue"))
 			throw error
 		}
 	}
@@ -743,9 +770,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		pendingInvoicesCount,
 		isSyncing,
 		pendingInvoicesList,
+		lastSyncedAt,
 
 		// Computed
 		hasPendingInvoices,
+		queuedCount,
+		reviewCount,
 
 		// Actions
 		saveInvoiceOffline,
