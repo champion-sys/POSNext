@@ -36,6 +36,9 @@ const SYNC_CONFIG = {
 
 const DEVICE_ID_KEY = "pos_next_device_id"
 
+// In memory on purpose: a crash or a reload frees a held row, so it cannot get stuck
+const heldFromSync = new Set()
+
 // ============================================================================
 // SERVER CONNECTIVITY
 // ============================================================================
@@ -110,6 +113,25 @@ export const getOfflineInvoiceByOfflineId = async (offlineId) => {
 		log.error("Failed to look up offline invoice", { offlineId, error })
 		return null
 	}
+}
+
+/**
+ * Keep a queued sale from being sent, for as long as it is in the cart for editing.
+ * This tab only: a sync running in another tab does not see it.
+ * @param {string} offlineId
+ * @returns {boolean} False when it was already held
+ */
+export const holdFromSync = (offlineId) => {
+	if (heldFromSync.has(offlineId)) return false
+	heldFromSync.add(offlineId)
+	return true
+}
+
+/**
+ * @param {string} offlineId
+ */
+export const releaseFromSync = (offlineId) => {
+	heldFromSync.delete(offlineId)
 }
 
 /**
@@ -300,7 +322,10 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 		// A manual sync does not wait for a failed invoice's backoff
 		const now = Date.now()
 		const unsent = pendingInvoices.filter(
-			(row) => !row.server_status && (force || (row.next_attempt_at || 0) <= now),
+			(row) =>
+				!row.server_status &&
+				!heldFromSync.has(row.offline_id) &&
+				(force || (row.next_attempt_at || 0) <= now),
 		)
 
 		for (let i = 0; i < unsent.length; i += SYNC_CONFIG.BATCH_SIZE) {

@@ -196,6 +196,58 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect((await store.getOfflineInvoices()).map((row) => row.offline_id)).toEqual([offline_id])
 		})
 
+		describe("a sale the server already holds", () => {
+			async function sendToServer() {
+				const original = await store.saveOfflineInvoice(invoice())
+				await store.updateQueuedInvoice(original.id, getQueueUpdateForResult({ status: "received" }))
+				return original
+			}
+
+			it("is not retired by an edit, and keeps holding its stock", async () => {
+				const original = await sendToServer()
+
+				const edit = await store.saveOfflineInvoice(invoice({ customer: "EDITED" }), { supersedesId: original.id })
+
+				const rows = await store.getOfflineInvoices()
+				expect(rows.map((row) => row.offline_id)).toEqual([original.offline_id, edit.offline_id])
+				expect(sumQueuedStock(rows).get("A")).toBe(48)
+
+				const kept = await store.getQueuedInvoice(original.offline_id)
+				expect(kept.superseded).toBeFalsy()
+				expect(kept.replaced_by ?? null).toBeNull()
+				expect(kept.server_status).toBe("received")
+			})
+
+			it("is not retired by an online checkout", async () => {
+				const { id, offline_id } = await sendToServer()
+
+				expect(await store.supersedeOfflineInvoice(id, "SINV-9")).toEqual({ success: true })
+
+				expect(await store.getOfflineInvoiceCount()).toBe(1)
+				expect((await store.getQueuedInvoice(offline_id)).superseded).toBeFalsy()
+			})
+
+			it("is not retired once it has finished", async () => {
+				const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+				await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "synced", invoice: "SINV-1" }))
+
+				await store.supersedeOfflineInvoice(id, "SINV-9")
+
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.superseded).toBeFalsy()
+				expect(row.server_invoice).toBe("SINV-1")
+			})
+		})
+
+		it("keeps who replaced a sale when it is named as replaced again", async () => {
+			const original = await store.saveOfflineInvoice(invoice())
+			const edit = await store.saveOfflineInvoice(invoice(), { supersedesId: original.id })
+
+			await store.supersedeOfflineInvoice(original.id, "SINV-9")
+
+			expect((await store.getQueuedInvoice(original.offline_id)).replaced_by).toBe(edit.offline_id)
+		})
+
 		it("hides a sale replaced by an online checkout", async () => {
 			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
 
@@ -959,6 +1011,36 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect(row.server_status).toBe("needs_review")
 			expect(row.sync_failed).toBe(true)
 			expect(row.error).toBe("No stock")
+		})
+
+		it("leaves a sale being edited in the queue until it is released", async () => {
+			const { holdFromSync, releaseFromSync } = await import("@/utils/offline/sync")
+			const held = await store.saveOfflineInvoice(invoice())
+			const other = await store.saveOfflineInvoice(invoice())
+			answers([])
+
+			expect(holdFromSync(held.offline_id)).toBe(true)
+			await syncOfflineInvoices({ force: true })
+
+			const [, { items }] = callServer.mock.calls.find(([method]) => method.endsWith("push"))
+			expect(items.map((item) => item.offline_id)).toEqual([other.offline_id])
+
+			callServer.mockClear()
+			releaseFromSync(held.offline_id)
+			await syncOfflineInvoices({ force: true })
+
+			const [, again] = callServer.mock.calls.find(([method]) => method.endsWith("push"))
+			expect(again.items.map((item) => item.offline_id)).toContain(held.offline_id)
+		})
+
+		it("will not hold a sale twice, so one edit cannot release another's hold", async () => {
+			const { holdFromSync, releaseFromSync } = await import("@/utils/offline/sync")
+
+			expect(holdFromSync("a")).toBe(true)
+			expect(holdFromSync("a")).toBe(false)
+
+			releaseFromSync("a")
+			expect(holdFromSync("a")).toBe(true)
 		})
 
 		it("finds a queued invoice by its offline id", async () => {

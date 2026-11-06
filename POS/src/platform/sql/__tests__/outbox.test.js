@@ -166,6 +166,7 @@ describe("outbox", () => {
 		await outbox.enqueueSale(sale("b", 1, { supersedes: "a" }))
 
 		expect(await outbox.countsByState()).toEqual({ pending: 1, received: 1 })
+		expect(await outbox.availableStock("A", "W1")).toBe(64)
 	})
 
 	it("sends interrupted sales again after a crash", async () => {
