@@ -86,6 +86,15 @@ function describe(error) {
 			return __(
 				"Cannot reach the server. Check the address and the connection.",
 			)
+		case "unsent_sales":
+			return __(
+				"This device still has sales waiting to sync with {0}. Enroll it with that server again so they can finish, then move it to the new one.",
+				[getServerUrl() || __("its previous server")],
+			)
+		case "local_data":
+			return __(
+				"Could not clear the previous server's data from this device. Try again.",
+			)
 		default:
 			return error.message || __("Could not enroll this device.")
 	}
@@ -97,8 +106,13 @@ async function submit() {
 	loading.value = true
 	errorMessage.value = ""
 	try {
+		const previousServer = getServerUrl()
 		await enrollDevice({ serverUrl: form.serverUrl, code: form.code })
-		router.replace({ name: SIGN_IN_ROUTE })
+
+		// This run still holds the old server's items and its realtime connection. The root,
+		// because the desktop build's relative asset paths only resolve from there.
+		if (previousServer && previousServer !== getServerUrl()) window.location.assign("/")
+		else router.replace({ name: SIGN_IN_ROUTE })
 	} catch (error) {
 		errorMessage.value = describe(error)
 	} finally {
