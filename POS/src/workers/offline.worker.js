@@ -21,7 +21,7 @@
 // chunk loaded on demand here cannot be served from the cache on an offline start.
 import Dexie from 'dexie'
 import { logger } from '../utils/logger'
-import { ENTITY_INVOICE, getInvoiceDependencies } from '../utils/offline/entities'
+import { ENTITY_INVOICE, getInvoiceDependencies } from "../utils/offline/entities"
 import { generateOfflineId } from '../utils/offline/uuid'
 
 const log = logger.create('OfflineWorker')

@@ -405,7 +405,7 @@ const createListResource = (doctype, onSuccess) =>
 
 /** The lists come from the server, so the last ones seen fill the form offline */
 const saveFormOptions = () =>
-	setSetting(FORM_OPTIONS_KEY, { customerGroups: customerGroups.value, territories: territories.value })
+	setSetting(FORM_OPTIONS_KEY, { customerGroups: [...customerGroups.value], territories: [...territories.value] })
 
 const customerGroupsResource = createListResource("Customer Group", (names) => {
 	customerGroups.value = names

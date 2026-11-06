@@ -343,7 +343,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		warnIfStorageNotPersistent()
 
 		if (usePOSSettingsStore().syncMode !== SYNC_PERIODIC) {
-			autoSync().catch((error) => log.error('Sync after queueing failed', error))
+			autoSync().catch((error) => log.error("Sync after queueing failed", error))
 		}
 		return result
 	}
@@ -596,7 +596,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			}
 
 			refreshReturnDocuments(currentProfile.name).catch((error) => {
-				log.error('Failed to load returnable invoices', error)
+				log.error("Failed to load returnable invoices", error)
 			})
 
 			try {
@@ -605,7 +605,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 				})
 				await setSetting(`${COUPONS_CACHE_PREFIX}${currentProfile.name}`, coupons || [])
 			} catch (error) {
-				log.error('Failed to load coupons', error)
+				log.error("Failed to load coupons", error)
 			}
 
 			// Preload invoice history and unpaid invoices in parallel for faster startup

@@ -362,7 +362,7 @@ function getRowTitle(row) {
 		data.customer_name ||
 		data.pos_opening_shift ||
 		data.customer ||
-		__('Walk-in Customer')
+		__("Walk-in Customer")
 	)
 }
 

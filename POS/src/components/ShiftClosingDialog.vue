@@ -606,7 +606,7 @@ onBeforeUnmount(() => {
 })
 
 async function loadOfflineDraft() {
-	errorMessage.value = ''
+	errorMessage.value = ""
 
 	const openingShift = shiftState.value.pos_opening_shift
 	const paymentMethods = await offlineWorker.getCachedPaymentMethods(openingShift.pos_profile)
@@ -761,7 +761,7 @@ const isInEntryMode = computed(() =>
 
 const reconciliationMessage = computed(() => {
 	if (isOfflineDraft.value) {
-		return __('Enter what you counted. The server works out the totals once every invoice has arrived.')
+		return __("Enter what you counted. The server works out the totals once every invoice has arrived.")
 	}
 	if (showSuccessReport.value && hideExpectedAmount.value) {
 		return 'Shift closed successfully'

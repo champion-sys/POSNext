@@ -324,7 +324,7 @@ async function validateOnline() {
 	const result = couponResource.data?.message || couponResource.data
 
 	// Handle if result is the actual response object
-	return typeof result === 'object' && result.valid !== undefined ? result : couponResource.data
+	return typeof result === "object" && result.valid !== undefined ? result : couponResource.data
 }
 
 async function applyCoupon() {
