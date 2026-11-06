@@ -105,3 +105,13 @@ export function serverUrl(path) {
 	const base = getServerUrl() || (typeof window !== "undefined" ? window.location.origin : "")
 	return `${base}${path.startsWith("/") ? "" : "/"}${path}`
 }
+
+/**
+ * Where a file stored on the server loads from. Inside an app a path like /files/a.png
+ * would point at the app itself, not at the server.
+ * @param {string} [path]
+ * @returns {string|undefined}
+ */
+export function imageUrl(path) {
+	return path?.startsWith("/") ? serverUrl(path) : path
+}

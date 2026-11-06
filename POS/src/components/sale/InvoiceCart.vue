@@ -800,7 +800,7 @@
 					>
 						<img
 							v-if="item.image"
-							:src="item.image"
+							:src="imageUrl(item.image)"
 							:alt="item.item_name"
 							loading="lazy"
 							width="52"
@@ -1247,6 +1247,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 /**
  * ============================================================================
  * IMPORTS

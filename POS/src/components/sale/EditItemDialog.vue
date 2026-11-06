@@ -41,7 +41,7 @@
 												<div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 flex items-center justify-center overflow-hidden">
 													<img
 														v-if="localItem.image"
-														:src="localItem.image"
+														:src="imageUrl(localItem.image)"
 														:alt="localItem.item_name"
 														class="w-full h-full object-cover"
 													/>
@@ -295,6 +295,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 import { useToast } from "@/composables/useToast"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useSerialNumberStore } from "@/stores/serialNumber"

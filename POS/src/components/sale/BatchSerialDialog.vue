@@ -11,7 +11,7 @@
 						<div class="w-12 h-12 bg-gray-100 rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden">
 							<img
 								v-if="item.image"
-								:src="item.image"
+								:src="imageUrl(item.image)"
 								:alt="item.item_name"
 								loading="lazy"
 								class="w-full h-full object-cover"
@@ -198,6 +198,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 import { Button, Dialog, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { useSerialNumberStore } from "@/stores/serialNumber"

@@ -11,6 +11,18 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 
 const log = logger.create("PrintInvoice")
 
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }
+
+/**
+ * Make a value safe inside receipt HTML. A customer name typed offline never passed
+ * through the server, and this HTML is written into a page of the app's origin.
+ * @param {*} value
+ * @returns {string}
+ */
+export function esc(value) {
+	return value == null ? "" : String(value).replace(/[&<>"']/g, (char) => ESCAPES[char])
+}
+
 const DEFAULT_PRINT_FORMAT = "POS Next Receipt"
 
 let cachedPrintFormat = null
@@ -205,13 +217,13 @@ export function buildReceiptHTML(invoiceData) {
 			const subtotal = qty * displayRate
 			return `
 						<div class="item-row">
-							<div class="item-name">${item.item_name || item.item_code} ${isFree ? (isRtl ? __("(مجاني)") : __("(FREE)")) : ""}</div>
+							<div class="item-name">${esc(item.item_name || item.item_code)} ${isFree ? (isRtl ? __("(مجاني)") : __("(FREE)")) : ""}</div>
 							<div class="item-details">
 								<span>${qty} × ${formatCurrency(displayRate)}</span>
 								<span><strong>${formatCurrency(subtotal)}</strong></span>
 							</div>
 							${hasDiscount ? `<div class="item-discount"><span>${isRtl ? __("خصم") : __("Discount")} ${item.discount_percentage ? `(${Number(item.discount_percentage).toFixed(2)}%)` : ""}</span><span>-${formatCurrency(item.discount_amount || 0)}</span></div>` : ""}
-							${item.serial_no ? `<div class="item-serials"><div class="item-serials-label">${isRtl ? __("الرقم التسلسلي:") : __("Serial No:")}</div><div class="item-serials-list">${String(item.serial_no).replace(/\n/g, ", ")}</div></div>` : ""}
+							${item.serial_no ? `<div class="item-serials"><div class="item-serials-label">${isRtl ? __("الرقم التسلسلي:") : __("Serial No:")}</div><div class="item-serials-list">${esc(String(item.serial_no).replace(/\n/g, ", "))}</div></div>` : ""}
 						</div>`
 		})
 		.join("")
@@ -225,18 +237,18 @@ export function buildReceiptHTML(invoiceData) {
 	return `
 			<div class="receipt ${isRtl ? "rtl" : ""}">
 				<div class="header">
-					<div class="company-name">${invoiceData.company || "POS Next"}</div>
+					<div class="company-name">${esc(invoiceData.company || "POS Next")}</div>
 					<div style="font-size: 12px;">${headerText}</div>
 				</div>
 
 				${invoiceData.is_offline ? `<div class="offline-badge">${__("غير متصل — في انتظار المزامنة")}</div>` : ""}
 
 				<div class="invoice-info">
-					<div><span>${isRtl ? __("رقم الفاتورة:") : __("Invoice #:")}</span><span><strong>${invoiceData.name}</strong></span></div>
+					<div><span>${isRtl ? __("رقم الفاتورة:") : __("Invoice #:")}</span><span><strong>${esc(invoiceData.name)}</strong></span></div>
 					<div><span>${isRtl ? __("التاريخ والوقت:") : __("Date:")}</span><span>${new Date(invoiceData.posting_date || Date.now()).toLocaleString("ar-EG")}</span></div>
-					${invoiceData.owner ? `<div><span>${isRtl ? __("الكاشير:") : __("Cashier:")}</span><span>${invoiceData.owner}</span></div>` : ""}
-					${invoiceData.pos_order_type ? `<div><span>${isRtl ? __("نوع الطلب:") : __("Order Type:")}</span><span>${invoiceData.pos_order_type}</span></div>` : ""}
-					${invoiceData.customer_name || invoiceData.customer ? `<div><span>${isRtl ? __("العميل:") : __("Customer:")}</span><span>${invoiceData.customer_name || invoiceData.customer}</span></div>` : ""}
+					${invoiceData.owner ? `<div><span>${isRtl ? __("الكاشير:") : __("Cashier:")}</span><span>${esc(invoiceData.owner)}</span></div>` : ""}
+					${invoiceData.pos_order_type ? `<div><span>${isRtl ? __("نوع الطلب:") : __("Order Type:")}</span><span>${esc(invoiceData.pos_order_type)}</span></div>` : ""}
+					${invoiceData.customer_name || invoiceData.customer ? `<div><span>${isRtl ? __("العميل:") : __("Customer:")}</span><span>${esc(invoiceData.customer_name || invoiceData.customer)}</span></div>` : ""}
 					${invoiceData.status === "Partly Paid" || (invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 && invoiceData.outstanding_amount < invoiceData.grand_total) ? `<div class="partial-status"><span>${isRtl ? __("الحالة:") : __("Status:")}</span><span>${isRtl ? __("دفع جزئي") : __("PARTIAL PAYMENT")}</span></div>` : ""}
 				</div>
 
@@ -267,7 +279,7 @@ export function buildReceiptHTML(invoiceData) {
 						? `
 				<div class="payments">
 					<div style="font-weight: bold; margin-bottom: 5px; font-size: 12px;">${isRtl ? __("المدفوعات:") : __("Payments:")}</div>
-					${invoiceData.payments.map((p) => `<div class="payment-row"><span>${p.mode_of_payment}:</span><span>${formatCurrency(p.amount)}</span></div>`).join("")}
+					${invoiceData.payments.map((p) => `<div class="payment-row"><span>${esc(p.mode_of_payment)}:</span><span>${formatCurrency(p.amount)}</span></div>`).join("")}
 					<div class="payment-row total-paid"><span>${isRtl ? __("إجمالي المدفوع:") : __("Total Paid:")}</span><span>${formatCurrency(paidAmount)}</span></div>
 					${invoiceData.change_amount && invoiceData.change_amount > 0 ? `<div class="payment-row" style="font-weight: bold; margin-top: 5px;"><span>${isRtl ? __("المتبقي (الفكة):") : __("Change:")}</span><span>${formatCurrency(invoiceData.change_amount)}</span></div>` : ""}
 					${invoiceData.outstanding_amount && invoiceData.outstanding_amount > 0 ? `<div class="outstanding-row"><span>${isRtl ? __("المبلغ المتبقي:") : __("BALANCE DUE:")}</span><span>${formatCurrency(invoiceData.outstanding_amount)}</span></div>` : ""}
@@ -276,7 +288,7 @@ export function buildReceiptHTML(invoiceData) {
 				}
 
 				<div class="footer">
-					<div style="margin-bottom: 5px;">${invoiceData.footer || (isRtl ? __("شكراً لتعاملكم معنا!") : __("Thank you for your business!"))}</div>
+					<div style="margin-bottom: 5px;">${esc(invoiceData.footer) || (isRtl ? __("شكراً لتعاملكم معنا!") : __("Thank you for your business!"))}</div>
 					${invoiceData.footer ? "" : `<div style="font-size: 10px;">Powered by <a href="https://nexus.brainwise.me" target="_blank" style="color: #3b82f6; text-decoration: none; font-weight: 600;">BrainWise</a></div>`}
 				</div>
 			</div>`

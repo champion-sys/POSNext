@@ -2,6 +2,7 @@ import { readIdentity } from "@/platform/identity"
 import router from "@/router"
 import { createResource } from "frappe-ui"
 import { computed, reactive } from "vue"
+import { imageUrl } from "@/platform/runtime"
 
 export const userData = reactive({
 	userId: null,
@@ -24,7 +25,7 @@ export const userData = reactive({
 	},
 
 	getImageUrl() {
-		return this.userImage || window.frappe?.session?.user_image || null
+		return imageUrl(this.userImage || window.frappe?.session?.user_image) || null
 	},
 
 	getInitials() {

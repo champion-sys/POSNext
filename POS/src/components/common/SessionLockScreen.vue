@@ -24,7 +24,7 @@
 							<div class="flex justify-center mb-3">
 								<img
 									v-if="lockedUser?.image"
-									:src="lockedUser.image"
+									:src="imageUrl(lockedUser.image)"
 									:alt="lockedUser.name"
 									class="w-14 h-14 rounded-full object-cover border-2 border-gray-200"
 								/>
@@ -129,6 +129,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 import { ref, watch, nextTick } from "vue"
 import { FeatherIcon } from "frappe-ui"
 import { useSessionLock } from "@/composables/useSessionLock"

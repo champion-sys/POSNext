@@ -5,7 +5,7 @@
 				<div v-if="item" class="mb-4">
 					<div class="flex items-center gap-3 mb-3">
 						<div class="w-12 h-12 bg-gray-100 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
-							<img v-if="item.image" :src="item.image" loading="lazy" :alt="item.item_name" class="w-full h-full object-cover" />
+							<img v-if="item.image" :src="imageUrl(item.image)" loading="lazy" :alt="item.item_name" class="w-full h-full object-cover" />
 							<svg v-else class="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
 							</svg>
@@ -30,7 +30,7 @@
 					<div class="flex items-center justify-center mb-4">
 						<img
 							v-if="matchedVariant?.data?.image || item?.image"
-							:src="matchedVariant?.data?.image || item.image"
+							:src="imageUrl(matchedVariant?.data?.image || item.image)"
 							loading="lazy"
 							:alt="matchedVariant?.label || item.item_name"
 							class="w-32 h-32 object-contain rounded-lg transition-opacity duration-300"
@@ -234,6 +234,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { Button, Dialog } from "frappe-ui"
 import { createResource } from "frappe-ui"

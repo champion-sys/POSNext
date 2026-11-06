@@ -94,7 +94,7 @@
 							<div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
 								<img
 									v-if="item.image"
-									:src="item.image"
+									:src="imageUrl(item.image)"
 									:alt="item.item_name"
 									class="w-full h-full object-cover"
 								/>
@@ -229,7 +229,7 @@
 								<div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
 									<img
 										v-if="variant.image"
-										:src="variant.image"
+										:src="imageUrl(variant.image)"
 										:alt="variant.item_name"
 										class="w-full h-full object-cover"
 									/>
@@ -486,6 +486,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 /**
  * WarehouseAvailabilityDialog.vue
  *

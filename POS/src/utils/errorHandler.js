@@ -39,9 +39,8 @@ function cleanErrorMessage(rawMessage) {
 
 	// Remove HTML tags
 	if (typeof window !== "undefined" && typeof document !== "undefined") {
-		const container = document.createElement("div")
-		container.innerHTML = text
-		text = container.textContent || container.innerText || ""
+		// Not innerHTML: its images load, so an onerror in a message would run
+		text = new DOMParser().parseFromString(text, "text/html").body.textContent || ""
 	} else {
 		text = text.replace(/<[^>]*>/g, " ")
 	}

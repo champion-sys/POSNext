@@ -375,7 +375,7 @@
 							]">
 								<LazyImage
 									v-if="item.image"
-									:src="item.image"
+									:src="imageUrl(item.image)"
 									:alt="item.item_name"
 									container-class="relative w-full h-full"
 									img-class="w-full h-full object-cover"
@@ -603,7 +603,7 @@
 								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
 									<LazyImage
 										v-if="item.image"
-										:src="item.image"
+										:src="imageUrl(item.image)"
 										:alt="item.item_name"
 										container-class="relative w-full h-full"
 										img-class="w-full h-full object-cover"
@@ -810,6 +810,7 @@
 </template>
 
 <script setup>
+import { imageUrl } from "@/platform/runtime"
 import LazyImage from "@/components/common/LazyImage.vue"
 import WarehouseAvailabilityDialog from "@/components/sale/WarehouseAvailabilityDialog.vue"
 import { useItemSearchStore } from "@/stores/itemSearch"
