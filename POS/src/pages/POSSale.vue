@@ -1100,7 +1100,9 @@ import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
+import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
+import { useSerialNumberStore } from "@/stores/serialNumber";
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -1813,7 +1815,10 @@ watch(
 	}
 );
 
+window.addEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
+
 onUnmounted(() => {
+	window.removeEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
 	window.removeEventListener("resize", () => {
 		uiStore.setWindowWidth(window.innerWidth);
 		updateLayoutBounds();
@@ -2195,6 +2200,31 @@ async function handleErrorRetry() {
 }
 
 /**
+ * Keep the offline batch cache in step with a sale. Stock itself is handled by
+ * the queue in the stock store, so only batch quantities are deducted here.
+ * @param {Array} items - Sold rows with qty or quantity
+ */
+function deductSoldBatches(items) {
+	for (const item of items) {
+		if (!item.batch_no) continue;
+		const qty = (item.qty || item.quantity || 0) * (item.conversion_factor || 1);
+		deductCachedBatchQty(item.item_code, item.batch_no, qty).catch(() => {});
+	}
+}
+
+/**
+ * Offline invoices synced: replace the local batch and serial figures with server values
+ */
+async function handleOfflineInvoicesSynced() {
+	useSerialNumberStore().clearCache();
+	try {
+		await itemStore.refreshBatchSerialCache();
+	} catch (error) {
+		log.error("Failed to refresh batch and serial data after offline sync:", error);
+	}
+}
+
+/**
  * Queue the current cart and finish the sale without the server.
  * @param {Object} paymentData - Payment dialog result
  * @param {string} customerValue - Selected customer
@@ -2236,6 +2266,8 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		supersedesId: editingOfflineContext?.originalQueueId,
 	});
 	editingOfflineContext = null;
+	deductSoldBatches(invoiceData.items);
+
 	const offlineReceiptName =
 		saveResult?.offline_id || invoiceData.offline_id || `pos_offline_${Date.now()}`;
 
@@ -2359,6 +2391,7 @@ async function handlePaymentCompleted(paymentData) {
 		} else {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code);
+			const soldBatches = cartStore.invoiceItems.filter((item) => item.batch_no);
 
 			const result = await cartStore.submitInvoice();
 
@@ -2400,6 +2433,7 @@ async function handlePaymentCompleted(paymentData) {
 
 				// Refresh stock - Direct API (50-200ms), no Socket.IO lag!
 				await stockStore.refresh(soldItemCodes, shiftStore.profileWarehouse);
+				deductSoldBatches(soldBatches);
 
 				// Refresh invoice history cache in background (non-blocking)
 				loadInvoiceHistoryData().catch((err) =>

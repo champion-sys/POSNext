@@ -436,6 +436,11 @@ export const syncOfflineInvoices = async () => {
 			}
 		}
 
+		// Let the POS replace local batch and serial figures with server values
+		if (result.success > 0 && typeof window !== "undefined") {
+			window.dispatchEvent(new CustomEvent("offlineInvoicesSynced", { detail: result }))
+		}
+
 		// Cleanup old synced invoices
 		await cleanupSyncedInvoices()
 

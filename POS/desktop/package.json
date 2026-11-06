@@ -1,0 +1,38 @@
+{
+	"name": "pos-next-desktop",
+	"version": "0.1.0",
+	"private": true,
+	"description": "POS Next for Windows, built with Electron",
+	"main": "electron/main.js",
+	"license": "AGPL-3.0",
+	"scripts": {
+		"build:frontend": "cd .. && npx vite build --config desktop/vite.config.electron.mjs",
+		"build:win": "electron-builder --win",
+		"postinstall": "electron-builder install-app-deps"
+	},
+	"devDependencies": {
+		"electron": "^33.2.0",
+		"electron-builder": "^25.1.8"
+	},
+	"build": {
+		"appId": "digital.sanad.posnext",
+		"productName": "POS Next",
+		"directories": {
+			"output": "dist",
+			"buildResources": "resources"
+		},
+		"files": ["electron/**/*", "renderer/**/*", "package.json"],
+		"win": {
+			"target": [{ "target": "nsis", "arch": ["x64"] }],
+			"icon": "resources/icon.ico"
+		},
+		"nsis": {
+			"oneClick": false,
+			"perMachine": true,
+			"allowToChangeInstallationDirectory": true,
+			"createDesktopShortcut": true,
+			"createStartMenuShortcut": true,
+			"shortcutName": "POS Next"
+		}
+	}
+}

@@ -842,7 +842,12 @@ async function cacheItemsFromServer(items, batchSize) {
 		await db.transaction('rw', 'items', 'item_prices', 'settings', async () => {
 			for (const batch of batches) {
 				// Normalize data using helper (zero-copy where possible)
-				const processedItems = batch.map(item => ({
+				// Keep cached batch/serial data: server item rows don't carry it
+				const existing = await db.table("items").bulkGet(batch.map(item => item.item_code))
+
+				const processedItems = batch.map((item, index) => ({
+					batch_no_data: existing[index]?.batch_no_data,
+					serial_no_data: existing[index]?.serial_no_data,
 					...item,
 					barcodes: extractBarcodes(item),
 				}))
@@ -1433,21 +1438,15 @@ async function updateStockQuantities(stockUpdates) {
 				continue
 			}
 
-			// Get the cached item
-			const item = await db.table("items").get(item_code)
-
-			if (!item) {
-				continue
+			// Update only the stock fields: a whole-row put would drop batch/serial data written meanwhile
+			const changes = {
+				actual_qty: actual_qty !== undefined ? actual_qty : stock_qty,
+				stock_qty: stock_qty !== undefined ? stock_qty : actual_qty,
+				...(warehouse ? { warehouse } : {}),
 			}
 
-			// Update stock quantities for this warehouse
-			item.actual_qty = actual_qty !== undefined ? actual_qty : stock_qty
-			item.stock_qty = stock_qty !== undefined ? stock_qty : actual_qty
-			item.warehouse = warehouse || item.warehouse
-
-			// Save updated item back to cache
-			await db.table("items").put(item)
-			updatedCount++
+			// update() returns 0 when the item is not cached
+			updatedCount += await db.table("items").update(item_code, changes)
 		}
 
 		// Update the last sync timestamp so cache tooltip shows latest update

@@ -7,6 +7,7 @@ import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
 import { roundCurrency } from "@/utils/currency"
+import { shiftState } from "@/composables/useShift"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
 import { prefetchPrintFormat } from "@/utils/escpos"
@@ -1265,8 +1266,11 @@ export function useInvoice() {
 				}
 			}
 		} catch (error) {
-			// Silently fail - default customer is optional
-			console.log("No default customer set in POS Profile")
+			// Offline or request failed: use the default customer from the cached POS Profile
+			const fallback = shiftState.value.pos_profile?.customer
+			if (fallback) {
+				customer.value = { name: fallback, customer_name: fallback }
+			}
 		}
 	}
 

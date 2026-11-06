@@ -14,6 +14,10 @@ import { useRealtimePosProfile } from "@/composables/useRealtimePosProfile"
 
 const log = logger.create('ItemSearch')
 
+/** Recently fetched batch/serial item codes and when, to dedupe search fan-out */
+const recentlyFetchedBatchSerial = new Map()
+const BATCH_SERIAL_FETCH_TTL_MS = 5 * 60 * 1000
+
 /**
  * Fetch and cache batch/serial data for items with batch or serial tracking
  * This ensures batch/serial selection works offline
@@ -33,14 +37,29 @@ async function cacheBatchSerialForItems(items, warehouse) {
 		return
 	}
 
-	log.info(`Caching batch/serial data for ${batchSerialItems.length} items`)
+	const now = Date.now()
+	const itemCodes = batchSerialItems
+		.map(item => item.item_code)
+		.filter(code => {
+			const lastFetched = recentlyFetchedBatchSerial.get(code)
+			return !lastFetched || now - lastFetched > BATCH_SERIAL_FETCH_TTL_MS
+		})
+
+	if (itemCodes.length === 0) {
+		log.debug("All batch/serial items were fetched recently - skipping")
+		return
+	}
+
+	log.info(`Caching batch/serial data for ${itemCodes.length} items`)
 
 	// Fetch in batches to avoid too large requests
 	const BATCH_SIZE = 20
-	const itemCodes = batchSerialItems.map(item => item.item_code)
 
 	for (let i = 0; i < itemCodes.length; i += BATCH_SIZE) {
 		const batchCodes = itemCodes.slice(i, i + BATCH_SIZE)
+		// Mark before the request so concurrent searches skip in-flight codes
+		const fetchedAt = Date.now()
+		for (const code of batchCodes) recentlyFetchedBatchSerial.set(code, fetchedAt)
 
 		try {
 			const response = await call("pos_next.api.items.get_batch_serial_data_for_items", {
@@ -55,6 +74,8 @@ async function cacheBatchSerialForItems(items, warehouse) {
 				log.debug(`Cached batch/serial data for ${Object.keys(data).length} items`)
 			}
 		} catch (error) {
+			// Unmark so the next search retries
+			for (const code of batchCodes) recentlyFetchedBatchSerial.delete(code)
 			log.warn(`Failed to fetch batch/serial data for batch ${i}:`, error.message)
 		}
 	}
@@ -2139,6 +2160,12 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 	// Stock delegates - Smart & minimal!
 	const applyStockUpdates = (updates) => stockStore.update(updates)
+
+	// Re-fetch cached batch/serial data, bypassing the search dedupe (e.g. after offline sync)
+	const refreshBatchSerialCache = () => {
+		recentlyFetchedBatchSerial.clear()
+		return cacheBatchSerialForItems(allItems.value, shiftStore.profileWarehouse)
+	}
 	const refreshStockFromServer = (codes, wh) => stockStore.refresh(codes, wh)
 
 	return {
@@ -2201,6 +2228,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		// STOCK ACTIONS - Delegates to stock store
 		// ========================================================================
 		applyStockUpdates,        // Delegates to stockStore.applyUpdates
+		refreshBatchSerialCache,
 		refreshStockFromServer,   // Delegates to stockStore.refreshFromServer
 
 		// ========================================================================
