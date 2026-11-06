@@ -163,7 +163,7 @@ def get_payment_history(invoice_name: str, include_metadata: bool = True) -> Dic
         payment_entries = frappe.get_all(
             "Payment Entry",
             filters={"name": ["in", list(payment_entry_vouchers)]},
-            fields=["name", "mode_of_payment", "reference_no", "paid_to", "paid_to_account_type"],
+            fields=["name", "mode_of_payment", "reference_no", "paid_to", "paid_to_account_type", "offline_id"],
         )
 
         for pe in payment_entries:
@@ -256,7 +256,7 @@ def _determine_payment_source(
         return PaymentSource.POS.value
     elif payment_ledger_entry.voucher_type == "Payment Entry":
         pe_data = payment_entries_map.get(payment_ledger_entry.voucher_no)
-        if pe_data and pe_data.reference_no and pe_data.reference_no.startswith("POS-"):
+        if pe_data and (pe_data.offline_id or (pe_data.reference_no or "").startswith("POS-")):
             return PaymentSource.POS_PAYMENT_ENTRY.value
         return PaymentSource.PAYMENT_ENTRY.value
 
@@ -352,6 +352,7 @@ def create_payment_entry(
     reference_no: Optional[str] = None,
     remarks: Optional[str] = None,
     posting_date: Optional[str] = None,
+    offline_id: Optional[str] = None,
 ) -> str:
     """
     Create a proper Payment Entry that updates Payment Ledger.
@@ -375,6 +376,7 @@ def create_payment_entry(
         reference_no: Optional reference number
         remarks: Optional remarks
         posting_date: Optional posting date (defaults to today)
+        offline_id: Unique key of a payment made offline, so it cannot post twice
 
     Returns:
         str: Created Payment Entry name
@@ -466,6 +468,9 @@ def create_payment_entry(
         else:
             pe.remarks = f"Payment for {invoice_name} via POS - {mode_of_payment}"
 
+        if offline_id:
+            pe.offline_id = offline_id
+
         # Allow system to create payment entry even if user doesn't have direct permission
         # This is safe because we've already validated invoice access
         pe.flags.ignore_permissions = True
@@ -480,12 +485,101 @@ def create_payment_entry(
             message=frappe.get_traceback()
         )
         raise
+    except (frappe.QueryDeadlockError, frappe.QueryTimeoutError):
+        # The sync queue retries these, which it can only do if it sees what they are
+        raise
     except Exception as e:
         frappe.log_error(
             title=f"Payment Entry Creation Failed for {invoice_name}",
             message=frappe.get_traceback()
         )
         frappe.throw(_("Failed to create payment entry: {0}").format(str(e)))
+
+
+def _assert_payments_fit(invoice_name: str, payments: List[Dict]) -> None:
+    """Refuse payments larger than what the invoice still owes."""
+    try:
+        invoice = frappe.get_doc("Sales Invoice", invoice_name)
+    except frappe.DoesNotExistError:
+        frappe.throw(_("Invoice {0} does not exist").format(invoice_name))
+
+    total_payment_amount = sum(flt(p.get("amount", 0)) for p in payments)
+    if total_payment_amount > flt(invoice.outstanding_amount) + AMOUNT_TOLERANCE:
+        frappe.throw(
+            _("Total payment amount {0} exceeds outstanding amount {1}").format(
+                frappe.format_value(total_payment_amount, {"fieldtype": "Currency"}),
+                frappe.format_value(invoice.outstanding_amount, {"fieldtype": "Currency"}),
+            )
+        )
+
+
+def _create_payment_entries(
+    invoice_name: str,
+    payments: List[Dict],
+    posting_date: Optional[str] = None,
+    reference_no: Optional[str] = None,
+    offline_id: Optional[str] = None,
+) -> List[str]:
+    """Create one Payment Entry per payment. Raises on the first failure."""
+    created = []
+
+    for idx, payment in enumerate(payments, 1):
+        amount = flt(payment.get("amount", 0))
+
+        # Skip zero amounts
+        if amount <= 0:
+            frappe.log_error(
+                title=f"Skipped zero payment for {invoice_name}",
+                message=f"Payment #{idx}: {payment}"
+            )
+            continue
+
+        mode_of_payment = payment.get("mode_of_payment") or DEFAULT_PAYMENT_MODE
+
+        created.append(
+            create_payment_entry(
+                invoice_name=invoice_name,
+                amount=amount,
+                mode_of_payment=mode_of_payment,
+                payment_account=payment.get("account"),
+                reference_no=payment.get("reference_no") or reference_no,
+                remarks=f"POS Payment - {mode_of_payment}",
+                posting_date=posting_date,
+                offline_id=get_payment_key(offline_id, len(created) + 1) if offline_id else None,
+            )
+        )
+
+    return created
+
+
+def get_payment_key(offline_id: str, position: int = 1) -> str:
+    """The unique key of one Payment Entry of a queued payment."""
+    return f"{offline_id}:{position}"
+
+
+def post_queued_payments(
+    invoice_name: str,
+    payments: List[Dict],
+    posting_date: Optional[str],
+    reference_no: Optional[str],
+    offline_id: str,
+) -> List[str]:
+    """Post a payment made offline, in the caller's transaction.
+
+    The errors stay as they are, because the sync queue decides by their type.
+
+    Args:
+        invoice_name: Sales Invoice name
+        payments: Payment dicts, as for add_payment_to_partial_invoice
+        posting_date: The day the money was taken
+        reference_no: The shift, which is how a closing finds the entry
+        offline_id: The queue record
+
+    Returns:
+        list[str]: Created Payment Entry names
+    """
+    _assert_payments_fit(invoice_name, payments)
+    return _create_payment_entries(invoice_name, payments, posting_date, reference_no, offline_id)
 
 
 # ==========================================
@@ -781,52 +875,14 @@ def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
         frappe.throw(_("You don't have permission to add payments to this invoice"))
 
     # Validate total payment amount doesn't exceed outstanding
-    try:
-        invoice = frappe.get_doc("Sales Invoice", invoice_name)
-    except frappe.DoesNotExistError:
-        frappe.throw(_("Invoice {0} does not exist").format(invoice_name))
-
-    total_payment_amount = sum(flt(p.get("amount", 0)) for p in payments)
-    if total_payment_amount > flt(invoice.outstanding_amount) + AMOUNT_TOLERANCE:
-        frappe.throw(
-            _("Total payment amount {0} exceeds outstanding amount {1}").format(
-                frappe.format_value(total_payment_amount, {"fieldtype": "Currency"}),
-                frappe.format_value(invoice.outstanding_amount, {"fieldtype": "Currency"}),
-            )
-        )
+    _assert_payments_fit(invoice_name, payments)
 
     # Create Payment Entries inside one savepoint-backed batch.
-    payment_entries_created = []
     batch_savepoint = "partial_payment_batch"
 
     try:
         frappe.db.savepoint(batch_savepoint)
-
-        for idx, payment in enumerate(payments, 1):
-            amount = flt(payment.get("amount", 0))
-
-            # Skip zero amounts
-            if amount <= 0:
-                frappe.log_error(
-                    title=f"Skipped zero payment for {invoice_name}",
-                    message=f"Payment #{idx}: {payment}"
-                )
-                continue
-
-            mode_of_payment = payment.get("mode_of_payment") or DEFAULT_PAYMENT_MODE
-            payment_account = payment.get("account")
-            reference_no = payment.get("reference_no")
-
-            pe_name = create_payment_entry(
-                invoice_name=invoice_name,
-                amount=amount,
-                mode_of_payment=mode_of_payment,
-                payment_account=payment_account,
-                reference_no=reference_no,
-                remarks=f"POS Payment - {mode_of_payment}",
-            )
-
-            payment_entries_created.append(pe_name)
+        payment_entries_created = _create_payment_entries(invoice_name, payments)
 
     except Exception as e:
         frappe.db.rollback(save_point=batch_savepoint)

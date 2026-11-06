@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest"
 import {
+	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
+	buildPaymentPayload,
 	ENTITY_CUSTOMER,
 	ENTITY_INVOICE,
+	ENTITY_PAYMENT,
+	exceedsOutstanding,
 	getDependentRows,
 	getEntity,
 	getInvoiceDependencies,
 	isLocalName,
+	sumQueuedPayments,
 } from "../entities"
 import { buildSyncEnvelope, shouldQueueCheckout, SYNC_REALTIME, sumQueuedStock } from "../invoicePayload"
 
@@ -88,6 +93,74 @@ describe("customers", () => {
 
 	it("holds no stock", () => {
 		expect(sumQueuedStock([{ entity: ENTITY_CUSTOMER, data: payload }]).size).toBe(0)
+	})
+})
+
+describe("payments", () => {
+	const invoice = { name: "SINV-1", customer: "CUST-0001", outstanding_amount: 100, paid_amount: 50 }
+	const queued = (amount) => ({
+		entity: ENTITY_PAYMENT,
+		data: { invoice_name: "SINV-1", payments: [{ mode_of_payment: "Cash", amount }] },
+	})
+
+	it("records when and in which shift the money was taken", () => {
+		const payload = buildPaymentPayload({
+			invoice,
+			payments: [{ mode_of_payment: "Cash", amount: 30, type: "Cash" }],
+			posProfile: "Main",
+			shift: "POSA-OS-1",
+			cashier: "cashier@example.com",
+			timestamp: new Date(2026, 10, 5, 9, 30, 0).getTime(),
+		})
+		expect(payload).toMatchObject({
+			doctype: "Payment Entry",
+			invoice_name: "SINV-1",
+			pos_profile: "Main",
+			posa_pos_opening_shift: "POSA-OS-1",
+			posting_date: "2026-11-05",
+		})
+		expect(payload.payments).toEqual([{ mode_of_payment: "Cash", amount: 30 }])
+	})
+
+	it("drops empty rows so they do not become Payment Entries", () => {
+		const { payments } = buildPaymentPayload({
+			invoice,
+			payments: [
+				{ mode_of_payment: "Cash", amount: 30 },
+				{ mode_of_payment: "Card", amount: 0 },
+			],
+		})
+		expect(payments).toHaveLength(1)
+	})
+
+	it("adds up what is waiting per invoice", () => {
+		expect(sumQueuedPayments([queued(30), queued(20), { entity: ENTITY_CUSTOMER, data: {} }])).toEqual(
+			new Map([["SINV-1", 50]]),
+		)
+	})
+
+	it("shows the invoice as it will be after the queue", () => {
+		const [shown] = applyQueuedPayments([invoice], [queued(30)])
+		expect(shown).toMatchObject({ outstanding_amount: 70, paid_amount: 80, queued_payment: 30 })
+	})
+
+	it("leaves invoices with nothing waiting alone", () => {
+		expect(applyQueuedPayments([invoice], [])[0]).toBe(invoice)
+	})
+
+	it("never shows a negative outstanding amount", () => {
+		expect(applyQueuedPayments([invoice], [queued(150)])[0].outstanding_amount).toBe(0)
+	})
+
+	it("refuses a second payment over what is left", () => {
+		const [shown] = applyQueuedPayments([invoice], [queued(80)])
+		expect(exceedsOutstanding(shown, [{ amount: 30 }])).toBe(true)
+		expect(exceedsOutstanding(shown, [{ amount: 20 }])).toBe(false)
+	})
+
+	it("tolerates a rounding difference like the server does", () => {
+		expect(exceedsOutstanding(invoice, [{ amount: 100.01 }])).toBe(false)
+		expect(exceedsOutstanding(invoice, [{ amount: 100.02 }])).toBe(true)
 	})
 })
 

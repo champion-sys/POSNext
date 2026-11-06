@@ -20,7 +20,7 @@ from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 
 from pos_next.services import sync_classifier, sync_entities
 from pos_next.services.sync_classifier import TotalMismatchError, WaitingForDependencyError
-from pos_next.services.sync_entities import DOCTYPE, ENTITY_CUSTOMER, ENTITY_INVOICE
+from pos_next.services.sync_entities import DOCTYPE, ENTITY_CUSTOMER, ENTITY_INVOICE, ENTITY_PAYMENT
 
 FINAL_STATES = ("Synced", "Resolved", "Voided")
 REVIEW = "Needs Review"
@@ -271,7 +271,7 @@ def _mark_synced(name, result, outcome, started=None):
 
     Args:
         name: Record name
-        result: The document: name, doctype, and optionally grand_total and customer
+        result: The document: name, doctype, and optionally grand_total, customer and note
         outcome: For the attempt log
         started: When the attempt began
     """
@@ -293,7 +293,7 @@ def _mark_synced(name, result, outcome, started=None):
         values["customer"] = result["customer"]
 
     frappe.db.set_value(DOCTYPE, name, values)
-    _log_attempt(name, outcome, started=started)
+    _log_attempt(name, outcome, message=result.get("note"), started=started)
     _notify_uploader(name)
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
 
@@ -412,6 +412,7 @@ _Entity = namedtuple("_Entity", ["create", "find", "doctypes"])
 _ENTITIES = {
     ENTITY_INVOICE: _Entity(_create_invoice, find_invoice_by_offline_id, ("Sales Invoice", "POS Invoice")),
     ENTITY_CUSTOMER: _Entity(sync_entities.create_customer, sync_entities.find_customer, ("Customer",)),
+    ENTITY_PAYMENT: _Entity(sync_entities.create_payment, sync_entities.find_payment, ("Payment Entry",)),
 }
 
 
@@ -727,6 +728,12 @@ def _items_matching(payload, item_code):
     ]
 
 
+def _fix_payment_amount(payload, values):
+    for row in payload.get("payments") or []:
+        if row.get("mode_of_payment") == values["mode_of_payment"]:
+            row["amount"] = flt(values["amount"])
+
+
 def _fix_customer_group(payload, values):
     payload["customer_group"] = values["customer_group"]
 
@@ -750,5 +757,11 @@ _FIXES = {
     ENTITY_CUSTOMER: {
         "customer_group": _fix_customer_group,
         "territory": _fix_territory,
+    },
+    ENTITY_PAYMENT: {
+        "posting_date": _fix_posting_date,
+        "payment_mode": _fix_payment_mode,
+        "payment_amount": _fix_payment_amount,
+        "shift": _fix_shift,
     },
 }

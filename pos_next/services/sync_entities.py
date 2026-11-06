@@ -11,6 +11,7 @@ import json
 
 import frappe
 from frappe import _
+from frappe.utils import flt
 
 from pos_next.services.sync_classifier import DependencyError, SyncContractError
 
@@ -18,8 +19,9 @@ DOCTYPE = "Offline Invoice Sync"
 
 ENTITY_INVOICE = "invoice"
 ENTITY_CUSTOMER = "customer"
+ENTITY_PAYMENT = "payment"
 
-ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER)
+ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER, ENTITY_PAYMENT)
 
 #: Names the device gives records the server has not seen yet
 LOCAL_NAME_PREFIX = "pos_offline_"
@@ -104,3 +106,58 @@ def create_customer(row):
         ignore_permissions=True,
     )
     return {"name": customer.name, "doctype": "Customer", "customer": customer.name}
+
+
+def find_payment(offline_id):
+    from pos_next.api.partial_payments import get_payment_key
+
+    entry = frappe.db.get_value(
+        "Payment Entry",
+        {"offline_id": get_payment_key(offline_id), "docstatus": 1},
+        ["name", "paid_amount"],
+        as_dict=True,
+    )
+    if not entry:
+        return None
+    return {"name": entry.name, "doctype": "Payment Entry", "grand_total": entry.paid_amount}
+
+
+def create_payment(row):
+    """Post a payment taken offline on an invoice that already exists.
+
+    Stored once under its offline_id and keyed by it on the Payment Entry, so a resend
+    or a second worker cannot take the money twice.
+    """
+    from pos_next.api.invoices import _assert_invoice_write_access
+    from pos_next.api.partial_payments import post_queued_payments
+    from pos_next.api.utilities import get_wallet_payment_modes
+
+    payload = load_payload(row)
+    invoice_name = payload.get("invoice_name")
+    payments = payload.get("payments")
+    if not invoice_name or not payments:
+        raise SyncContractError(_("The payment has no invoice or no amounts"))
+
+    pos_profile = frappe.db.get_value("Sales Invoice", invoice_name, "pos_profile") or row.pos_profile
+    _assert_invoice_write_access("Sales Invoice", pos_profile, row.cashier)
+
+    wallet_modes = set(get_wallet_payment_modes())
+    if any(payment.get("mode_of_payment") in wallet_modes for payment in payments):
+        frappe.throw(_("A wallet balance cannot be spent offline"))
+
+    entries = post_queued_payments(
+        invoice_name,
+        payments,
+        payload.get("posting_date"),
+        payload.get("posa_pos_opening_shift"),
+        row.offline_id,
+    )
+    if not entries:
+        raise SyncContractError(_("The payment has no amounts"))
+
+    return {
+        "name": entries[0],
+        "doctype": "Payment Entry",
+        "grand_total": sum(flt(payment.get("amount")) for payment in payments),
+        "note": ", ".join(entries),
+    }

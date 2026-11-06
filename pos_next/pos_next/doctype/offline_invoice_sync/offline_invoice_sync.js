@@ -7,12 +7,13 @@ const SYNC_API = "pos_next.api.sync";
 const LINK_DOCTYPES = {
 	invoice: ["Sales Invoice", "POS Invoice"],
 	customer: ["Customer"],
+	payment: ["Payment Entry"],
 };
 
 const SYNC_FIXES = {
 	posting_date: {
 		label: __("Change Posting Date"),
-		entities: ["invoice"],
+		entities: ["invoice", "payment"],
 		fields: [{ fieldname: "posting_date", fieldtype: "Date", label: __("Posting Date"), reqd: 1 }],
 	},
 	customer: {
@@ -54,7 +55,7 @@ const SYNC_FIXES = {
 	},
 	payment_mode: {
 		label: __("Change Payment Method"),
-		entities: ["invoice"],
+		entities: ["invoice", "payment"],
 		fields: [
 			{ fieldname: "mode_of_payment", fieldtype: "Data", label: __("Method On The Invoice"), reqd: 1 },
 			{
@@ -68,9 +69,17 @@ const SYNC_FIXES = {
 	},
 	shift: {
 		label: __("Change Shift"),
-		entities: ["invoice"],
+		entities: ["invoice", "payment"],
 		fields: [
 			{ fieldname: "shift", fieldtype: "Link", options: "POS Opening Shift", label: __("Open Shift"), reqd: 1 },
+		],
+	},
+	payment_amount: {
+		label: __("Change Payment Amount"),
+		entities: ["payment"],
+		fields: [
+			{ fieldname: "mode_of_payment", fieldtype: "Data", label: __("Method On The Payment"), reqd: 1 },
+			{ fieldname: "amount", fieldtype: "Currency", label: __("Amount"), reqd: 1 },
 		],
 	},
 	customer_group: {

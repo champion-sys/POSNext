@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 import frappe
 
+from pos_next.api import partial_payments
 from pos_next.api.invoices import save_invoice_draft
 from pos_next.services import sync_entities, sync_inbox
 from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
@@ -262,6 +263,213 @@ class TestCreateInvoice(NoSiteTestCase):
         self.assertEqual(process_invoice.call_args.args[0]["customer"], "CUST-0001")
         self.assertEqual(result["customer"], "CUST-0001")
         self.assertEqual(row.payload, stored)
+
+
+class TestCreatePayment(NoSiteTestCase):
+    payload = json.dumps(
+        {
+            "invoice_name": "SINV-1",
+            "posting_date": "2026-11-05",
+            "posa_pos_opening_shift": "POSA-OS-1",
+            "payments": [{"mode_of_payment": "Cash", "amount": 40}, {"mode_of_payment": "Card", "amount": 10}],
+        }
+    )
+
+    def _create(self, payload=None, wallet_modes=()):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access") as self.access,
+            patch("pos_next.api.partial_payments.post_queued_payments") as self.post,
+            patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=list(wallet_modes)),
+        ):
+            self.post.return_value = ["PE-1", "PE-2"]
+            frappe.local.db.get_value.return_value = "Main"
+            return sync_entities.create_payment(_row(entity="payment", payload=payload or self.payload))
+
+    def test_posts_on_the_day_and_in_the_shift_the_money_was_taken(self):
+        result = self._create()
+
+        self.post.assert_called_once()
+        invoice, payments, posting_date, reference_no, offline_id = self.post.call_args.args
+        self.assertEqual(invoice, "SINV-1")
+        self.assertEqual(len(payments), 2)
+        self.assertEqual(posting_date, "2026-11-05")
+        self.assertEqual(reference_no, "POSA-OS-1")
+        self.assertEqual(offline_id, "pos_offline_row-1")
+        self.assertEqual(result["name"], "PE-1")
+        self.assertEqual(result["doctype"], "Payment Entry")
+        self.assertEqual(result["grand_total"], 50)
+        self.assertEqual(result["note"], "PE-1, PE-2")
+
+    def test_checks_the_cashier_not_the_uploader(self):
+        self._create()
+        self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
+
+    def test_a_wallet_cannot_be_spent_offline(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._create(wallet_modes=["Card"])
+        self.post.assert_not_called()
+
+    def test_refuses_a_payment_without_an_invoice(self):
+        with self.assertRaises(SyncContractError):
+            sync_entities.create_payment(_row(entity="payment", payload="{}"))
+
+    def test_a_copy_already_posted_is_found(self):
+        frappe.local.db.get_value.return_value = frappe._dict(name="PE-1", paid_amount=50)
+
+        result = sync_entities.find_payment("pos_offline_row-1")
+
+        self.assertEqual(result, {"name": "PE-1", "doctype": "Payment Entry", "grand_total": 50})
+        self.assertEqual(
+            frappe.local.db.get_value.call_args.args[1],
+            {"offline_id": "pos_offline_row-1:1", "docstatus": 1},
+        )
+
+
+class TestPaymentResend(NoSiteTestCase):
+    def test_a_resend_is_not_stored_again(self):
+        payload = {"invoice_name": "SINV-1"}
+        frappe.local.db.get_value.return_value = frappe._dict(
+            name="row-1", payload_hash=sync_inbox.compute_payload_hash(payload)
+        )
+
+        with patch("pos_next.services.sync_inbox.frappe.get_doc") as get_doc:
+            name, conflict = sync_inbox.ingest({"offline_id": "x", "payload": payload}, "cashier@example.com")
+
+        self.assertEqual((name, conflict), ("row-1", False))
+        get_doc.assert_not_called()
+
+    def test_a_finished_payment_does_not_run_again(self):
+        create = Mock()
+        row = _row(entity="payment", status="Synced")
+        frappe.local.db.get_value.return_value = row
+
+        with patch.dict(sync_inbox._ENTITIES, {"payment": sync_inbox._Entity(create, Mock(), ())}):
+            sync_inbox.process("row-1")
+
+        create.assert_not_called()
+
+    def test_a_payment_that_already_posted_is_only_marked(self):
+        create = Mock()
+        find = Mock(return_value={"name": "PE-1", "doctype": "Payment Entry", "grand_total": 50})
+        frappe.local.db.get_value.return_value = _row(entity="payment")
+
+        with (
+            patch.dict(sync_inbox._ENTITIES, {"payment": sync_inbox._Entity(create, find, ())}),
+            patch.object(sync_inbox, "_log_attempt"),
+            patch.object(sync_inbox, "_notify_uploader"),
+        ):
+            sync_inbox.process("row-1")
+
+        create.assert_not_called()
+
+    def test_the_unique_index_catching_a_second_worker_counts_as_done(self):
+        find = Mock(return_value={"name": "PE-1", "doctype": "Payment Entry", "grand_total": 50})
+        frappe.local.db.get_value.return_value = _row(entity="payment")
+
+        with (
+            patch.dict(sync_inbox._ENTITIES, {"payment": sync_inbox._Entity(Mock(), find, ())}),
+            patch.object(sync_inbox, "_mark_synced") as mark_synced,
+        ):
+            sync_inbox._handle_failure("row-1", 1, frappe.UniqueValidationError("Duplicate"), "", None)
+
+        mark_synced.assert_called_once_with("row-1", find.return_value, "recovered")
+
+
+class TestPaymentEntries(NoSiteTestCase):
+    @patch("pos_next.api.partial_payments.create_payment_entry", side_effect=["PE-1", "PE-2"])
+    @patch("pos_next.api.partial_payments.frappe.log_error")
+    def test_each_entry_gets_its_own_key(self, _log_error, create_payment_entry):
+        payments = [
+            {"mode_of_payment": "Cash", "amount": 40},
+            {"mode_of_payment": "Bank", "amount": 0},
+            {"mode_of_payment": "Card", "amount": 10},
+        ]
+
+        entries = partial_payments._create_payment_entries("SINV-1", payments, "2026-11-05", "SHIFT", "id")
+
+        self.assertEqual(entries, ["PE-1", "PE-2"])
+        keys = [call.kwargs["offline_id"] for call in create_payment_entry.call_args_list]
+        self.assertEqual(keys, ["id:1", "id:2"])
+        self.assertEqual(create_payment_entry.call_args.kwargs["reference_no"], "SHIFT")
+        self.assertEqual(create_payment_entry.call_args.kwargs["posting_date"], "2026-11-05")
+
+    @patch("pos_next.api.partial_payments.create_payment_entry", return_value="PE-1")
+    def test_the_online_path_stays_as_it_was(self, create_payment_entry):
+        partial_payments._create_payment_entries("SINV-1", [{"mode_of_payment": "Cash", "amount": 40}])
+
+        kwargs = create_payment_entry.call_args.kwargs
+        self.assertIsNone(kwargs["offline_id"])
+        self.assertIsNone(kwargs["reference_no"])
+        self.assertIsNone(kwargs["posting_date"])
+
+    @patch("pos_next.api.partial_payments.frappe.format_value", side_effect=lambda value, _df: value)
+    @patch("pos_next.api.partial_payments.frappe.get_doc")
+    def test_more_than_is_owed_fails_with_the_reason(self, get_doc, _format_value):
+        get_doc.return_value = Mock(outstanding_amount=30)
+
+        with self.assertRaises(frappe.ValidationError):
+            partial_payments.post_queued_payments(
+                "SINV-1", [{"mode_of_payment": "Cash", "amount": 40}], None, None, "id"
+            )
+
+    @patch("pos_next.api.partial_payments.frappe.get_doc")
+    @patch("erpnext.accounts.doctype.payment_entry.payment_entry.get_payment_entry")
+    @patch(
+        "erpnext.accounts.doctype.sales_invoice.sales_invoice.get_bank_cash_account",
+        return_value={"account": "Cash - T"},
+    )
+    def test_a_deadlock_stays_a_deadlock_so_the_queue_retries(self, _account, get_payment_entry, get_doc):
+        get_doc.return_value = Mock(docstatus=1, outstanding_amount=100, posting_date="2026-11-01")
+        get_payment_entry.side_effect = frappe.QueryDeadlockError("Deadlock")
+        frappe.local.db.exists.return_value = True
+
+        with self.assertRaises(frappe.QueryDeadlockError):
+            partial_payments.create_payment_entry("SINV-1", 40, "Cash", posting_date="2026-11-05")
+
+
+class TestFixes(NoSiteTestCase):
+    def _apply(self, entity, fix, values, payload="{}"):
+        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload)
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
+            patch.object(sync_inbox, "_log_attempt"),
+        ):
+            sync_inbox.apply_fix("row-1", fix, values)
+        return row
+
+    def test_a_customer_gets_a_valid_group(self):
+        row = self._apply("customer", "customer_group", {"customer_group": "Retail"})
+        self.assertEqual(json.loads(row.payload)["customer_group"], "Retail")
+
+    def test_a_payment_can_be_reduced_to_what_is_owed(self):
+        payload = json.dumps({"payments": [{"mode_of_payment": "Cash", "amount": 40}]})
+        row = self._apply("payment", "payment_amount", {"mode_of_payment": "Cash", "amount": 25}, payload)
+        self.assertEqual(json.loads(row.payload)["payments"][0]["amount"], 25)
+
+    def test_a_fix_for_another_entity_is_refused(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._apply("customer", "warehouse", {"warehouse": "Stores"})
+
+    def test_a_row_from_before_entities_uses_the_sale_fixes(self):
+        row = self._apply(None, "customer", {"customer": "CUST-0001"}, '{"customer": "pos_offline_x"}')
+        self.assertEqual(json.loads(row.payload)["customer"], "CUST-0001")
+
+    def test_a_record_links_only_to_its_own_kind(self):
+        row = Mock(status=sync_inbox.REVIEW, entity="customer")
+        with patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row):
+            with self.assertRaises(frappe.ValidationError):
+                sync_inbox.link_existing_invoice("row-1", "SINV-1", "Sales Invoice", "Entered by hand")
+
+    @patch("pos_next.services.sync_inbox.frappe.get_meta", return_value=Mock(is_submittable=0))
+    @patch.object(sync_inbox, "_notify_uploader")
+    def test_a_customer_entered_by_hand_closes_the_review(self, _notify, _meta):
+        row = Mock(status=sync_inbox.REVIEW, entity="customer")
+        frappe.local.db.exists.return_value = "CUST-0001"
+        with patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row):
+            sync_inbox.link_existing_invoice("row-1", "CUST-0001", "Customer", "Entered by hand")
+
+        self.assertEqual(row.status, "Resolved")
+        self.assertEqual(row.sales_invoice, "CUST-0001")
 
 
 class TestSaveInvoiceDraft(NoSiteTestCase):

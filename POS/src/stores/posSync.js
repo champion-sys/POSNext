@@ -28,8 +28,12 @@ import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
 import {
 	ENTITY_CUSTOMER,
+	ENTITY_PAYMENT,
+	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
+	buildPaymentPayload,
+	exceedsOutstanding,
 	getDependentRows,
 } from "@/utils/offline/entities"
 import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
@@ -37,6 +41,7 @@ import { offlineState } from "@/utils/offline/offlineState"
 import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSShiftStore } from "@/stores/posShift"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -348,6 +353,40 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * Queue a payment on an invoice the server already has
+	 * @param {Object} invoice - The invoice, as withQueuedPayments reports it
+	 * @param {Array} payments - The payment dialog's entries
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function savePaymentOffline(invoice, payments) {
+		if (exceedsOutstanding(invoice, payments)) {
+			throw new Error(__("Total payment amount exceeds the outstanding amount of {0}", [invoice.name]))
+		}
+
+		const { session } = await import("@/data/session")
+		const shiftStore = usePOSShiftStore()
+		return saveQueueEntity(
+			ENTITY_PAYMENT,
+			buildPaymentPayload({
+				invoice,
+				payments,
+				posProfile: shiftStore.profileName,
+				shift: shiftStore.currentShift?.name,
+				cashier: session.user,
+			}),
+		)
+	}
+
+	/**
+	 * Show unpaid invoices as they will be once queued payments have reached the server
+	 * @param {Array} invoices
+	 * @returns {Promise<Array>}
+	 */
+	async function withQueuedPayments(invoices) {
+		return applyQueuedPayments(invoices, await getPending())
+	}
+
+	/**
 	 * Load the list of pending invoices for display
 	 */
 	async function loadPendingInvoices() {
@@ -581,6 +620,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Actions
 		saveInvoiceOffline,
 		saveCustomerOffline,
+		savePaymentOffline,
+		withQueuedPayments,
 		loadPendingInvoices,
 		updatePendingCount,
 		deleteOfflineInvoice,
