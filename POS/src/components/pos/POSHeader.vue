@@ -457,14 +457,6 @@ const props = defineProps({
 		type: Boolean,
 		default: false,
 	},
-	isSyncing: {
-		type: Boolean,
-		default: false,
-	},
-	pendingInvoicesCount: {
-		type: Number,
-		default: 0,
-	},
 	isAnyDialogOpen: {
 		type: Boolean,
 		default: false,

@@ -40,7 +40,7 @@ const ERROR_TYPES = {
 	},
 	business: {
 		label: __("Business Rule"),
-		hint: __("Open an invoice to see what to correct, then reprocess."),
+		hint: __("Open a record to see what to correct, then reprocess."),
 	},
 	dependency: {
 		label: __("Waiting For A Record"),
@@ -48,11 +48,11 @@ const ERROR_TYPES = {
 	},
 	contract: {
 		label: __("Invalid Data"),
-		hint: __("Open an invoice and correct its data, or contact support."),
+		hint: __("Open a record and correct its data, or contact support."),
 	},
 	bug: {
 		label: __("System Error"),
-		hint: __("Contact support before voiding these invoices."),
+		hint: __("Contact support before voiding these records."),
 	},
 	transient_server: {
 		label: __("Server Busy"),
@@ -138,14 +138,14 @@ class SyncCenter {
 			return `
 				<div class="sync-center-headline is-clear">
 					<span class="sync-center-count">0</span>
-					<span>${__("No invoice needs review.")}</span>
+					<span>${__("No record needs review.")}</span>
 				</div>`;
 		}
 
 		return `
 			<button type="button" class="sync-center-headline is-review" data-status="${REVIEW_STATUS}">
 				<span class="sync-center-count">${toReview}</span>
-				<span>${__("Invoices need review. Open them to fix or close them.")}</span>
+				<span>${__("Records need review. Open them to fix or close them.")}</span>
 			</button>`;
 	}
 
@@ -189,7 +189,7 @@ class SyncCenter {
 					</td>
 					<td class="sync-center-nowrap">${group.oldest ? frappe.datetime.prettyDate(group.oldest) : ""}</td>
 					<td class="sync-center-nowrap sync-center-actions">
-						<button class="btn btn-sm btn-default" data-open="${fingerprint}">${__("View Invoices")}</button>
+						<button class="btn btn-sm btn-default" data-open="${fingerprint}">${__("View Records")}</button>
 						${fingerprint ? `<button class="btn btn-sm btn-primary" data-reprocess="${fingerprint}">${__("Reprocess All")}</button>` : ""}
 					</td>
 				</tr>`;
@@ -201,7 +201,7 @@ class SyncCenter {
 				<table class="table mb-0">
 					<thead>
 						<tr>
-							<th>${__("Invoices")}</th>
+							<th>${__("Records")}</th>
 							<th>${__("Cause")}</th>
 							<th>${__("Oldest")}</th>
 							<th></th>
@@ -213,7 +213,7 @@ class SyncCenter {
 	}
 
 	reprocessGroup(fingerprint) {
-		frappe.confirm(__("Have you fixed the cause? Every invoice in this group will be processed again."), async () => {
+		frappe.confirm(__("Have you fixed the cause? Every record in this group will be processed again."), async () => {
 			const { message } = await frappe.call({
 				method: "pos_next.api.sync.reprocess_group",
 				args: { fingerprint },
@@ -221,7 +221,7 @@ class SyncCenter {
 			});
 			const synced = message.filter((row) => row.status === "Synced").length;
 			frappe.show_alert({
-				message: __("{0} of {1} invoice(s) processed", [synced, message.length]),
+				message: __("{0} of {1} record(s) processed", [synced, message.length]),
 				indicator: synced === message.length ? "green" : "orange",
 			});
 			this.load();

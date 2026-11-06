@@ -394,42 +394,13 @@
 							{{ __('No items') }}
 						</div>
 
-						<div v-if="paymentEntries.length > 0" class="mb-1 mt-2">
-						<div :class="['text-start px-2 font-semibold text-gray-500 uppercase tracking-wide flex justify-between', isSmallMobile ? 'text-[10px] mb-1' : 'text-xs mb-1.5']">
-							<span>{{ __('Applied Payments') }}</span>
-						</div>
-						<div class="space-y-1.5 overflow-y-auto max-h-32 pe-1">
-							<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white ps-1.5 lg:ps-2 rounded-none border border-gray-300">
-								<div class="text-xs lg:text-sm font-medium text-gray-700 flex items-center gap-1.5 truncate">
-									<span class="truncate">{{ __(entry.mode_of_payment) }}</span>
-								</div>
-								<div class="flex items-center gap-1.5 shrink-0">
-									<span class="text-xs text-gray-500">{{ currencySymbol }}</span>
-									<input
-										type="number"
-										v-model.number="entry.amount"
-										min="0"
-										step="0.01"
-										class="w-20 lg:w-24 h-11 px-1.5 text-sm font-semibold text-end border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
-										@change="handlePaymentEntryChange(entry)"
-										@focus="$event.target.select()"
-									/>
-									<button @click="removePaymentEntry(index)" class="w-11 h-11 flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none transition-colors touch-manipulation" :title="__('Remove')" :aria-label="__('Remove')">
-										<svg class="w-4 h-4 lg:w-4 lg:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-											<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-										</svg>
-									</button>
-								</div>
-							</div>
-						</div>
-					</div>
 
 						<!-- Remarks Breakdown -->
 						<div class="border-t border-gray-200 bg-white px-3 py-2">
-							<label class="text-xs font-bold uppercase tracking-wider text-gray-600 mb-1 block">{{ __('Remarks') }}</label>
 							<textarea
 								v-model="remarks"
 								rows="2"
+								:aria-label="__('Remarks')"
 								class="w-full min-h-[44px] px-2 py-1.5 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
 								:placeholder="__('Add invoice remarks here')"
 							></textarea>
@@ -595,7 +566,7 @@
 						'lg:col-span-3 bg-gray-50 rounded-none border border-gray-300 flex flex-col overflow-hidden',
 						isSmallMobile ? 'p-0' : 'p-0'
 					]"
-					:style="isMobileView ? {} : { minHeight: rightColumnMinHeight }"
+					:style="isMobileView ? {} : { minHeight: rightColumnMinHeight, maxHeight: dialogContentMaxHeight }"
 				>
 					<!-- Scrollable top section: payment methods + quick amounts + numpad -->
 					<div :class="['flex-1 overflow-y-auto', isSmallMobile ? 'p-1.5' : 'p-2 lg:p-3']">
@@ -694,6 +665,35 @@
 								<span :class="['text-xs font-semibold', !isExactAmountValid ? 'text-red-700' : 'text-green-700']">
 									{{ !isExactAmountValid ? __('Total must equal invoice amount') : __('Payment amount is correct') }}
 								</span>
+							</div>
+						</div>
+
+						<!-- Applied Payments -->
+						<div v-if="paymentEntries.length > 0" :class="isSmallMobile ? 'mt-1' : 'mt-2'">
+							<div :class="['text-start font-semibold text-gray-500 uppercase tracking-wide', isSmallMobile ? 'text-[10px] mb-0.5' : 'text-xs mb-1']">
+								{{ __('Applied Payments') }}
+							</div>
+							<div class="flex flex-col gap-1 overflow-y-auto max-h-[92px]">
+								<div v-for="(entry, index) in paymentEntries" :key="index" class="flex items-center justify-between gap-2 bg-white ps-2 rounded-none border border-gray-300">
+									<span class="text-sm font-medium text-gray-700 truncate">{{ __(entry.mode_of_payment) }}</span>
+									<div class="flex items-center gap-1.5 shrink-0">
+										<span class="text-xs text-gray-500">{{ currencySymbol }}</span>
+										<input
+											type="number"
+											v-model.number="entry.amount"
+											min="0"
+											step="0.01"
+											class="w-24 h-11 px-1.5 text-sm font-semibold text-end border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
+											@change="handlePaymentEntryChange(entry)"
+											@focus="$event.target.select()"
+										/>
+										<button @click="removePaymentEntry(index)" class="w-11 h-11 flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none transition-colors touch-manipulation" :title="__('Remove')" :aria-label="__('Remove')">
+											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+											</svg>
+										</button>
+									</div>
+								</div>
 							</div>
 						</div>
 					</div>
