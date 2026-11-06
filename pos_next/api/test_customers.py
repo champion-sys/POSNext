@@ -15,7 +15,7 @@ from pos_next.api.customers import (
 class TestCustomersAPI(unittest.TestCase):
     @patch("pos_next.api.customers.frappe.logger")
     @patch("pos_next.api.customers.frappe.get_all")
-    @patch("pos_next.api.customers.frappe.db")
+    @patch("pos_next.api.customers.frappe.db", new_callable=Mock)
     def test_get_customers_applies_search_term_filters(self, mock_db, mock_get_all, mock_logger):
         mock_logger.return_value = Mock()
         mock_get_all.return_value = []
@@ -35,7 +35,7 @@ class TestCustomersAPI(unittest.TestCase):
             ],
         )
 
-    @patch("pos_next.api.customers.frappe.db")
+    @patch("pos_next.api.customers.frappe.db", new_callable=Mock)
     def test_get_default_loyalty_program_from_settings_uses_explicit_pos_profile(self, mock_db):
         mock_db.get_value.return_value = "LOYALTY-A"
 
