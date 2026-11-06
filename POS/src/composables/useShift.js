@@ -32,7 +32,7 @@ function isOwnShift(data, user = readIdentity().userId) {
 
 async function restoreCachedShift() {
 	const data = await localStore.getShift()
-	if (!isOwnShift(data)) return
+	if (!isOwnShift(data) || isClosing(data)) return
 
 	shiftState.value = {
 		pos_opening_shift: data.pos_opening_shift,
@@ -63,6 +63,11 @@ const CLOSING_SHIFTS_KEY = "pos_next_closing_shifts"
 
 function getClosingShifts() {
 	return JSON.parse(localStorage.getItem(CLOSING_SHIFTS_KEY) || "[]")
+}
+
+/** @param {Object|null} data - A shift, as the server or the device reports it */
+function isClosing(data) {
+	return getClosingShifts().includes(data?.pos_opening_shift?.name)
 }
 
 /**
@@ -100,9 +105,10 @@ export function useShift() {
 		url: "pos_next.api.shifts.check_opening_shift",
 		auto: false,
 		// false, because frappe-ui keeps the original answer when this returns null
-		transform: (data) => (getClosingShifts().includes(data?.pos_opening_shift?.name) ? false : data),
+		transform: (data) => (isClosing(data) ? false : data),
+		// frappe-ui gives onSuccess the server's answer, not what transform returned
 		onSuccess(data) {
-			if (data) {
+			if (data && !isClosing(data)) {
 				// Compute initial elapsed time using server timestamps
 				// (avoids timezone mismatch between server and browser)
 				let initialElapsedMs = 0

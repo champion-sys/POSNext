@@ -1782,13 +1782,14 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 
 		let shiftStore
 		let shiftState
+		let markShiftClosing
 		let resetShiftState
 		let cleanupUserSession
 
 		beforeEach(async () => {
 			setActivePinia(createPinia())
 			;({ cleanupUserSession } = await import("@/utils/sessionCleanup"))
-			;({ shiftState, resetShiftState } = await import("@/composables/useShift"))
+			;({ shiftState, markShiftClosing, resetShiftState } = await import("@/composables/useShift"))
 			const { usePOSShiftStore } = await import("@/stores/posShift")
 			shiftStore = usePOSShiftStore()
 			signInAs(CASHIER)
@@ -1883,6 +1884,49 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			await settle()
 
 			expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+		})
+
+		describe("closed offline", () => {
+			const serverStillReportsItOpen = () => {
+				fetchResponses.set("check_opening_shift", { message: keptShift() })
+			}
+
+			beforeEach(async () => {
+				markShiftClosing("SHIFT-1")
+				await store.clearShift()
+			})
+
+			it("does not reopen while the server has not heard of the close", async () => {
+				serverStillReportsItOpen()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+				await settle()
+
+				expect(shiftState.value.isOpen).toBe(false)
+				expect(await store.getShift()).toBeNull()
+			})
+
+			it("does not reopen after the cache is cleared", async () => {
+				const { clearBrowserCache } = await import("@/utils/offline/cache")
+				clearBrowserCache()
+				serverStillReportsItOpen()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+			})
+
+			it("does not come back from a copy left on the device", async () => {
+				await store.saveShift(keptShift())
+				serverIsUnreachable()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+			})
+
+			it("leaves the cashier's next shift alone", async () => {
+				fetchResponses.set("check_opening_shift", { message: keptShift(CASHIER, "SHIFT-2") })
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				expect(shiftStore.currentShift.name).toBe("SHIFT-2")
+			})
 		})
 	})
 

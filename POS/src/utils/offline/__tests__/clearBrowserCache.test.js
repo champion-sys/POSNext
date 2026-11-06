@@ -23,6 +23,9 @@ const ENROLLMENT = {
 	pos_next_device_id: "device",
 }
 
+const SIGNED_IN_CASHIER = '{"userId":"a@example.com"}'
+const SAVED_PRINTER = "Front desk laser"
+
 const CACHES = {
 	pos_next_settings_abc: "{}",
 	pos_next_language: "ar",
@@ -38,6 +41,8 @@ describe("clearing the browser's cache", () => {
 			localStorage.setItem(key, value)
 		}
 		localStorage.setItem("pos_next_closing_shifts", '["SHIFT-1"]')
+		localStorage.setItem("pos_next_cashier", SIGNED_IN_CASHIER)
+		localStorage.setItem("pos_next_system_printer", SAVED_PRINTER)
 		localStorage.setItem("pos_qz_printer_name", "Front desk")
 		sessionStorage.setItem("pos_next_offline_rcpt:a", "{}")
 	})
@@ -60,6 +65,16 @@ describe("clearing the browser's cache", () => {
 			expect(localStorage.getItem("pos_next_closing_shifts")).toBe('["SHIFT-1"]')
 		})
 
+		it("keeps whoever is signed in, so the app does not send them to sign in", () => {
+			clearBrowserCache()
+			expect(localStorage.getItem("pos_next_cashier")).toBe(SIGNED_IN_CASHIER)
+		})
+
+		it("keeps the printer chosen for this device", () => {
+			clearBrowserCache()
+			expect(localStorage.getItem("pos_next_system_printer")).toBe(SAVED_PRINTER)
+		})
+
 		it("still clears what is only a cache", () => {
 			const { cleared } = clearBrowserCache()
 
@@ -76,13 +91,18 @@ describe("clearing the browser's cache", () => {
 			platform.current = "web"
 		})
 
-		it("clears every key of the app, as it always has", () => {
+		it("keeps a shift closed offline, so it takes no more sales", () => {
+			clearBrowserCache()
+			expect(localStorage.getItem("pos_next_closing_shifts")).toBe('["SHIFT-1"]')
+		})
+
+		it("clears every other key of the app, as it always has", () => {
 			const { cleared } = clearBrowserCache()
 
-			for (const key of [...Object.keys(ENROLLMENT), ...Object.keys(CACHES), "pos_next_closing_shifts"]) {
+			for (const key of [...Object.keys(ENROLLMENT), ...Object.keys(CACHES)]) {
 				expect(localStorage.getItem(key)).toBeNull()
 			}
-			expect(cleared.localStorage).toBe(Object.keys(ENROLLMENT).length + Object.keys(CACHES).length + 1)
+			expect(cleared.localStorage).toBe(Object.keys(ENROLLMENT).length + Object.keys(CACHES).length + 2)
 		})
 	})
 
