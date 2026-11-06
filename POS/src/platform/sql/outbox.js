@@ -307,6 +307,16 @@ export function createOutbox(sql) {
 			await sql.batch(statements)
 		},
 
+		/** The server has no record of a sale it held, so it waits to be sent again */
+		async returnToPending(offlineId) {
+			await sql.run(
+				`UPDATE outbox SET state = 'pending', attempts = 0, next_attempt_at = 0, last_error = NULL,
+					server_name = NULL, sync_failed = 0, acked_at = NULL
+				WHERE offline_id = ? AND state NOT IN (${placeholders(CLOSED)})`,
+				[offlineId, ...CLOSED],
+			)
+		},
+
 		/** After a crash, sends in flight are unknown. Retrying is safe: the server dedupes. */
 		async recoverInterrupted() {
 			await sql.run("UPDATE outbox SET state = 'pending' WHERE state = 'sending'")

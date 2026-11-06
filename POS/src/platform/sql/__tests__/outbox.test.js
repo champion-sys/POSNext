@@ -198,6 +198,23 @@ describe("outbox", () => {
 		expect(rows[2].depends_on).toEqual(["c"])
 	})
 
+	it("sends a sale again, still holding its stock, when the server has lost it", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.applyResult("a", { state: "needs_review", serverName: "X", error: "Stock" })
+
+		await outbox.returnToPending("a")
+
+		expect((await outbox.nextBatch(10)).map((row) => row.offline_id)).toEqual(["a"])
+		expect(await outbox.get("a")).toMatchObject({
+			attempts: 0,
+			server_name: null,
+			last_error: null,
+			sync_failed: 0,
+			acked_at: null,
+		})
+		expect(await outbox.availableStock("A", "W1")).toBe(76)
+	})
+
 	it("keeps a row's dependencies with it", async () => {
 		await outbox.enqueueEntity({ offlineId: "s", entity: "shift_close", data: {}, dependsOn: ["a", "b"] })
 		expect((await outbox.get("s")).depends_on).toEqual(["a", "b"])

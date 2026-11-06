@@ -30,6 +30,21 @@ function updateQueuedInvoice(id, changes) {
 	return db.invoice_queue.update(id, changes)
 }
 
+/** The server has no record of a sale it held, so it waits to be sent again */
+async function resendQueuedInvoice(id) {
+	const row = await db.invoice_queue.get(id)
+	if (!row || row.synced || row.superseded) return
+
+	await db.invoice_queue.update(id, {
+		server_status: undefined,
+		server_invoice: undefined,
+		sync_failed: false,
+		error: null,
+		retry_count: 0,
+		next_attempt_at: 0,
+	})
+}
+
 function deleteSyncedInvoices(cutoff) {
 	return db.invoice_queue.filter((inv) => inv.synced && inv.timestamp < cutoff).delete()
 }
@@ -198,6 +213,7 @@ export const dexieStore = {
 	listUnsyncedInvoices,
 	getQueuedInvoice,
 	updateQueuedInvoice,
+	resendQueuedInvoice,
 	deleteSyncedInvoices,
 	getCachedItem,
 	getCachedItemByBarcode,

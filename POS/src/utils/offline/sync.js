@@ -32,6 +32,8 @@ const SYNC_CONFIG = {
 	BATCH_SIZE: 20,
 	STATUS_POLLS: 3,
 	STATUS_POLL_DELAY_MS: 2000,
+	// get_status in pos_next/api/sync.py ignores ids past this many
+	STATUS_ID_LIMIT: 200,
 }
 
 const DEVICE_ID_KEY = "pos_next_device_id"
@@ -261,13 +263,34 @@ const pushBatch = async (rows) => {
 }
 
 /**
+ * Send again what the server left out of a full answer. After a site restore or a manual
+ * delete it has no record of these rows, so they would wait forever. Safe, because push
+ * dedupes by offline_id and processing looks for an existing invoice first.
+ * @param {Array} asked - Rows the server was asked about
+ * @param {*} statuses - Its answer
+ * @returns {Promise<number>} How many went back to pending
+ */
+const resendForgottenRows = async (asked, statuses) => {
+	if (!Array.isArray(statuses) || !statuses.every((status) => status?.offline_id)) return 0
+
+	const known = new Set(statuses.map((status) => status.offline_id))
+	const forgotten = asked.filter((row) => !known.has(row.offline_id))
+	for (const row of forgotten) {
+		log.warn("The server has no record of a queued row, sending it again", { offlineId: row.offline_id })
+		await localStore.resendQueuedInvoice(row.id)
+	}
+	return forgotten.length
+}
+
+/**
  * Update rows the server already holds with how they ended
  * @param {Array} rows - Queue rows
  * @param {Object} result - Totals to update
  * @returns {Promise<number>} How many are still being processed
  */
 const refreshServerStatus = async (rows, result) => {
-	const byOfflineId = new Map(rows.map((row) => [row.offline_id, row]))
+	const asked = rows.slice(0, SYNC_CONFIG.STATUS_ID_LIMIT)
+	const byOfflineId = new Map(asked.map((row) => [row.offline_id, row]))
 	const statuses = await call("pos_next.api.sync.get_status", {
 		offline_ids: Array.from(byOfflineId.keys()),
 	})
@@ -291,7 +314,7 @@ const refreshServerStatus = async (rows, result) => {
 			})
 		}
 	}
-	return waiting
+	return waiting - (await resendForgottenRows(asked, statuses))
 }
 
 /**

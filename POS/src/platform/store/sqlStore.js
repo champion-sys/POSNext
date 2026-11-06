@@ -224,6 +224,11 @@ export function createSqlStore(sql) {
 			}
 		},
 
+		async resendQueuedInvoice(id) {
+			const offlineId = await offlineIdOf(id)
+			if (offlineId) await outbox.returnToPending(offlineId)
+		},
+
 		deleteSyncedInvoices(cutoff) {
 			return outbox.purgeFinished(cutoff)
 		},
