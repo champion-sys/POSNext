@@ -5,6 +5,7 @@
  * layer under them is fake: an in-memory Dexie and raw IndexedDB, because fake-indexeddb
  * is not installed. So these tests cannot show that Dexie itself behaves like the fake.
  */
+import { createPinia, setActivePinia } from "pinia"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
 import { createNativeStore } from "@/platform/store/native"
@@ -30,6 +31,25 @@ vi.mock("dexie", () => ({ default: FakeDexie }))
 
 const callServer = vi.hoisted(() => vi.fn())
 vi.mock("@/utils/apiWrapper", () => ({ call: callServer }))
+
+// frappe-ui does not load under vitest. This keeps what its createResource does: the
+// caller gets what transform returned, and onSuccess gets the server's own answer.
+vi.mock("frappe-ui", () => ({
+	createResource: (options) => ({
+		async fetch() {
+			try {
+				const response = await fetch(`/api/method/${options.url}`)
+				const { message } = await response.json()
+				const data = options.transform?.(message) ?? message
+				options.onSuccess?.(message)
+				return data
+			} catch (error) {
+				options.onError?.(error)
+				throw error
+			}
+		},
+	}),
+}))
 
 /** Runs offline.worker.js in this process, wired to the real client as a Worker would be */
 class InProcessWorker {
@@ -1729,6 +1749,140 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 
 			await store.clearShift()
 			expect(await store.getShift()).toBeNull()
+		})
+	})
+
+	describe("the shift kept on the device", () => {
+		const CASHIER = "a@example.com"
+		const OTHER_CASHIER = "b@example.com"
+
+		const keptShift = (user = CASHIER, name = "SHIFT-1") => ({
+			pos_opening_shift: { name, user },
+			pos_profile: { name: "Main" },
+			company: { name: "Acme" },
+			_initialElapsedMs: 5,
+			_receivedAt: 6,
+		})
+
+		const signInAs = (user) => {
+			document.cookie = `user_id=${user}; path=/`
+		}
+
+		const serverIsUnreachable = () => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => {
+					throw new TypeError("Failed to fetch")
+				}),
+			)
+		}
+
+		// Clearing the shift is not awaited by whoever asks for it
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+		let shiftStore
+		let shiftState
+		let resetShiftState
+		let cleanupUserSession
+
+		beforeEach(async () => {
+			setActivePinia(createPinia())
+			;({ cleanupUserSession } = await import("@/utils/sessionCleanup"))
+			;({ shiftState, resetShiftState } = await import("@/composables/useShift"))
+			const { usePOSShiftStore } = await import("@/stores/posShift")
+			shiftStore = usePOSShiftStore()
+			signInAs(CASHIER)
+			await store.saveShift(keptShift())
+		})
+
+		afterEach(() => {
+			document.cookie = "user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+		})
+
+		it("survives the sign-out, and comes back to its cashier offline", async () => {
+			await cleanupUserSession()
+			expect(shiftState.value.isOpen).toBe(false)
+			expect(await store.getShift()).toEqual(keptShift())
+
+			serverIsUnreachable()
+			expect(await shiftStore.checkShift()).toBe(true)
+
+			expect(shiftStore.currentShift.name).toBe("SHIFT-1")
+			expect(shiftStore.profileName).toBe("Main")
+		})
+
+		it("goes to nobody else", async () => {
+			await cleanupUserSession()
+
+			signInAs(OTHER_CASHIER)
+			serverIsUnreachable()
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			expect(shiftState.value.pos_opening_shift).toBeNull()
+		})
+
+		it("waits for its cashier while somebody else is signed in", async () => {
+			await cleanupUserSession()
+
+			signInAs(OTHER_CASHIER)
+			serverIsUnreachable()
+			await shiftStore.checkShift()
+			await cleanupUserSession()
+
+			signInAs(CASHIER)
+			expect(await shiftStore.checkShift()).toBe(true)
+		})
+
+		it("goes to nobody while nobody is signed in", async () => {
+			await cleanupUserSession()
+
+			signInAs("Guest")
+			serverIsUnreachable()
+
+			expect(await shiftStore.checkShift()).toBe(false)
+		})
+
+		it("stays when the server says another cashier has no shift", async () => {
+			signInAs(OTHER_CASHIER)
+			fetchResponses.set("check_opening_shift", { message: null })
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			await settle()
+
+			expect(await store.getShift()).toEqual(keptShift())
+		})
+
+		it("goes when the server says its own cashier has no shift", async () => {
+			fetchResponses.set("check_opening_shift", { message: null })
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			await settle()
+
+			expect(await store.getShift()).toBeNull()
+		})
+
+		it("goes when its shift closes, even if the cashier signs out straight after", async () => {
+			resetShiftState()
+			signInAs("Guest")
+			await settle()
+
+			expect(await store.getShift()).toBeNull()
+		})
+
+		it("gives way to another cashier's own shift", async () => {
+			signInAs(OTHER_CASHIER)
+			fetchResponses.set("check_opening_shift", {
+				message: {
+					pos_opening_shift: { name: "SHIFT-2", user: OTHER_CASHIER },
+					pos_profile: { name: "Main" },
+					company: { name: "Acme" },
+				},
+			})
+
+			expect(await shiftStore.checkShift()).toBe(true)
+			await settle()
+
+			expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
 		})
 	})
 
