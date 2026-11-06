@@ -11,7 +11,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from pos_next.services.sync_classifier import DependencyError, SyncContractError
 
@@ -76,6 +76,53 @@ def resolve_local_names(payload):
             payload[fieldname] = _get_server_name(payload[fieldname])
             if fieldname == "customer":
                 payload.pop("customer_name", None)
+
+
+def _get_return_row_positions(doctype, invoice):
+    """Item row names of an invoice by their position on it."""
+    return dict(
+        frappe.get_all(f"{doctype} Item", filters={"parent": invoice}, fields=["idx", "name"], as_list=True)
+    )
+
+
+def align_return(payload):
+    """Hold a queued return to what an online return goes through.
+
+    Preparing it applies every rule of the online path, on the day of the return. A return
+    of a sale that was still in the queue also takes its item links and rates from there,
+    because the device could not know them, and ERPNext ignores rows without a link.
+    """
+    from pos_next.api.invoices import _prepare_return_invoice
+
+    prepared = _prepare_return_invoice(
+        payload["return_against"],
+        payload.get("posa_pos_opening_shift"),
+        as_of=payload.get("posting_date"),
+    )
+    # A manager may have moved the original to another customer while it waited
+    payload["customer"] = prepared["customer"]
+
+    doctype = prepared["doctype"]
+    link_field = "pos_invoice_item" if doctype == "POS Invoice" else "sales_invoice_item"
+    unlinked = [item for item in payload.get("items") or [] if not item.get(link_field)]
+    if not unlinked:
+        return
+
+    positions = _get_return_row_positions(doctype, payload["return_against"])
+    prepared_rows = {row[link_field]: row for row in prepared["items"]}
+
+    for item in unlinked:
+        row = prepared_rows.get(positions.get(cint(item.pop("original_idx", 0))))
+        if not row or row["item_code"] != item.get("item_code"):
+            frappe.throw(
+                _("Item {0} has nothing left to return on invoice {1}").format(
+                    item.get("item_code"), payload["return_against"]
+                )
+            )
+
+        item[link_field] = row[link_field]
+        for fieldname in ("rate", "uom", "warehouse", "conversion_factor"):
+            item[fieldname] = row[fieldname]
 
 
 def find_customer(offline_id):

@@ -3250,6 +3250,11 @@ async function loadInvoiceHistoryData() {
 		if (result && result.length > 0) {
 			cacheInvoiceHistory(result, shiftStore.profileName);
 		}
+		if (posSettingsStore.allowOfflineReturns) {
+			offlineStore.refreshReturnDocuments(shiftStore.profileName).catch((error) => {
+				log.error("Error keeping invoices for offline returns:", error);
+			});
+		}
 	} catch (error) {
 		log.error("Error loading invoice history:", error);
 

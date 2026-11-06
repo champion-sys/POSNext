@@ -1,10 +1,11 @@
 # Copyright (c) 2026, BrainWise and contributors
 # For license information, please see license.txt
 
+import inspect
 import json
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import frappe
 
@@ -554,6 +555,198 @@ class TestQueuedCoupons(NoSiteTestCase):
             sync_inbox.apply_fix("row-1", "remove_coupon", {})
 
         self.assertEqual(json.loads(row.payload), {"discount_amount": 5})
+
+
+class TestQueuedReturns(NoSiteTestCase):
+    prepared = {
+        "customer": "CUST-0001",
+        "doctype": "Sales Invoice",
+        "items": [
+            {
+                "item_code": "A",
+                "sales_invoice_item": "row-a",
+                "rate": 9.5,
+                "uom": "Nos",
+                "warehouse": "Stores",
+                "conversion_factor": 1,
+            },
+            {
+                "item_code": "B",
+                "sales_invoice_item": "row-b",
+                "rate": 20,
+                "uom": "Box",
+                "warehouse": "Stores",
+                "conversion_factor": 12,
+            },
+        ],
+    }
+
+    def _align(self, payload, prepared=None):
+        with (
+            patch("pos_next.api.invoices._prepare_return_invoice", return_value=prepared or self.prepared) as self.prepare,
+            patch(
+                "pos_next.services.sync_entities.frappe.get_all",
+                return_value=[(1, "row-a"), (2, "row-b")],
+            ),
+        ):
+            sync_entities.align_return(payload)
+        return payload
+
+    def test_applies_the_online_rules_on_the_day_of_the_return(self):
+        self._align({"return_against": "SINV-1", "posting_date": "2026-11-05", "posa_pos_opening_shift": "S", "items": []})
+        self.prepare.assert_called_once_with("SINV-1", "S", as_of="2026-11-05")
+
+    def test_a_broken_rule_stops_the_return_with_its_reason(self):
+        with patch(
+            "pos_next.api.invoices._prepare_return_invoice",
+            side_effect=frappe.ValidationError("Return period has expired"),
+        ):
+            with self.assertRaises(frappe.ValidationError):
+                sync_entities.align_return({"return_against": "SINV-1", "items": []})
+
+    def test_a_return_from_a_kept_document_keeps_its_rates(self):
+        item = {"item_code": "A", "sales_invoice_item": "row-a", "rate": 9.9}
+        payload = self._align({"return_against": "SINV-1", "items": [item]})
+        self.assertEqual(payload["items"][0]["rate"], 9.9)
+
+    def test_a_return_of_a_queued_sale_gets_its_links_and_rates(self):
+        payload = self._align(
+            {
+                "return_against": "SINV-1",
+                "items": [{"item_code": "B", "qty": -1, "rate": 25, "original_idx": 2}],
+            }
+        )
+
+        item = payload["items"][0]
+        self.assertEqual(item["sales_invoice_item"], "row-b")
+        self.assertEqual(item["rate"], 20)
+        self.assertEqual(item["uom"], "Box")
+        self.assertEqual(item["conversion_factor"], 12)
+        self.assertNotIn("original_idx", item)
+
+    def test_uses_the_pos_invoice_link_on_a_pos_invoice(self):
+        prepared = {
+            "customer": "CUST-0001",
+            "doctype": "POS Invoice",
+            "items": [
+                {
+                    "item_code": "A",
+                    "pos_invoice_item": "row-a",
+                    "rate": 9.5,
+                    "uom": "Nos",
+                    "warehouse": "Stores",
+                    "conversion_factor": 1,
+                }
+            ],
+        }
+        payload = self._align(
+            {"return_against": "POSINV-1", "items": [{"item_code": "A", "original_idx": 1}]}, prepared
+        )
+        self.assertEqual(payload["items"][0]["pos_invoice_item"], "row-a")
+
+    def test_a_row_with_nothing_left_to_return_fails_with_the_reason(self):
+        prepared = {**self.prepared, "items": self.prepared["items"][:1]}
+        with self.assertRaises(frappe.ValidationError):
+            self._align({"return_against": "SINV-1", "items": [{"item_code": "B", "original_idx": 2}]}, prepared)
+
+    def test_a_different_item_at_that_position_is_refused(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._align({"return_against": "SINV-1", "items": [{"item_code": "Z", "original_idx": 1}]})
+
+    def test_the_return_follows_its_invoice_to_a_corrected_customer(self):
+        payload = self._align({"return_against": "SINV-1", "customer": "CUST-OLD", "items": []})
+        self.assertEqual(payload["customer"], "CUST-0001")
+
+    @patch("pos_next.api.invoices._assert_invoice_write_access")
+    @patch("pos_next.services.invoice_processor.process_invoice")
+    @patch("pos_next.services.sync_entities.align_return")
+    def test_a_return_waits_for_the_real_name_of_its_invoice(self, align_return, process_invoice, _access):
+        frappe.local.db.get_value.return_value = frappe._dict(status="Synced", sales_invoice="SINV-9")
+        process_invoice.return_value = {"name": "SINV-10", "grand_total": -10}
+        stored = json.dumps({"is_return": 1, "return_against": LOCAL_INVOICE, "pos_profile": "Main"})
+
+        sync_inbox._create_invoice(_row(payload=stored, depends_on=LOCAL_INVOICE))
+
+        self.assertEqual(align_return.call_args.args[0]["return_against"], "SINV-9")
+        self.assertEqual(process_invoice.call_args.args[0]["return_against"], "SINV-9")
+
+    def test_a_return_of_a_voided_sale_needs_a_person(self):
+        frappe.local.db.get_value.return_value = frappe._dict(status="Voided", sales_invoice=None)
+        stored = json.dumps({"is_return": 1, "return_against": LOCAL_INVOICE, "pos_profile": "Main"})
+
+        with self.assertRaises(DependencyError):
+            sync_inbox._create_invoice(_row(payload=stored, depends_on=LOCAL_INVOICE))
+
+    def test_a_request_cannot_set_the_day_of_a_return(self):
+        for method in (invoices.validate_return_items, invoices.prepare_return_invoice):
+            self.assertNotIn("as_of", inspect.signature(method).parameters)
+
+
+class TestReturnPeriod(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        frappe.local.qb = MagicMock()
+        self.addCleanup(setattr, frappe.local, "qb", None)
+        frappe.local.db.get_value.return_value = 7
+
+        run = frappe.local.qb.from_.return_value.select.return_value.where.return_value.run
+        run.return_value = [frappe._dict(pos_profile="Main", posting_date="2026-11-01")]
+
+        patcher = patch("pos_next.api.invoices.nowdate", return_value="2026-12-30")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_online_counts_from_today(self):
+        result = invoices._validate_return_items("SINV-1", [], "Sales Invoice")
+        self.assertFalse(result["valid"])
+
+    def test_a_queued_return_counts_from_the_day_it_was_made(self):
+        with patch("frappe.utils.date_diff", return_value=4) as date_diff:
+            result = invoices._validate_return_items("SINV-1", [], "Sales Invoice", as_of="2026-11-05")
+
+        self.assertTrue(result["valid"])
+        self.assertEqual(str(date_diff.call_args.args[0]), "2026-11-05")
+
+
+class TestOfflineReturnDocuments(NoSiteTestCase):
+    @patch("pos_next.api.invoices._prepare_return_invoice")
+    @patch("pos_next.api.invoices._assert_invoice_write_access")
+    def test_nothing_is_prepared_while_the_setting_is_off(self, _access, prepare):
+        frappe.local.db.get_value.return_value = 0
+
+        self.assertEqual(invoices.get_offline_return_documents("Main"), [])
+        prepare.assert_not_called()
+
+    @patch("pos_next.api.invoices.frappe.clear_messages")
+    @patch("pos_next.api.invoices.get_returnable_invoices")
+    @patch("pos_next.api.invoices._prepare_return_invoice")
+    @patch("pos_next.api.invoices._assert_invoice_write_access")
+    def test_keeps_what_a_device_needs_with_the_rules_of_each_invoice(
+        self, _access, prepare, returnable, _clear_messages
+    ):
+        frappe.local.db.get_value.side_effect = [1, {"allow_return": 1, "return_validity_days": 30}]
+        returnable.return_value = [frappe._dict(name="SINV-1"), frappe._dict(name="SINV-2")]
+        prepare.side_effect = [
+            {
+                "doctype": "Sales Invoice",
+                "return_against": "SINV-1",
+                "pos_profile": "Other Branch",
+                "sales_team": [{"sales_person": "Sara", "allocated_percentage": 100, "incentives": 3}],
+                "items": [{"item_code": "A", "remaining_qty": 2, "income_account": "Sales - T"}],
+                "taxes": [{"account_head": "VAT - T"}],
+            },
+            frappe.ValidationError("All items from this invoice have already been returned"),
+        ]
+
+        documents = invoices.get_offline_return_documents("Main")
+
+        self.assertEqual(len(documents), 1)
+        document = documents[0]
+        self.assertEqual(document["_return_rules"]["return_validity_days"], 30)
+        self.assertEqual(document["items"][0]["remaining_qty"], 2)
+        self.assertNotIn("income_account", document["items"][0])
+        self.assertNotIn("taxes", document)
+        self.assertEqual(document["sales_team"], [{"sales_person": "Sara", "allocated_percentage": 100}])
 
 
 class TestSaveInvoiceDraft(NoSiteTestCase):

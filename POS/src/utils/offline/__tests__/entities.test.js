@@ -4,6 +4,8 @@ import {
 	buildCustomerPayload,
 	buildLocalCustomer,
 	buildPaymentPayload,
+	buildReturnDocFromQueue,
+	checkReturnValidity,
 	countQueuedCouponUses,
 	ENTITY_CUSTOMER,
 	ENTITY_INVOICE,
@@ -14,6 +16,8 @@ import {
 	getEntity,
 	getInvoiceDependencies,
 	isLocalName,
+	isReturnableQueueRow,
+	subtractQueuedReturns,
 	sumQueuedPayments,
 } from "../entities"
 import { buildSyncEnvelope, shouldQueueCheckout, SYNC_REALTIME, sumQueuedStock } from "../invoicePayload"
@@ -219,6 +223,188 @@ describe("cached coupons", () => {
 			{ entity: ENTITY_PAYMENT, data: { coupon_code: "SAVE10" } },
 		]
 		expect(countQueuedCouponUses(rows, "SAVE10", "CUST-0001")).toEqual({ total: 2, forCustomer: 1 })
+	})
+})
+
+describe("checkReturnValidity", () => {
+	const doc = (rules, postingDate = "2026-11-01") => ({
+		return_against: "SINV-1",
+		_return_rules: rules,
+		_original_invoice: { posting_date: postingDate },
+	})
+
+	it("allows a return within the period", () => {
+		expect(checkReturnValidity(doc({ allow_return: 1, return_validity_days: 7 }), "2026-11-08")).toEqual({
+			valid: true,
+		})
+	})
+
+	it("refuses a return past the period, with what the dialog shows", () => {
+		expect(checkReturnValidity(doc({ allow_return: 1, return_validity_days: 7 }), "2026-11-09")).toEqual({
+			valid: false,
+			error_type: "return_period_expired",
+			invoice_name: "SINV-1",
+			invoice_date: "2026-11-01",
+			days_since: 8,
+			allowed_days: 7,
+		})
+	})
+
+	it("treats zero days as no limit", () => {
+		expect(checkReturnValidity(doc({ allow_return: 1, return_validity_days: 0 }), "2030-01-01").valid).toBe(true)
+	})
+
+	it("refuses when the invoice's profile does not allow returns", () => {
+		expect(checkReturnValidity(doc({ allow_return: 0 }), "2026-11-02")).toEqual({
+			valid: false,
+			error_type: "return_not_allowed",
+		})
+	})
+})
+
+describe("subtractQueuedReturns", () => {
+	const doc = {
+		return_against: "SINV-1",
+		_cached_at: 1000,
+		items: [
+			{ item_code: "A", sales_invoice_item: "row-a", remaining_qty: 3, already_returned: 1 },
+			{ item_code: "B", sales_invoice_item: "row-b", remaining_qty: 2 },
+		],
+	}
+	const returnRow = (values) => ({
+		timestamp: 2000,
+		data: {
+			is_return: 1,
+			return_against: "SINV-1",
+			items: [{ item_code: "A", sales_invoice_item: "row-a", qty: -2 }],
+		},
+		...values,
+	})
+
+	it("takes a queued return off what can still be returned", () => {
+		const [itemA, itemB] = subtractQueuedReturns(doc, [returnRow()]).items
+		expect(itemA).toMatchObject({ remaining_qty: 1, already_returned: 3 })
+		expect(itemB.remaining_qty).toBe(2)
+	})
+
+	it("adds up several returns and stops at zero", () => {
+		const [itemA] = subtractQueuedReturns(doc, [returnRow(), returnRow()]).items
+		expect(itemA.remaining_qty).toBe(0)
+	})
+
+	it("ignores returns of other invoices and sales", () => {
+		const other = returnRow()
+		other.data.return_against = "SINV-2"
+		const sale = { data: { return_against: "SINV-1", items: [{ sales_invoice_item: "row-a", qty: 5 }] } }
+		expect(subtractQueuedReturns(doc, [other, sale]).items[0].remaining_qty).toBe(3)
+	})
+
+	it("does not count a synced return twice when the kept document already has it", () => {
+		const before = returnRow({ synced: true, timestamp: 500 })
+		const after = returnRow({ synced: true, timestamp: 1500 })
+		expect(subtractQueuedReturns(doc, [before]).items[0].remaining_qty).toBe(3)
+		expect(subtractQueuedReturns(doc, [after]).items[0].remaining_qty).toBe(1)
+	})
+
+	it("matches rows of a sale still in the queue by position", () => {
+		const queued = {
+			return_against: LOCAL_INVOICE,
+			items: [
+				{ item_code: "A", original_idx: 1, remaining_qty: 2 },
+				{ item_code: "A", original_idx: 2, remaining_qty: 2 },
+			],
+		}
+		const row = {
+			data: {
+				is_return: 1,
+				return_against: LOCAL_INVOICE,
+				items: [{ item_code: "A", original_idx: 2, qty: -2 }],
+			},
+		}
+		const [first, second] = subtractQueuedReturns(queued, [row]).items
+		expect(first.remaining_qty).toBe(2)
+		expect(second.remaining_qty).toBe(0)
+	})
+})
+
+describe("isReturnableQueueRow", () => {
+	const sale = { offline_id: LOCAL_INVOICE, data: { doctype: "Sales Invoice" } }
+
+	it("accepts a sale in the queue", () => {
+		expect(isReturnableQueueRow(sale)).toBe(true)
+	})
+
+	it("refuses anything that may never post, or is not a sale", () => {
+		expect(isReturnableQueueRow({ ...sale, sync_failed: true })).toBe(false)
+		expect(isReturnableQueueRow({ ...sale, superseded: true })).toBe(false)
+		expect(isReturnableQueueRow({ ...sale, server_status: "voided" })).toBe(false)
+		expect(isReturnableQueueRow({ data: { is_return: 1 } })).toBe(false)
+		expect(isReturnableQueueRow({ data: { doctype: "Sales Order" } })).toBe(false)
+		expect(isReturnableQueueRow({ entity: ENTITY_CUSTOMER, data: {} })).toBe(false)
+	})
+})
+
+describe("buildReturnDocFromQueue", () => {
+	const rules = { allow_return: 1, return_validity_days: 7 }
+	const row = {
+		offline_id: LOCAL_INVOICE,
+		data: {
+			doctype: "Sales Invoice",
+			customer: LOCAL_CUSTOMER,
+			customer_name: "Sara",
+			company: "ACME",
+			posting_date: "2026-11-05",
+			grand_total: 115,
+			change_amount: 5,
+			payments: [{ mode_of_payment: "Cash", amount: 120 }],
+			items: [
+				{ item_code: "A", qty: 2, rate: 25, uom: "Nos", warehouse: "Stores", conversion_factor: 1 },
+				{ item_code: "B", qty: 1, rate: 50, uom: "Nos", warehouse: "Stores" },
+			],
+		},
+	}
+
+	it("returns against the queue record until the sale has a server name", () => {
+		expect(buildReturnDocFromQueue(row, rules).return_against).toBe(LOCAL_INVOICE)
+		expect(buildReturnDocFromQueue({ ...row, server_invoice: "SINV-9" }, rules).return_against).toBe("SINV-9")
+	})
+
+	it("works out what was paid, leaving out the change", () => {
+		expect(buildReturnDocFromQueue(row, rules)._original_invoice).toMatchObject({
+			paid_amount: 115,
+			outstanding_amount: 0,
+		})
+	})
+
+	it("spreads tax and invoice discounts over the unit price", () => {
+		const [first] = buildReturnDocFromQueue(row, rules).items
+		expect(first.rate).toBe(25)
+		expect(first.rate_with_tax).toBe(28.75)
+	})
+
+	it("remembers each row's position, for the server to find it", () => {
+		expect(buildReturnDocFromQueue(row, rules).items.map((item) => item.original_idx)).toEqual([1, 2])
+	})
+
+	it("depends on the sale and on its customer", () => {
+		const doc = buildReturnDocFromQueue(row, rules)
+		expect(getInvoiceDependencies({ customer: doc.customer, return_against: doc.return_against })).toEqual([
+			LOCAL_CUSTOMER,
+			LOCAL_INVOICE,
+		])
+	})
+
+	it("works out an unpaid sale as outstanding", () => {
+		const unpaid = { ...row, data: { ...row.data, payments: [], change_amount: 0 } }
+		expect(buildReturnDocFromQueue(unpaid, rules)._original_invoice.outstanding_amount).toBe(115)
+	})
+})
+
+describe("sumQueuedStock with a return", () => {
+	it("gives the returned units back", () => {
+		const sale = { data: { items: [{ item_code: "A", qty: 3 }] } }
+		const refund = { data: { is_return: 1, items: [{ item_code: "A", qty: -1 }] } }
+		expect(sumQueuedStock([sale, refund]).get("A")).toBe(2)
 	})
 })
 

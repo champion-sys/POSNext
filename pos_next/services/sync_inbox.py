@@ -241,6 +241,9 @@ def _create_invoice(row):
 
     _assert_invoice_write_access(doctype, pos_profile, row.cashier)
 
+    if payload.get("is_return") and payload.get("return_against"):
+        sync_entities.align_return(payload)
+
     data = {"offline_id": row.offline_id}
     result = process_invoice(
         payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier, queued=True

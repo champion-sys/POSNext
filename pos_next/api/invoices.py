@@ -641,6 +641,16 @@ def validate_return_items(original_invoice_name, return_items, doctype="Sales In
     Uses query builder for parameterized queries. Fetches invoice details, original
     item quantities, and already-returned quantities in 3 queries total.
     """
+    return _validate_return_items(original_invoice_name, return_items, doctype)
+
+
+def _validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice", as_of=None):
+    """The checks of validate_return_items.
+
+    Args:
+        as_of: The day of a queued return, which is when the return period counts.
+            Kept out of the whitelisted method, so a request cannot set it.
+    """
     from frappe.utils import date_diff, getdate
     from frappe.query_builder.functions import Sum, Abs
 
@@ -671,7 +681,7 @@ def validate_return_items(original_invoice_name, return_items, doctype="Sales In
         )
 
         if return_validity_days > 0:
-            days_since_invoice = date_diff(getdate(nowdate()), getdate(invoice_info.posting_date))
+            days_since_invoice = date_diff(getdate(as_of or nowdate()), getdate(invoice_info.posting_date))
             if days_since_invoice > return_validity_days:
                 return {
                     "valid": False,
@@ -860,10 +870,11 @@ def save_invoice_draft(data, acting_user=None, queued=False):
         if (data.get("is_return") or invoice_doc.get("is_return")) and invoice_doc.get(
             "return_against"
         ):
-            validation = validate_return_items(
+            validation = _validate_return_items(
                 invoice_doc.return_against,
                 [d.as_dict() for d in invoice_doc.items],
                 doctype=invoice_doc.doctype,
+                as_of=invoice_doc.get("posting_date") if queued else None,
             )
             if not validation.get("valid"):
                 frappe.throw(validation.get("message"))
@@ -2015,6 +2026,16 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             - _original_invoice: Reference data from original invoice (payments, amounts)
             - Each item includes original_qty, already_returned, and remaining_qty
     """
+    return _prepare_return_invoice(invoice_name, pos_opening_shift)
+
+
+def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
+    """The work of prepare_return_invoice.
+
+    Args:
+        as_of: The day of a queued return, which is when the return period counts.
+            Kept out of the whitelisted method, so a request cannot set it.
+    """
     from frappe.utils import date_diff, getdate
     from frappe.query_builder.functions import Sum, Abs, Coalesce
     from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
@@ -2078,7 +2099,7 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         )
 
         if return_validity_days > 0:
-            days_since_invoice = date_diff(getdate(nowdate()), getdate(invoice_info.posting_date))
+            days_since_invoice = date_diff(getdate(as_of or nowdate()), getdate(invoice_info.posting_date))
             if days_since_invoice > return_validity_days:
                 frappe.throw(
                     _("Return period has expired. Invoice {0} was created {1} days ago. "
@@ -2247,6 +2268,95 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
         frappe.throw(_("All items from this invoice have already been returned"))
 
     return return_dict
+
+
+#: What a device needs to process a return with no server to ask
+_RETURN_DOCUMENT_FIELDS = (
+    "doctype",
+    "return_against",
+    "customer",
+    "customer_name",
+    "company",
+    "pos_profile",
+    "_original_invoice",
+)
+_RETURN_ITEM_FIELDS = (
+    "item_code",
+    "item_name",
+    "qty",
+    "rate",
+    "price_list_rate",
+    "rate_with_tax",
+    "tax_per_unit",
+    "tax_included_in_rate",
+    "discount_per_unit",
+    "uom",
+    "warehouse",
+    "conversion_factor",
+    "sales_invoice_item",
+    "pos_invoice_item",
+    "original_qty",
+    "already_returned",
+    "remaining_qty",
+)
+
+
+def _trim_return_document(document, rules):
+    trimmed = {fieldname: document.get(fieldname) for fieldname in _RETURN_DOCUMENT_FIELDS}
+    trimmed["_return_rules"] = rules
+    trimmed["sales_team"] = [
+        {"sales_person": row.get("sales_person"), "allocated_percentage": row.get("allocated_percentage")}
+        for row in document.get("sales_team") or []
+    ]
+    trimmed["items"] = [
+        {fieldname: item.get(fieldname) for fieldname in _RETURN_ITEM_FIELDS}
+        for item in document.get("items") or []
+    ]
+    return trimmed
+
+
+@frappe.whitelist()
+def get_offline_return_documents(pos_profile, pos_opening_shift=None, limit=100):
+    """Prepared returns of recent invoices, for a device to work from while offline.
+
+    Each one carries the return rules of its own POS Profile, which may not be the
+    one the device is on.
+
+    Args:
+        pos_profile: The device's POS Profile
+        pos_opening_shift: The current shift, so foreign payment modes get remapped
+        limit: How many invoices
+
+    Returns:
+        list[dict]: Empty unless the POS Profile allows offline returns
+    """
+    _assert_invoice_write_access(DOCTYPE_SALES_INVOICE, pos_profile)
+
+    if not cint(frappe.db.get_value(DOCTYPE_POS_SETTINGS, {"pos_profile": pos_profile}, "allow_offline_returns")):
+        return []
+
+    rules_by_profile = {}
+    documents = []
+
+    for invoice in get_returnable_invoices(min(cint(limit), 200), pos_profile):
+        try:
+            document = _prepare_return_invoice(invoice.name, pos_opening_shift)
+        except frappe.ValidationError:
+            frappe.clear_messages()
+            continue
+
+        profile = document.get("pos_profile")
+        if profile not in rules_by_profile:
+            rules_by_profile[profile] = frappe.db.get_value(
+                DOCTYPE_POS_SETTINGS,
+                {"pos_profile": profile, "enabled": 1},
+                ["allow_return", "return_validity_days"],
+                as_dict=True,
+            ) or {}
+
+        documents.append(_trim_return_document(document, rules_by_profile[profile]))
+
+    return documents
 
 
 @frappe.whitelist()

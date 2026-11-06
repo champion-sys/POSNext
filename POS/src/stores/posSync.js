@@ -34,10 +34,13 @@ import {
 	buildCustomerPayload,
 	buildLocalCustomer,
 	buildPaymentPayload,
+	buildReturnDocFromQueue,
 	countQueuedCouponUses,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
+	isReturnableQueueRow,
+	subtractQueuedReturns,
 } from "@/utils/offline/entities"
 import { SYNC_PERIODIC, formatLocalPosting, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
@@ -60,6 +63,8 @@ const STARTUP_SYNC_DELAY_MS = 5000
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
 
 const COUPONS_CACHE_PREFIX = "offline_coupons_"
+const RETURN_DOCUMENTS_CACHE_PREFIX = "offline_return_documents_"
+const RETURN_DOCUMENTS_LIMIT = 100
 
 export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
@@ -410,6 +415,48 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * Keep prepared returns of recent invoices on this device. Empty on the
+	 * server unless POS Settings allows offline returns.
+	 * @param {string} posProfile
+	 */
+	async function refreshReturnDocuments(posProfile) {
+		const documents = await call("pos_next.api.invoices.get_offline_return_documents", {
+			pos_profile: posProfile,
+			pos_opening_shift: usePOSShiftStore().currentShift?.name,
+			limit: RETURN_DOCUMENTS_LIMIT,
+		})
+		await setSetting(`${RETURN_DOCUMENTS_CACHE_PREFIX}${posProfile}`, {
+			cached_at: Date.now(),
+			documents: documents || [],
+		})
+	}
+
+	/**
+	 * What can be returned with no server to ask: the kept documents, and sales
+	 * still in the queue. Returns already queued are taken off both.
+	 * @param {string} posProfile
+	 * @returns {Promise<Array>} Prepared returns, by return_against
+	 */
+	async function getOfflineReturnDocuments(posProfile) {
+		const settingsStore = usePOSSettingsStore()
+		const rows = await offlineWorker.getQueueRows()
+		const cached = await getSetting(`${RETURN_DOCUMENTS_CACHE_PREFIX}${posProfile}`)
+
+		const kept = (cached?.documents || []).map((doc) => ({ ...doc, _cached_at: cached.cached_at }))
+		const keptNames = new Set(kept.map((doc) => doc.return_against))
+		const rules = {
+			allow_return: settingsStore.allowReturn,
+			return_validity_days: settingsStore.settings.return_validity_days,
+		}
+		const queued = rows
+			.filter(isReturnableQueueRow)
+			.map((row) => buildReturnDocFromQueue(row, rules))
+			.filter((doc) => !keptNames.has(doc.return_against))
+
+		return [...queued, ...kept].map((doc) => subtractQueuedReturns(doc, rows))
+	}
+
+	/**
 	 * Load the list of pending invoices for display
 	 */
 	async function loadPendingInvoices() {
@@ -527,6 +574,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 				showSuccess(__("Data is ready for offline use"))
 			}
+
+			refreshReturnDocuments(currentProfile.name).catch((error) => {
+				log.error('Failed to load returnable invoices', error)
+			})
 
 			try {
 				const coupons = await call("pos_next.api.offers.get_offline_coupons", {
@@ -655,6 +706,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		savePaymentOffline,
 		withQueuedPayments,
 		checkCouponOffline,
+		refreshReturnDocuments,
+		getOfflineReturnDocuments,
 		loadPendingInvoices,
 		updatePendingCount,
 		deleteOfflineInvoice,

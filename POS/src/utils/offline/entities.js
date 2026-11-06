@@ -25,6 +25,8 @@ const roundAmount = (value) => Math.round((Number(value) || 0) * 100) / 100
 
 const unique = (values) => [...new Set(values)]
 
+const getQty = (item) => Number(item.qty ?? item.quantity) || 0
+
 /**
  * Whether a name was given by a device and does not exist on the server yet.
  * @param {*} value
@@ -261,7 +263,7 @@ export function subtractQueuedReturns(doc, rows) {
 
 		for (const item of data.items || []) {
 			const key = getReturnItemKey(item)
-			returned.set(key, (returned.get(key) || 0) + Math.abs(Number(item.qty) || 0))
+			returned.set(key, (returned.get(key) || 0) + Math.abs(getQty(item)))
 		}
 	}
 
@@ -306,7 +308,7 @@ export function isReturnableQueueRow(row) {
 export function buildReturnDocFromQueue(row, rules) {
 	const invoice = row.data
 	const items = invoice.items || []
-	const subtotal = items.reduce((sum, item) => sum + Number(item.qty) * Number(item.rate), 0)
+	const subtotal = items.reduce((sum, item) => sum + getQty(item) * Number(item.rate), 0)
 	const toPaid = subtotal > 0 && invoice.grand_total ? invoice.grand_total / subtotal : 1
 
 	const paid = roundAmount(
@@ -342,9 +344,9 @@ export function buildReturnDocFromQueue(row, rules) {
 			price_list_rate: item.price_list_rate,
 			rate_with_tax: roundAmount(Number(item.rate) * toPaid),
 			original_idx: index + 1,
-			original_qty: Number(item.qty),
+			original_qty: getQty(item),
 			already_returned: 0,
-			remaining_qty: Number(item.qty),
+			remaining_qty: getQty(item),
 		})),
 	}
 }
