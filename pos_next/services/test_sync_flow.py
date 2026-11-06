@@ -234,14 +234,16 @@ class TestCashierSession(Flow):
 
     def test_a_request_keeps_its_session_and_arguments(self):
         name = self._stored_sale()
-        session = frappe.local.session
-        sid, data = session.sid, session.data
-        form_dict = frappe.local.form_dict
+        data = frappe._dict(csrf_token="token", last_updated="2026-11-06 12:00:00")
+        frappe.local.session = frappe._dict(user="manager@example.com", sid="abc123", data=data)
+        form_dict = frappe._dict(cmd="pos_next.api.sync.push")
+        frappe.local.form_dict = form_dict
 
         self._process(name, Mock(return_value=self.finished))
 
-        self.assertIs(session.sid, sid)
-        self.assertIs(session.data, data)
+        self.assertEqual(frappe.session.user, "manager@example.com")
+        self.assertEqual(frappe.session.sid, "abc123")
+        self.assertIs(frappe.session.data, data)
         self.assertIs(frappe.local.form_dict, form_dict)
 
     def test_a_disabled_cashier_needs_a_person(self):
