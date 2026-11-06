@@ -92,7 +92,7 @@ class TestShiftReads(unittest.TestCase):
             "db": patch("frappe.db", self.db),
             "get_doc": patch("frappe.get_doc", return_value=Mock(pos_profile="Main")),
             "get_all": patch("frappe.get_all", return_value=[]),
-            "translate": patch("frappe._", lambda text, *_args, **_kwargs: text),
+            "translate": patch.object(pos_closing_shift, "_", lambda text: text),
         }
         self.mocks = {name: patcher.start() for name, patcher in patches.items()}
         self.addCleanup(patch.stopall)
