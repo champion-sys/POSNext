@@ -8,6 +8,7 @@ const LINK_DOCTYPES = {
 	invoice: ["Sales Invoice", "POS Invoice"],
 	customer: ["Customer"],
 	payment: ["Payment Entry"],
+	shift_close: ["POS Closing Shift"],
 };
 
 const SYNC_FIXES = {
@@ -150,6 +151,19 @@ function addReviewActions(frm) {
 			() => {
 				frappe.confirm(__("Post this invoice with the server's total?"), () =>
 					callSyncAction(frm, "apply_fix", { fix: "accept_total_difference" }, __("Accepted")),
+				);
+			},
+			__("Correct"),
+		);
+	}
+
+	if (entity === "shift_close") {
+		frm.add_custom_button(
+			__("Close Without Unfinished Invoices"),
+			() => {
+				frappe.confirm(
+					__("The closing will leave out every invoice of this shift that has not finished. Continue?"),
+					() => callSyncAction(frm, "apply_fix", { fix: "accept_unfinished" }, __("Saved. Reprocess the record to apply it.")),
 				);
 			},
 			__("Correct"),

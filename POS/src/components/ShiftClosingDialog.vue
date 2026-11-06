@@ -225,7 +225,7 @@
 
             <div class="p-3 md:p-6">
               <!-- ENTRY MODE: Simple blind input list (when hideExpectedAmount is enabled) -->
-              <div v-if="hideExpectedAmount" class="flex flex-col gap-3 md:gap-4">
+              <div v-if="countsOnly" class="flex flex-col gap-3 md:gap-4">
                 <div
                   v-for="(payment, idx) in closingData.payment_reconciliation"
                   :key="idx"
@@ -492,7 +492,7 @@
             variant="solid"
             theme="blue"
             @click="submitClosing"
-            :loading="submitResource.loading"
+            :loading="submitResource.loading || savingOffline"
             :disabled="!canSubmit"
           >
             {{ submitResource.loading ? __('Closing Shift...') : __('Close Shift') }}
@@ -507,10 +507,14 @@
 import { Button, Dialog, FeatherIcon, Input } from "frappe-ui"
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { storeToRefs } from "pinia"
-import { useShift, shiftState } from "../composables/useShift"
+import { resetShiftState, useShift, shiftState } from "../composables/useShift"
 import { useFormatters } from "../composables/useFormatters"
+import { useOfflineStatus } from "../composables/useOfflineStatus"
 import { usePOSSettingsStore } from "../stores/posSettings"
 import { usePOSShiftStore } from "../stores/posShift"
+import { usePOSSyncStore } from "../stores/posSync"
+import { buildClosingDraft } from "../utils/offline/entities"
+import { offlineWorker } from "../utils/offline/workerClient"
 import TranslatedHTML from "./common/TranslatedHTML.vue"
 
 const props = defineProps({
@@ -538,6 +542,16 @@ const posSettingsStore = usePOSSettingsStore()
 const { hideExpectedAmount, isLoaded } = storeToRefs(posSettingsStore)
 
 const shiftStore = usePOSShiftStore()
+const offlineStore = usePOSSyncStore()
+const { isOffline } = useOfflineStatus()
+
+const canCloseOffline = computed(() => isOffline.value && posSettingsStore.allowOfflineShiftClose)
+// Set when the draft is made, because the connection can return while it is open
+const isOfflineDraft = ref(false)
+const savingOffline = ref(false)
+
+// Offline there is nothing to compare with, so the cashier only enters what was counted
+const countsOnly = computed(() => hideExpectedAmount.value || isOfflineDraft.value)
 
 const closingData = ref(null)
 const closingDataResource = getClosingShiftData
@@ -559,6 +573,11 @@ watch(open, async (isOpen) => {
 		_idleWarningTimer = setTimeout(() => {
 			showIdleWarning.value = true
 		}, 60_000)
+
+		if (canCloseOffline.value) {
+			await loadOfflineDraft()
+			return
+		}
 
 		// Reset settings loaded state to avoid flashes of expected amount
 		posSettingsStore.isLoaded = false
@@ -586,7 +605,24 @@ onBeforeUnmount(() => {
 	}
 })
 
+async function loadOfflineDraft() {
+	errorMessage.value = ''
+
+	const openingShift = shiftState.value.pos_opening_shift
+	const paymentMethods = await offlineWorker.getCachedPaymentMethods(openingShift.pos_profile)
+	const draft = buildClosingDraft(openingShift, paymentMethods)
+
+	draft.payment_reconciliation = draft.payment_reconciliation.map((payment) =>
+		reactive({ ...payment, closing_amount: null, difference: 0, _touched: false }),
+	)
+
+	isOfflineDraft.value = true
+	closingData.value = draft
+}
+
 async function loadClosingData() {
+	isOfflineDraft.value = false
+
 	try {
 		errorMessage.value = '' // Clear any previous errors
 
@@ -663,6 +699,11 @@ async function submitClosing() {
 			})
 		}
 
+		if (isOfflineDraft.value) {
+			await saveOfflineClose()
+			return
+		}
+
 		// Submit to server
 		await submitResource.submit({ closing_shift: closingData.value })
 
@@ -684,6 +725,18 @@ async function submitClosing() {
 	}
 }
 
+async function saveOfflineClose() {
+	savingOffline.value = true
+	try {
+		await offlineStore.saveShiftCloseOffline(closingData.value)
+		resetShiftState()
+		emit("shift-closed", { queued: true })
+		closeDialog()
+	} finally {
+		savingOffline.value = false
+	}
+}
+
 function closeDialog() {
 	// Emit shift-closed event if we're closing from success report
 	if (showSuccessReport.value) {
@@ -699,14 +752,17 @@ function closeDialog() {
 
 // UI State Computed Properties
 const shouldShowSummary = computed(() =>
-	closingData.value && isLoaded.value && !hideExpectedAmount.value
+	closingData.value && isLoaded.value && !countsOnly.value
 )
 
 const isInEntryMode = computed(() =>
-	hideExpectedAmount.value && !showSuccessReport.value
+	countsOnly.value && !showSuccessReport.value
 )
 
 const reconciliationMessage = computed(() => {
+	if (isOfflineDraft.value) {
+		return __('Enter what you counted. The server works out the totals once every invoice has arrived.')
+	}
 	if (showSuccessReport.value && hideExpectedAmount.value) {
 		return 'Shift closed successfully'
 	}

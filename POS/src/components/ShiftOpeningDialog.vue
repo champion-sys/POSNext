@@ -2,6 +2,10 @@
   <Dialog v-model="open" :options="{ title: __('Open POS Shift'), size: 'xl' }">
     <template #body-content>
       <div class="flex flex-col gap-6">
+        <div v-if="isOffline" class="rounded-md bg-amber-50 border border-amber-200 p-4">
+          <p class="text-sm text-amber-800 text-start">{{ __('Opening a shift needs a connection. The POS will continue when you are back online.') }}</p>
+        </div>
+
         <!-- Step 1: Select POS Profile -->
         <div v-if="step === 1" class="flex flex-col gap-4">
           <div>
@@ -34,12 +38,12 @@
                 </div>
               </div>
             </div>
-            <div v-else class="text-center py-8 text-gray-500">
+            <div v-else-if="!isOffline" class="text-center py-8 text-gray-500">
               <p>{{ __('No POS Profiles available. Please contact your administrator.') }}</p>
             </div>
           </div>
 
-          <div v-if="profilesResource.error" class="rounded-md bg-red-50 p-4">
+          <div v-if="profilesResource.error && !isOffline" class="rounded-md bg-red-50 p-4">
             <p class="text-sm text-red-800">{{ profilesResource.error }}</p>
           </div>
         </div>
@@ -195,6 +199,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import { useShift } from "../composables/useShift"
 import { useFormatters } from "../composables/useFormatters"
+import { useOfflineStatus } from "../composables/useOfflineStatus"
 import { useToast } from "../composables/useToast"
 import { parseError } from "../utils/errorHandler"
 import ShiftClosingDialog from "./ShiftClosingDialog.vue"
@@ -215,6 +220,7 @@ const { createOpeningShift, getOpeningDialogData, checkOpeningShift } =
 	useShift()
 const { formatDateTime } = useFormatters()
 const { showError } = useToast()
+const { isOffline } = useOfflineStatus()
 
 const step = ref(1)
 const selectedProfile = ref(null)
@@ -263,6 +269,12 @@ watch(
 	{ immediate: true },
 )
 
+watch(isOffline, (offline) => {
+	if (!offline && open.value) {
+		initDialog()
+	}
+})
+
 watch(showClosingDialog, (isOpen) => {
 	closingExistingShift.value = isOpen
 	if (!isOpen && existingShift.value) {
@@ -276,6 +288,8 @@ async function initDialog() {
 	existingShift.value = null
 	openingBalances.value = {}
 	dialogDataResource.reset()
+
+	if (isOffline.value) return
 
 	try {
 		// Await profile fetch to ensure data is loaded before proceeding

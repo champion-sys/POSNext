@@ -20,9 +20,15 @@ from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 
 from pos_next.services import sync_classifier, sync_entities
 from pos_next.services.sync_classifier import TotalMismatchError, WaitingForDependencyError
-from pos_next.services.sync_entities import DOCTYPE, ENTITY_CUSTOMER, ENTITY_INVOICE, ENTITY_PAYMENT
+from pos_next.services.sync_entities import (
+    DOCTYPE,
+    ENTITY_CUSTOMER,
+    ENTITY_INVOICE,
+    ENTITY_PAYMENT,
+    ENTITY_SHIFT_CLOSE,
+    FINAL_STATES,
+)
 
-FINAL_STATES = ("Synced", "Resolved", "Voided")
 REVIEW = "Needs Review"
 
 #: Rows left in Processing longer than this belong to a crashed worker
@@ -98,7 +104,9 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
             "invoice_doctype": payload.get("doctype") or "Sales Invoice",
             "pos_profile": _link_or_none("POS Profile", pos_profile),
             "customer": _link_or_none("Customer", payload.get("customer")),
-            "shift": _link_or_none("POS Opening Shift", payload.get("posa_pos_opening_shift")),
+            "shift": _link_or_none(
+                "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+            ),
             "cashier": _link_or_none("User", item.get("cashier")) or uploaded_by,
             "uploaded_by": uploaded_by,
             "device_id": device_id,
@@ -217,7 +225,7 @@ def _get_unfinished_dependencies(row):
 
 def _is_blocked(row):
     """Hold a record until the records it depends on have finished."""
-    if not _get_unfinished_dependencies(row):
+    if cint(row.accept_unfinished) or not _get_unfinished_dependencies(row):
         return False
 
     if row.status != "Blocked":
@@ -422,6 +430,9 @@ _ENTITIES = {
     ENTITY_INVOICE: _Entity(_create_invoice, find_invoice_by_offline_id, ("Sales Invoice", "POS Invoice")),
     ENTITY_CUSTOMER: _Entity(sync_entities.create_customer, sync_entities.find_customer, ("Customer",)),
     ENTITY_PAYMENT: _Entity(sync_entities.create_payment, sync_entities.find_payment, ("Payment Entry",)),
+    ENTITY_SHIFT_CLOSE: _Entity(
+        sync_entities.close_shift, sync_entities.find_shift_close, ("POS Closing Shift",)
+    ),
 }
 
 
@@ -519,16 +530,22 @@ def _flag_if_stuck(row):
     if get_datetime(row.received_at) > add_to_date(now_datetime(), minutes=-MISSING_DEPENDENCY_MINUTES):
         return
 
-    missing = [
-        offline_id for offline_id, status in _get_unfinished_dependencies(row).items() if status is None
-    ]
+    unfinished = _get_unfinished_dependencies(row)
+    missing = [offline_id for offline_id, status in unfinished.items() if status is None]
+    in_review = [offline_id for offline_id, status in unfinished.items() if status == REVIEW]
+
     if missing:
-        exc = WaitingForDependencyError(
-            _("{0} record(s) this depends on never reached the server: {1}").format(
-                len(missing), ", ".join(missing)
-            )
+        message = _("{0} record(s) this depends on never reached the server: {1}").format(
+            len(missing), ", ".join(missing)
         )
-        _handle_failure(row.name, cint(row.attempts) + 1, exc, None, None)
+    elif in_review and row.entity == ENTITY_SHIFT_CLOSE:
+        message = _("{0} invoice(s) of this shift need review first: {1}").format(
+            len(in_review), ", ".join(in_review)
+        )
+    else:
+        return
+
+    _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
 
 
 def _release_arrived_rows():
@@ -701,6 +718,7 @@ def _fix_posting_date(payload, values):
 
 def _fix_customer(payload, values):
     payload["customer"] = values["customer"]
+    payload.pop("customer_name", None)
 
 
 def _fix_warehouse(payload, values):
@@ -778,5 +796,8 @@ _FIXES = {
         "payment_mode": _fix_payment_mode,
         "payment_amount": _fix_payment_amount,
         "shift": _fix_shift,
+    },
+    ENTITY_SHIFT_CLOSE: {
+        "accept_unfinished": None,
     },
 }

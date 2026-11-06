@@ -14,6 +14,7 @@
  * @module stores/posSync
  */
 
+import { clearShiftClosing, markShiftClosing } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import {
 	cacheCustomersFromServer,
@@ -30,15 +31,18 @@ import { getSetting, setSetting } from "@/utils/offline/db"
 import {
 	ENTITY_CUSTOMER,
 	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
 	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
 	buildPaymentPayload,
 	buildReturnDocFromQueue,
+	buildShiftClosePayload,
 	countQueuedCouponUses,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
+	getShiftManifest,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 } from "@/utils/offline/entities"
@@ -457,6 +461,22 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * Queue a shift close behind every sale of the shift. The server finalizes it
+	 * once they have all arrived, and works out the totals itself.
+	 * @param {Object} closing - The draft from buildClosingDraft, with what was counted
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function saveShiftCloseOffline(closing) {
+		const { session } = await import("@/data/session")
+		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), closing.pos_opening_shift)
+		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
+
+		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, manifest)
+		markShiftClosing(closing.pos_opening_shift)
+		return result
+	}
+
+	/**
 	 * Load the list of pending invoices for display
 	 */
 	async function loadPendingInvoices() {
@@ -674,6 +694,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	// INITIALIZATION
 	// =========================================================================
 
+	window.addEventListener("offlineEntitySynced", ({ detail }) => {
+		if (detail.row.entity === ENTITY_SHIFT_CLOSE) {
+			clearShiftClosing(detail.row.data.pos_opening_shift)
+		}
+	})
+
 	// Initialize pending count on store creation
 	updatePendingCount()
 	ensurePersistentStorage()
@@ -705,6 +731,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		saveCustomerOffline,
 		savePaymentOffline,
 		withQueuedPayments,
+		saveShiftCloseOffline,
 		checkCouponOffline,
 		refreshReturnDocuments,
 		getOfflineReturnDocuments,

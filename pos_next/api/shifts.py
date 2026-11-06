@@ -8,6 +8,7 @@ import frappe
 from frappe import _
 from frappe.utils import nowdate, nowtime, get_datetime
 from pos_next.api.utilities import get_wallet_payment_modes
+from pos_next.services.sync_entities import has_pending_close
 
 
 @frappe.whitelist()
@@ -84,6 +85,9 @@ def check_opening_shift(user=None):
 		order_by="period_start_date desc",
 	)
 
+	# Closed on a device and still finishing here: nothing more may be sold into it
+	open_shifts = [shift for shift in open_shifts if not has_pending_close(shift["name"])]
+
 	if not open_shifts:
 		return None
 
@@ -143,6 +147,23 @@ def create_opening_shift(pos_profile, company, balance_details):
 	return data
 
 
+def assert_may_close_shift(opening_shift_doc, user=None):
+	"""Refuse a user without the role the POS Profile requires for closing.
+
+	Args:
+		opening_shift_doc: POS Opening Shift document
+		user: Defaults to the session user. A queued close passes the cashier who made it.
+	"""
+	pos_profile_name = opening_shift_doc.pos_profile
+	if pos_profile_name:
+		allowed_role = frappe.db.get_value("POS Profile", pos_profile_name, "role_allowed_to_closing_shift")
+		if allowed_role and allowed_role not in frappe.get_roles(user or frappe.session.user):
+			frappe.throw(
+				_("You are not allowed to close this shift. Only users with role '{0}' can close it.").format(allowed_role),
+				frappe.PermissionError
+			)
+
+
 @frappe.whitelist()
 def get_closing_shift_data(opening_shift):
 	"""Get data for closing shift"""
@@ -150,14 +171,7 @@ def get_closing_shift_data(opening_shift):
 
 	# Check if the current user has permission to close the shift based on POS Profile
 	opening_shift_doc = frappe.get_doc("POS Opening Shift", opening_shift)
-	pos_profile_name = opening_shift_doc.pos_profile
-	if pos_profile_name:
-		allowed_role = frappe.db.get_value("POS Profile", pos_profile_name, "role_allowed_to_closing_shift")
-		if allowed_role and allowed_role not in frappe.get_roles(frappe.session.user):
-			frappe.throw(
-				_("You are not allowed to close this shift. Only users with role '{0}' can close it.").format(allowed_role),
-				frappe.PermissionError
-			)
+	assert_may_close_shift(opening_shift_doc)
 
 	try:
 		# Convert to dict with proper datetime serialization

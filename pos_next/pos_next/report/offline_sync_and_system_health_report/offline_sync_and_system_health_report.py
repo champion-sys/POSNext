@@ -109,7 +109,7 @@ def get_data(filters):
 		LEFT JOIN
 			`tabSales Invoice` si ON si.name = ois.sales_invoice
 		WHERE
-			1=1
+			IFNULL(ois.entity, 'invoice') = 'invoice'
 			{conditions}
 		ORDER BY
 			ois.creation DESC

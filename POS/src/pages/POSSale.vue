@@ -1829,7 +1829,7 @@ function handleEntitySynced({ detail }) {
 	if ((current?.name || current) !== detail.row.offline_id) return;
 
 	if (detail.name) {
-		cartStore.setCustomer({ ...current, name: detail.name, is_local: 0 });
+		cartStore.setCustomer(current?.name ? { ...current, name: detail.name, is_local: 0 } : detail.name);
 	} else {
 		cartStore.setDefaultCustomer();
 	}
@@ -2037,9 +2037,13 @@ async function handleShiftOpened() {
 	showSuccess(__("You can now start making sales"));
 }
 
-async function handleShiftClosed() {
+async function handleShiftClosed(closing) {
 	uiStore.showCloseShiftDialog = false;
-	showSuccess(__("Shift closed successfully"));
+	showSuccess(
+		closing?.queued
+			? __("Shift close saved. It completes on the server once every invoice has arrived")
+			: __("Shift closed successfully"),
+	);
 
 	// Check if logout should happen after closing shift
 	if (logoutAfterClose.value) {
@@ -2652,7 +2656,15 @@ async function ensureInvoicesSyncedBeforeClose() {
 
 	await offlineStore.loadPendingInvoices();
 	const pending = offlineStore.pendingInvoicesList;
-	const decision = getShiftCloseDecision(pending, offlineStore.isOffline);
+	const decision = getShiftCloseDecision(
+		pending,
+		offlineStore.isOffline,
+		posSettingsStore.allowOfflineShiftClose,
+	);
+
+	if (decision === "queue") {
+		return true;
+	}
 
 	if (decision === "confirm") {
 		const confirmed = window.confirm(

@@ -3,24 +3,35 @@ import {
 	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
+	buildClosingDraft,
 	buildPaymentPayload,
 	buildReturnDocFromQueue,
+	buildShiftClosePayload,
 	checkReturnValidity,
 	countQueuedCouponUses,
 	ENTITY_CUSTOMER,
 	ENTITY_INVOICE,
 	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
 	getEntity,
 	getInvoiceDependencies,
+	getShiftManifest,
+	hasOnlineOnlyPayment,
 	isLocalName,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 	sumQueuedPayments,
 } from "../entities"
-import { buildSyncEnvelope, shouldQueueCheckout, SYNC_REALTIME, sumQueuedStock } from "../invoicePayload"
+import {
+	buildSyncEnvelope,
+	getShiftCloseDecision,
+	shouldQueueCheckout,
+	SYNC_REALTIME,
+	sumQueuedStock,
+} from "../invoicePayload"
 
 const LOCAL_CUSTOMER = "pos_offline_customer-1"
 const LOCAL_INVOICE = "pos_offline_invoice-1"
@@ -306,6 +317,14 @@ describe("subtractQueuedReturns", () => {
 		expect(subtractQueuedReturns(doc, [after]).items[0].remaining_qty).toBe(1)
 	})
 
+	it("counts a return made before its sale got a server name", () => {
+		const sale = { return_against: "SINV-9", _offline_id: LOCAL_INVOICE, items: [{ item_code: "A", original_idx: 1, remaining_qty: 3 }] }
+		const row = {
+			data: { is_return: 1, return_against: LOCAL_INVOICE, items: [{ item_code: "A", original_idx: 1, qty: -1 }] },
+		}
+		expect(subtractQueuedReturns(sale, [row]).items[0].remaining_qty).toBe(2)
+	})
+
 	it("matches rows of a sale still in the queue by position", () => {
 		const queued = {
 			return_against: LOCAL_INVOICE,
@@ -405,6 +424,108 @@ describe("sumQueuedStock with a return", () => {
 		const sale = { data: { items: [{ item_code: "A", qty: 3 }] } }
 		const refund = { data: { is_return: 1, items: [{ item_code: "A", qty: -1 }] } }
 		expect(sumQueuedStock([sale, refund]).get("A")).toBe(2)
+	})
+})
+
+describe("hasOnlineOnlyPayment", () => {
+	const wallets = new Set(["Wallet"])
+
+	it("finds customer credit and wallets", () => {
+		expect(hasOnlineOnlyPayment([{ mode_of_payment: "Customer Credit", is_customer_credit: true }], wallets)).toBe(true)
+		expect(hasOnlineOnlyPayment([{ mode_of_payment: "Cash" }, { mode_of_payment: "Wallet" }], wallets)).toBe(true)
+	})
+
+	it("lets ordinary payments through", () => {
+		expect(hasOnlineOnlyPayment([{ mode_of_payment: "Cash" }], wallets)).toBe(false)
+		expect(hasOnlineOnlyPayment([], wallets)).toBe(false)
+	})
+})
+
+describe("shift close", () => {
+	const SHIFT = "POSA-OS-1"
+	const opening = {
+		name: SHIFT,
+		pos_profile: "Main",
+		company: "ACME",
+		user: "cashier@example.com",
+		period_start_date: "2026-11-05 08:00:00",
+		balance_details: [{ mode_of_payment: "Cash", amount: 100 }],
+	}
+	const methods = [
+		{ mode_of_payment: "Cash" },
+		{ mode_of_payment: "Card" },
+		{ mode_of_payment: "Wallet", is_wallet_payment: 1 },
+	]
+
+	it("asks for a count of every mode, but not of a wallet", () => {
+		const draft = buildClosingDraft(opening, methods)
+		expect(draft.payment_reconciliation.map((row) => row.mode_of_payment)).toEqual(["Cash", "Card"])
+		expect(draft.pos_opening_shift).toBe(SHIFT)
+	})
+
+	it("lists everything of the shift that went through the queue", () => {
+		const rows = [
+			{ offline_id: "sale", data: { posa_pos_opening_shift: SHIFT } },
+			{ offline_id: "sold-and-synced", synced: true, data: { posa_pos_opening_shift: SHIFT } },
+			{ offline_id: "payment", entity: ENTITY_PAYMENT, data: { posa_pos_opening_shift: SHIFT } },
+			{ offline_id: "edited-away", superseded: true, data: { posa_pos_opening_shift: SHIFT } },
+			{ offline_id: "other-shift", data: { posa_pos_opening_shift: "POSA-OS-0" } },
+			{ offline_id: "customer", entity: ENTITY_CUSTOMER, data: {} },
+		]
+		expect(getShiftManifest(rows, SHIFT)).toEqual(["sale", "sold-and-synced", "payment"])
+	})
+
+	it("does not list itself", () => {
+		const row = { offline_id: "close", entity: ENTITY_SHIFT_CLOSE, data: { posa_pos_opening_shift: SHIFT } }
+		expect(getShiftManifest([row], SHIFT)).toEqual([])
+	})
+
+	it("sends only what was counted, and when", () => {
+		const closing = buildClosingDraft(opening, methods)
+		closing.payment_reconciliation[0].closing_amount = "480.50"
+		closing.payment_reconciliation[0].expected_amount = 999
+
+		const payload = buildShiftClosePayload({
+			closing,
+			manifest: ["sale"],
+			cashier: "cashier@example.com",
+			timestamp: new Date(2026, 10, 5, 22, 10, 0).getTime(),
+		})
+
+		expect(payload).toMatchObject({
+			doctype: "POS Closing Shift",
+			pos_opening_shift: SHIFT,
+			pos_profile: "Main",
+			posting_date: "2026-11-05",
+			period_end_date: "2026-11-05 22:10:00",
+			manifest: ["sale"],
+		})
+		expect(payload.closing_amounts).toEqual([
+			{ mode_of_payment: "Cash", closing_amount: 480.5 },
+			{ mode_of_payment: "Card", closing_amount: 0 },
+		])
+	})
+
+	it("waits behind the sales in its envelope", () => {
+		const envelope = buildSyncEnvelope(
+			{ id: 9, entity: ENTITY_SHIFT_CLOSE, depends_on: ["sale"] },
+			{ offline_id: "close", pos_profile: "Main" },
+		)
+		expect(envelope).toMatchObject({ entity: ENTITY_SHIFT_CLOSE, depends_on: ["sale"] })
+	})
+
+	it("queues the close offline when the setting allows it", () => {
+		expect(getShiftCloseDecision([{ sync_failed: false }], true, true)).toBe("queue")
+		expect(getShiftCloseDecision([], true, true)).toBe("queue")
+	})
+
+	it("keeps blocking an offline close when it does not", () => {
+		expect(getShiftCloseDecision([{ sync_failed: false }], true)).toBe("block")
+	})
+
+	it("does not change an online close", () => {
+		expect(getShiftCloseDecision([], false, true)).toBe("allow")
+		expect(getShiftCloseDecision([{ sync_failed: false }], false, true)).toBe("block")
 	})
 })
 

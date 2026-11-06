@@ -1288,6 +1288,8 @@ const canCreateReturn = computed(() => {
 	if (!settingsStore.allowReturn) return false
 	const hasSelectedItems = selectedItems.value.length > 0
 	if (!hasSelectedItems || !hasOpenShift.value) return false
+	// The connection can drop after this was ticked, and a balance is the server's to change
+	if (isOffline.value && addToCustomerCredit.value) return false
 	// Credit sale returns and "add to customer credit" returns don't need payment validation
 	if (isOriginalCreditSale.value || addToCustomerCredit.value) return true
 

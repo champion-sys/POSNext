@@ -17,11 +17,14 @@ from pos_next.services.sync_classifier import DependencyError, SyncContractError
 
 DOCTYPE = "Offline Invoice Sync"
 
+FINAL_STATES = ("Synced", "Resolved", "Voided")
+
 ENTITY_INVOICE = "invoice"
 ENTITY_CUSTOMER = "customer"
 ENTITY_PAYMENT = "payment"
+ENTITY_SHIFT_CLOSE = "shift_close"
 
-ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER, ENTITY_PAYMENT)
+ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER, ENTITY_PAYMENT, ENTITY_SHIFT_CLOSE)
 
 #: Names the device gives records the server has not seen yet
 LOCAL_NAME_PREFIX = "pos_offline_"
@@ -44,7 +47,8 @@ def load_payload(row):
 def get_dependencies(payload, declared=None):
     """Records this one needs, including those the payload itself refers to.
 
-    A device can leave one out of depends_on, and the record must still wait for it.
+    A device can leave one out of depends_on, and the record must still wait for it. A
+    shift close waits for its whole manifest, which is how a missing sale gets noticed.
 
     Args:
         payload: The queued record
@@ -54,7 +58,7 @@ def get_dependencies(payload, declared=None):
         list[str]: Offline IDs, without repeats
     """
     implied = [payload.get(fieldname) for fieldname in LOCAL_NAME_FIELDS]
-    candidates = [*(declared or []), *filter(is_local_name, implied)]
+    candidates = [*(declared or []), *(payload.get("manifest") or []), *filter(is_local_name, implied)]
     return list(dict.fromkeys(value for value in candidates if isinstance(value, str) and value))
 
 
@@ -123,6 +127,20 @@ def align_return(payload):
         item[link_field] = row[link_field]
         for fieldname in ("rate", "uom", "warehouse", "conversion_factor"):
             item[fieldname] = row[fieldname]
+
+
+def has_pending_close(opening_shift):
+    """Whether a shift was closed on a device and the server is still finishing it."""
+    return bool(
+        frappe.db.exists(
+            DOCTYPE,
+            {
+                "entity": ENTITY_SHIFT_CLOSE,
+                "shift": opening_shift,
+                "status": ["not in", FINAL_STATES],
+            },
+        )
+    )
 
 
 def find_customer(offline_id):
@@ -208,3 +226,60 @@ def create_payment(row):
         "grand_total": sum(flt(payment.get("amount")) for payment in payments),
         "note": ", ".join(entries),
     }
+
+
+def find_shift_close(_offline_id):
+    """Always None. The closing commits with its row, and if someone else closed the
+    shift, the cashier's count must reach a person rather than disappear."""
+    return None
+
+
+def _apply_counted_amounts(closing, counted):
+    amounts = {row.get("mode_of_payment"): flt(row.get("closing_amount")) for row in counted or []}
+
+    for detail in closing["payment_reconciliation"]:
+        detail["closing_amount"] = amounts.pop(detail["mode_of_payment"], 0)
+
+    # Counted money with nothing expected against it must still show up as a difference
+    for mode_of_payment, amount in amounts.items():
+        closing["payment_reconciliation"].append(
+            {
+                "mode_of_payment": mode_of_payment,
+                "opening_amount": 0,
+                "expected_amount": 0,
+                "closing_amount": amount,
+            }
+        )
+
+
+def close_shift(row):
+    """Finalize a shift closed on a device, once everything it depends on has finished.
+
+    The totals are worked out here, from what the server holds. The device only says
+    what the cashier counted, and when.
+    """
+    from pos_next.api.invoices import _assert_invoice_write_access
+    from pos_next.api.shifts import assert_may_close_shift
+    from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
+        make_closing_shift_from_opening,
+        submit_closing_shift,
+    )
+
+    payload = load_payload(row)
+    opening_shift = payload.get("pos_opening_shift")
+    if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
+        raise SyncContractError(_("Shift {0} does not exist").format(opening_shift))
+
+    opening = frappe.get_doc("POS Opening Shift", opening_shift)
+    _assert_invoice_write_access("Sales Invoice", opening.pos_profile, row.cashier)
+    assert_may_close_shift(opening, row.cashier)
+
+    closing = json.loads(
+        json.dumps(make_closing_shift_from_opening(json.dumps(opening.as_dict(), default=str)), default=str)
+    )
+    _apply_counted_amounts(closing, payload.get("closing_amounts"))
+    closing["period_end_date"] = payload.get("period_end_date") or closing["period_end_date"]
+    closing["posting_date"] = payload.get("posting_date") or closing["posting_date"]
+
+    name = submit_closing_shift(json.dumps(closing))
+    return {"name": name, "doctype": "POS Closing Shift", "grand_total": closing.get("grand_total")}

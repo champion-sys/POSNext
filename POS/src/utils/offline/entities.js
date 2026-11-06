@@ -174,6 +174,16 @@ export function exceedsOutstanding(invoice, payments) {
 }
 
 /**
+ * Whether a payment relies on a balance only the server knows.
+ * @param {Array} entries - The payment dialog's entries
+ * @param {Set<string>} walletModes - Modes of Payment that spend a wallet
+ * @returns {boolean}
+ */
+export function hasOnlineOnlyPayment(entries, walletModes) {
+	return entries.some((entry) => entry.is_customer_credit || walletModes.has(entry.mode_of_payment))
+}
+
+/**
  * Uses of a coupon by sales this device has not sent yet, which the cached count cannot include.
  * @param {Array} rows - Pending queue rows
  * @param {string} code
@@ -258,7 +268,7 @@ export function subtractQueuedReturns(doc, rows) {
 	for (const row of rows) {
 		const data = row.data || {}
 		if (getEntity(row) !== ENTITY_INVOICE || !data.is_return) continue
-		if (data.return_against !== doc.return_against) continue
+		if (data.return_against !== doc.return_against && data.return_against !== doc._offline_id) continue
 		if (row.synced && row.timestamp <= (doc._cached_at || 0)) continue
 
 		for (const item of data.items || []) {
@@ -323,6 +333,7 @@ export function buildReturnDocFromQueue(row, rules) {
 		customer_name: invoice.customer_name,
 		company: invoice.company,
 		sales_team: invoice.sales_team || [],
+		_offline_id: row.offline_id,
 		_return_rules: rules,
 		_original_invoice: {
 			name: row.server_invoice || row.offline_id,

@@ -9,9 +9,10 @@ from unittest.mock import MagicMock, Mock, patch
 
 import frappe
 
-from pos_next.api import partial_payments
+from pos_next.api import partial_payments, shifts
 from pos_next.api import invoices
 from pos_next.api.invoices import save_invoice_draft
+from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox
 from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
 
@@ -456,6 +457,11 @@ class TestFixes(NoSiteTestCase):
         row = self._apply(None, "customer", {"customer": "CUST-0001"}, '{"customer": "pos_offline_x"}')
         self.assertEqual(json.loads(row.payload)["customer"], "CUST-0001")
 
+    def test_a_changed_customer_does_not_keep_the_old_name(self):
+        payload = '{"customer": "pos_offline_x", "customer_name": "Sara"}'
+        row = self._apply("invoice", "customer", {"customer": "CUST-0001"}, payload)
+        self.assertEqual(json.loads(row.payload), {"customer": "CUST-0001"})
+
     def test_a_record_links_only_to_its_own_kind(self):
         row = Mock(status=sync_inbox.REVIEW, entity="customer")
         with patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row):
@@ -747,6 +753,224 @@ class TestOfflineReturnDocuments(NoSiteTestCase):
         self.assertNotIn("income_account", document["items"][0])
         self.assertNotIn("taxes", document)
         self.assertEqual(document["sales_team"], [{"sales_person": "Sara", "allocated_percentage": 100}])
+
+
+class TestShiftCloseWaiting(NoSiteTestCase):
+    manifest = ["pos_offline_sale-1", "pos_offline_sale-2"]
+
+    def _row(self, **values):
+        return _row(entity="shift_close", depends_on="\n".join(self.manifest), **values)
+
+    def _is_blocked(self, row, statuses):
+        with patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses):
+            return sync_inbox._is_blocked(row)
+
+    def _flag(self, row, statuses):
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses),
+            patch.object(sync_inbox, "_handle_failure") as handle_failure,
+        ):
+            sync_inbox._flag_if_stuck(row)
+        return handle_failure
+
+    def test_the_whole_manifest_is_waited_for_even_if_the_device_left_some_out(self):
+        dependencies = sync_entities.get_dependencies({"manifest": self.manifest}, ["pos_offline_sale-2"])
+        self.assertCountEqual(dependencies, self.manifest)
+
+    def test_a_sale_in_the_manifest_that_never_arrived_holds_the_close(self):
+        self.assertTrue(self._is_blocked(self._row(), [("pos_offline_sale-1", "Synced")]))
+
+    def test_the_close_goes_ahead_when_everything_has_finished(self):
+        statuses = [("pos_offline_sale-1", "Synced"), ("pos_offline_sale-2", "Voided")]
+        self.assertFalse(self._is_blocked(self._row(), statuses))
+
+    def test_a_manager_can_go_ahead_without_them(self):
+        self.assertFalse(self._is_blocked(self._row(accept_unfinished=1), []))
+
+    def test_names_the_sale_that_never_arrived(self):
+        row = self._row(received_at=datetime.now() - timedelta(hours=2))
+        handle_failure = self._flag(row, [("pos_offline_sale-1", "Synced")])
+
+        exc = handle_failure.call_args.args[2]
+        self.assertIn("pos_offline_sale-2", str(exc))
+        self.assertNotIn("pos_offline_sale-1", str(exc))
+        self.assertEqual(classify(exc).error_class, "dependency")
+
+    def test_a_sale_under_review_reaches_a_manager(self):
+        row = self._row(received_at=datetime.now() - timedelta(hours=2))
+        statuses = [("pos_offline_sale-1", "Synced"), ("pos_offline_sale-2", "Needs Review")]
+        self.assertIn("pos_offline_sale-2", str(self._flag(row, statuses).call_args.args[2]))
+
+    def test_an_invoice_waiting_on_a_customer_under_review_stays_blocked(self):
+        row = _row(depends_on=LOCAL_CUSTOMER, received_at=datetime.now() - timedelta(hours=2))
+        self._flag(row, [(LOCAL_CUSTOMER, "Needs Review")]).assert_not_called()
+
+    def test_sales_on_their_way_are_given_time(self):
+        row = self._row(received_at=datetime.now() - timedelta(hours=2))
+        statuses = [("pos_offline_sale-1", "Received"), ("pos_offline_sale-2", "Processing")]
+        self._flag(row, statuses).assert_not_called()
+
+    def test_going_ahead_needs_a_manager_on_a_shift_close_only(self):
+        row = Mock(status=sync_inbox.REVIEW, entity="shift_close", payload="{}")
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
+            patch.object(sync_inbox, "_log_attempt"),
+        ):
+            sync_inbox.apply_fix("row-1", "accept_unfinished", {})
+        row.set.assert_called_once_with("accept_unfinished", 1)
+
+        with self.assertRaises(frappe.ValidationError):
+            row.entity = "invoice"
+            with patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row):
+                sync_inbox.apply_fix("row-1", "accept_unfinished", {})
+
+
+class TestCloseShift(NoSiteTestCase):
+    payload = json.dumps(
+        {
+            "pos_opening_shift": "POSA-OS-1",
+            "posting_date": "2026-11-05",
+            "period_end_date": "2026-11-05 22:10:00",
+            "closing_amounts": [
+                {"mode_of_payment": "Cash", "closing_amount": 480},
+                {"mode_of_payment": "Gift Voucher", "closing_amount": 20},
+            ],
+        }
+    )
+    closing = {
+        "pos_opening_shift": "POSA-OS-1",
+        "grand_total": 500,
+        "posting_date": "2026-11-06",
+        "period_end_date": "2026-11-06 09:00:00",
+        "payment_reconciliation": [
+            {"mode_of_payment": "Cash", "opening_amount": 0, "expected_amount": 500},
+            {"mode_of_payment": "Card", "opening_amount": 0, "expected_amount": 30},
+        ],
+    }
+
+    def _close(self, row=None, assert_may_close=None):
+        opening = Mock(pos_profile="Main")
+        opening.as_dict.return_value = {"name": "POSA-OS-1"}
+        frappe.local.db.exists.return_value = True
+        closing_module = "pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift"
+        with (
+            patch("pos_next.services.sync_entities.frappe.get_doc", return_value=opening),
+            patch("pos_next.api.invoices._assert_invoice_write_access") as self.access,
+            patch("pos_next.api.shifts.assert_may_close_shift", assert_may_close or Mock()) as self.role,
+            patch(f"{closing_module}.make_closing_shift_from_opening", return_value=json.loads(json.dumps(self.closing))),
+            patch(f"{closing_module}.submit_closing_shift", return_value="POS-CLOSE-1") as self.submit,
+        ):
+            return sync_entities.close_shift(row or _row(entity="shift_close", payload=self.payload))
+
+    def _submitted(self):
+        return json.loads(self.submit.call_args.args[0])
+
+    def test_returns_the_closing_entry(self):
+        self.assertEqual(
+            self._close(), {"name": "POS-CLOSE-1", "doctype": "POS Closing Shift", "grand_total": 500}
+        )
+
+    def test_the_count_is_the_cashiers_and_the_totals_are_the_servers(self):
+        self._close()
+        rows = {row["mode_of_payment"]: row for row in self._submitted()["payment_reconciliation"]}
+        self.assertEqual(rows["Cash"]["closing_amount"], 480)
+        self.assertEqual(rows["Cash"]["expected_amount"], 500)
+
+    def test_a_mode_nobody_counted_counts_as_zero(self):
+        self._close()
+        rows = {row["mode_of_payment"]: row for row in self._submitted()["payment_reconciliation"]}
+        self.assertEqual(rows["Card"]["closing_amount"], 0)
+
+    def test_counted_money_with_nothing_expected_still_shows(self):
+        self._close()
+        rows = {row["mode_of_payment"]: row for row in self._submitted()["payment_reconciliation"]}
+        self.assertEqual(rows["Gift Voucher"]["closing_amount"], 20)
+        self.assertEqual(rows["Gift Voucher"]["expected_amount"], 0)
+
+    def test_keeps_the_day_the_cash_was_counted(self):
+        self._close()
+        submitted = self._submitted()
+        self.assertEqual(submitted["posting_date"], "2026-11-05")
+        self.assertEqual(submitted["period_end_date"], "2026-11-05 22:10:00")
+
+    def test_checks_the_cashier_who_closed_it(self):
+        self._close()
+        self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
+        self.assertEqual(self.role.call_args.args[1], "cashier@example.com")
+
+    def test_a_cashier_without_the_role_stops_it(self):
+        with self.assertRaises(frappe.PermissionError):
+            self._close(assert_may_close=Mock(side_effect=frappe.PermissionError("Role")))
+        self.submit.assert_not_called()
+
+    def test_a_shift_that_does_not_exist_is_a_contract_problem(self):
+        frappe.local.db.exists.return_value = False
+        with self.assertRaises(SyncContractError):
+            sync_entities.close_shift(_row(entity="shift_close", payload='{"pos_opening_shift": "GONE"}'))
+
+    def test_nothing_counts_as_already_closed_by_someone_else(self):
+        self.assertIsNone(sync_entities.find_shift_close("id"))
+
+    def test_the_shift_is_found_through_its_own_field(self):
+        item = {"offline_id": "x", "entity": "shift_close", "payload": {"pos_opening_shift": "POSA-OS-1"}}
+        frappe.local.db.get_value.return_value = None
+        frappe.local.db.exists.side_effect = lambda doctype, name: name
+        document = Mock()
+
+        with patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=document) as get_doc:
+            sync_inbox.ingest(item, "cashier@example.com")
+
+        values = get_doc.call_args.args[0]
+        self.assertEqual(values["shift"], "POSA-OS-1")
+        self.assertEqual(values["entity"], "shift_close")
+
+
+class TestPendingClose(NoSiteTestCase):
+    def test_looks_for_an_unfinished_close(self):
+        frappe.local.db.exists.return_value = "row-1"
+
+        self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
+
+        filters = frappe.local.db.exists.call_args.args[1]
+        self.assertEqual(filters["entity"], "shift_close")
+        self.assertEqual(filters["status"], ["not in", sync_entities.FINAL_STATES])
+
+    @patch("pos_next.api.shifts.has_pending_close", return_value=True)
+    def test_a_shift_closing_on_the_server_cannot_be_sold_into(self, _pending):
+        frappe.local.db.get_all.return_value = [{"name": "POSA-OS-1", "pos_profile": "Main"}]
+        self.assertIsNone(shifts.check_opening_shift("cashier@example.com"))
+
+    def test_the_role_check_can_ask_about_the_cashier(self):
+        frappe.local.db.get_value.return_value = "Cashier Lead"
+        with patch("pos_next.api.shifts.frappe.get_roles", return_value=["Cashier Lead"]) as get_roles:
+            shifts.assert_may_close_shift(Mock(pos_profile="Main"), "cashier@example.com")
+        get_roles.assert_called_once_with("cashier@example.com")
+
+
+class TestClosingValidation(NoSiteTestCase):
+    def _validate(self, rows):
+        closing = Mock(pos_opening_shift="POSA-OS-1")
+        with (
+            patch.object(pos_closing_shift.frappe, "get_all", return_value=rows),
+            patch.object(pos_closing_shift, "_", lambda text: text),
+            patch.object(pos_closing_shift.frappe, "msgprint") as self.msgprint,
+        ):
+            pos_closing_shift.POSClosingShift.validate_invoice_sync(closing)
+
+    def test_the_close_being_processed_does_not_hold_up_itself(self):
+        self._validate([frappe._dict(status="Processing", entity="shift_close", count=1)])
+
+    def test_a_sale_still_processing_holds_it(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._validate([frappe._dict(status="Processing", entity="invoice", count=1)])
+
+    def test_a_row_from_before_entities_still_counts(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._validate([frappe._dict(status="Received", entity=None, count=2)])
+
+    def test_a_sale_under_review_only_warns(self):
+        self._validate([frappe._dict(status="Needs Review", entity="invoice", count=1)])
+        self.msgprint.assert_called_once()
 
 
 class TestSaveInvoiceDraft(NoSiteTestCase):
