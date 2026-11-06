@@ -205,7 +205,7 @@ POST /api/method/pos_next.api.sync_pull.pull           -> { rows, deleted, next_
 | العملاء | `(modified, name)` | 15 دقيقة | عالية |
 | العروض والكوبونات | manifest | 15 دقيقة | متوسطة |
 | قوالب الطباعة والترجمة | manifest | عند البدء | متوسطة |
-| المخزون | مسار `get_stock_quantities` الحالي مع Socket.IO | حسب الإعداد | عالية |
+| المخزون | مسار `get_stock_quantities` الحالي، مع Socket.IO على الويب فقط | حسب الإعداد | عالية |
 
 ترتيب المؤشر المركب يمنع ضياع صفوف لها نفس `modified` عند حدود الصفحات.
 
