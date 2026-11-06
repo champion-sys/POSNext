@@ -71,3 +71,6 @@ missing.txt
 # Desktop app build output
 POS/desktop/renderer/
 POS/desktop/dist/
+
+# Agent worktrees
+.claude/worktrees/
