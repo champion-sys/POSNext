@@ -71,10 +71,8 @@ class POSClosingShift(Document):
 
         if user:
             frappe.throw(
-                _(
-                    "POS Closing Shift <strong>already exists</strong> against {0} between selected period".format(
-                        frappe.bold(self.user)
-                    )
+                _("POS Closing Shift <strong>already exists</strong> against {0} between selected period").format(
+                    frappe.bold(self.user)
                 ),
                 title=_("Invalid Period"),
             )

@@ -13,7 +13,7 @@ const POS_ROOT = path.resolve(__dirname, "..")
  */
 export default defineConfig({
 	root: POS_ROOT,
-	base: "./",
+	base: "/",
 	plugins: [
 		frappeui({ frappeProxy: false, jinjaBootData: false, lucideIcons: true, buildConfig: false }),
 		vue(),

@@ -2250,12 +2250,14 @@ async function handleDeleteFailedInvoice() {
 }
 
 async function handleErrorRetry() {
+	// clearError forgets the action too
+	const retryAction = uiStore.errorRetryAction;
 	uiStore.clearError();
-	if (uiStore.errorRetryAction === "payment") {
+	if (retryAction === "payment") {
 		setTimeout(() => {
 			uiStore.showPaymentDialog = true;
 		}, 300);
-	} else if (uiStore.errorRetryAction === "sync") {
+	} else if (retryAction === "sync") {
 		await offlineStore.loadPendingInvoices();
 		setTimeout(() => {
 			uiStore.showOfflineInvoicesDialog = true;
@@ -3149,7 +3151,7 @@ async function handleSyncAll() {
 			uiStore.showError(
 				errorContext.title,
 				__(
-					"Failed to sync invoice for {0}\n\n${1}\n\nYou can delete this invoice from the offline queue if you don't need it.",
+					"Failed to sync invoice for {0}\n\n{1}\n\nYou can delete this invoice from the offline queue if you don't need it.",
 					[firstError.customer, errorContext.message]
 				),
 				errorContext.technicalDetails || __("Invoice ID: {0}", [firstError.invoiceId]),

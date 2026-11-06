@@ -72,11 +72,11 @@ class POSOpeningShift(Document):
     def validate_pos_profile_and_cashier(self):
         if self.company != frappe.db.get_value("POS Profile", self.pos_profile, "company"):
             frappe.throw(
-                _("POS Profile {} does not belongs to company {}".format(self.pos_profile, self.company))
+                _("POS Profile {0} does not belong to company {1}").format(self.pos_profile, self.company)
             )
 
         if not cint(frappe.db.get_value("User", self.user, "enabled")):
-            frappe.throw(_("User {} has been disabled. Please select valid user/cashier".format(self.user)))
+            frappe.throw(_("User {0} has been disabled. Please select valid user/cashier").format(self.user))
 
     def on_submit(self):
         self.set_status(update=True)

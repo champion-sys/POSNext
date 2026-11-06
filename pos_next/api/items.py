@@ -551,7 +551,7 @@ def get_item_variants(template_item, pos_profile):
 		# If no variants found, return empty with helpful message
 		if not variants:
 			frappe.msgprint(
-				_(f"No variants created for template item '{template_item}'. Please create variants first.")
+				_("No variants created for template item '{0}'. Please create variants first.").format(template_item)
 			)
 			return []
 

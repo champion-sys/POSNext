@@ -351,7 +351,7 @@ async function applyCoupon() {
 
 		// Check minimum amount on the configured coupon base
 		if (coupon.min_amount && baseAmount < coupon.min_amount) {
-			errorMessage.value = __('This coupon requires a minimum purchase of ', [formatCurrency(coupon.min_amount)])
+			errorMessage.value = __('This coupon requires a minimum purchase of {0}', [formatCurrency(coupon.min_amount)])
 			showWarning(errorMessage.value)
 			return
 		}

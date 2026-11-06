@@ -274,6 +274,17 @@ describe("POSSale at the offline limit", () => {
 		})
 	})
 
+	it("reopens the payment dialog from Try Again", async () => {
+		uiStore.showPaymentDialog = false
+		uiStore.showError("Error", "It failed", "", "payment")
+
+		await wrapper.vm.handleErrorRetry()
+		await new Promise((resolve) => setTimeout(resolve, 320))
+
+		expect(uiStore.showPaymentDialog).toBe(true)
+		expect(uiStore.errorRetryAction).toBeNull()
+	})
+
 	it("queues a sale whose connection dropped within the limit", async () => {
 		offlineStore.isOffline = false
 		settingsStore.settings.sync_mode = SYNC_REALTIME

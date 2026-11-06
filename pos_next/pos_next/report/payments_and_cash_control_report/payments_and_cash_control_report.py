@@ -78,25 +78,25 @@ def get_columns(payment_methods):
 		columns.extend([
 			{
 				"fieldname": f"{safe}_opening",
-				"label": _(f"{method} Opening"),
+				"label": _("{0} Opening").format(method),
 				"fieldtype": "Currency",
 				"width": 130
 			},
 			{
 				"fieldname": f"{safe}_expected",
-				"label": _(f"{method} Expected"),
+				"label": _("{0} Expected").format(method),
 				"fieldtype": "Currency",
 				"width": 130
 			},
 			{
 				"fieldname": f"{safe}_closing",
-				"label": _(f"{method} Closing"),
+				"label": _("{0} Closing").format(method),
 				"fieldtype": "Currency",
 				"width": 130
 			},
 			{
 				"fieldname": f"{safe}_diff",
-				"label": _(f"{method} Diff"),
+				"label": _("{0} Diff").format(method),
 				"fieldtype": "Currency",
 				"width": 110
 			},
