@@ -7,7 +7,7 @@
  * @module platform/http
  */
 
-import { getDeviceToken, getServerUrl, isNative } from "./runtime"
+import { getCashierGrant, getServerUrl, isNative } from "./runtime"
 
 const SERVER_PATHS = /^\/(api|files|private|printview|assets)(\/|\?|$)/
 
@@ -32,18 +32,43 @@ export function resolveRequest(url, init, { serverUrl, token }) {
 	return { url: `${serverUrl}${url}`, init: { ...init, headers, credentials: "omit" } }
 }
 
-/** Route fetch through the server chosen at enrollment. Does nothing on the web. */
-export function installHttpBridge() {
-	if (!isNative) return
-
-	const nativeFetch = window.fetch.bind(window)
-	window.fetch = (input, init) => {
+/**
+ * A fetch that goes to the server, and reports how the server took the cashier's grant.
+ * @param {typeof fetch} nativeFetch
+ * @param {object} options
+ * @param {() => {serverUrl: string, token: string|null}} options.getTarget
+ * @param {() => void} [options.onAccepted] - The server answered this cashier
+ * @param {(token: string) => void} [options.onRejected] - The server refused this grant
+ * @returns {typeof fetch}
+ */
+export function createBridgedFetch(
+	nativeFetch,
+	{ getTarget, onAccepted, onRejected },
+) {
+	return async (input, init) => {
 		if (typeof input !== "string") return nativeFetch(input, init)
 
-		const request = resolveRequest(input, init, {
-			serverUrl: getServerUrl(),
-			token: getDeviceToken(),
-		})
-		return nativeFetch(request.url, request.init)
+		const target = getTarget()
+		const request = resolveRequest(input, init, target)
+		const response = await nativeFetch(request.url, request.init)
+
+		if (target.token && request.url !== input) {
+			if (response.status === 401) onRejected?.(target.token)
+			else if (response.ok) onAccepted?.()
+		}
+		return response
 	}
+}
+
+/**
+ * Route fetch through the server chosen at enrollment. Does nothing on the web.
+ * @param {{onAccepted?: () => void, onRejected?: (token: string) => void}} [callbacks]
+ */
+export function installHttpBridge(callbacks = {}) {
+	if (!isNative) return
+
+	window.fetch = createBridgedFetch(window.fetch.bind(window), {
+		...callbacks,
+		getTarget: () => ({ serverUrl: getServerUrl(), token: getCashierGrant() }),
+	})
 }

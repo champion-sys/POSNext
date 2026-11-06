@@ -166,6 +166,11 @@ async function initDB() {
 let serverOnline = true
 let manualOffline = false
 let csrfToken = null // CSRF token passed from main thread
+let serverAccess = { serverUrl: "", grant: null } // Desktop and Android only: fetch is bridged in the main thread, not here
+
+function serverUrl(path) {
+	return `${serverAccess.serverUrl || self.location.origin}${path}`
+}
 
 // Display mode: controlled by POS Settings "Show Variants as Items" (default: off)
 // true = variants shown directly, templates hidden
@@ -332,7 +337,7 @@ async function pingServer() {
 		const controller = new AbortController()
 		const timeoutId = setTimeout(() => controller.abort(), 3000)
 
-		const response = await fetch(`${self.location.origin}/api/method/pos_next.api.ping`, {
+		const response = await fetch(serverUrl("/api/method/pos_next.api.ping"), {
 			method: "GET",
 			signal: controller.signal,
 		})
@@ -1497,7 +1502,11 @@ async function fetchStockFromServer() {
 			headers['X-Frappe-CSRF-Token'] = csrfToken
 		}
 
-		const response = await fetch(`${self.location.origin}/api/method/pos_next.api.items.get_stock_quantities`, {
+		if (serverAccess.grant) {
+			headers['Authorization'] = `Bearer ${serverAccess.grant}`
+		}
+
+		const response = await fetch(serverUrl("/api/method/pos_next.api.items.get_stock_quantities"), {
 			method: 'POST',
 			headers,
 			body: JSON.stringify({
@@ -1685,6 +1694,11 @@ self.onmessage = async (event) => {
 		switch (type) {
 			case "SET_CSRF_TOKEN":
 				csrfToken = payload.token
+				result = { success: true }
+				break
+
+			case "SET_SERVER_ACCESS":
+				serverAccess = payload
 				result = { success: true }
 				break
 

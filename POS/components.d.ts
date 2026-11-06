@@ -56,6 +56,7 @@ declare module 'vue' {
     SettingsSection: typeof import('./src/components/settings/SettingsSection.vue')['default']
     ShiftClosingDialog: typeof import('./src/components/ShiftClosingDialog.vue')['default']
     ShiftOpeningDialog: typeof import('./src/components/ShiftOpeningDialog.vue')['default']
+    SignInError: typeof import('./src/components/common/SignInError.vue')['default']
     StatusBadge: typeof import('./src/components/common/StatusBadge.vue')['default']
     SystemPrinterSettings: typeof import('./src/components/settings/SystemPrinterSettings.vue')['default']
     TableSelector: typeof import('./src/components/sale/TableSelector.vue')['default']

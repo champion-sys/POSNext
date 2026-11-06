@@ -488,6 +488,10 @@ class OfflineWorkerClient {
 		return this.sendMessage("SET_CSRF_TOKEN", { token })
 	}
 
+	async setServerAccess(serverUrl, grant) {
+		return this.sendMessage("SET_SERVER_ACCESS", { serverUrl, grant })
+	}
+
 	async setShowVariantsAsItems(value) {
 		return this.sendMessage("SET_SHOW_VARIANTS_AS_ITEMS", { value: Boolean(value) })
 	}
