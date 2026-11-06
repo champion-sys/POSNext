@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
+import frappeCall from "../../../../node_modules/frappe-ui/src/utils/call.js"
 import {
 	buildSyncEnvelope,
 	classifySyncError,
@@ -128,6 +129,47 @@ describe("classifySyncError", () => {
 	it("charges business errors to the invoice", () => {
 		expect(classifySyncError({ httpStatus: 417, exc_type: "ValidationError" })).toBe("invoice")
 		expect(classifySyncError({ httpStatus: 403, exc_type: "PermissionError" })).toBe("invoice")
+	})
+
+	describe("when the server took the request for a Guest", () => {
+		// Frappe's message after msgprint has cleaned it, which drops its <details> markup
+		const refusal = (message) => ({ status: 403, exc_type: "PermissionError", messages: [message] })
+		const ENGLISH =
+			"You are not permitted to access this resource. Login to accessFunction <strong>pos_next.api.sync.push</strong> is not whitelisted."
+		const ARABIC =
+			"لا يُسمح لك بالوصول إلى هذا المورد. سجّل الدخول للوصول إليه.الدالة <strong>pos_next.api.sync.push</strong> غير مدرجة في القائمة البيضاء."
+
+		it("pauses the queue, in whatever language the refusal came", () => {
+			expect(classifySyncError(refusal(ENGLISH))).toBe("auth")
+			expect(classifySyncError(refusal(ARABIC))).toBe("auth")
+		})
+
+		it("recognizes the error frappe-ui builds from the response", async () => {
+			const body = {
+				exc_type: "PermissionError",
+				_server_messages: JSON.stringify([
+					JSON.stringify({ message: ARABIC, title: "Method Not Allowed", indicator: "red", raise_exception: 1 }),
+				]),
+			}
+			vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 403 })))
+
+			const error = await frappeCall("pos_next.api.sync.push", {}).catch((failure) => failure)
+			vi.unstubAllGlobals()
+
+			expect(classifySyncError(error)).toBe("auth")
+		})
+
+		it("still charges a cashier's own refusal to the invoice", () => {
+			expect(classifySyncError(refusal("You are not assigned to a POS Profile"))).toBe("invoice")
+			expect(classifySyncError(refusal("No permission for <strong>Sales Invoice</strong>"))).toBe("invoice")
+			expect(classifySyncError(refusal("Cannot read <strong>ACC-SINV.2026.00001</strong>"))).toBe("invoice")
+		})
+
+		it("needs the permission error, not just the wording", () => {
+			expect(
+				classifySyncError({ status: 417, exc_type: "ValidationError", messages: [ENGLISH] }),
+			).toBe("invoice")
+		})
 	})
 })
 

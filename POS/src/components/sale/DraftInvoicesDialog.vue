@@ -222,7 +222,7 @@ async function loadDrafts() {
 	}
 }
 
-function handlePrintDraft(draft) {
+async function handlePrintDraft(draft) {
 	if (!props.allowPrintDraftInvoices) {
 		return
 	}
@@ -242,7 +242,7 @@ function handlePrintDraft(draft) {
 			footer:
 				"الفاتورة لم يتم تسجيلها في حسابات الجهة، وبالتالي لا يُعتد بها، ولا تتحمل الجهة أي مسؤولية عن أي أضرار قد تنتج عنها.",
 		}
-		printInvoiceCustom(invoiceData)
+		await printInvoiceCustom(invoiceData)
 	} catch (error) {
 		console.error("Error printing draft:", error)
 		showError(__("Failed to print draft"))

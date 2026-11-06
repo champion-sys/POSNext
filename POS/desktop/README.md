@@ -6,6 +6,8 @@ Starting pieces for the Windows app, planned in phase 3 of
 | File | Purpose | Source |
 |---|---|---|
 | `electron/printing/printer.js` | Silent printing through a hidden window | BrainWise `feature/electron-desktop`, without its receipt template |
+| `electron/printing/ipc.js` | Printer IPC, for the app's own page only | New |
+| `electron/security.js` | The Content-Security-Policy, and what the windows may navigate to or open | New |
 | `electron/db/` | SQLite in a utility process, reached by the window over three allow-listed IPC calls | Written here |
 | `electron/updater.js` | Downloads updates in the background and installs them on quit | New |
 | `electron/secrets.js` | The device token and cashier sign-in, encrypted with `safeStorage` | New |

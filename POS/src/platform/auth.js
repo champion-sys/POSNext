@@ -27,6 +27,7 @@ import {
 	setServerUrl,
 } from "./runtime"
 import { openSecretStore } from "./secrets"
+import { localStore } from "./store"
 
 export const ENROLL_ROUTE = "DeviceEnroll"
 export const SIGN_IN_ROUTE = "CashierSignIn"
@@ -53,7 +54,7 @@ const CONTACT_INTERVAL_MS = 60 * 1000
 /** Why an operation failed. `code` is for the page, `message` is the server's own words. */
 export class AuthError extends Error {
 	/**
-	 * @param {"network"|"bad_url"|"insecure_url"|"device_refused"|"refused"} code
+	 * @param {"network"|"bad_url"|"insecure_url"|"device_refused"|"refused"|"unsent_sales"|"local_data"} code
 	 * @param {string} [message]
 	 */
 	constructor(code, message = "") {
@@ -196,6 +197,34 @@ export function getDeviceId() {
 	return id
 }
 
+async function assertNothingUnsent() {
+	if ((await localStore.getOfflineInvoiceCount()) > 0) {
+		throw new AuthError("unsent_sales")
+	}
+}
+
+/**
+ * Leave one server's data behind before moving to another. A sale still queued, or waiting
+ * for that server's answer, would never finish on the new one, so it stops the move.
+ *
+ * A failed read of the queue counts as empty, so it is counted again once clearing has
+ * shown that the database answers.
+ */
+async function prepareForNewServer() {
+	await assertNothingUnsent()
+
+	try {
+		const { success } = await localStore.clearCachedData()
+		if (!success) throw new Error("Could not clear cached data")
+		await localStore.clearOffersCache()
+		await localStore.clearShift()
+	} catch (error) {
+		throw new AuthError("local_data", error.message)
+	}
+
+	await assertNothingUnsent()
+}
+
 /**
  * Enroll this device with a code from a manager.
  * @param {{serverUrl: string, code: string}} details
@@ -206,6 +235,8 @@ export async function enrollDevice({ serverUrl, code }) {
 
 	// The code works once, so find out now if the token could not be kept
 	await secrets.set(DEVICE_TOKEN_KEY, getDeviceToken() || "")
+
+	if (server !== getServerUrl()) await prepareForNewServer()
 
 	const id = getDeviceId()
 	const result = await callServer(server, "device.enroll", {

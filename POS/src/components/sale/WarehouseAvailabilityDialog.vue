@@ -104,9 +104,9 @@
 							</div>
 							<div class="flex-1 min-w-0 text-start">
 								<!-- Item Name with Highlighting -->
-								<p class="text-sm font-medium text-gray-900 truncate" v-html="highlightMatch(item.item_name, searchQuery)"></p>
+								<p class="text-sm font-medium text-gray-900 truncate"><HighlightedText :text="item.item_name" :query="searchQuery" mark-class="bg-yellow-200 text-yellow-900 rounded px-0.5" /></p>
 								<!-- Item Code with Highlighting -->
-								<p class="text-xs text-gray-500 truncate" v-html="highlightMatch(item.item_code, searchQuery)"></p>
+								<p class="text-xs text-gray-500 truncate"><HighlightedText :text="item.item_code" :query="searchQuery" mark-class="bg-yellow-200 text-yellow-900 rounded px-0.5" /></p>
 							</div>
 							<div class="text-end flex-shrink-0 flex flex-col items-end gap-1">
 								<!-- Stock Badge -->
@@ -501,6 +501,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { call, Dialog } from 'frappe-ui'
 import { __ } from '@/utils/translation'
+import HighlightedText from '@/components/common/HighlightedText.vue'
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -959,20 +960,6 @@ async function loadAvailability() {
 	} finally {
 		loading.value = false
 	}
-}
-
-/**
- * Highlight matching text in search results
- * @param {string} text - Text to search in
- * @param {string} query - Search query to highlight
- * @returns {string} HTML with highlighted matches
- */
-function highlightMatch(text, query) {
-	if (!text || !query) return text
-
-	const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-	const regex = new RegExp(`(${escapedQuery})`, 'gi')
-	return text.replace(regex, '<mark class="bg-yellow-200 text-yellow-900 rounded px-0.5">$1</mark>')
 }
 
 /**

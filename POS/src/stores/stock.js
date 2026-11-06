@@ -20,8 +20,9 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { call } from '@/utils/apiWrapper'
+import { sumQueuedStock } from '@/utils/offline/invoicePayload'
 import { offlineWorker } from '@/utils/offline/workerClient'
 import { logger } from '@/utils/logger'
 import { usePOSEventsStore } from '@/stores/posEvents'
@@ -152,6 +153,16 @@ export const useStockStore = defineStore('stock', () => {
 			refreshing.value = false
 		}
 	}
+
+	// A queued sale only holds stock in its own warehouse
+	watch(warehouse, async () => {
+		try {
+			const rows = await offlineWorker.getOfflineInvoices()
+			queued.value = sumQueuedStock(rows, warehouse.value)
+		} catch (error) {
+			log.error('Could not recount queued stock', error)
+		}
+	})
 
 	// ========================================================================
 	// EVENT LISTENERS - React to settings changes

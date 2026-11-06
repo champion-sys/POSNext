@@ -2,6 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { derivePinHash } from "../offlinePin"
 import { androidSecretStore } from "../secrets"
 
+const local = vi.hoisted(() => ({
+	getOfflineInvoiceCount: vi.fn(),
+	clearCachedData: vi.fn(),
+	clearOffersCache: vi.fn(),
+	clearShift: vi.fn(),
+}))
+
+vi.mock("../store", () => ({ localStore: local }))
+
 const HOUR = 60 * 60 * 1000
 const START = Date.UTC(2026, 10, 6, 12)
 const SERVER = "https://shop.example.com"
@@ -97,6 +106,10 @@ beforeEach(async () => {
 	online = true
 	replies = {}
 	store = memoryStore()
+	local.getOfflineInvoiceCount.mockReset().mockResolvedValue(0)
+	local.clearCachedData.mockReset().mockResolvedValue({ success: true })
+	local.clearOffersCache.mockReset().mockResolvedValue({ success: true })
+	local.clearShift.mockReset().mockResolvedValue(undefined)
 	verifier = {
 		salt: SALT,
 		iterations: ITERATIONS,
@@ -342,6 +355,121 @@ describe("a keystore that fails outright", () => {
 		await auth.loadCredentials(store).catch(() => {})
 
 		expect(auth.isEnrolled()).toBe(false)
+	})
+})
+
+describe("enrolling with another server", () => {
+	const OTHER = "https://other.example.com"
+	const enrollWith = (serverUrl) => auth.enrollDevice({ serverUrl, code: "abcde-fghjk" })
+	const enrollCalls = () =>
+		fetch.mock.calls.filter(([url]) => url.endsWith("device.enroll"))
+
+	beforeEach(async () => {
+		await enroll()
+		await signIn()
+		fetch.mockClear()
+		local.getOfflineInvoiceCount.mockClear()
+		local.clearCachedData.mockClear()
+		local.clearOffersCache.mockClear()
+		local.clearShift.mockClear()
+	})
+
+	it("refuses while sales wait, and keeps the code and everything else", async () => {
+		local.getOfflineInvoiceCount.mockResolvedValue(3)
+
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "unsent_sales" })
+
+		expect(enrollCalls()).toEqual([])
+		expect(local.clearCachedData).not.toHaveBeenCalled()
+		expect(local.clearShift).not.toHaveBeenCalled()
+		expect(runtime.getServerUrl()).toBe(SERVER)
+		expect(auth.knownCashiers().map(({ user }) => user)).toEqual(["a@example.com"])
+	})
+
+	it("clears the old server's data before spending the code", async () => {
+		const order = []
+		local.clearCachedData.mockImplementation(async () => {
+			order.push("clear")
+			return { success: true }
+		})
+		fetch.mockImplementation((url) => {
+			order.push("enroll")
+			return serverFetch(url)
+		})
+
+		await enrollWith(OTHER)
+
+		expect(order).toEqual(["clear", "enroll"])
+		expect(local.clearCachedData).toHaveBeenCalledWith()
+		expect(local.clearOffersCache).toHaveBeenCalled()
+		expect(local.clearShift).toHaveBeenCalled()
+		expect(runtime.getServerUrl()).toBe(OTHER)
+		expect(auth.knownCashiers()).toEqual([])
+	})
+
+	it("keeps the queue when it clears", async () => {
+		await enrollWith(OTHER)
+
+		const [options] = local.clearCachedData.mock.calls[0]
+		expect(options?.preserveInvoices).not.toBe(false)
+	})
+
+	it("keeps everything when it is the same server", async () => {
+		local.getOfflineInvoiceCount.mockResolvedValue(3)
+
+		await enrollWith(SERVER)
+
+		expect(enrollCalls()).toHaveLength(1)
+		expect(local.clearCachedData).not.toHaveBeenCalled()
+		expect(local.clearOffersCache).not.toHaveBeenCalled()
+		expect(local.clearShift).not.toHaveBeenCalled()
+		expect(auth.knownCashiers().map(({ user }) => user)).toEqual(["a@example.com"])
+	})
+
+	it("reads the same server however the address is typed", async () => {
+		await enrollWith(" SHOP.example.com/pos/ ")
+
+		expect(local.clearCachedData).not.toHaveBeenCalled()
+	})
+
+	it("does not enroll if the data could not be cleared", async () => {
+		local.clearCachedData.mockResolvedValue({ success: false, error: "disk full" })
+
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "local_data" })
+
+		expect(enrollCalls()).toEqual([])
+		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+
+	it("does not read a database that cannot answer as an empty queue", async () => {
+		local.clearCachedData.mockRejectedValue(new Error("database closed"))
+
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "local_data" })
+
+		expect(enrollCalls()).toEqual([])
+	})
+
+	it("catches sales a failed read hid the first time", async () => {
+		local.getOfflineInvoiceCount.mockResolvedValueOnce(0).mockResolvedValueOnce(2)
+
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "unsent_sales" })
+
+		expect(enrollCalls()).toEqual([])
+		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+})
+
+describe("enrolling for the first time", () => {
+	it("has nothing to refuse on a new device", async () => {
+		await enroll()
+
+		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+
+	it("refuses sales it can no longer say which server they belong to", async () => {
+		local.getOfflineInvoiceCount.mockResolvedValue(1)
+
+		await expect(enroll()).rejects.toMatchObject({ code: "unsent_sales" })
 	})
 })
 

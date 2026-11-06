@@ -85,7 +85,7 @@
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
 						</svg>
 						<div class="item-content">
-							<span class="item-label" v-html="highlightMatch(option.label)"></span>
+							<span class="item-label"><HighlightedText :text="option.label" :query="highlightQuery" /></span>
 							<span v-if="option.subtitle" class="item-subtitle">{{ option.subtitle }}</span>
 						</div>
 					</button>
@@ -110,6 +110,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
+import HighlightedText from "./HighlightedText.vue"
 
 const props = defineProps({
 	modelValue: {
@@ -160,6 +161,11 @@ const displayLimit = ref(50)
 const selectedOption = computed(() => {
 	return props.options.find((opt) => opt.value === props.modelValue)
 })
+
+// The label of what was picked fills the input, and is not a search
+const highlightQuery = computed(() =>
+	searchQuery.value === selectedOption.value?.label ? "" : searchQuery.value,
+)
 
 // Update search query when selection changes
 watch(
@@ -302,16 +308,6 @@ function scrollToHighlighted() {
 			behavior: "smooth",
 		})
 	}
-}
-
-function highlightMatch(text) {
-	if (!searchQuery.value || searchQuery.value === selectedOption.value?.label) {
-		return text
-	}
-
-	const query = searchQuery.value
-	const regex = new RegExp(`(${query})`, "gi")
-	return text.replace(regex, "<mark>$1</mark>")
 }
 
 // Click outside to close
