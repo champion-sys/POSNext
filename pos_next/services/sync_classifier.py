@@ -65,6 +65,22 @@ class ShiftClosedError(frappe.ValidationError):
     """A POS Invoice reaches the books through its shift's closing, which has already run."""
 
 
+class ShiftConflictError(frappe.ValidationError):
+    """Another open shift stands in the way of this one, so a person has to choose."""
+
+
+class ShiftOutdatedError(frappe.ValidationError):
+    """ERPNext refuses POS Invoices under an opening entry from an earlier day."""
+
+
+class OfflineShiftNotAllowedError(frappe.ValidationError):
+    """POS Settings no longer lets a shift be opened offline."""
+
+
+class LinkedShiftCloseError(frappe.ValidationError):
+    """A close counted a shift a manager linked to another, and must not close that one."""
+
+
 class DependencyError(frappe.ValidationError):
     """A record this one needs was voided, so a person has to decide what happens to it."""
 

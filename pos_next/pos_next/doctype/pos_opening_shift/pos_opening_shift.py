@@ -8,6 +8,8 @@ from frappe import _
 from frappe.utils import cint, getdate, nowdate
 from frappe.model.document import Document
 
+from pos_next.services.sync_classifier import ShiftConflictError
+
 
 class POSOpeningShift(Document):
     def validate(self):
@@ -27,7 +29,8 @@ class POSOpeningShift(Document):
         if existing_shift:
             frappe.throw(
                 _("POS Profile {0} is already open in another POS Opening Shift ({1}).")
-                .format(self.pos_profile, existing_shift.name, existing_shift.user)
+                .format(self.pos_profile, existing_shift.name, existing_shift.user),
+                ShiftConflictError,
             )
 
         # Check for an open POS Opening Entry for this POS Profile
@@ -49,7 +52,8 @@ class POSOpeningShift(Document):
                     existing_entry.user,
                     frappe.utils.formatdate(existing_entry.period_start_date),
                     self.pos_profile,
-                )
+                ),
+                ShiftConflictError,
             )
 
     def is_blocked_by_opening_entry(self, entry):

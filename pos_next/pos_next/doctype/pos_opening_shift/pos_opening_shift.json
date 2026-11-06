@@ -17,6 +17,7 @@
   "pos_profile",
   "pos_closing_shift",
   "pos_opening_entry",
+  "offline_id",
   "column_break_7",
   "user",
   "opening_balance_details_section",
@@ -136,11 +137,21 @@
    "label": "POS Opening Entry",
    "options": "POS Opening Entry",
    "read_only": 1
+  },
+  {
+   "description": "Set on a shift opened on a device while offline. Stops a resend from creating a second shift.",
+   "fieldname": "offline_id",
+   "fieldtype": "Data",
+   "label": "Offline ID",
+   "no_copy": 1,
+   "print_hide": 1,
+   "read_only": 1,
+   "unique": 1
   }
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2022-11-22 15:04:30.555123",
+ "modified": "2026-11-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Opening Shift",

@@ -47,6 +47,12 @@ class FakeInbox:
                 operator, operand = expected
                 if operator == "in" and value not in operand:
                     return False
+                if operator == "not in" and value in operand:
+                    return False
+                if operator == "like" and operand.strip("%") not in (value or ""):
+                    return False
+                if operator == "is" and operand == "not set" and value:
+                    return False
                 if operator in ("<", "<=") and (value is None or value > operand):
                     return False
             elif value != expected:
@@ -133,8 +139,10 @@ class FakeInbox:
 
 
 class Flow(unittest.TestCase):
+    inbox_class = FakeInbox
+
     def setUp(self):
-        self.inbox = FakeInbox()
+        self.inbox = self.inbox_class()
         frappe.local.db = self.inbox
         frappe.local.session = Mock(user="cashier@example.com")
         frappe.local.form_dict = frappe._dict()
