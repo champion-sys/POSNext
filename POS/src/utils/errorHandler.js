@@ -48,6 +48,8 @@ function cleanErrorMessage(rawMessage) {
 	return text.replace(/\s+/g, " ").trim()
 }
 
+const STORAGE_FULL = /quota|disk is full/i
+
 /**
  * Parse error and return structured error information
  * @param {Error} error - The error object from API call
@@ -60,6 +62,15 @@ export function parseError(error) {
 		type: "error", // error, warning, validation
 		retryable: false,
 		technicalDetails: null,
+	}
+
+	// Stores pass only the text of an error across the worker and the app bridges
+	if (STORAGE_FULL.test(`${error.name} ${error.message}`)) {
+		context.title = __("Device storage is full")
+		context.message = __(
+			"Nothing was saved. Free some space on this device, then try again.",
+		)
+		return context
 	}
 
 	// Build technical details
