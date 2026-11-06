@@ -5,7 +5,7 @@
 from __future__ import unicode_literals
 import frappe
 from frappe import _
-from frappe.utils import cint
+from frappe.utils import cint, getdate, nowdate
 from frappe.model.document import Document
 
 
@@ -38,14 +38,36 @@ class POSOpeningShift(Document):
         existing_entry = frappe.db.get_value(
             "POS Opening Entry",
             filters,
-            ["name", "user"],
+            ["name", "user", "period_start_date"],
             as_dict=True
         )
-        if existing_entry:
+        if existing_entry and self.is_blocked_by_opening_entry(existing_entry):
             frappe.throw(
-                _("POS Profile {0} has an open POS Opening Entry ({1}).")
-                .format(self.pos_profile, existing_entry.name, existing_entry.user)
+                _("POS Opening Entry {0} by {1} from {2} is still open for POS Profile {3}. Close it first.")
+                .format(
+                    existing_entry.name,
+                    existing_entry.user,
+                    frappe.utils.formatdate(existing_entry.period_start_date),
+                    self.pos_profile,
+                )
             )
+
+    def is_blocked_by_opening_entry(self, entry):
+        """Whether an open standard POS entry conflicts with this shift.
+
+        POS Invoice sales depend on the entry, and ERPNext refuses them once it is from an
+        earlier day, so only the user's own entry from today can be reused. Sales Invoice
+        shifts never touch it, so there only another cashier working in the standard POS
+        today is a real overlap, and an abandoned entry must not lock the POS Profile.
+        """
+        opened_today = getdate(entry.period_start_date) == getdate(self.period_start_date or nowdate())
+        same_user = entry.user == self.user
+
+        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type")
+        if invoice_type == "POS Invoice":
+            return not (same_user and opened_today)
+
+        return opened_today and not same_user
 
     def validate_pos_profile_and_cashier(self):
         if self.company != frappe.db.get_value("POS Profile", self.pos_profile, "company"):

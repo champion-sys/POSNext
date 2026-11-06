@@ -1,0 +1,75 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 18:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "attempted_at",
+  "performed_by",
+  "outcome",
+  "error_class",
+  "duration_ms",
+  "message"
+ ],
+ "fields": [
+  {
+   "fieldname": "attempted_at",
+   "fieldtype": "Datetime",
+   "label": "Attempted At",
+   "in_list_view": 1,
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "performed_by",
+   "fieldtype": "Link",
+   "label": "Performed By",
+   "options": "User",
+   "in_list_view": 1,
+   "read_only": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Data",
+   "label": "Outcome",
+   "in_list_view": 1,
+   "read_only": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "error_class",
+   "fieldtype": "Data",
+   "label": "Error Class",
+   "in_list_view": 1,
+   "read_only": 1,
+   "columns": 1
+  },
+  {
+   "fieldname": "duration_ms",
+   "fieldtype": "Int",
+   "label": "Duration (ms)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "in_list_view": 1,
+   "read_only": 1,
+   "columns": 4
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-06 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "Offline Invoice Sync Attempt",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

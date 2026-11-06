@@ -3,9 +3,14 @@ import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
 import { db } from "./db"
 import { offlineState } from "./offlineState"
-import { classifySyncError, withOfflinePosting } from "./invoicePayload"
+import {
+	buildSyncEnvelope,
+	classifySyncError,
+	getQueueUpdateForResult,
+	withOfflinePosting,
+} from "./invoicePayload"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
-import { generateOfflineId } from "./uuid"
+import { generateOfflineId, generateUUID } from "./uuid"
 
 // Re-export for backwards compatibility
 export { generateOfflineId }
@@ -24,19 +29,13 @@ const SYNC_CONFIG = {
 	MAX_RETRY_COUNT: 3,
 	CLEANUP_AGE_DAYS: 7,
 	PING_TIMEOUT_MS: 3000,
+	PROTOCOL_VERSION: 1,
+	BATCH_SIZE: 20,
+	STATUS_POLLS: 3,
+	STATUS_POLL_DELAY_MS: 2000,
 }
 
-// Duplicate error patterns to detect already-synced invoices
-const DUPLICATE_ERROR_PATTERNS = [
-	"DUPLICATE_OFFLINE_INVOICE",
-	"already been synced",
-]
-
-// Temporary error patterns that should trigger a retry after delay
-const SYNC_IN_PROGRESS_PATTERNS = [
-	"SYNC_IN_PROGRESS",
-	"currently being processed",
-]
+const DEVICE_ID_KEY = "pos_next_device_id"
 
 // ============================================================================
 // SERVER CONNECTIVITY
@@ -171,60 +170,6 @@ export const deleteOfflineInvoice = async (id) => {
 	}
 }
 
-// ============================================================================
-// DEDUPLICATION CHECK
-// ============================================================================
-
-/**
- * Check if an offline_id has already been synced to the server.
- * @param {string} offlineId - The offline_id to check
- * @returns {Promise<{synced: boolean, sales_invoice?: string}>}
- */
-export const checkOfflineIdSynced = async (offlineId) => {
-	if (!offlineId) return { synced: false }
-
-	try {
-		const response = await call(
-			"pos_next.api.invoices.check_offline_invoice_synced",
-			{ offline_id: offlineId },
-		)
-		return response || { synced: false }
-	} catch (error) {
-		// If check fails, assume not synced - server will still deduplicate
-		log.warn("Failed to check sync status", { offline_id: offlineId, error })
-		return { synced: false }
-	}
-}
-
-/**
- * Check if an error message indicates a duplicate invoice
- * @param {Error|string} error - Error to check
- * @returns {{isDuplicate: boolean, invoiceName: string|null}}
- */
-const checkDuplicateError = (error) => {
-	const errorMessage = error?.message || error?.exc || error?.title || String(error)
-	const isDuplicate = DUPLICATE_ERROR_PATTERNS.some((pattern) =>
-		errorMessage.includes(pattern),
-	)
-
-	if (!isDuplicate) return { isDuplicate: false, invoiceName: null }
-
-	const match = errorMessage.match(/(Sales Invoice|POS Invoice): (\S+)/)
-	return { isDuplicate: true, invoiceName: match?.[2] || null }
-}
-
-/**
- * Check if an error indicates another request is processing the same invoice
- * @param {Error|string} error - Error to check
- * @returns {boolean}
- */
-const isSyncInProgressError = (error) => {
-	const errorMessage = error?.message || error?.exc || error?.title || String(error)
-	return SYNC_IN_PROGRESS_PATTERNS.some((pattern) =>
-		errorMessage.includes(pattern),
-	)
-}
-
 /**
  * Wait for a specified duration
  * @param {number} ms - Milliseconds to wait
@@ -235,22 +180,6 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 // ============================================================================
 // SYNC OPERATIONS
 // ============================================================================
-
-/**
- * Mark an invoice as synced in the local database and drop its cached
- * receipt payload — once the invoice exists on the server, print/detail
- * lookups should go through the normal server path.
- * @param {number} id - Invoice queue ID
- * @param {string} serverInvoice - Server invoice name
- * @param {string} [offlineId] - pos_offline_<uuid> cache key to evict
- */
-const markInvoiceSynced = async (id, serverInvoice, offlineId) => {
-	await db.invoice_queue.update(id, {
-		synced: true,
-		server_invoice: serverInvoice,
-	})
-	if (offlineId) removeOfflineReceiptPayload(offlineId)
-}
 
 /**
  * Increment retry count and optionally mark as failed
@@ -306,69 +235,93 @@ const normalizeInvoiceForSync = (invoiceData, offlineId, queuedAt) => ({
 })
 
 /**
- * Sync a single invoice to the server with retry for in-progress errors
- * @param {Object} invoice - Invoice queue record
- * @param {number} retryCount - Current retry attempt (for in-progress waits)
- * @returns {Promise<{status: 'success'|'skipped'|'failed', error?: Error}>}
+ * A stable id for this browser, until device enrollment replaces it.
+ * @returns {string}
  */
-const syncInvoiceToServer = async (invoice, retryCount = 0) => {
-	const MAX_IN_PROGRESS_RETRIES = 3
-	const IN_PROGRESS_WAIT_MS = 2000  // Wait 2 seconds between retries
-
-	const offlineId = invoice.offline_id || invoice.data?.offline_id
-
-	// Pre-sync deduplication check
-	if (offlineId) {
-		const syncStatus = await checkOfflineIdSynced(offlineId)
-		if (syncStatus.synced) {
-			await markInvoiceSynced(invoice.id, syncStatus.sales_invoice, offlineId)
-			log.debug("Invoice already synced, skipping", {
-				id: invoice.id,
-				offline_id: offlineId,
-				sales_invoice: syncStatus.sales_invoice,
-			})
-			return { status: "skipped" }
-		}
+const getDeviceId = () => {
+	let deviceId = localStorage.getItem(DEVICE_ID_KEY)
+	if (!deviceId) {
+		deviceId = generateUUID()
+		localStorage.setItem(DEVICE_ID_KEY, deviceId)
 	}
-
-	// Prepare and submit
-	const invoiceData = normalizeInvoiceForSync(invoice.data, offlineId, invoice.timestamp)
-
-	try {
-		const response = await call("pos_next.api.invoices.submit_invoice", {
-			data: JSON.stringify({ invoice: invoiceData, data: {} }),
-		})
-
-		if (response.message || response.name) {
-			const serverName = response.name || response.message
-			await markInvoiceSynced(invoice.id, serverName, offlineId)
-			log.success("Invoice synced", {
-				id: invoice.id,
-				offline_id: offlineId,
-				sales_invoice: serverName,
-			})
-			return { status: "success" }
-		}
-
-		throw new Error("Invalid server response")
-	} catch (error) {
-		// Handle "sync in progress" - another request is processing this invoice
-		if (isSyncInProgressError(error) && retryCount < MAX_IN_PROGRESS_RETRIES) {
-			log.debug("Invoice being processed by another request, waiting...", {
-				id: invoice.id,
-				retry: retryCount + 1,
-			})
-			await sleep(IN_PROGRESS_WAIT_MS)
-			return syncInvoiceToServer(invoice, retryCount + 1)
-		}
-
-		// Re-throw other errors
-		throw error
-	}
+	return deviceId
 }
 
 /**
- * Sync all pending offline invoices to server.
+ * Apply the server's answer about one sale to its queue row
+ * @param {Object} row - Queue row
+ * @param {Object} result - Server result
+ * @returns {Promise<string|null>} The row's new status
+ */
+const applyResult = async (row, result) => {
+	const updates = getQueueUpdateForResult(result)
+	if (!updates) return null
+
+	await db.invoice_queue.update(row.id, updates)
+	if (updates.synced) {
+		removeOfflineReceiptPayload(row.offline_id)
+	}
+	return updates.server_status
+}
+
+/**
+ * Hand a batch of sales to the server. Once stored there, a sale's fate is the
+ * server's job: this device only follows it.
+ * @param {Array} rows - Queue rows
+ * @returns {Promise<Map<string, Object>>} Results by offline_id
+ */
+const pushBatch = async (rows) => {
+	const items = rows.map((row) => {
+		const offlineId = row.offline_id || row.data?.offline_id
+		return buildSyncEnvelope(row, normalizeInvoiceForSync(row.data, offlineId, row.timestamp))
+	})
+
+	const response = await call("pos_next.api.sync.push", {
+		items,
+		device_id: getDeviceId(),
+		client_version: typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : null,
+		protocol_version: SYNC_CONFIG.PROTOCOL_VERSION,
+	})
+
+	return new Map((response?.results || []).map((result) => [result.offline_id, result]))
+}
+
+/**
+ * Update rows the server already holds with how they ended
+ * @param {Array} rows - Queue rows
+ * @param {Object} result - Totals to update
+ * @returns {Promise<number>} How many are still being processed
+ */
+const refreshServerStatus = async (rows, result) => {
+	const byOfflineId = new Map(rows.map((row) => [row.offline_id, row]))
+	const statuses = await call("pos_next.api.sync.get_status", {
+		offline_ids: Array.from(byOfflineId.keys()),
+	})
+
+	let waiting = rows.length - (statuses?.length || 0)
+	for (const status of statuses || []) {
+		const row = byOfflineId.get(status.offline_id)
+		const newStatus = row ? await applyResult(row, status) : null
+
+		if (newStatus === "synced" && row.server_status !== "synced") {
+			result.success++
+		} else if (newStatus === "received" || newStatus === "processing") {
+			waiting++
+		} else if (newStatus === "needs_review" && row.server_status !== "needs_review") {
+			result.failed++
+			result.errors.push({
+				invoiceId: row.id,
+				offlineId: row.offline_id,
+				customer: row.data?.customer || "Walk-in Customer",
+				error: new Error(status.message || "Needs review"),
+			})
+		}
+	}
+	return waiting
+}
+
+/**
+ * Push queued sales and collect the results of earlier ones.
  * Uses a mutex to ensure only one sync operation runs at a time.
  * Concurrent callers will wait for the ongoing sync and receive its result.
  *
@@ -390,50 +343,58 @@ export const syncOfflineInvoices = async () => {
 		log.info(`Starting sync of ${pendingInvoices.length} invoice(s)`)
 
 		const result = { success: 0, failed: 0, skipped: 0, errors: [] }
+		const unsent = pendingInvoices.filter((row) => !row.server_status)
 
-		for (const invoice of pendingInvoices) {
+		for (let i = 0; i < unsent.length; i += SYNC_CONFIG.BATCH_SIZE) {
+			const batch = unsent.slice(i, i + SYNC_CONFIG.BATCH_SIZE)
+
 			try {
-				const syncResult = await syncInvoiceToServer(invoice)
-
-				if (syncResult.status === "success") {
-					result.success++
-				} else if (syncResult.status === "skipped") {
-					result.skipped++
+				const results = await pushBatch(batch)
+				for (const row of batch) {
+					const answer = results.get(row.offline_id)
+					if (answer?.status === "rejected") {
+						await handleSyncFailure(row, answer.message)
+						result.failed++
+					} else if (answer) {
+						await applyResult(row, answer)
+					}
 				}
 			} catch (error) {
-				log.error("Failed to sync invoice", { id: invoice.id, error })
+				log.error("Failed to push invoices", { error })
 
-				// Check for duplicate error from server
-				const { isDuplicate, invoiceName } = checkDuplicateError(error)
-				if (isDuplicate) {
-					await markInvoiceSynced(
-						invoice.id,
-						invoiceName,
-						invoice.offline_id || invoice.data?.offline_id,
-					)
-					log.debug("Invoice is duplicate, marked as synced", { id: invoice.id })
-					result.skipped++
-					continue
-				}
-
-				// The connection or session failed, not this invoice. The rest of the
+				// The connection or session failed, not these invoices. The rest of the
 				// queue would fail the same way, so stop without counting a failure.
 				if (classifySyncError(error) !== "invoice") {
-					log.warn("Sync paused", { id: invoice.id, reason: classifySyncError(error) })
+					log.warn("Sync paused", { reason: classifySyncError(error) })
 					break
 				}
 
-				// Handle genuine failure
-				result.errors.push({
-					invoiceId: invoice.id,
-					offlineId: invoice.offline_id,
-					customer: invoice.data?.customer || "Walk-in Customer",
-					error,
-				})
-
-				await handleSyncFailure(invoice, error.message)
-				result.failed++
+				for (const row of batch) {
+					await handleSyncFailure(row, error.message)
+					result.errors.push({
+						invoiceId: row.id,
+						offlineId: row.offline_id,
+						customer: row.data?.customer || "Walk-in Customer",
+						error,
+					})
+					result.failed++
+				}
 			}
+		}
+
+		// Give the background job a moment, the rest is picked up by the next sync
+		for (let poll = 0; poll < SYNC_CONFIG.STATUS_POLLS; poll++) {
+			const held = (await getOfflineInvoices()).filter((row) => row.server_status)
+			if (!held.length) break
+
+			try {
+				const waiting = await refreshServerStatus(held, result)
+				if (waiting === 0) break
+			} catch (error) {
+				log.warn("Could not read sync status", { error })
+				break
+			}
+			await sleep(SYNC_CONFIG.STATUS_POLL_DELAY_MS)
 		}
 
 		// Let the POS replace local batch and serial figures with server values

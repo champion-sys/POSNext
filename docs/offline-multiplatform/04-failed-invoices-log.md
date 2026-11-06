@@ -32,8 +32,9 @@ flowchart LR
 |---|---|---|
 | `status` | Select | القيم الموضحة في القسم 3 |
 | `entity` | Select | invoice، customer، payment، shift_close |
-| `device` | Link إلى POS Device | من أين جاءت |
+| `device_id` | Data | من أين جاءت، ويصبح Link إلى POS Device في المرحلة 3 |
 | `cashier` | Link إلى User | من باع فعلًا |
+| `uploaded_by` | Link إلى User | من رفعها، وقد يكون زميلًا على الجهاز نفسه |
 | `shift` | Link إلى POS Opening Shift | الوردية |
 | `local_number` | Data، مفهرس | الرقم المطبوع، وللبحث عند الشكوى |
 | `client_created_at` | Datetime | وقت البيع في الجهاز |
@@ -59,9 +60,9 @@ flowchart LR
 
 ### حقل في الفاتورة
 
-يضاف Custom Field باسم `offline_id` إلى Sales Invoice وPOS Invoice بفهرس فريد، مع `local_number`. هذا خط الدفاع الأخير: حتى لو فُقد سجل الـ Inbox يرفض القيد في قاعدة البيانات أي تكرار.
+يضاف Custom Field باسم `offline_id` إلى Sales Invoice وPOS Invoice بفهرس فريد، ويضاف `local_number` مع الرقم المحلي في المرحلة 2. هذا خط الدفاع الأخير: حتى لو فُقد سجل الـ Inbox يرفض القيد في قاعدة البيانات أي تكرار.
 
-يجب التأكد في الاختبار من أن القيمة الفارغة تُخزن NULL لا نصًا فارغًا، حتى لا تتعارض الفواتير الأخرى مع القيد الفريد.
+تأكد ذلك على `acc`: الفواتير القديمة بقيمة NULL، فلا تتعارض مع القيد الفريد.
 
 ## 3. الحالات
 

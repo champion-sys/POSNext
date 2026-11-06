@@ -66,6 +66,15 @@
 										{{ __('Printed') }}
 									</span>
 								</div>
+								<p v-if="invoice.server_status === 'needs_review'" class="mt-1 text-xs font-medium text-amber-700">
+									{{ __('Waiting for a manager to review it on the server') }}
+								</p>
+								<p
+									v-else-if="invoice.server_status === 'received' || invoice.server_status === 'processing'"
+									class="mt-1 text-xs font-medium text-blue-700"
+								>
+									{{ __('Received by the server, being processed') }}
+								</p>
 								<p v-if="invoice.error" class="mt-1 text-xs text-red-700 break-words">
 									{{ invoice.error }}
 								</p>
@@ -93,7 +102,7 @@
 							</div>
 							<div class="flex items-center justify-end sm:justify-start gap-1 sm:gap-2">
 								<button
-									v-if="settingsStore.allowEditOfflineInvoice"
+									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status"
 									@click="editInvoice(invoice)"
 									:disabled="isSyncing || invoice.data?.was_printed"
 									class="p-1.5 sm:p-2 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -130,7 +139,7 @@
 									</svg>
 								</button>
 								<button
-									v-if="settingsStore.allowDeleteOfflineInvoice"
+									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status"
 									@click="deleteInvoice(invoice)"
 									:disabled="isSyncing"
 									class="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"

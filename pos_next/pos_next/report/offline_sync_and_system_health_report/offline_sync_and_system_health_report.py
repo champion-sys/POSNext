@@ -6,6 +6,9 @@ from frappe import _
 from frappe.utils import flt, time_diff_in_hours, get_datetime
 
 
+OPEN_STATUSES = ("Received", "Processing", "Retry Scheduled", "Blocked")
+
+
 def execute(filters=None):
 	columns = get_columns()
 	data = get_data(filters)
@@ -96,9 +99,11 @@ def get_data(filters):
 			ois.customer,
 			ois.status,
 			ois.synced_at,
+			ois.error_message,
+			ois.client_created_at,
 			si.creation as invoice_created_at,
 			si.posting_date,
-			si.owner as user
+			ois.cashier as user
 		FROM
 			`tabOffline Invoice Sync` ois
 		LEFT JOIN
@@ -107,7 +112,7 @@ def get_data(filters):
 			1=1
 			{conditions}
 		ORDER BY
-			ois.synced_at DESC
+			ois.creation DESC
 	""".format(conditions=conditions)
 
 	data = frappe.db.sql(query, filters, as_dict=1)
@@ -115,54 +120,32 @@ def get_data(filters):
 	# Calculate metrics for each record
 	for row in data:
 		# Calculate sync delay
-		if row.synced_at and row.invoice_created_at:
+		sold_at = row.client_created_at or row.invoice_created_at
+		if row.synced_at and sold_at:
 			row.sync_delay_hours = flt(
-				time_diff_in_hours(
-					get_datetime(row.synced_at),
-					get_datetime(row.invoice_created_at)
-				),
+				time_diff_in_hours(get_datetime(row.synced_at), get_datetime(sold_at)),
 				2
 			)
 		else:
 			row.sync_delay_hours = None
 
 		# Determine health status
-		if row.status == "Failed":
-			row.health_status = "🔴 Failed"
-			# Try to get error from error log
-			error_log = frappe.db.get_value(
-				"Error Log",
-				{
-					"reference_doctype": "Offline Invoice Sync",
-					"reference_name": row.offline_id
-				},
-				"error",
-				order_by="creation desc"
-			)
-			row.error_message = error_log[:200] if error_log else "Sync failed"
-
-		elif row.status == "Pending":
-			row.health_status = "🟡 Pending"
-			row.error_message = "Awaiting synchronization"
-
+		if row.status == "Needs Review":
+			row.health_status = "🔴 Needs Review"
+		elif row.status in OPEN_STATUSES:
+			row.health_status = "🟡 In Progress"
+			row.error_message = row.error_message or "Awaiting synchronization"
 		elif row.status == "Synced":
-			# Check sync delay
-			if row.sync_delay_hours is not None:
-				if row.sync_delay_hours > 24:
-					row.health_status = "🟠 Delayed Sync"
-					row.error_message = f"Synced after {row.sync_delay_hours:.1f} hours"
-				elif row.sync_delay_hours > 1:
-					row.health_status = "🟢 Synced (Slow)"
-					row.error_message = f"Synced after {row.sync_delay_hours:.1f} hours"
-				else:
-					row.health_status = "✅ Synced"
-					row.error_message = None
+			if row.sync_delay_hours is not None and row.sync_delay_hours > 24:
+				row.health_status = "🟠 Delayed Sync"
+				row.error_message = f"Synced after {row.sync_delay_hours:.1f} hours"
+			elif row.sync_delay_hours is not None and row.sync_delay_hours > 1:
+				row.health_status = "🟢 Synced (Slow)"
+				row.error_message = f"Synced after {row.sync_delay_hours:.1f} hours"
 			else:
 				row.health_status = "✅ Synced"
-				row.error_message = None
 		else:
-			row.health_status = "❓ Unknown"
-			row.error_message = "Unknown status"
+			row.health_status = f"⚪ {row.status}"
 
 	return data
 
@@ -172,10 +155,10 @@ def get_conditions(filters):
 	conditions = []
 
 	if filters.get("from_date"):
-		conditions.append("ois.synced_at >= %(from_date)s")
+		conditions.append("ois.creation >= %(from_date)s")
 
 	if filters.get("to_date"):
-		conditions.append("ois.synced_at <= %(to_date)s")
+		conditions.append("ois.creation <= %(to_date)s")
 
 	if filters.get("pos_profile"):
 		conditions.append("ois.pos_profile = %(pos_profile)s")
@@ -184,7 +167,7 @@ def get_conditions(filters):
 		conditions.append("ois.status = %(status)s")
 
 	if filters.get("user"):
-		conditions.append("si.owner = %(user)s")
+		conditions.append("ois.cashier = %(user)s")
 
 	return " AND " + " AND ".join(conditions) if conditions else ""
 
@@ -196,8 +179,8 @@ def get_summary(data):
 
 	total_syncs = len(data)
 	synced_count = len([d for d in data if d.status == "Synced"])
-	failed_count = len([d for d in data if d.status == "Failed"])
-	pending_count = len([d for d in data if d.status == "Pending"])
+	failed_count = len([d for d in data if d.status == "Needs Review"])
+	pending_count = len([d for d in data if d.status in OPEN_STATUSES])
 
 	# Calculate average sync delay for successful syncs
 	sync_delays = [d.sync_delay_hours for d in data if d.sync_delay_hours is not None and d.status == "Synced"]

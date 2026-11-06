@@ -38,6 +38,9 @@ def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
     return flt(value) * flt(conversion_rate or 1)
 
 
+SYNC_FINISHED_STATUSES = ("Synced", "Resolved", "Voided")
+
+
 class POSClosingShift(Document):
     def validate(self):
         # Check if the user is allowed to close shift based on POS Profile settings
@@ -79,7 +82,9 @@ class POSClosingShift(Document):
                 _("Selected POS Opening Shift should be open."),
                 title=_("Invalid Opening Entry"),
             )
-            
+
+        self.validate_invoice_sync()
+
         if pos_profile:
             if not self.closing_to_mode_of_payment:
                 self.closing_to_mode_of_payment = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "closing_to_mode_of_payment")
@@ -90,6 +95,37 @@ class POSClosingShift(Document):
                 self.difference_mode_of_payment_account = frappe.db.get_value("POS Profile", pos_profile, "write_off_account")
 
         self.update_payment_reconciliation()
+
+    def validate_invoice_sync(self):
+        """Closing totals only count invoices the server has finished.
+
+        Invoices still being processed will arrive shortly, so they block the close.
+        Invoices under review may take days, and the cashier has already been asked
+        to accept that, so they only raise a warning.
+        """
+        counts = {
+            row.status: row.count
+            for row in frappe.get_all(
+                "Offline Invoice Sync",
+                filters={"shift": self.pos_opening_shift, "status": ["not in", SYNC_FINISHED_STATUSES]},
+                fields=["status", {"COUNT": "name", "as": "count"}],
+                group_by="status",
+            )
+        }
+        in_review = counts.pop("Needs Review", 0)
+        in_progress = sum(counts.values())
+
+        if in_progress:
+            frappe.throw(
+                _("{0} invoice(s) of this shift are still being processed. Try again shortly.").format(in_progress),
+                title=_("Invoices Still Syncing"),
+            )
+        if in_review:
+            frappe.msgprint(
+                _("{0} invoice(s) of this shift need review and are not in these totals.").format(in_review),
+                indicator="orange",
+                alert=True,
+            )
 
     def update_payment_reconciliation(self):
         # update the difference values in Payment Reconciliation child table

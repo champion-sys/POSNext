@@ -67,6 +67,17 @@
    "collapsible": 1,
    "indent": 0,
    "keep_closed": 0,
+   "label": "Invoice Sync Center",
+   "link_to": "pos-sync-center",
+   "link_type": "Page",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 1,
+   "indent": 0,
+   "keep_closed": 0,
    "label": "Offline Invoice Sync",
    "link_to": "Offline Invoice Sync",
    "link_type": "DocType",

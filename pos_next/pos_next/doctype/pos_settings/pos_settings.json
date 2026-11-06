@@ -84,6 +84,8 @@
   "section_break_security",
   "enable_session_lock",
   "session_lock_timeout",
+  "section_break_sync",
+  "sync_total_tolerance",
   "barcode_tab",
   "barcode_rules"
  ],
@@ -544,6 +546,18 @@
    "label": "Session Lock Timeout (minutes)"
   },
   {
+   "fieldname": "section_break_sync",
+   "fieldtype": "Section Break",
+   "label": "Invoice Sync"
+  },
+  {
+   "fieldname": "sync_total_tolerance",
+   "fieldtype": "Float",
+   "label": "Total Difference Tolerance",
+   "default": "0.05",
+   "description": "The largest difference allowed between the total on the device and on the server. A larger difference sends the invoice to review."
+  },
+  {
    "fieldname": "barcode_tab",
    "fieldtype": "Tab Break",
    "label": "Barcode"
@@ -617,7 +631,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-01 00:33:44.120770",
+ "modified": "2026-11-06 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

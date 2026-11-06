@@ -2239,6 +2239,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 
 	const invoiceData = {
 		...withOfflinePosting(basePayload),
+		cashier: session.user,
 		company: shiftStore.profileCompany,
 		customer: customerValue || shiftStore.profileCustomer,
 		grand_total: cartStore.grandTotal,
@@ -2289,7 +2290,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		posting_date: invoiceData.posting_date,
 		company: shiftStore.profileCompany || undefined,
 		customer_name: customerLabel,
-		items: preparedItems.map((item) => ({
+		items: invoiceData.items.map((item) => ({
 			...item,
 			quantity: item.qty ?? item.quantity,
 		})),

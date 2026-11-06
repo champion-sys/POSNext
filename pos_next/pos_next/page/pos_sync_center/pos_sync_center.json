@@ -1,0 +1,26 @@
+{
+ "content": null,
+ "creation": "2026-11-06 18:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-11-06 18:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "pos-sync-center",
+ "owner": "Administrator",
+ "page_name": "pos-sync-center",
+ "roles": [
+  {
+   "role": "Nexus POS Manager"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Invoice Sync Center"
+}

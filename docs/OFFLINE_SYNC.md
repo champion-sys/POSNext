@@ -1,5 +1,7 @@
 # Offline Invoice Sync System
 
+> **Partly outdated.** Queued invoices now go through `pos_next.api.sync.push`, and the server stores each one before processing it. For the current design, see [the failed invoices log](offline-multiplatform/04-failed-invoices-log.md).
+
 This document describes the offline invoice synchronization system in POS Next, including the deduplication mechanism that prevents duplicate invoices from being created during network failures.
 
 ## Overview

@@ -27,7 +27,7 @@ frappe.query_reports["Offline Sync and System Health Report"] = {
 			"fieldname": "status",
 			"label": __("Sync Status"),
 			"fieldtype": "Select",
-			"options": "\nPending\nSynced\nFailed",
+			"options": "\nReceived\nProcessing\nRetry Scheduled\nBlocked\nNeeds Review\nSynced\nResolved\nVoided",
 			"default": ""
 		},
 		{

@@ -135,3 +135,57 @@ export function getShiftCloseDecision(pendingRows, offline) {
 	if (offline) return "block"
 	return pendingRows.every((row) => row.sync_failed) ? "confirm" : "block"
 }
+
+/**
+ * Wrap a queue row for the sync API.
+ * @param {Object} row - Queue row
+ * @param {Object} payload - The row's invoice, normalized for the server
+ * @returns {Object}
+ */
+export function buildSyncEnvelope(row, payload) {
+	const payments = payload.payments || []
+	return {
+		offline_id: payload.offline_id,
+		entity: "invoice",
+		entity_version: 1,
+		seq: row.id,
+		cashier: payload.cashier,
+		pos_profile: payload.pos_profile,
+		created_at_device: row.timestamp ? new Date(row.timestamp).toISOString() : null,
+		client_totals: {
+			grand_total: payload.grand_total,
+			paid: payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0),
+		},
+		depends_on: [],
+		payload,
+	}
+}
+
+/**
+ * Turn the server's answer about a sale into changes to its queue row.
+ * @param {{status: string, invoice?: string, message?: string}} result
+ * @returns {Object|null} Row changes, or null when the row should stay as it is
+ */
+export function getQueueUpdateForResult(result) {
+	switch (result.status) {
+		case "synced":
+		case "duplicate":
+			return {
+				synced: true,
+				server_invoice: result.invoice || null,
+				server_status: "synced",
+				sync_failed: false,
+				error: null,
+			}
+		case "voided":
+			return { synced: true, server_status: "voided", sync_failed: false, error: null }
+		case "received":
+		case "processing":
+			return { server_status: result.status, sync_failed: false, error: null }
+		case "needs_review":
+		case "conflict":
+			return { server_status: "needs_review", sync_failed: true, error: result.message || null }
+		default:
+			return null
+	}
+}

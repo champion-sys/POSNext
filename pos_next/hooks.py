@@ -176,9 +176,14 @@ standard_queries = {
 # Override standard doctype classes
 
 override_doctype_class = {
-	"Sales Invoice": "pos_next.overrides.sales_invoice.CustomSalesInvoice",
 	"POS Invoice": "pos_next.overrides.pos_invoice.CustomPOSInvoice",
 	"POS Closing Entry": "pos_next.overrides.pos_closing_entry.CustomPOSClosingEntry"
+}
+
+# Extended, not overridden: only the last override applies, which would silently
+# replace the Sales Invoice controller of any other installed app.
+extend_doctype_class = {
+	"Sales Invoice": ["pos_next.overrides.sales_invoice.CustomSalesInvoice"]
 }
 
 # Document Events
@@ -223,6 +228,14 @@ doc_events = {
 # ---------------
 
 scheduler_events = {
+	"cron": {
+		"* * * * *": [
+			"pos_next.tasks.sync.sweep_inbox",
+		],
+	},
+	"hourly": [
+		"pos_next.tasks.sync.remind_about_reviews",
+	],
 	"daily": [
 		"pos_next.tasks.cleanup_expired_promotions.cleanup_expired_promotions",
 	],

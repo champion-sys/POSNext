@@ -6,40 +6,93 @@
  "engine": "InnoDB",
  "field_order": [
   "offline_id",
-  "sales_invoice",
   "status",
+  "sales_invoice",
+  "invoice_doctype",
   "column_break_1",
   "pos_profile",
   "customer",
-  "section_break_1",
-  "synced_at"
+  "shift",
+  "entity",
+  "section_source",
+  "cashier",
+  "uploaded_by",
+  "device_id",
+  "column_break_source",
+  "client_created_at",
+  "received_at",
+  "processed_at",
+  "synced_at",
+  "section_totals",
+  "client_grand_total",
+  "client_paid_amount",
+  "column_break_totals",
+  "server_grand_total",
+  "accept_total_difference",
+  "section_error",
+  "error_class",
+  "error_code",
+  "error_fingerprint",
+  "column_break_error",
+  "attempts",
+  "next_retry_at",
+  "depends_on",
+  "section_error_message",
+  "error_message",
+  "traceback",
+  "section_payload",
+  "payload",
+  "original_payload",
+  "seq",
+  "client_version",
+  "protocol_version",
+  "payload_hash",
+  "section_resolution",
+  "resolution",
+  "resolution_note",
+  "column_break_resolution",
+  "resolved_by",
+  "resolved_at",
+  "section_attempts",
+  "attempt_log"
  ],
  "fields": [
   {
    "fieldname": "offline_id",
    "fieldtype": "Data",
+   "label": "Offline ID",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Offline ID",
    "reqd": 1,
-   "unique": 1
+   "unique": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "reqd": 1,
+   "default": "Received",
+   "options": "Received\nProcessing\nRetry Scheduled\nBlocked\nNeeds Review\nSynced\nResolved\nVoided",
+   "search_index": 1
   },
   {
    "fieldname": "sales_invoice",
-   "fieldtype": "Link",
+   "fieldtype": "Dynamic Link",
+   "label": "Invoice",
    "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Sales Invoice",
-   "options": "Sales Invoice"
+   "options": "invoice_doctype",
+   "read_only": 1
   },
   {
-   "default": "Synced",
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Status",
-   "options": "Pending\nSynced\nFailed"
+   "fieldname": "invoice_doctype",
+   "fieldtype": "Link",
+   "label": "Invoice Type",
+   "options": "DocType",
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "column_break_1",
@@ -48,34 +101,293 @@
   {
    "fieldname": "pos_profile",
    "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
    "label": "POS Profile",
-   "options": "POS Profile"
+   "options": "POS Profile",
+   "in_standard_filter": 1,
+   "in_list_view": 1,
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "customer",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "label": "Customer",
-   "options": "Customer"
+   "options": "Customer",
+   "read_only": 1,
+   "in_standard_filter": 1
   },
   {
-   "fieldname": "section_break_1",
-   "fieldtype": "Section Break"
+   "fieldname": "shift",
+   "fieldtype": "Link",
+   "label": "Shift",
+   "options": "POS Opening Shift",
+   "read_only": 1
   },
   {
-   "default": "Now",
+   "fieldname": "entity",
+   "fieldtype": "Select",
+   "label": "Entity",
+   "options": "invoice\ncustomer\npayment\nshift_close",
+   "default": "invoice",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_source",
+   "fieldtype": "Section Break",
+   "label": "Source"
+  },
+  {
+   "fieldname": "cashier",
+   "fieldtype": "Link",
+   "label": "Cashier",
+   "options": "User",
+   "read_only": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "uploaded_by",
+   "fieldtype": "Link",
+   "label": "Uploaded By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_id",
+   "fieldtype": "Data",
+   "label": "Device",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_source",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "client_created_at",
+   "fieldtype": "Datetime",
+   "label": "Sold At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "received_at",
+   "fieldtype": "Datetime",
+   "label": "Received At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "processed_at",
+   "fieldtype": "Datetime",
+   "label": "Processed At",
+   "read_only": 1
+  },
+  {
    "fieldname": "synced_at",
    "fieldtype": "Datetime",
-   "in_list_view": 1,
    "label": "Synced At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_totals",
+   "fieldtype": "Section Break",
+   "label": "Totals"
+  },
+  {
+   "fieldname": "client_grand_total",
+   "fieldtype": "Float",
+   "label": "Device Grand Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "client_paid_amount",
+   "fieldtype": "Float",
+   "label": "Device Paid Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_totals",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "server_grand_total",
+   "fieldtype": "Float",
+   "label": "Server Grand Total",
+   "read_only": 1
+  },
+  {
+   "fieldname": "accept_total_difference",
+   "fieldtype": "Check",
+   "label": "Accept Total Difference",
+   "read_only": 1,
+   "description": "Approved by a manager during review."
+  },
+  {
+   "fieldname": "section_error",
+   "fieldtype": "Section Break",
+   "label": "Error",
+   "depends_on": "eval:doc.error_class"
+  },
+  {
+   "fieldname": "error_class",
+   "fieldtype": "Select",
+   "label": "Error Class",
+   "in_standard_filter": 1,
+   "read_only": 1,
+   "search_index": 1,
+   "options": "\ntransient_server\ndependency\nstock\nbusiness\ncontract\nbug"
+  },
+  {
+   "fieldname": "error_code",
+   "fieldtype": "Data",
+   "label": "Error Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "error_fingerprint",
+   "fieldtype": "Data",
+   "label": "Error Fingerprint",
+   "read_only": 1,
+   "search_index": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "column_break_error",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attempts",
+   "fieldtype": "Int",
+   "label": "Attempts",
+   "read_only": 1,
+   "default": "0"
+  },
+  {
+   "fieldname": "next_retry_at",
+   "fieldtype": "Datetime",
+   "label": "Next Retry At",
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "depends_on",
+   "fieldtype": "Small Text",
+   "label": "Depends On",
+   "read_only": 1,
+   "description": "Offline IDs that must finish first, one per line."
+  },
+  {
+   "fieldname": "section_error_message",
+   "fieldtype": "Section Break",
+   "collapsible": 0,
+   "depends_on": "eval:doc.error_class"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "traceback",
+   "fieldtype": "Code",
+   "label": "Traceback",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_payload",
+   "fieldtype": "Section Break",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Code",
+   "label": "Payload",
+   "options": "JSON",
+   "description": "Corrected copy. It can only change while the invoice needs review."
+  },
+  {
+   "fieldname": "original_payload",
+   "fieldtype": "Code",
+   "label": "Original Payload",
+   "options": "JSON",
+   "read_only": 1,
+   "description": "Exactly what the device sent. It never changes."
+  },
+  {
+   "fieldname": "seq",
+   "fieldtype": "Int",
+   "label": "Device Sequence",
+   "read_only": 1
+  },
+  {
+   "fieldname": "client_version",
+   "fieldtype": "Data",
+   "label": "App Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "protocol_version",
+   "fieldtype": "Int",
+   "label": "Protocol Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payload_hash",
+   "fieldtype": "Data",
+   "label": "Payload Hash",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "section_resolution",
+   "fieldtype": "Section Break",
+   "label": "Resolution",
+   "depends_on": "eval:doc.resolution"
+  },
+  {
+   "fieldname": "resolution",
+   "fieldtype": "Select",
+   "label": "Resolution",
+   "read_only": 1,
+   "options": "\nReprocessed\nLinked to existing invoice\nVoided"
+  },
+  {
+   "fieldname": "resolution_note",
+   "fieldtype": "Small Text",
+   "label": "Resolution Note",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_resolution",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "resolved_by",
+   "fieldtype": "Link",
+   "label": "Resolved By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "resolved_at",
+   "fieldtype": "Datetime",
+   "label": "Resolved At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_attempts",
+   "fieldtype": "Section Break",
+   "label": "Attempts"
+  },
+  {
+   "fieldname": "attempt_log",
+   "fieldtype": "Table",
+   "label": "Attempt Log",
+   "options": "Offline Invoice Sync Attempt",
    "read_only": 1
   }
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2025-12-30 12:00:00.000000",
+ "modified": "2026-11-06 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",
@@ -83,33 +395,32 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
+   "role": "System Manager",
    "read": 1,
    "report": 1,
-   "role": "System Manager",
+   "export": 1,
+   "email": 0,
+   "print": 0,
    "share": 1,
-   "write": 1
+   "write": 1,
+   "delete": 1
   },
   {
-   "create": 1,
+   "role": "Nexus POS Manager",
    "read": 1,
-   "role": "Sales User",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "read": 1,
-   "role": "POSNext Cashier",
+   "report": 1,
+   "export": 1,
+   "email": 0,
+   "print": 0,
+   "share": 0,
    "write": 1
   }
  ],
- "quick_entry": 1,
+ "quick_entry": 0,
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],
- "track_changes": 0
+ "track_changes": 1,
+ "title_field": "offline_id",
+ "in_create": 1
 }

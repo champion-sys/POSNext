@@ -1,0 +1,176 @@
+// Copyright (c) 2026, BrainWise and contributors
+// For license information, please see license.txt
+
+const SYNC_API = "pos_next.api.sync";
+
+const SYNC_FIXES = {
+	posting_date: {
+		label: __("Change Posting Date"),
+		fields: [{ fieldname: "posting_date", fieldtype: "Date", label: __("Posting Date"), reqd: 1 }],
+	},
+	customer: {
+		label: __("Change Customer"),
+		fields: [
+			{ fieldname: "customer", fieldtype: "Link", options: "Customer", label: __("Customer"), reqd: 1 },
+		],
+	},
+	warehouse: {
+		label: __("Change Warehouse"),
+		fields: [
+			{ fieldname: "warehouse", fieldtype: "Link", options: "Warehouse", label: __("Warehouse"), reqd: 1 },
+			{
+				fieldname: "item_code",
+				fieldtype: "Link",
+				options: "Item",
+				label: __("Only This Item"),
+				description: __("Leave empty for every item."),
+			},
+		],
+	},
+	replace_item: {
+		label: __("Replace Item"),
+		fields: [
+			{ fieldname: "item_code", fieldtype: "Data", label: __("Item On The Invoice"), reqd: 1 },
+			{ fieldname: "new_item_code", fieldtype: "Link", options: "Item", label: __("New Item"), reqd: 1 },
+		],
+	},
+	batch: {
+		label: __("Change Batch"),
+		fields: [
+			{ fieldname: "item_code", fieldtype: "Link", options: "Item", label: __("Item"), reqd: 1 },
+			{ fieldname: "batch_no", fieldtype: "Link", options: "Batch", label: __("Batch"), reqd: 1 },
+		],
+	},
+	payment_mode: {
+		label: __("Change Payment Method"),
+		fields: [
+			{ fieldname: "mode_of_payment", fieldtype: "Data", label: __("Method On The Invoice"), reqd: 1 },
+			{
+				fieldname: "new_mode_of_payment",
+				fieldtype: "Link",
+				options: "Mode of Payment",
+				label: __("New Method"),
+				reqd: 1,
+			},
+		],
+	},
+	shift: {
+		label: __("Change Shift"),
+		fields: [
+			{ fieldname: "shift", fieldtype: "Link", options: "POS Opening Shift", label: __("Open Shift"), reqd: 1 },
+		],
+	},
+};
+
+function callSyncAction(frm, method, args, message) {
+	return frappe.call({
+		method: `${SYNC_API}.${method}`,
+		args: { name: frm.doc.name, ...args },
+		freeze: true,
+		callback: () => {
+			frappe.show_alert({ message, indicator: "green" });
+			frm.reload_doc();
+		},
+	});
+}
+
+function promptFix(frm, fix, definition) {
+	frappe.prompt(
+		definition.fields,
+		(values) => callSyncAction(frm, "apply_fix", { fix, values }, __("Saved. Reprocess the invoice to apply it.")),
+		definition.label,
+		__("Apply"),
+	);
+}
+
+function addReviewActions(frm) {
+	frm.add_custom_button(__("Reprocess"), () => {
+		frappe.prompt(
+			{ fieldname: "note", fieldtype: "Small Text", label: __("Note") },
+			({ note }) => callSyncAction(frm, "reprocess", { note }, __("Processed")),
+			__("Reprocess"),
+			__("Reprocess"),
+		);
+	}).addClass("btn-primary");
+
+	for (const [fix, definition] of Object.entries(SYNC_FIXES)) {
+		frm.add_custom_button(definition.label, () => promptFix(frm, fix, definition), __("Correct"));
+	}
+
+	frm.add_custom_button(
+		__("Accept Total Difference"),
+		() => {
+			frappe.confirm(__("Post this invoice with the server's total?"), () =>
+				callSyncAction(frm, "apply_fix", { fix: "accept_total_difference" }, __("Accepted")),
+			);
+		},
+		__("Correct"),
+	);
+
+	frm.add_custom_button(
+		__("Link Existing Invoice"),
+		() => {
+			frappe.prompt(
+				[
+					{
+						fieldname: "doctype",
+						fieldtype: "Select",
+						options: "Sales Invoice\nPOS Invoice",
+						label: __("Type"),
+						default: "Sales Invoice",
+						reqd: 1,
+					},
+					{
+						fieldname: "invoice_name",
+						fieldtype: "Dynamic Link",
+						options: "doctype",
+						label: __("Invoice"),
+						reqd: 1,
+					},
+					{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
+				],
+				(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
+				__("Link Existing Invoice"),
+				__("Link"),
+			);
+		},
+		__("Close"),
+	);
+
+	frm.add_custom_button(
+		__("Void"),
+		() => {
+			frappe.prompt(
+				{ fieldname: "note", fieldtype: "Small Text", label: __("Reason"), reqd: 1 },
+				({ note }) => callSyncAction(frm, "void", { note }, __("Voided")),
+				__("Void Invoice"),
+				__("Void"),
+			);
+		},
+		__("Close"),
+	);
+}
+
+frappe.ui.form.on("Offline Invoice Sync", {
+	refresh(frm) {
+		const inReview = frm.doc.status === "Needs Review";
+
+		frm.set_df_property("payload", "read_only", inReview ? 0 : 1);
+		frm.disable_form_if_needed?.();
+
+		if (frm.doc.error_code === "NegativeStockError" || frm.doc.error_class === "stock") {
+			frm.add_custom_button(__("Stock Entry"), () => frappe.new_doc("Stock Entry"), __("Open"));
+		}
+
+		if (inReview && frappe.user.has_role(["Nexus POS Manager", "System Manager"])) {
+			addReviewActions(frm);
+		}
+
+		if (frm.doc.error_message) {
+			const color = inReview ? "red" : "orange";
+			frm.dashboard.set_headline(
+				`<span class="indicator ${color}">${frappe.utils.escape_html(frm.doc.error_message)}</span>`,
+			);
+		}
+	},
+});

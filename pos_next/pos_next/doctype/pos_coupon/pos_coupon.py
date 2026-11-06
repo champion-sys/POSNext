@@ -177,17 +177,10 @@ def apply_coupon_discount(coupon, cart_total, net_total=None):
 
 
 def increment_coupon_usage(coupon_code):
-    """Increment the usage counter for a coupon"""
-    try:
-        coupon = frappe.get_doc("POS Coupon", {"coupon_code": coupon_code.upper()})
-        coupon.used = (coupon.used or 0) + 1
-        coupon.db_set('used', coupon.used)
-        frappe.db.commit()
-    except Exception as e:
-        frappe.log_error(
-            title="Coupon Usage Increment Failed",
-            message=f"Failed to increment usage for coupon {coupon_code}: {str(e)}"
-        )
+    """Increment the usage counter for a coupon, in the caller's transaction"""
+    coupon = frappe.get_doc("POS Coupon", {"coupon_code": coupon_code.upper()})
+    coupon.used = (coupon.used or 0) + 1
+    coupon.db_set('used', coupon.used)
 
 
 def decrement_coupon_usage(coupon_code):

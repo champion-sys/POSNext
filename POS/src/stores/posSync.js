@@ -63,6 +63,8 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/** List of pending invoices for display */
 	const pendingInvoicesList = ref([])
 
+	let isListeningForResults = false
+
 	/** Track previous offline state for detecting online/offline transitions */
 	let wasOffline = offlineState.isOffline
 
@@ -153,12 +155,25 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * The server reports how a held sale ended. The next sync would find out
+	 * anyway, this only makes it quicker.
+	 */
+	function listenForServerResults() {
+		const realtime = window.frappe?.realtime
+		if (isListeningForResults || !realtime?.on) return
+		isListeningForResults = true
+		realtime.on("pos_sync_status", () => autoSync())
+	}
+
+	/**
 	 * Sync in the background. Web Locks keeps it to one tab, and the server
 	 * still dedupes if a browser lacks them.
 	 */
 	async function autoSync() {
 		const { session } = await import("@/data/session")
 		if (!session.isLoggedIn || isOffline.value || isSyncing.value) return
+
+		listenForServerResults()
 
 		await updatePendingCount()
 		if (pendingInvoicesCount.value === 0) return

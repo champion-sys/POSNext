@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
+	buildSyncEnvelope,
 	classifySyncError,
 	formatLocalPosting,
+	getQueueUpdateForResult,
 	getSaleSignature,
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -147,5 +149,61 @@ describe("getShiftCloseDecision", () => {
 
 	it("asks for a decision when only failed invoices remain", () => {
 		expect(getShiftCloseDecision([{ sync_failed: true }], false)).toBe("confirm")
+	})
+})
+
+describe("buildSyncEnvelope", () => {
+	const payload = {
+		offline_id: "pos_offline_1",
+		pos_profile: "Main",
+		cashier: "a@example.com",
+		grand_total: 115,
+		payments: [{ amount: 100 }, { amount: "15" }],
+	}
+
+	it("carries what the server needs to store the sale", () => {
+		const soldAt = Date.UTC(2026, 10, 1, 15, 4, 12)
+		expect(buildSyncEnvelope({ id: 7, timestamp: soldAt }, payload)).toMatchObject({
+			offline_id: "pos_offline_1",
+			seq: 7,
+			cashier: "a@example.com",
+			pos_profile: "Main",
+			created_at_device: "2026-11-01T15:04:12.000Z",
+			client_totals: { grand_total: 115, paid: 115 },
+			payload,
+		})
+	})
+})
+
+describe("getQueueUpdateForResult", () => {
+	it("finishes the row when the invoice exists", () => {
+		expect(getQueueUpdateForResult({ status: "synced", invoice: "SINV-1" })).toMatchObject({
+			synced: true,
+			server_invoice: "SINV-1",
+		})
+		expect(getQueueUpdateForResult({ status: "duplicate" }).synced).toBe(true)
+	})
+
+	it("finishes a voided sale without an invoice", () => {
+		expect(getQueueUpdateForResult({ status: "voided" })).toMatchObject({ synced: true, server_status: "voided" })
+	})
+
+	it("keeps a sale the server is still working on", () => {
+		const update = getQueueUpdateForResult({ status: "received" })
+		expect(update.synced).toBeUndefined()
+		expect(update.server_status).toBe("received")
+	})
+
+	it("flags a sale that needs a manager", () => {
+		expect(getQueueUpdateForResult({ status: "needs_review", message: "Stock" })).toMatchObject({
+			server_status: "needs_review",
+			sync_failed: true,
+			error: "Stock",
+		})
+		expect(getQueueUpdateForResult({ status: "conflict" }).sync_failed).toBe(true)
+	})
+
+	it("leaves the row alone for a status it does not know", () => {
+		expect(getQueueUpdateForResult({ status: "rejected" })).toBeNull()
 	})
 })
