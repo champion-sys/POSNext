@@ -85,8 +85,10 @@ class FakeInbox:
         return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
 
     def set_value(self, doctype, name, field, value=None, **_kwargs):
+        """As in Frappe, a dict is a filter, and a row it no longer matches is left alone."""
         values = field if isinstance(field, dict) else {field: value}
-        self.rows[name].update(values)
+        for row in self._find(name):
+            row.update(values)
 
     def exists(self, doctype, name=None):
         if doctype == "POS Profile User":
@@ -443,6 +445,110 @@ class TestEditOfASaleOnTheServer(Flow):
             sync_inbox.process(name)
 
         self.assertEqual(self._row(name).status, "Synced")
+
+
+class TestSweepWritesOnlyWhatItRead(Flow):
+    """A manager can act between the sweep's read and its write."""
+
+    def _change_after_the_sweep_reads(self, name, read, status):
+        read_rows = self.inbox.get_all
+
+        def get_all(doctype, filters=None, **kwargs):
+            rows = read_rows(doctype, filters=filters, **kwargs)
+            if (filters or {}).get("status") == read:
+                self._row(name)["status"] = status
+            return rows
+
+        patcher = patch("pos_next.services.sync_inbox.frappe.get_all", get_all)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _stale_row(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        self._row(name).update({"status": "Processing", "modified": datetime.now() - timedelta(hours=1)})
+        return name
+
+    def _waiting_row(self, status):
+        name = self._send(SALE, {"pos_profile": "Main"}, depends_on=[LOCAL_CUSTOMER])
+        self._row(name).update({"status": status, "error_code": "WaitingForDependencyError"})
+        customer = self._send(LOCAL_CUSTOMER, {"pos_profile": "Main"}, "customer")
+        self._row(customer)["status"] = "Synced"
+        return name
+
+    def test_a_crashed_row_goes_back_to_the_queue(self):
+        name = self._stale_row()
+        sync_inbox.sweep()
+        self.assertEqual(self._row(name).status, "Received")
+
+    def test_a_row_finished_after_the_read_stays_finished(self):
+        name = self._stale_row()
+        self._change_after_the_sweep_reads(name, "Processing", "Synced")
+
+        sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_a_row_picked_up_again_after_the_read_is_left_to_its_worker(self):
+        name = self._stale_row()
+        real_get_all = self.inbox.get_all
+
+        def get_all(doctype, filters=None, **kwargs):
+            rows = real_get_all(doctype, filters=filters, **kwargs)
+            if (filters or {}).get("status") == "Processing":
+                self._row(name)["modified"] = datetime.now()
+            return rows
+
+        with patch("pos_next.services.sync_inbox.frappe.get_all", get_all):
+            sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Processing")
+
+    def test_a_blocked_row_goes_on_once_it_is_free(self):
+        name = self._waiting_row("Blocked")
+        sync_inbox.sweep()
+        self.assertEqual(self._row(name).status, "Received")
+
+    def test_a_blocked_row_voided_after_the_read_stays_voided(self):
+        name = self._waiting_row("Blocked")
+        self._change_after_the_sweep_reads(name, "Blocked", "Voided")
+
+        sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Voided")
+
+    def test_a_row_voided_between_the_sweeps_two_reads_stays_voided(self):
+        name = self._waiting_row("Blocked")
+
+        def free_and_void(_row):
+            self._row(name)["status"] = "Voided"
+            return False
+
+        with patch.object(sync_inbox, "_is_blocked", side_effect=free_and_void):
+            sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Voided")
+
+    def test_a_voided_row_still_waiting_is_not_blocked_again(self):
+        name = self._send(SALE, {"pos_profile": "Main"}, depends_on=[LOCAL_CUSTOMER])
+        self._row(name)["status"] = "Blocked"
+        self._change_after_the_sweep_reads(name, "Blocked", "Voided")
+
+        sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Voided")
+
+    def test_a_row_held_for_a_dependency_goes_on_once_it_arrives(self):
+        name = self._waiting_row(sync_inbox.REVIEW)
+        sync_inbox.sweep()
+        self.assertEqual(self._row(name).status, "Received")
+
+    def test_a_review_resolved_after_the_read_stays_resolved(self):
+        name = self._waiting_row(sync_inbox.REVIEW)
+        self._change_after_the_sweep_reads(name, sync_inbox.REVIEW, "Resolved")
+
+        sync_inbox.sweep()
+
+        self.assertEqual(self._row(name).status, "Resolved")
 
 
 class TestClosedShift(Flow):

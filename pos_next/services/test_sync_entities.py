@@ -176,7 +176,10 @@ class TestStuckRows(NoSiteTestCase):
             sync_inbox._release_arrived_rows()
 
         frappe.local.db.set_value.assert_called_once_with(
-            sync_inbox.DOCTYPE, "row-1", "status", "Received", update_modified=True
+            sync_inbox.DOCTYPE,
+            {"name": "row-1", "status": sync_inbox.REVIEW, "error_code": "WaitingForDependencyError"},
+            "status",
+            "Received",
         )
 
 

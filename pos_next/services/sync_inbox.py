@@ -685,6 +685,15 @@ def _flag_if_stuck(row):
     _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
 
 
+def _requeue(name, expected, **conditions):
+    """Put a row back in the queue unless someone moved it since it was read.
+
+    A write by name could turn a row a manager just voided or resolved into Received, and
+    the job would post it.
+    """
+    frappe.db.set_value(DOCTYPE, {"name": name, "status": expected, **conditions}, "status", "Received")
+
+
 def _release_arrived_rows():
     """A record held for a missing dependency continues when that dependency arrives."""
     waiting = frappe.get_all(
@@ -694,7 +703,7 @@ def _release_arrived_rows():
     )
     for row in waiting:
         if not _get_unfinished_dependencies(row):
-            frappe.db.set_value(DOCTYPE, row.name, "status", "Received", update_modified=True)
+            _requeue(row.name, REVIEW, error_code=WaitingForDependencyError.__name__)
 
 
 def sweep():
@@ -706,12 +715,15 @@ def sweep():
         pluck="name",
     )
     for name in stale:
-        frappe.db.set_value(DOCTYPE, name, "status", "Received", update_modified=True)
+        _requeue(name, "Processing", modified=["<", stale_before])
 
     for name in frappe.get_all(DOCTYPE, filters={"status": "Blocked"}, pluck="name"):
         row = frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
+        if row.status != "Blocked":
+            continue
+
         if not _is_blocked(row):
-            frappe.db.set_value(DOCTYPE, name, "status", "Received", update_modified=True)
+            _requeue(name, "Blocked")
         else:
             _flag_if_stuck(row)
 
