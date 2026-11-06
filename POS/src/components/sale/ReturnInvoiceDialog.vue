@@ -82,14 +82,14 @@
 									<div class="flex items-center justify-between">
 										<div class="flex-1 min-w-0">
 											<div class="flex items-center gap-2">
-												<span class="text-sm font-medium text-gray-900" v-html="highlightSearchMatch(suggestion.name, invoiceListFilter)"></span>
+												<span class="text-sm font-medium text-gray-900"><HighlightedText :text="suggestion.name" :query="invoiceListFilter" mark-class="search-highlight" /></span>
 												<span :class="['px-1.5 py-0.5 text-xs font-medium rounded', getInvoiceStatusColor(suggestion)]">
 													{{ __(suggestion.status) }}
 												</span>
 											</div>
 											<p class="text-xs text-gray-500 truncate">
-												<span v-html="highlightSearchMatch(suggestion.customer_name, invoiceListFilter)"></span>
-												<span v-if="suggestion.contact_mobile" class="text-gray-400"> • <span v-html="highlightSearchMatch(suggestion.contact_mobile, invoiceListFilter)"></span></span>
+												<HighlightedText :text="suggestion.customer_name" :query="invoiceListFilter" mark-class="search-highlight" />
+												<span v-if="suggestion.contact_mobile" class="text-gray-400"> • <HighlightedText :text="suggestion.contact_mobile" :query="invoiceListFilter" mark-class="search-highlight" /></span>
 											</p>
 										</div>
 										<div class="text-end ms-2">
@@ -763,6 +763,7 @@
 </template>
 
 <script setup>
+import HighlightedText from "@/components/common/HighlightedText.vue"
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useToast } from "@/composables/useToast"
 import { session } from "@/data/session"
@@ -1875,27 +1876,6 @@ function clearSearch() {
 	invoiceSearchInput.value?.focus()
 }
 
-// ============================================
-// UX Enhancement Helper Functions
-// ============================================
-
-/**
- * Escape special regex characters in a string
- */
-function escapeRegex(str) {
-	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-/**
- * Highlight search matches in text with yellow background
- */
-function highlightSearchMatch(text, searchTerm) {
-	if (!text || !searchTerm) return text
-	const escaped = escapeRegex(searchTerm.trim())
-	if (!escaped) return text
-	const regex = new RegExp(`(${escaped})`, "gi")
-	return text.replace(regex, '<mark class="search-highlight">$1</mark>')
-}
 </script>
 
 <style scoped>
