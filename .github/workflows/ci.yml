@@ -6,6 +6,7 @@ on:
     branches:
       - develop
       - version-16
+      - 'feature/**'
   pull_request:
 
 concurrency:
