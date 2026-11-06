@@ -6,8 +6,9 @@ const config: CapacitorConfig = {
 	appName: "POS Next",
 	webDir: "dist-android",
 	android: {
-		// vite.config.android.mjs targets es2022
-		minWebViewVersion: 94,
+		// Not 94, which is all the es2022 build target asks for: platform/auth.js calls
+		// AbortSignal.timeout, and without it no device can enroll or sign in
+		minWebViewVersion: 103,
 	},
 }
 
