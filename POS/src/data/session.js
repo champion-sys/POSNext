@@ -2,7 +2,9 @@ import router from "@/router"
 import { createResource } from "frappe-ui"
 import { computed, reactive } from "vue"
 
+import { signOut } from "@/platform/auth"
 import { readIdentity } from "@/platform/identity"
+import { isNative } from "@/platform/runtime"
 import { ensureCSRFToken } from "@/utils/csrf"
 import { cleanupUserSession } from "@/utils/sessionCleanup"
 import { userResource, userData } from "./user"
@@ -41,6 +43,8 @@ export const session = reactive({
 	}),
 	logout: createResource({
 		url: "logout",
+		// Frappe's logout ends cookies. The apps end the cashier's grant instead.
+		resourceFetcher: isNative ? signOut : undefined,
 		async onSuccess() {
 			await cleanupUserSession()
 			userResource.reset()

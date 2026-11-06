@@ -84,6 +84,7 @@
   "section_break_security",
   "enable_session_lock",
   "session_lock_timeout",
+  "max_offline_hours",
   "section_break_sync",
   "sync_mode",
   "sync_interval_minutes",
@@ -549,6 +550,13 @@
    "label": "Session Lock Timeout (minutes)"
   },
   {
+   "default": "72",
+   "description": "Hours a cashier may keep selling on a desktop or Android device without reaching the server. After this they cannot sell until it connects.",
+   "fieldname": "max_offline_hours",
+   "fieldtype": "Int",
+   "label": "Maximum Offline Period (hours)"
+  },
+  {
    "fieldname": "section_break_sync",
    "fieldtype": "Section Break",
    "label": "Invoice Sync"
@@ -660,7 +668,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-06 20:00:00.000000",
+ "modified": "2026-11-06 21:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

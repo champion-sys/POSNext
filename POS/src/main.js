@@ -22,8 +22,15 @@ import {
 	getCSRFTokenFromCookie,
 	onCSRFTokenRefresh,
 } from "./utils/csrf"
+import {
+	SIGN_IN_ROUTE,
+	cashierMustSignIn,
+	dropRejectedGrant,
+	loadCredentials,
+	noteServerContact,
+} from "./platform/auth"
 import { installHttpBridge } from "./platform/http"
-import { isNative } from "./platform/runtime"
+import { getCashierGrant, isNative, onAccessChange } from "./platform/runtime"
 import { logger } from "./utils/logger"
 import { offlineWorker } from "./utils/offline/workerClient"
 import translationPlugin from "./utils/translation"
@@ -48,8 +55,39 @@ import "./index.css"
 
 const log = logger.create("Main")
 
+const SIGN_IN_CHECK_MS = 60 * 1000
+
+function sendCashierToSignIn() {
+	session.user = null
+	router.replace({ name: SIGN_IN_ROUTE })
+}
+
 // Before anything can make a request
-installHttpBridge()
+installHttpBridge({
+	onAccepted: noteServerContact,
+	onRejected: async (token) => {
+		if (await dropRejectedGrant(token)) sendCashierToSignIn()
+	},
+})
+
+/** The desktop and Android apps keep their credentials in the OS keystore. */
+async function prepareDeviceAccess() {
+	try {
+		await loadCredentials()
+	} catch (error) {
+		log.error("Could not read this device's credentials", error)
+	}
+
+	onAccessChange(({ serverUrl, grant }) => {
+		offlineWorker.setServerAccess(serverUrl, grant).catch((error) => {
+			log.warn("Failed to give the worker server access", error)
+		})
+	})
+
+	setInterval(async () => {
+		if (session.isLoggedIn && (await cashierMustSignIn())) sendCashierToSignIn()
+	}, SIGN_IN_CHECK_MS)
+}
 
 // =============================================================================
 // PWA Service Worker Registration
@@ -121,6 +159,8 @@ async function initializeApp() {
 	const app = createApp(App)
 	const pinia = createPinia()
 
+	if (isNative) await prepareDeviceAccess()
+
 	// Keep worker in sync when CSRF token refreshes
 	onCSRFTokenRefresh((newToken) => {
 		offlineWorker.setCSRFToken(newToken).catch((error) => {
@@ -175,6 +215,9 @@ async function initializeApp() {
 	})()
 
 	const userPromise = (async () => {
+		// With no grant the server has no cashier to confirm: a PIN sign-in, or nobody yet
+		if (isNative && !getCashierGrant()) return sessionUser()
+
 		try {
 			if (!userResource.loading) userResource.fetch()
 			await userResource.promise
@@ -237,6 +280,8 @@ async function initializeApp() {
 	// -------------------------------------------------------------------------
 	// Scheduled CSRF Token Refresh (every 30 minutes)
 	// -------------------------------------------------------------------------
+
+	if (isNative) return
 
 	setInterval(
 		async () => {

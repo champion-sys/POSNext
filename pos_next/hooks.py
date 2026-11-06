@@ -306,9 +306,9 @@ scheduler_events = {
 # Authentication and authorization
 # --------------------------------
 
-# auth_hooks = [
-# 	"pos_next.auth.validate"
-# ]
+auth_hooks = [
+	"pos_next.auth.validate"
+]
 
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True

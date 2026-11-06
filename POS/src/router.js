@@ -1,7 +1,28 @@
 import { shiftState } from "@/composables/useShift"
 import { userResource } from "@/data/user"
+import {
+	ENROLL_ROUTE,
+	SIGN_IN_ROUTE,
+	isEnrolled,
+	isWithinOfflineLimit,
+	nativeRedirect,
+} from "@/platform/auth"
+import { isNative } from "@/platform/runtime"
 import { createRouter, createWebHistory } from "vue-router"
 import { session } from "./data/session"
+
+const nativeRoutes = [
+	{
+		name: ENROLL_ROUTE,
+		path: "/device/enroll",
+		component: () => import("@/pages/DeviceEnroll.vue"),
+	},
+	{
+		name: SIGN_IN_ROUTE,
+		path: "/device/sign-in",
+		component: () => import("@/pages/CashierSignIn.vue"),
+	},
+]
 
 const routes = [
 	{
@@ -14,6 +35,7 @@ const routes = [
 		path: "/account/login",
 		component: () => import("@/pages/Login.vue"),
 	},
+	...(isNative ? nativeRoutes : []),
 	// Catch-all route
 	{
 		path: "/:pathMatch(.*)*",
@@ -35,6 +57,15 @@ router.beforeEach((to, from, next) => {
 		console.log(
 			`[Router] ${to.name} (from: ${from.name || "initial"}), auth: ${isLoggedIn}`,
 		)
+	}
+
+	if (isNative) {
+		const redirect = nativeRedirect(to.name, {
+			enrolled: isEnrolled(),
+			signedIn: isLoggedIn && isWithinOfflineLimit(),
+		})
+		next(redirect ? { name: redirect } : undefined)
+		return
 	}
 
 	// Redirect logic
