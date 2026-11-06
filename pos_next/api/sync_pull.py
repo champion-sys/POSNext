@@ -22,6 +22,7 @@ from pos_next.api.items import (
 from pos_next.api.offers import _get_offers
 from pos_next.api.pos_profile import _get_profile_data, _get_tax_rows, get_payment_methods
 from pos_next.api.sync import _assert_pos_user
+from pos_next.auth import assert_device_allows_profile
 
 DEFAULT_PAGE_SIZE = 500
 MAX_PAGE_SIZE = 2000
@@ -37,6 +38,8 @@ def _assert_profile_access(pos_profile):
     """Reject users outside the POS Profile. get_all skips permissions, so this is the only check."""
     if not pos_profile:
         frappe.throw(_("POS Profile is required"), frappe.PermissionError)
+
+    assert_device_allows_profile(pos_profile)
 
     user = frappe.session.user
     is_assigned = frappe.db.exists("POS Profile User", {"parent": pos_profile, "user": user})

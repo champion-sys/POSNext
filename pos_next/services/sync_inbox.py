@@ -13,13 +13,21 @@ import hashlib
 import json
 import time
 from collections import namedtuple
+from contextlib import contextmanager
 
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
+from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities
-from pos_next.services.sync_classifier import TotalMismatchError, WaitingForDependencyError
+from pos_next.services.sync_classifier import (
+    CashierUnavailableError,
+    EditConflictError,
+    ShiftClosedError,
+    TotalMismatchError,
+    WaitingForDependencyError,
+)
 from pos_next.services.sync_entities import (
     DOCTYPE,
     ENTITY_CUSTOMER,
@@ -37,10 +45,24 @@ STALE_PROCESSING_MINUTES = 10
 #: A device sends its queue in one go, so a dependency this late is not on its way
 MISSING_DEPENDENCY_MINUTES = 30
 
+#: How long one job may work through a profile's queue
+QUEUE_JOB_SECONDS = 540
+
+#: A job takes no new row this close to its limit, so the row in hand can finish
+QUEUE_JOB_MARGIN_SECONDS = 120
+
 #: Set by the client after the invoice is queued, so they are not part of the sale
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
 
 DEFAULT_TOTAL_TOLERANCE = 0.05
+
+_NO_ERROR = {
+    "error_class": None,
+    "error_code": None,
+    "error_message": None,
+    "error_fingerprint": None,
+    "traceback": None,
+}
 
 
 def compute_payload_hash(payload):
@@ -62,16 +84,114 @@ def validate_envelope(item):
         return "Missing offline_id"
     if not isinstance(item.get("payload"), dict):
         return "Missing payload"
-    if not item.get("pos_profile") and not item["payload"].get("pos_profile"):
+    pos_profile = get_item_profile(item)
+    if not pos_profile or not isinstance(pos_profile, str):
         return "Missing pos_profile"
+    # The upload is checked against one, and an invoice posts under the other
+    if item["payload"].get("pos_profile") not in (None, "", pos_profile):
+        return _("The record and its payload name different POS Profiles")
     if (item.get("entity") or ENTITY_INVOICE) not in sync_entities.ENTITIES:
         return "Unknown entity"
     return None
 
 
+def get_item_profile(item):
+    return item.get("pos_profile") or item["payload"].get("pos_profile")
+
+
 def _link_or_none(doctype, name):
     """A sale must be stored even when its master record is gone."""
     return name if name and frappe.db.exists(doctype, name) else None
+
+
+def _resolve_cashier(claimed, uploaded_by, pos_profile):
+    """Who a record belongs to.
+
+    A shared device can upload a colleague's sale, so the envelope may name someone else,
+    but only someone assigned to the POS Profile. Having high roles is not enough: the
+    claim comes from the request, and a role would let any POS user act as its holder.
+    """
+    is_colleague = isinstance(claimed, str) and frappe.db.exists(
+        "POS Profile User", {"parent": pos_profile, "user": claimed}
+    )
+    return claimed if is_colleague else uploaded_by
+
+
+def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version):
+    """What a record takes from the envelope it arrived in."""
+    payload = item["payload"]
+    serialized = frappe.as_json(payload, indent=1)
+    pos_profile = get_item_profile(item)
+    totals = item.get("client_totals") or {}
+
+    return {
+        "entity": item.get("entity") or ENTITY_INVOICE,
+        "invoice_doctype": payload.get("doctype") or "Sales Invoice",
+        "pos_profile": _link_or_none("POS Profile", pos_profile),
+        "customer": _link_or_none("Customer", payload.get("customer")),
+        "shift": _link_or_none(
+            "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+        ),
+        "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
+        "uploaded_by": uploaded_by,
+        "device_id": device_id,
+        "client_created_at": _parse_datetime(item.get("created_at_device")),
+        "received_at": now_datetime(),
+        "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
+        "client_paid_amount": flt(totals.get("paid", _sum_payments(payload))),
+        "payload": serialized,
+        "original_payload": serialized,
+        "payload_hash": compute_payload_hash(payload),
+        "coupon_code": payload.get("coupon_code"),
+        "seq": cint(item.get("seq")),
+        "client_version": client_version,
+        "protocol_version": cint(protocol_version),
+        "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
+    }
+
+
+def _adopt_payload(name, fields):
+    """Give a record stored without a payload the one its device sent again.
+
+    Only what the record lacks is filled in, so it keeps the profile it was stored under,
+    and a resend for a different profile is not the same sale.
+
+    Returns:
+        bool: Whether the record now holds this payload
+    """
+    row = _lock(name)
+    adopted = not row.payload and row.pos_profile in (None, "", fields["pos_profile"])
+    if adopted:
+        values = {fieldname: value for fieldname, value in fields.items() if not row.get(fieldname)}
+        if row.status == REVIEW:
+            values.update(status="Received", next_retry_at=None, **_NO_ERROR)
+        frappe.db.set_value(DOCTYPE, name, values)
+
+    frappe.db.commit()  # nosemgrep: release the row lock, and keep the sale
+    return adopted or row.payload_hash == fields["payload_hash"]
+
+
+def _holds_sale(offline_id):
+    """Whether a sale reached the server, as a record that stands or as an invoice."""
+    status = frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}, "status")
+    return bool(status and status != "Voided") or bool(find_invoice_by_offline_id(offline_id))
+
+
+def _get_edit_conflict(item):
+    """Spot an edit of a sale that already reached the server.
+
+    A device offers an edit while it thinks the sale is unsent. If the push landed and only
+    its response was lost, the edit arrives under a new offline_id and both would post. An
+    edit that kept the original's id is the original, which the device replaced.
+    """
+    original = item["payload"].get("edited_from")
+    if isinstance(original, str) and original != item["offline_id"] and _holds_sale(original):
+        return EditConflictError(
+            _("This edits sale {0}, which the server already holds. A manager must decide which one stands.").format(
+                original
+            )
+        )
+    return None
 
 
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
@@ -81,47 +201,26 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         tuple[str, bool]: The record name, and whether this payload conflicts with
             a different one already stored under the same offline_id
     """
-    payload = item["payload"]
     offline_id = item["offline_id"]
-    payload_hash = compute_payload_hash(payload)
 
-    existing = frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash"], as_dict=True)
+    existing = frappe.db.get_value(
+        DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash", "payload"], as_dict=True
+    )
+    if existing and not existing.payload:
+        fields = _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
+        return existing.name, not _adopt_payload(existing.name, fields)
     if existing:
-        # Records written before the inbox existed have no hash to compare
+        # A manager can paste a payload into a record that has no hash to compare
+        payload_hash = compute_payload_hash(item["payload"])
         conflict = bool(existing.payload_hash) and existing.payload_hash != payload_hash
         return existing.name, conflict
-
-    serialized = frappe.as_json(payload, indent=1)
-    pos_profile = item.get("pos_profile") or payload.get("pos_profile")
-    totals = item.get("client_totals") or {}
 
     doc = frappe.get_doc(
         {
             "doctype": DOCTYPE,
             "offline_id": offline_id,
             "status": "Received",
-            "entity": item.get("entity") or ENTITY_INVOICE,
-            "invoice_doctype": payload.get("doctype") or "Sales Invoice",
-            "pos_profile": _link_or_none("POS Profile", pos_profile),
-            "customer": _link_or_none("Customer", payload.get("customer")),
-            "shift": _link_or_none(
-                "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
-            ),
-            "cashier": _link_or_none("User", item.get("cashier")) or uploaded_by,
-            "uploaded_by": uploaded_by,
-            "device_id": device_id,
-            "client_created_at": _parse_datetime(item.get("created_at_device")),
-            "received_at": now_datetime(),
-            "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
-            "client_paid_amount": flt(totals.get("paid", _sum_payments(payload))),
-            "payload": serialized,
-            "original_payload": serialized,
-            "payload_hash": payload_hash,
-            "coupon_code": payload.get("coupon_code"),
-            "seq": cint(item.get("seq")),
-            "client_version": client_version,
-            "protocol_version": cint(protocol_version),
-            "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
+            **_envelope_fields(item, uploaded_by, device_id, client_version, protocol_version),
         }
     )
     doc.flags.ignore_permissions = True
@@ -132,6 +231,11 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
     except (frappe.DuplicateEntryError, frappe.UniqueValidationError):
         frappe.db.rollback()  # nosemgrep: another request stored it first
         return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}), False
+
+    # In this transaction, so no worker can see the row before it is held back
+    edit_conflict = _get_edit_conflict(item)
+    if edit_conflict:
+        _handle_failure(doc.name, 1, edit_conflict, None, None)
 
     frappe.db.commit()  # nosemgrep: the sale must survive anything that happens next
     return doc.name, False
@@ -146,6 +250,32 @@ def _parse_datetime(value):
 
 def _sum_payments(payload):
     return sum(flt(row.get("amount")) for row in payload.get("payments") or [])
+
+
+@contextmanager
+def _as_cashier(row):
+    """Run a block under the cashier's session, so what it creates is theirs.
+
+    Only the handler runs here: the record itself is written under the session that
+    processes it, so it never depends on the cashier's permissions. set_user replaces the
+    session's id and data and clears form_dict, which a request still needs afterwards.
+    """
+    if not row.cashier or not frappe.db.get_value("User", row.cashier, "enabled"):
+        raise CashierUnavailableError(
+            _("The cashier of this record is disabled or no longer exists: {0}").format(row.cashier or "-")
+        )
+
+    session = frappe.local.session
+    user, sid, data = session.user, session.sid, session.data
+    form_dict = frappe.local.form_dict
+
+    frappe.set_user(row.cashier)
+    try:
+        yield
+    finally:
+        frappe.set_user(user)
+        session.sid, session.data = sid, data
+        frappe.local.form_dict = form_dict
 
 
 def process(name):
@@ -176,9 +306,13 @@ def process(name):
 
     started = time.monotonic()
     try:
-        result = handler.create(row)
+        with _as_cashier(row):
+            result = handler.create(row)
         _mark_synced(name, result, "synced", started)
         frappe.db.commit()  # nosemgrep: the document and its Synced status commit as one
+    except JobTimeoutException:
+        _return_to_queue(name, attempts)
+        raise
     except Exception as exc:
         traceback = frappe.get_traceback()
         frappe.db.rollback()  # nosemgrep: discard the partial document before recording why
@@ -188,6 +322,19 @@ def process(name):
 
     frappe.clear_messages()
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
+
+
+def _return_to_queue(name, attempts):
+    """Hand a record back when its job runs out of time. That says nothing about the record.
+
+    Only from Processing, because the limit can land just after its commit went through.
+    """
+    frappe.db.rollback()  # nosemgrep: discard the partial document
+    frappe.clear_messages()
+    frappe.db.set_value(
+        DOCTYPE, {"name": name, "status": "Processing"}, {"status": "Received", "attempts": attempts - 1}
+    )
+    frappe.db.commit()  # nosemgrep: the job is ending, and the sweep needs to see this
 
 
 def _lock(name):
@@ -234,6 +381,26 @@ def _is_blocked(row):
     return True
 
 
+def _assert_shift_open(row, payload, doctype):
+    """Refuse a POS Invoice its shift's closing would never collect.
+
+    A POS Invoice writes no ledgers on submit, and the closing takes only its own shift's
+    invoices, so one submitted after it would end Synced with no GL or stock. A Sales
+    Invoice posts on submit and needs no closing.
+    """
+    if doctype != "POS Invoice":
+        return
+
+    shift = payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift") or row.shift
+    if not shift or frappe.db.get_value("POS Opening Shift", shift, "status") != "Open":
+        raise ShiftClosedError(
+            _(
+                "Shift {0} is closed, so this POS Invoice would never reach the books. "
+                "Use Change Shift under Fix Record to move it to an open shift."
+            ).format(shift or "-")
+        )
+
+
 def _create_invoice(row):
     from pos_next.services.invoice_processor import process_invoice
 
@@ -243,7 +410,7 @@ def _create_invoice(row):
     pos_profile = payload.get("pos_profile") or row.pos_profile
     doctype = payload.get("doctype") or row.invoice_doctype or "Sales Invoice"
     payload.setdefault("doctype", doctype)
-    payload["owner"] = row.cashier
+    _assert_shift_open(row, payload, doctype)
 
     from pos_next.api.invoices import _assert_invoice_write_access
 
@@ -253,9 +420,7 @@ def _create_invoice(row):
         sync_entities.align_return(payload)
 
     data = {"offline_id": row.offline_id}
-    result = process_invoice(
-        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier, queued=True
-    )
+    result = process_invoice(payload, data, doctype, pos_profile, offline_id=row.offline_id, queued=True)
     _assert_totals_match(row, result, pos_profile)
     return {**result, "doctype": doctype, "customer": payload.get("customer")}
 
@@ -296,11 +461,7 @@ def _mark_synced(name, result, outcome, started=None):
         "processed_at": now_datetime(),
         "synced_at": now_datetime(),
         "next_retry_at": None,
-        "error_class": None,
-        "error_code": None,
-        "error_message": None,
-        "error_fingerprint": None,
-        "traceback": None,
+        **_NO_ERROR,
     }
     if result.get("customer"):
         values["customer"] = result["customer"]
@@ -492,7 +653,7 @@ def enqueue_processing(pos_profile):
     frappe.enqueue(
         "pos_next.services.sync_inbox.process_profile_queue",
         queue="short",
-        timeout=540,
+        timeout=QUEUE_JOB_SECONDS,
         job_id=f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}",
         deduplicate=True,
         enqueue_after_commit=True,
@@ -520,8 +681,15 @@ def _due_rows(pos_profile=None):
 
 
 def process_profile_queue(pos_profile=None):
-    """Work through a profile's due invoices. Backdated stock depends on this order."""
+    """Work through a profile's due invoices. Backdated stock depends on this order.
+
+    A long backlog ends cleanly before the job's limit. What is left stays due, so the
+    sweep starts the next job.
+    """
+    deadline = time.monotonic() + QUEUE_JOB_SECONDS - QUEUE_JOB_MARGIN_SECONDS
     for name in _due_rows(pos_profile):
+        if time.monotonic() >= deadline:
+            return
         process(name)
 
 
@@ -548,6 +716,15 @@ def _flag_if_stuck(row):
     _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
 
 
+def _requeue(name, expected, **conditions):
+    """Put a row back in the queue unless someone moved it since it was read.
+
+    A write by name could turn a row a manager just voided or resolved into Received, and
+    the job would post it.
+    """
+    frappe.db.set_value(DOCTYPE, {"name": name, "status": expected, **conditions}, "status", "Received")
+
+
 def _release_arrived_rows():
     """A record held for a missing dependency continues when that dependency arrives."""
     waiting = frappe.get_all(
@@ -557,7 +734,7 @@ def _release_arrived_rows():
     )
     for row in waiting:
         if not _get_unfinished_dependencies(row):
-            frappe.db.set_value(DOCTYPE, row.name, "status", "Received", update_modified=True)
+            _requeue(row.name, REVIEW, error_code=WaitingForDependencyError.__name__)
 
 
 def sweep():
@@ -569,12 +746,15 @@ def sweep():
         pluck="name",
     )
     for name in stale:
-        frappe.db.set_value(DOCTYPE, name, "status", "Received", update_modified=True)
+        _requeue(name, "Processing", modified=["<", stale_before])
 
     for name in frappe.get_all(DOCTYPE, filters={"status": "Blocked"}, pluck="name"):
         row = frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
+        if row.status != "Blocked":
+            continue
+
         if not _is_blocked(row):
-            frappe.db.set_value(DOCTYPE, name, "status", "Received", update_modified=True)
+            _requeue(name, "Blocked")
         else:
             _flag_if_stuck(row)
 
@@ -627,6 +807,10 @@ def _stamp_resolution(row, resolution, note):
 def reprocess(name, note=None):
     """Send a reviewed invoice through processing again, right now."""
     row = _review_row(name)
+    # Nothing can change until the device sends it again, and its review must stay open
+    if not row.payload:
+        return row.as_dict()
+
     _stamp_resolution(row, "Reprocessed", note)
     row.status = "Received"
     row.attempts = 0
@@ -701,9 +885,11 @@ def apply_fix(name, fix, values):
     if fixes[fix] is None:
         row.set(fix, 1)
     else:
-        payload = json.loads(row.payload)
+        payload = sync_entities.load_payload(row)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        if fix == "shift":
+            _move_to_shift(row, values["shift"])
 
     row.flags.ignore_links = True
     row.save(ignore_permissions=True)
@@ -749,6 +935,17 @@ def _fix_shift(payload, values):
     payload["posa_pos_opening_shift"] = values["shift"]
 
 
+def _move_to_shift(row, shift):
+    """Keep the row on the shift its payload now names. Closing a shift reads the row.
+
+    POS Closing Entry refuses a POS Invoice owned by anyone but the shift's user, so a move
+    to a colleague's shift also moves the sale to them, or that shift could never close.
+    """
+    row.shift = shift
+    if row.invoice_doctype == "POS Invoice":
+        row.cashier = frappe.db.get_value("POS Opening Shift", shift, "user") or row.cashier
+
+
 def _items_matching(payload, item_code):
     return [
         item for item in payload.get("items") or [] if not item_code or item.get("item_code") == item_code
@@ -758,6 +955,7 @@ def _items_matching(payload, item_code):
 def _fix_remove_coupon(payload, _values):
     """The sale stays as it was paid. Only the coupon's usage is no longer counted."""
     payload.pop("coupon_code", None)
+    payload.pop("pos_coupon_code", None)
 
 
 def _fix_payment_amount(payload, values):

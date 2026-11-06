@@ -23,6 +23,7 @@ class NoSiteTestCase(unittest.TestCase):
         self.stored = []
 
         frappe.local.session = frappe._dict(user=CASHIER)
+        frappe.local.message_log = []
         frappe.local.db = Mock()
         frappe.local.db.exists = Mock(side_effect=self._exists)
         frappe.local.db.get_value = Mock(side_effect=self._get_value)
@@ -31,6 +32,8 @@ class NoSiteTestCase(unittest.TestCase):
         self.addCleanup(setattr, frappe.local, "pos_device", None)
 
         for target, replacement in (
+            ("pos_next.api.sync.assert_device_allows_profile", Mock()),
+            ("pos_next.api.sync._assert_invoice_write_access", Mock()),
             ("pos_next.services.sync_inbox.frappe.get_doc", self._new_document),
             ("pos_next.services.sync_inbox.enqueue_processing", Mock()),
             ("pos_next.services.sync_inbox.now_datetime", datetime.now),

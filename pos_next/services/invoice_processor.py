@@ -31,7 +31,7 @@ from pos_next.api.invoices import (
 )
 
 
-def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting_user=None, queued=False):
+def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued=False):
     """Create the draft if needed, then submit it.
 
     Args:
@@ -40,7 +40,6 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
         doctype: Sales Invoice, POS Invoice or Sales Order
         pos_profile: POS Profile name
         offline_id: Stable id of the sale
-        acting_user: The cashier, when it differs from the session user
         queued: The sale already happened offline. Only the sync queue passes this.
 
     Returns:
@@ -51,7 +50,7 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
 
     # Get or create invoice
     if not invoice_name or not frappe.db.exists(doctype, invoice_name):
-        created = save_invoice_draft(json.dumps(invoice), acting_user, queued=queued)
+        created = save_invoice_draft(json.dumps(invoice), queued=queued)
         if not created or not isinstance(created, dict):
             frappe.throw(_("Failed to create invoice draft"))
         invoice_name = created.get("name")
@@ -61,7 +60,7 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
         invoice_doc = frappe.get_doc(doctype, invoice_name)
     else:
         invoice_doc = frappe.get_doc(doctype, invoice_name)
-        _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"), acting_user)
+        _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"))
         invoice_doc.update(invoice)
 
     # Ensure update_stock is set for Sales/POS Invoice
@@ -144,8 +143,10 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, acting
     invoice_submitted = True
     # Everything below is part of the sale. A failure rolls back the invoice,
     # so the books can never hold an invoice with half of its effects.
-    coupon_code = invoice.get("coupon_code") or data.get("coupon_code")
-    if coupon_code and frappe.db.table_exists("POS Coupon"):
+    # _apply_coupon may have moved the code off coupon_code. A return inherits the field
+    # from its sale, and redeems nothing.
+    coupon_code = invoice_doc.get("pos_coupon_code") or invoice.get("coupon_code") or data.get("coupon_code")
+    if coupon_code and not invoice_doc.get("is_return") and frappe.db.table_exists("POS Coupon"):
         from pos_next.pos_next.doctype.pos_coupon.pos_coupon import increment_coupon_usage
 
         increment_coupon_usage(coupon_code)

@@ -93,6 +93,13 @@ def check_opening_shift(user=None):
 
 	# Get the latest open shift
 	shift_data = open_shifts[0]
+
+	# It carries the POS Profile and the company, so a colleague's takes the access to close it
+	if user != frappe.session.user:
+		from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import assert_shift_access
+
+		assert_shift_access(shift_data["name"])
+
 	data = {}
 	data["pos_opening_shift"] = frappe.get_doc("POS Opening Shift", shift_data["name"])
 	data["pos_profile"] = frappe.get_doc("POS Profile", shift_data["pos_profile"])
@@ -167,11 +174,13 @@ def assert_may_close_shift(opening_shift_doc, user=None):
 @frappe.whitelist()
 def get_closing_shift_data(opening_shift):
 	"""Get data for closing shift"""
-	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import make_closing_shift_from_opening
+	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
+		assert_shift_access,
+		build_closing_shift,
+	)
 
-	# Check if the current user has permission to close the shift based on POS Profile
+	assert_shift_access(opening_shift)
 	opening_shift_doc = frappe.get_doc("POS Opening Shift", opening_shift)
-	assert_may_close_shift(opening_shift_doc)
 
 	try:
 		# Convert to dict with proper datetime serialization
@@ -179,7 +188,7 @@ def get_closing_shift_data(opening_shift):
 		opening_shift_json = json.dumps(opening_shift_dict, default=str)
 
 		# Create closing shift from opening shift (returns a dict)
-		closing_data = make_closing_shift_from_opening(opening_shift_json)
+		closing_data = build_closing_shift(opening_shift_json)
 
 		# Ensure datetime values are JSON serializable
 		return json.loads(json.dumps(closing_data, default=str))

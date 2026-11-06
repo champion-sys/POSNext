@@ -139,7 +139,7 @@ def insert_customer(
 
     Args:
         offline_id: The queue record it came from, whose unique index stops a second copy
-        ignore_permissions: The queue checks the cashier, who may not be the session user
+        ignore_permissions: The queue has already checked the cashier
 
     Returns:
         Document: The new customer

@@ -14,6 +14,7 @@ from pos_next.api import invoices
 from pos_next.api.invoices import save_invoice_draft
 from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox
+from pos_next.services.invoice_processor import process_invoice
 from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
@@ -59,6 +60,7 @@ class NoSiteTestCase(unittest.TestCase):
 
         frappe.local.session = Mock(user="uploader@example.com")
         frappe.local.db = Mock()
+        frappe.local.form_dict = frappe._dict()
         self.addCleanup(setattr, frappe.local, "session", None)
         self.addCleanup(setattr, frappe.local, "db", None)
 
@@ -174,7 +176,10 @@ class TestStuckRows(NoSiteTestCase):
             sync_inbox._release_arrived_rows()
 
         frappe.local.db.set_value.assert_called_once_with(
-            sync_inbox.DOCTYPE, "row-1", "status", "Received", update_modified=True
+            sync_inbox.DOCTYPE,
+            {"name": "row-1", "status": sync_inbox.REVIEW, "error_code": "WaitingForDependencyError"},
+            "status",
+            "Received",
         )
 
 
@@ -307,6 +312,24 @@ class TestCreatePayment(NoSiteTestCase):
         self._create()
         self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
 
+    def test_a_cashiers_high_role_does_not_carry_the_uploader_to_another_profile(self):
+        with self.assertRaises(frappe.PermissionError):
+            with (
+                patch("pos_next.api.invoices._assert_invoice_write_access", self._refuse_uploader),
+                patch("pos_next.api.partial_payments.post_queued_payments") as post,
+                patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            ):
+                frappe.local.db.get_value.return_value = "Other"
+                sync_entities.create_payment(
+                    _row(entity="payment", payload=self.payload, uploaded_by="uploader@example.com")
+                )
+        post.assert_not_called()
+
+    @staticmethod
+    def _refuse_uploader(_doctype, pos_profile, user):
+        if user == "uploader@example.com":
+            raise frappe.PermissionError(pos_profile)
+
     def test_a_wallet_cannot_be_spent_offline(self):
         with self.assertRaises(frappe.ValidationError):
             self._create(wallet_modes=["Card"])
@@ -431,8 +454,8 @@ class TestPaymentEntries(NoSiteTestCase):
 
 
 class TestFixes(NoSiteTestCase):
-    def _apply(self, entity, fix, values, payload="{}"):
-        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload)
+    def _apply(self, entity, fix, values, payload="{}", **fields):
+        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload, **fields)
         with (
             patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
             patch.object(sync_inbox, "_log_attempt"),
@@ -448,6 +471,43 @@ class TestFixes(NoSiteTestCase):
         payload = json.dumps({"payments": [{"mode_of_payment": "Cash", "amount": 40}]})
         row = self._apply("payment", "payment_amount", {"mode_of_payment": "Cash", "amount": 25}, payload)
         self.assertEqual(json.loads(row.payload)["payments"][0]["amount"], 25)
+
+    def test_the_shift_fix_moves_the_row_with_its_payload(self):
+        row = self._apply("invoice", "shift", {"shift": "SHIFT-2"}, '{"posa_pos_opening_shift": "SHIFT-1"}')
+
+        self.assertEqual(row.shift, "SHIFT-2")
+        self.assertEqual(json.loads(row.payload)["posa_pos_opening_shift"], "SHIFT-2")
+
+    def test_a_pos_invoice_goes_to_whoever_holds_the_new_shift(self):
+        frappe.local.db.get_value.return_value = "lina@example.com"
+
+        row = self._apply(
+            "invoice", "shift", {"shift": "SHIFT-2"}, invoice_doctype="POS Invoice", cashier="sara@example.com"
+        )
+
+        self.assertEqual(row.cashier, "lina@example.com")
+
+    def test_a_sales_invoice_keeps_its_cashier_when_it_moves(self):
+        row = self._apply(
+            "invoice", "shift", {"shift": "SHIFT-2"}, invoice_doctype="Sales Invoice", cashier="sara@example.com"
+        )
+
+        self.assertEqual(row.cashier, "sara@example.com")
+
+    def test_a_fix_on_a_record_without_a_payload_says_so(self):
+        for payload in (None, ""):
+            with self.assertRaises(SyncContractError) as caught:
+                self._apply("invoice", "customer", {"customer": "CUST-0001"}, payload)
+            self.assertIn("no payload", str(caught.exception))
+
+    def test_a_fix_on_a_payload_a_person_broke_says_so(self):
+        for payload in ("not json", "[]", "1"):
+            with self.assertRaises(SyncContractError):
+                self._apply("invoice", "customer", {"customer": "CUST-0001"}, payload)
+
+    def test_an_approval_needs_no_payload(self):
+        row = self._apply("invoice", "accept_total_difference", {}, None)
+        row.set.assert_called_once_with("accept_total_difference", 1)
 
     def test_a_fix_for_another_entity_is_refused(self):
         with self.assertRaises(frappe.ValidationError):
@@ -478,6 +538,86 @@ class TestFixes(NoSiteTestCase):
 
         self.assertEqual(row.status, "Resolved")
         self.assertEqual(row.sales_invoice, "CUST-0001")
+
+
+class TestCouponUsage(NoSiteTestCase):
+    """Whichever path a sale takes, its coupon counts once."""
+
+    def _submit(self, payload, document, **kwargs):
+        invoice_doc = frappe._dict({"name": "SINV-1", "pos_profile": "Main", "branch": "Main", **document})
+        invoice_doc.flags = frappe._dict()
+        invoice_doc.save = Mock()
+        invoice_doc.submit = Mock()
+        frappe.local.flags = frappe._dict()
+        frappe.local.db.exists.return_value = bool(payload.get("name"))
+
+        processor = "pos_next.services.invoice_processor"
+        coupon = "pos_next.pos_next.doctype.pos_coupon.pos_coupon"
+        wallet = "pos_next.pos_next.doctype.wallet_transaction.wallet_transaction"
+        with (
+            patch(f"{processor}.frappe.get_doc", return_value=invoice_doc),
+            patch(f"{processor}.save_invoice_draft", return_value={"name": "SINV-1"}),
+            patch(f"{processor}._assert_invoice_write_access"),
+            patch(f"{processor}._set_payment_accounts"),
+            patch(f"{processor}._auto_set_return_batches"),
+            patch(f"{processor}._validate_stock_on_invoice"),
+            patch(f"{wallet}.reverse_wallet_transactions_for_return"),
+            patch(f"{coupon}.increment_coupon_usage") as increment,
+        ):
+            process_invoice(payload, {}, "Sales Invoice", "Main", **kwargs)
+        return increment
+
+    def test_online_with_the_code_on_the_draft(self):
+        increment = self._submit(
+            {"name": "SINV-1", "coupon_code": None, "pos_coupon_code": "SAVE10"}, {"pos_coupon_code": "SAVE10"}
+        )
+        increment.assert_called_once_with("SAVE10")
+
+    def test_online_with_only_the_name_of_the_draft(self):
+        increment = self._submit({"name": "SINV-1"}, {"pos_coupon_code": "SAVE10"})
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_queued_sale(self):
+        increment = self._submit({"coupon_code": "SAVE10"}, {"pos_coupon_code": "SAVE10"}, queued=True)
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_code_that_stayed_in_erpnexts_field(self):
+        increment = self._submit({"name": "SINV-1", "coupon_code": "SAVE10"}, {"coupon_code": "SAVE10"})
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_return_inherits_the_code_and_redeems_nothing(self):
+        increment = self._submit(
+            {"name": "SINV-2"},
+            {"pos_coupon_code": "SAVE10", "is_return": 1, "return_against": "SINV-1", "grand_total": -10},
+        )
+        increment.assert_not_called()
+
+    def test_a_sale_without_a_coupon(self):
+        self._submit({"name": "SINV-1"}, {}).assert_not_called()
+
+
+class TestReprocessWithoutPayload(NoSiteTestCase):
+    def _reprocess(self, row):
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
+            patch.object(sync_inbox, "process") as self.process,
+        ):
+            return sync_inbox.reprocess("row-1", "note")
+
+    def test_the_review_stays_open(self):
+        row = MagicMock(status=sync_inbox.REVIEW, payload=None)
+        row.as_dict.return_value = frappe._dict(status=sync_inbox.REVIEW)
+
+        result = self._reprocess(row)
+
+        self.assertEqual(result.status, sync_inbox.REVIEW)
+        self.process.assert_not_called()
+        row.save.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+
+    def test_a_record_with_a_payload_is_processed(self):
+        self._reprocess(MagicMock(status=sync_inbox.REVIEW, payload="{}"))
+        self.process.assert_called_once_with("row-1")
 
 
 class TestQueuedCoupons(NoSiteTestCase):
@@ -551,6 +691,13 @@ class TestQueuedCoupons(NoSiteTestCase):
         self.assertEqual(values["status"], "Synced")
         self.assertEqual(values["coupon_overrun"], "Already used 5 times of 5 allowed")
         log_attempt.assert_any_call("row-1", "coupon overrun", message="Already used 5 times of 5 allowed")
+
+    def test_keeping_the_sale_without_the_coupon_clears_the_field_that_counts(self):
+        payload = {"coupon_code": "SAVE10", "pos_coupon_code": "SAVE10", "customer": "CUST-0001"}
+
+        sync_inbox._fix_remove_coupon(payload, {})
+
+        self.assertEqual(payload, {"customer": "CUST-0001"})
 
     def test_a_manager_can_keep_the_sale_without_the_coupon(self):
         row = Mock(status=sync_inbox.REVIEW, entity="invoice", payload='{"coupon_code": "SAVE10", "discount_amount": 5}')
@@ -857,7 +1004,7 @@ class TestCloseShift(NoSiteTestCase):
             patch("pos_next.services.sync_entities.frappe.get_doc", return_value=opening),
             patch("pos_next.api.invoices._assert_invoice_write_access") as self.access,
             patch("pos_next.api.shifts.assert_may_close_shift", assert_may_close or Mock()) as self.role,
-            patch(f"{closing_module}.make_closing_shift_from_opening", return_value=json.loads(json.dumps(self.closing))),
+            patch(f"{closing_module}.build_closing_shift", return_value=json.loads(json.dumps(self.closing))),
             patch(f"{closing_module}.save_closing_shift", return_value="POS-CLOSE-1") as self.submit,
         ):
             return sync_entities.close_shift(row or _row(entity="shift_close", payload=self.payload))
@@ -897,6 +1044,13 @@ class TestCloseShift(NoSiteTestCase):
         self._close()
         self.access.assert_called_once_with("Sales Invoice", "Main", "cashier@example.com")
         self.assertEqual(self.role.call_args.args[1], "cashier@example.com")
+
+    def test_the_uploader_is_held_to_the_profile_of_the_shift(self):
+        self._close(_row(entity="shift_close", payload=self.payload, uploaded_by="uploader@example.com"))
+        self.assertEqual(
+            [call.args for call in self.access.call_args_list],
+            [("Sales Invoice", "Main", "cashier@example.com"), ("Sales Invoice", "Main", "uploader@example.com")],
+        )
 
     def test_a_cashier_without_the_role_stops_it(self):
         with self.assertRaises(frappe.PermissionError):

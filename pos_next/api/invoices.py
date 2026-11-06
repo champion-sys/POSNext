@@ -62,8 +62,8 @@ def _assert_invoice_write_access(doctype, pos_profile, user=None):
     the only authorization on those paths. The doctype comes from the client.
 
     Args:
-        user: Whose access to check. Defaults to the session user. Queued invoices
-            pass the cashier who made the sale, who may not be the one uploading.
+        user: Whose access to check. Defaults to the session user. A queued record
+            also checks the colleague who uploaded it, who is not the session user then.
     """
     user = user or frappe.session.user
 
@@ -785,12 +785,11 @@ def _apply_coupon(invoice_doc, coupon_code, queued):
     return coupon_result.get("overrun") if queued else None
 
 
-def save_invoice_draft(data, acting_user=None, queued=False):
-    """Create or update an invoice draft on behalf of acting_user.
+def save_invoice_draft(data, queued=False):
+    """Create or update an invoice draft for the session user.
 
     Args:
         data: Invoice payload
-        acting_user: The cashier, when it differs from the session user
         queued: The sale already happened offline. Only the sync queue passes this. It is
             never read from the payload, so an online checkout cannot claim it.
     """
@@ -805,7 +804,7 @@ def save_invoice_draft(data, acting_user=None, queued=False):
                 invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
             doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
 
-        _assert_invoice_write_access(doctype, pos_profile, acting_user)
+        _assert_invoice_write_access(doctype, pos_profile)
 
         # Ensure the document type is set
         data.setdefault("doctype", doctype)
@@ -816,7 +815,7 @@ def save_invoice_draft(data, acting_user=None, queued=False):
         # Create or update invoice
         if data.get("name"):
             invoice_doc = frappe.get_doc(doctype, data.get("name"))
-            _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"), acting_user)
+            _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"))
             invoice_doc.update(data)
         else:
             invoice_doc = frappe.get_doc(data)

@@ -300,7 +300,7 @@
   },
   {
    "fieldname": "depends_on",
-   "fieldtype": "Small Text",
+   "fieldtype": "Long Text",
    "label": "Depends On",
    "read_only": 1,
    "description": "Offline IDs that must finish first, one per line."
@@ -419,7 +419,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-06 20:00:00",
+ "modified": "2026-11-07 09:00:00",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",

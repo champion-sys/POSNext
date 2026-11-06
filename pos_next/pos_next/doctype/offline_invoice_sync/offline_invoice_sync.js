@@ -24,6 +24,18 @@ const TOTAL_MISMATCH_GUIDE = __(
 	"The server's total differs from what the customer paid. Use Accept Total Difference under Fix Record, or correct the invoice, then press Reprocess.",
 );
 
+const SHIFT_CLOSED_GUIDE = __(
+	"Its shift is already closed, so this POS Invoice would never reach the books. Use Change Shift under Fix Record to move it to an open shift, then press Reprocess.",
+);
+
+const EDIT_CONFLICT_GUIDE = __(
+	"The device edited a sale the server had already received, so both would post. To keep the original, void this record. To keep this edit, cancel the original invoice or void its record first, then press Reprocess.",
+);
+
+const CASHIER_GUIDE = __(
+	"The cashier of this record is disabled or no longer exists. Enable the user and press Reprocess, or close the record without processing it.",
+);
+
 const SHIFT_CLOSE_GUIDE = __(
 	"Some invoices of this shift have not finished. Finish them and press Reprocess, or use Close Without Unfinished Invoices under Fix Record.",
 );
@@ -330,6 +342,9 @@ function getReviewGuide(frm, canReview) {
 	const { entity, error_code, error_class } = frm.doc;
 	if (!canReview) return __("A POS manager needs to review this record.");
 	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
+	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
+	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
+	if (error_code === "CashierUnavailableError") return CASHIER_GUIDE;
 	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
 	return REVIEW_GUIDE[error_class] || "";
 }

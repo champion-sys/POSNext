@@ -41,6 +41,9 @@ userData.refresh()
 if (typeof window !== 'undefined') {
 	let lastCookie = document.cookie
 	setInterval(() => {
+		// A test environment can close while this timer is still running
+		if (typeof document === 'undefined') return
+
 		if (document.cookie !== lastCookie) {
 			lastCookie = document.cookie
 			userData.refresh()
