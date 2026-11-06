@@ -17,7 +17,17 @@ def get_app_translations():
 		dict: Translation dictionary {source: translated}
 	"""
 	lang = frappe.local.lang or "en"
-	return translate.get_all_translations(lang)
+	return {**translate.get_all_translations(lang), **_get_pos_screen_translations(lang)}
+
+
+def _get_pos_screen_translations(lang):
+	"""Wording for POS screens that must not reach the rest of the site.
+
+	A site has one dictionary, so an entry in translations/ also changes Desk: "Pay" has
+	to stay صرف on a Payment Entry. Terms other apps use live in this folder instead.
+	"""
+	path = frappe.get_app_path("pos_next", "translations", "pos_screens", f"{lang.split('-')[0]}.csv")
+	return translate.get_translation_dict_from_file(path, lang, "pos_next")
 
 
 @frappe.whitelist()
