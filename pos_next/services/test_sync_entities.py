@@ -14,6 +14,7 @@ from pos_next.api import invoices
 from pos_next.api.invoices import save_invoice_draft
 from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox
+from pos_next.services.invoice_processor import process_invoice
 from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
@@ -521,6 +522,62 @@ class TestFixes(NoSiteTestCase):
         self.assertEqual(row.sales_invoice, "CUST-0001")
 
 
+class TestCouponUsage(NoSiteTestCase):
+    """Whichever path a sale takes, its coupon counts once."""
+
+    def _submit(self, payload, document, **kwargs):
+        invoice_doc = frappe._dict({"name": "SINV-1", "pos_profile": "Main", "branch": "Main", **document})
+        invoice_doc.flags = frappe._dict()
+        invoice_doc.save = Mock()
+        invoice_doc.submit = Mock()
+        frappe.local.flags = frappe._dict()
+        frappe.local.db.exists.return_value = bool(payload.get("name"))
+
+        processor = "pos_next.services.invoice_processor"
+        coupon = "pos_next.pos_next.doctype.pos_coupon.pos_coupon"
+        wallet = "pos_next.pos_next.doctype.wallet_transaction.wallet_transaction"
+        with (
+            patch(f"{processor}.frappe.get_doc", return_value=invoice_doc),
+            patch(f"{processor}.save_invoice_draft", return_value={"name": "SINV-1"}),
+            patch(f"{processor}._assert_invoice_write_access"),
+            patch(f"{processor}._set_payment_accounts"),
+            patch(f"{processor}._auto_set_return_batches"),
+            patch(f"{processor}._validate_stock_on_invoice"),
+            patch(f"{wallet}.reverse_wallet_transactions_for_return"),
+            patch(f"{coupon}.increment_coupon_usage") as increment,
+        ):
+            process_invoice(payload, {}, "Sales Invoice", "Main", **kwargs)
+        return increment
+
+    def test_online_with_the_code_on_the_draft(self):
+        increment = self._submit(
+            {"name": "SINV-1", "coupon_code": None, "pos_coupon_code": "SAVE10"}, {"pos_coupon_code": "SAVE10"}
+        )
+        increment.assert_called_once_with("SAVE10")
+
+    def test_online_with_only_the_name_of_the_draft(self):
+        increment = self._submit({"name": "SINV-1"}, {"pos_coupon_code": "SAVE10"})
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_queued_sale(self):
+        increment = self._submit({"coupon_code": "SAVE10"}, {"pos_coupon_code": "SAVE10"}, queued=True)
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_code_that_stayed_in_erpnexts_field(self):
+        increment = self._submit({"name": "SINV-1", "coupon_code": "SAVE10"}, {"coupon_code": "SAVE10"})
+        increment.assert_called_once_with("SAVE10")
+
+    def test_a_return_inherits_the_code_and_redeems_nothing(self):
+        increment = self._submit(
+            {"name": "SINV-2"},
+            {"pos_coupon_code": "SAVE10", "is_return": 1, "return_against": "SINV-1", "grand_total": -10},
+        )
+        increment.assert_not_called()
+
+    def test_a_sale_without_a_coupon(self):
+        self._submit({"name": "SINV-1"}, {}).assert_not_called()
+
+
 class TestQueuedCoupons(NoSiteTestCase):
     def _apply(self, queued, result):
         invoice = frappe._dict(customer="Customer A", company="ACME", posting_date="2026-11-05", coupon_code="SAVE10")
@@ -592,6 +649,13 @@ class TestQueuedCoupons(NoSiteTestCase):
         self.assertEqual(values["status"], "Synced")
         self.assertEqual(values["coupon_overrun"], "Already used 5 times of 5 allowed")
         log_attempt.assert_any_call("row-1", "coupon overrun", message="Already used 5 times of 5 allowed")
+
+    def test_keeping_the_sale_without_the_coupon_clears_the_field_that_counts(self):
+        payload = {"coupon_code": "SAVE10", "pos_coupon_code": "SAVE10", "customer": "CUST-0001"}
+
+        sync_inbox._fix_remove_coupon(payload, {})
+
+        self.assertEqual(payload, {"customer": "CUST-0001"})
 
     def test_a_manager_can_keep_the_sale_without_the_coupon(self):
         row = Mock(status=sync_inbox.REVIEW, entity="invoice", payload='{"coupon_code": "SAVE10", "discount_amount": 5}')

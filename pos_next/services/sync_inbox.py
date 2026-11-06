@@ -843,6 +843,7 @@ def _items_matching(payload, item_code):
 def _fix_remove_coupon(payload, _values):
     """The sale stays as it was paid. Only the coupon's usage is no longer counted."""
     payload.pop("coupon_code", None)
+    payload.pop("pos_coupon_code", None)
 
 
 def _fix_payment_amount(payload, values):

@@ -143,8 +143,10 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
     invoice_submitted = True
     # Everything below is part of the sale. A failure rolls back the invoice,
     # so the books can never hold an invoice with half of its effects.
-    coupon_code = invoice.get("coupon_code") or data.get("coupon_code")
-    if coupon_code and frappe.db.table_exists("POS Coupon"):
+    # _apply_coupon may have moved the code off coupon_code. A return inherits the field
+    # from its sale, and redeems nothing.
+    coupon_code = invoice_doc.get("pos_coupon_code") or invoice.get("coupon_code") or data.get("coupon_code")
+    if coupon_code and not invoice_doc.get("is_return") and frappe.db.table_exists("POS Coupon"):
         from pos_next.pos_next.doctype.pos_coupon.pos_coupon import increment_coupon_usage
 
         increment_coupon_usage(coupon_code)
