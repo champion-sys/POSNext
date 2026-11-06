@@ -6,6 +6,7 @@
 				class="fixed top-4 end-4 z-[9999] max-w-md"
 			>
 				<div
+					role="status"
 					:class="[
 						'rounded-lg shadow-xl p-4 flex items-start gap-3',
 						toastStyles.container
@@ -18,16 +19,17 @@
 						/>
 					</div>
 					<div class="flex-1 min-w-0">
-						<p :class="['text-sm font-semibold', toastStyles.titleColor]">
+						<p :dir="getTextDirection(toastNotification.title)" :class="['text-sm font-semibold', toastStyles.titleColor]">
 							{{ toastNotification.title }}
 						</p>
-						<p :class="['text-sm mt-1', toastStyles.messageColor]">
+						<p :dir="getTextDirection(toastNotification.message)" :class="['text-sm mt-1 break-words', toastStyles.messageColor]">
 							{{ toastNotification.message }}
 						</p>
 					</div>
 					<button
 						@click="hideToast"
-						class="flex-shrink-0"
+						class="flex-shrink-0 w-11 h-11 -m-3 flex items-center justify-center touch-manipulation"
+						:aria-label="__('Close')"
 					>
 						<FeatherIcon
 							name="x"
@@ -44,6 +46,7 @@
 import { computed } from "vue"
 import { useToast } from "@/composables/useToast"
 import { useLocale } from "@/composables/useLocale"
+import { getTextDirection } from "@/utils/textDirection"
 import { FeatherIcon } from "frappe-ui"
 
 const { toastNotification, showToast, hideToast } = useToast()

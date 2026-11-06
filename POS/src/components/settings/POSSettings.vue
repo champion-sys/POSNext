@@ -358,21 +358,27 @@
 												v-model="settings.sync_mode"
 												:label="__('Invoice Sync')"
 												:options="syncModeOptions"
-												:description="__('When invoices reach the server. Invoices are never lost if the connection drops.')"
+												:description="syncModeHelp"
 											/>
-											<NumberField
-												v-if="settings.sync_mode === 'Periodic'"
-												v-model="settings.sync_interval_minutes"
-												:label="__('Sync Interval (Minutes)')"
-												:min="1"
-											/>
-											<NumberField
-												v-if="settings.sync_mode === 'Realtime'"
-												v-model="settings.realtime_timeout_seconds"
-												:label="__('Wait for the Server (Seconds)')"
-												:description="__('After this, the receipt prints and the invoice is sent in the background.')"
-												:min="1"
-											/>
+											<div
+												v-if="settings.sync_mode === 'Periodic' || settings.sync_mode === 'Realtime'"
+												class="ps-6 flex flex-col gap-3 border-s-2 border-teal-200"
+											>
+												<NumberField
+													v-if="settings.sync_mode === 'Periodic'"
+													v-model="settings.sync_interval_minutes"
+													:label="__('Sync Interval (Minutes)')"
+													:description="__('How often waiting invoices are sent.')"
+													:min="1"
+												/>
+												<NumberField
+													v-else
+													v-model="settings.realtime_timeout_seconds"
+													:label="__('Wait for the Server (Seconds)')"
+													:description="__('After this, the receipt prints and the invoice is sent in the background.')"
+													:min="1"
+												/>
+											</div>
 											<SystemPrinterSettings v-if="isDesktop" />
 											<CheckboxField
 												v-else
@@ -609,10 +615,18 @@ import { useQzTray } from "@/composables/useQzTray"
 const isDesktop = PLATFORM === ELECTRON
 
 const syncModeOptions = [
-	{ label: __("Realtime: wait for the server at each sale"), value: "Realtime" },
-	{ label: __("After Payment: print first, send right away"), value: "After Payment" },
-	{ label: __("Periodic: send in batches"), value: "Periodic" },
+	{ label: __("Realtime"), value: "Realtime" },
+	{ label: __("After Payment"), value: "After Payment" },
+	{ label: __("Periodic"), value: "Periodic" },
 ]
+const syncModeHelp = computed(() => {
+	const help = {
+		"After Payment": __("The receipt prints at once and the invoice is sent right after, in the background. Good for busy shops."),
+		Periodic: __("The receipt prints at once and invoices are sent together every few minutes. Good for a weak connection."),
+	}
+	const realtime = __("The cashier waits for the server at each sale, so the receipt carries the server's invoice number.")
+	return `${help[settings.value.sync_mode] || realtime} ${__("Invoices are not lost if the connection drops.")}`
+})
 const log = logger.create('POSSettings')
 const { detectSettingsChanges, updateSettingsSnapshot, emitStockSyncConfigured } = usePOSEvents()
 const { showSuccess, showError } = useToast()

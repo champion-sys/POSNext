@@ -3,7 +3,7 @@
 	<div class="hidden lg:flex w-12 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-0 flex flex-col gap-1.5">
 		<!-- Logo / POS Icon -->
 		<button
-			class="w-full h-[41px] flex items-center justify-center flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all mb-0 mt-0 border-b border-gray-200"
+			class="w-full h-[45px] flex items-center justify-center flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all mb-0 mt-0 border-b border-gray-200"
 			:aria-label="'POS Next'"
 			:title="__('POS Next')"
 		>
