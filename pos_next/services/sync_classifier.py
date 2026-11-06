@@ -57,6 +57,10 @@ class CashierUnavailableError(frappe.ValidationError):
     """The cashier a record belongs to cannot be used, so a person has to look at it."""
 
 
+class ShiftClosedError(frappe.ValidationError):
+    """A POS Invoice reaches the books through its shift's closing, which has already run."""
+
+
 class DependencyError(frappe.ValidationError):
     """A record this one needs was voided, so a person has to decide what happens to it."""
 

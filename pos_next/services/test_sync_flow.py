@@ -33,6 +33,7 @@ class FakeInbox:
         self.disabled_users = set()
         self.assigned = {"Main": {"cashier@example.com"}}
         self.device_profiles = ["Main"]
+        self.shifts = {}
 
     @staticmethod
     def _matches(row, filters):
@@ -56,6 +57,8 @@ class FakeInbox:
     def get_value(self, doctype, filters=None, fieldname="name", as_dict=False, **_kwargs):
         if doctype == "User":
             return 0 if filters in self.disabled_users else 1
+        if doctype == "POS Opening Shift":
+            return self.shifts.get(filters)
         if doctype != DOCTYPE:
             return None
 
@@ -260,6 +263,61 @@ class TestCashierSession(Flow):
 
         self.assertNotIn("owner", process_invoice.call_args.args[0])
         self.assertEqual(process_invoice.call_args.kwargs, {"offline_id": SALE, "queued": True})
+
+
+class TestClosedShift(Flow):
+    def _post(self, payload):
+        name = self._send(SALE, {"pos_profile": "Main", **payload})
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as self.process_invoice,
+        ):
+            self.process_invoice.return_value = {"name": "ACC-1", "grand_total": 0}
+            sync_inbox.process(name)
+        return self._row(name)
+
+    def _pos_invoice(self, **payload):
+        return {"doctype": "POS Invoice", "posa_pos_opening_shift": "SHIFT-1", **payload}
+
+    def test_a_pos_invoice_of_a_closed_shift_goes_to_a_person(self):
+        self.inbox.shifts["SHIFT-1"] = "Closed"
+
+        row = self._post(self._pos_invoice())
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "ShiftClosedError")
+        self.assertEqual(row.error_class, "business")
+        self.assertIn("Change Shift", row.error_message)
+
+    def test_a_cancelled_shift_counts_as_closed(self):
+        self.inbox.shifts["SHIFT-1"] = "Cancelled"
+        self.assertEqual(self._post(self._pos_invoice()).error_code, "ShiftClosedError")
+
+    def test_a_shift_that_is_gone_counts_as_closed(self):
+        self.assertEqual(self._post(self._pos_invoice()).error_code, "ShiftClosedError")
+
+    def test_a_pos_invoice_without_a_shift_cannot_be_collected_either(self):
+        row = self._post({"doctype": "POS Invoice"})
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.error_code, "ShiftClosedError")
+
+    def test_a_pos_invoice_of_an_open_shift_posts(self):
+        self.inbox.shifts["SHIFT-1"] = "Open"
+
+        row = self._post(self._pos_invoice())
+
+        self.process_invoice.assert_called_once()
+        self.assertEqual(row.status, "Synced")
+
+    def test_a_sales_invoice_posts_on_submit_whatever_its_shift(self):
+        self.inbox.shifts["SHIFT-1"] = "Closed"
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_called_once()
+        self.assertEqual(row.status, "Synced")
 
 
 class Upload(Flow):

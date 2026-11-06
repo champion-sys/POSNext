@@ -6,7 +6,13 @@ import unittest
 import frappe
 
 from pos_next.services import sync_classifier as sc
-from pos_next.services.sync_classifier import SyncContractError, TotalMismatchError, classify
+from pos_next.services.sync_classifier import (
+    CashierUnavailableError,
+    ShiftClosedError,
+    SyncContractError,
+    TotalMismatchError,
+    classify,
+)
 from pos_next.services.sync_inbox import compute_payload_hash, validate_envelope
 
 
@@ -33,6 +39,13 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(classify(frappe.ValidationError("Closed period")).error_class, sc.BUSINESS)
         self.assertEqual(classify(TotalMismatchError("Differs")).error_class, sc.BUSINESS)
         self.assertEqual(classify(frappe.PermissionError("No access")).error_class, sc.BUSINESS)
+
+    def test_what_only_a_person_can_settle_has_a_stable_code_and_no_retry(self):
+        for error in (CashierUnavailableError, ShiftClosedError):
+            result = classify(error("مغلقة"))
+            self.assertEqual(result.error_class, sc.BUSINESS)
+            self.assertEqual(result.error_code, error.__name__)
+            self.assertIsNone(sc.next_retry_minutes(result.error_class, 1))
 
     def test_contract(self):
         self.assertEqual(classify(SyncContractError("Bad JSON")).error_class, sc.CONTRACT)

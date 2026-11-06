@@ -22,6 +22,7 @@ from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 from pos_next.services import sync_classifier, sync_entities
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
+    ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
 )
@@ -287,6 +288,26 @@ def _is_blocked(row):
     return True
 
 
+def _assert_shift_open(row, payload, doctype):
+    """Refuse a POS Invoice its shift's closing would never collect.
+
+    A POS Invoice writes no ledgers on submit, and the closing takes only its own shift's
+    invoices, so one submitted after it would end Synced with no GL or stock. A Sales
+    Invoice posts on submit and needs no closing.
+    """
+    if doctype != "POS Invoice":
+        return
+
+    shift = payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift") or row.shift
+    if not shift or frappe.db.get_value("POS Opening Shift", shift, "status") != "Open":
+        raise ShiftClosedError(
+            _(
+                "Shift {0} is closed, so this POS Invoice would never reach the books. "
+                "Use Change Shift under Fix Record to move it to an open shift."
+            ).format(shift or "-")
+        )
+
+
 def _create_invoice(row):
     from pos_next.services.invoice_processor import process_invoice
 
@@ -296,6 +317,7 @@ def _create_invoice(row):
     pos_profile = payload.get("pos_profile") or row.pos_profile
     doctype = payload.get("doctype") or row.invoice_doctype or "Sales Invoice"
     payload.setdefault("doctype", doctype)
+    _assert_shift_open(row, payload, doctype)
 
     from pos_next.api.invoices import _assert_invoice_write_access
 
@@ -754,6 +776,8 @@ def apply_fix(name, fix, values):
         payload = json.loads(row.payload)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        if fix == "shift":
+            _move_to_shift(row, values["shift"])
 
     row.flags.ignore_links = True
     row.save(ignore_permissions=True)
@@ -797,6 +821,17 @@ def _fix_payment_mode(payload, values):
 
 def _fix_shift(payload, values):
     payload["posa_pos_opening_shift"] = values["shift"]
+
+
+def _move_to_shift(row, shift):
+    """Keep the row on the shift its payload now names. Closing a shift reads the row.
+
+    POS Closing Entry refuses a POS Invoice owned by anyone but the shift's user, so a move
+    to a colleague's shift also moves the sale to them, or that shift could never close.
+    """
+    row.shift = shift
+    if row.invoice_doctype == "POS Invoice":
+        row.cashier = frappe.db.get_value("POS Opening Shift", shift, "user") or row.cashier
 
 
 def _items_matching(payload, item_code):
