@@ -45,33 +45,19 @@ flowchart TB
 
 الويب لا يملك SQLite أصليًا. نقله إلى SQLite WASM يضيف حجمًا وتعقيدًا في OPFS دون حل مشكلة الإزالة كليًا، لأن التخزين يبقى تحت سياسة المتصفح. لذا لا يُعد ذلك جزءًا من الخطة الأولى، ويمكن إضافته لاحقًا كمحرك ثالث دون تغيير الواجهة.
 
-### الواجهة المجردة
+### واجهة التخزين
 
-الواجهة تكون على مستوى **المستودعات** لا SQL، حتى يمكن تنفيذها بـ Dexie أيضًا.
+خططت أولًا لواجهة مستودعات باسم `LocalStore`. بنيت بدلها واجهة مسطحة واحدة، لأن كل نداءات التطبيق كانت تمر عبر `offlineWorker`، ونقلها إلى مستودعات كان سيعدل كل موضع دون فائدة للمستخدم.
 
-```ts
-// POS/src/platform/ports/LocalStore.ts
-export interface LocalStore {
-  outbox: OutboxRepo
-  catalog: CatalogRepo     // items, prices, stock, taxes, offers
-  customers: CustomerRepo
-  shifts: ShiftRepo
-  receipts: ReceiptRepo    // receipt payloads, must survive restart
-  printQueue: PrintQueueRepo
-  kv: KvRepo               // critical settings only
-  migrate(): Promise<void>
-  health(): Promise<StoreHealth>
-}
+| الجزء | الموقع |
+|---|---|
+| قائمة الدوال وشكل الصف | `POS/src/platform/store/methods.js` |
+| اختيار التنفيذ وقت البناء، فلا يدخل كود منصة في حزمة أخرى | `POS/src/platform/store/index.js` |
+| تنفيذ الويب: Dexie في Worker، وما كان على الخيط الرئيسي يبقى عليه | `POS/src/platform/store/web.js` |
+| التنفيذ الأصلي | `POS/src/platform/store/native.js` و`sqlStore.js` |
+| مستودعات SQL المشتركة بين Electron وAndroid | `POS/src/platform/sql/` |
 
-export interface OutboxRepo {
-  // Atomic: outbox row + receipt + stock reservation commit together or not at all
-  enqueueSale(sale: QueuedSale): Promise<void>
-  nextBatch(limit: number, now: number): Promise<OutboxRow[]>
-  markSending(ids: string[]): Promise<void>
-  applyResult(result: PushResult): Promise<void>
-  counts(): Promise<OutboxCounts>
-}
-```
+مجموعة عقد واحدة، `store/__tests__/contract.test.js`، تشغّل نفس الاختبارات على كل التنفيذات، فاختلاف السلوك بين الويب وSQLite يظهر كفشل اختبار. الشكل الذي يصل إلى التطبيق واحد: `toQueuedInvoice` في `platform/sql/outbox.js` يحوّل صف SQLite إلى شكل صف الويب.
 
 المحركان الأصليان يشتركان في طبقة SQL واحدة:
 
@@ -90,49 +76,43 @@ export interface SqlExecutor {
 - **Electron:** لا يُستدعى من الـ Worker، لأن `contextBridge` يعمل على `window` فقط. الاستدعاء يكون من الخيط الرئيسي عبر IPC، و`better-sqlite3` يعمل في utility process حتى لا يعطل الواجهة.
 - **Android:** إضافات Capacitor لا تُستدعى من Web Worker. الاستدعاء يكون من الخيط الرئيسي، والعمل الفعلي يجري في الجانب الأصلي خارج خيط الواجهة.
 
-لهذا يتحول `offlineWorker` إلى واجهة تختار المحرك، بدل أن يكون الـ Worker شرطًا في كل المنصات.
+لهذا لا يكون الـ Worker شرطًا في كل المنصات: الويب وحده يستخدمه.
 
 ### مخطط SQLite الأساسي
 
-يوضع في `POS/src/platform/sql/migrations/` كملفات مرقمة، وكل ترحيل يُطبق مرة واحدة داخل معاملة.
+الترحيلات في ملف واحد، `POS/src/platform/sql/migrations.js`، وكل ترحيل يُطبق مرة واحدة داخل معاملة ويُسجل في `schema_migrations`.
 
 ```sql
-CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
-
 CREATE TABLE outbox (
-  offline_id        TEXT PRIMARY KEY,          -- UUIDv7, stable across every retry
-  seq               INTEGER NOT NULL UNIQUE,   -- device FIFO order
-  entity            TEXT NOT NULL,             -- invoice | customer | payment | shift_close
-  entity_version    INTEGER NOT NULL,
-  local_number      TEXT,                      -- printed on the receipt
-  payload           TEXT NOT NULL,
-  payload_hash      TEXT NOT NULL,
-  state             TEXT NOT NULL,             -- see 03-sync-engine.md
-  depends_on        TEXT,
-  attempts          INTEGER NOT NULL DEFAULT 0,
-  next_attempt_at   INTEGER NOT NULL DEFAULT 0,
-  last_error_class  TEXT,
-  last_error        TEXT,
-  server_name       TEXT,
-  superseded_by     TEXT,
-  shift             TEXT,
-  created_at        INTEGER NOT NULL,
-  acked_at          INTEGER,
-  synced_at         INTEGER
+  offline_id      TEXT PRIMARY KEY,          -- stable across every retry
+  seq             INTEGER NOT NULL UNIQUE,   -- device FIFO order
+  entity          TEXT NOT NULL,             -- invoice | customer | payment | shift_close
+  entity_version  INTEGER NOT NULL,
+  local_number    TEXT,                      -- printed on the receipt
+  payload         TEXT NOT NULL,
+  state           TEXT NOT NULL,             -- see 03-sync-engine.md
+  depends_on      TEXT,
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  server_name     TEXT,
+  superseded_by   TEXT,
+  shift           TEXT,
+  created_at      INTEGER NOT NULL,
+  acked_at        INTEGER,
+  synced_at       INTEGER,
+  sync_failed     INTEGER NOT NULL DEFAULT 0  -- migration 2
 );
-CREATE INDEX idx_outbox_due ON outbox(state, next_attempt_at, seq);
-CREATE INDEX idx_outbox_shift ON outbox(shift, state);
-
-CREATE TABLE stock_base (item_code TEXT, warehouse TEXT, qty REAL, as_of INTEGER,
-                         PRIMARY KEY (item_code, warehouse));
-CREATE TABLE stock_reservation (offline_id TEXT, item_code TEXT, warehouse TEXT, stock_qty REAL,
-                                PRIMARY KEY (offline_id, item_code, warehouse));
-CREATE TABLE sync_cursor (entity TEXT PRIMARY KEY, cursor TEXT, synced_at INTEGER);
-CREATE TABLE receipt (offline_id TEXT PRIMARY KEY, doc TEXT NOT NULL, printed_count INTEGER DEFAULT 0);
-CREATE TABLE device_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
 ```
 
-جداول الأصناف والأسعار والعملاء تحمل عمود `search_text` منسقًا للعربية، بتوحيد الهمزات والتاء المربوطة والألف المقصورة وحذف التشكيل. يُفضل FTS5 إذا أثبتت التجربة S-5 توفره في بناء SQLCipher على Android.
+| الترحيل | الجداول |
+|---|---|
+| 1 | `outbox` و`stock_base` و`stock_reservation` و`receipt` و`device_sequence` و`sync_cursor` و`kv` |
+| 2 | `catalog_item` و`item_barcode` و`item_price` و`customer` و`payment_method` و`sales_person` و`offer` و`invoice_history` و`unpaid_invoice` و`translation` و`draft` و`current_shift` و`print_job` |
+
+بصمة الحمولة وفئة الخطأ لم تدخلا الجهاز: الخادم يحسبهما عند الاستلام، فلا فائدة من تكرارهما.
+
+البحث بلا FTS5. `catalog_item` يحمل `search_code` و`search_name` و`search_text` بعد توحيد الهمزات والتاء المربوطة والألف المقصورة وحذف التشكيل (`sql/searchText.js`). المطابقة التامة والبادئة تستخدمان الفهرس، وبحث الجزء من الكلمة يمر على الصفوف. على 50 ألف صنف قِسته بين 60 و118 مللي ثانية على هذا الخادم بـ `better-sqlite3`، أي أن هدف 100 مللي ثانية لا يتحقق دائمًا. لم يُقس على Android، والفرق هناك يُحسم في S-5.
 
 ### ما يبقى في `localStorage`
 

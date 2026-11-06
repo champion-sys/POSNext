@@ -259,7 +259,7 @@ _WHOLE_SETS = {
 }
 
 
-def _table_state(doctype, condition="", values=None):
+def _table_state(doctype, condition="", values=()):
     return frappe.db.sql(f"SELECT MAX(modified), COUNT(*) FROM `tab{doctype}` {condition}", values)[0]
 
 

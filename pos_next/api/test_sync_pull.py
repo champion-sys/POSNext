@@ -57,9 +57,10 @@ class SqliteDb:
         self.connection.executescript(SCHEMA)
         self.exists = Mock(return_value="row-1")
 
-    def sql(self, query, values=None, as_dict=False, **_kwargs):
+    def sql(self, query, values=(), as_dict=False, **_kwargs):
         query = re.sub(r"%\((\w+)\)s", r":\1", query).replace("%s", "?")
-        rows = self.connection.execute(query, values or ()).fetchall()
+        # Frappe sends an explicit None to the driver as one parameter, and MariaDB fails on it
+        rows = self.connection.execute(query, (None,) if values is None else values).fetchall()
         return [frappe._dict(dict(row)) for row in rows] if as_dict else [tuple(row) for row in rows]
 
     def insert(self, table, **values):
