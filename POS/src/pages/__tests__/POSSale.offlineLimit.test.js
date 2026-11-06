@@ -120,7 +120,7 @@ const PAYMENT = {
 	change_amount: 0,
 }
 
-const EDIT = { originalQueueId: 7, originalOfflineId: "pos_offline_original" }
+const QUEUED_SALE = { id: 7, offline_id: "pos_offline_original", data: { customer: "CUST-1", items: [] } }
 
 const NETWORK_FAILURE = new TypeError("Failed to fetch")
 
@@ -135,6 +135,14 @@ describe("POSSale at the offline limit", () => {
 
 	async function checkout() {
 		await wrapper.vm.handlePaymentCompleted(PAYMENT)
+		await flushPromises()
+	}
+
+	async function editQueuedSale() {
+		offlineStore.loadPendingInvoices = vi.fn()
+		offlineStore.pendingInvoicesList = [QUEUED_SALE]
+		await wrapper.vm.handleEditOfflineInvoice(QUEUED_SALE)
+		cartStore.invoiceItems = [{ item_code: "A", qty: 1 }]
 		await flushPromises()
 	}
 
@@ -193,7 +201,7 @@ describe("POSSale at the offline limit", () => {
 		})
 
 		it("keeps the edit of a queued sale, so finishing it later cannot sell it twice", async () => {
-			wrapper.vm.editingOfflineContext = EDIT
+			await editQueuedSale()
 
 			await checkout()
 			limit.passed = false
@@ -253,14 +261,16 @@ describe("POSSale at the offline limit", () => {
 
 		it("keeps the edit when the connection drops", async () => {
 			settingsStore.settings.sync_mode = SYNC_REALTIME
-			wrapper.vm.editingOfflineContext = EDIT
+			await editQueuedSale()
 			cartStore.submitInvoice = vi.fn(async () => {
 				throw NETWORK_FAILURE
 			})
 
 			await checkout()
+			limit.passed = false
+			await checkout()
 
-			expect(wrapper.vm.editingOfflineContext).toEqual(EDIT)
+			expect(offlineStore.saveInvoiceOffline.mock.calls[0][1]).toEqual({ supersedesId: 7 })
 		})
 	})
 

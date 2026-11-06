@@ -471,14 +471,22 @@ async function saveQueueEntity({ entity, data, dependsOn = [] }) {
 		const db = await initDB()
 		const offlineId = data.offline_id || generateOfflineId()
 
-		const id = await db.table("invoice_queue").add({
-			offline_id: offlineId,
-			entity,
-			depends_on: dependsOn,
-			data: { ...data, offline_id: offlineId },
-			timestamp: Date.now(),
-			synced: false,
-			retry_count: 0,
+		const queue = db.table("invoice_queue")
+		let id
+		await db.transaction("rw", queue, async () => {
+			// The client re-sends a save it timed out on, and that save may have landed
+			const existing = await queue.where("offline_id").equals(offlineId).first()
+			id = existing
+				? existing.id
+				: await queue.add({
+						offline_id: offlineId,
+						entity,
+						depends_on: dependsOn,
+						data: { ...data, offline_id: offlineId },
+						timestamp: Date.now(),
+						synced: false,
+						retry_count: 0,
+					})
 		})
 
 		log.info(`Queued ${entity} with offline_id: ${offlineId}`)

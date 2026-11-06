@@ -1267,6 +1267,9 @@ export function useInvoice() {
 				pos_profile: posProfile.value,
 			})
 
+			// A customer chosen while this loaded, such as on an edited sale, must stay
+			if (customer.value) return
+
 			// Set the default customer if one is configured
 			if (result && result.customer) {
 				// Create customer object matching the structure from customer selection
@@ -1279,7 +1282,7 @@ export function useInvoice() {
 		} catch (error) {
 			// Offline or request failed: use the default customer from the cached POS Profile
 			const fallback = shiftState.value.pos_profile?.customer
-			if (fallback) {
+			if (fallback && !customer.value) {
 				customer.value = { name: fallback, customer_name: fallback }
 			}
 		}

@@ -377,7 +377,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @returns {Promise<{id: number, offline_id: string}>}
 	 */
 	async function saveQueueEntity(entity, data, dependsOn = []) {
-		const result = await offlineWorker.saveQueueEntity(entity, data, dependsOn)
+		// Chosen here, so a save the store re-sends cannot become a second record
+		const record = { ...data, offline_id: data.offline_id || generateOfflineId() }
+		const result = await offlineWorker.saveQueueEntity(entity, record, dependsOn)
 		await updatePendingCount()
 		warnIfStorageNotPersistent()
 

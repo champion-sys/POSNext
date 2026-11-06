@@ -155,16 +155,21 @@ export function createSqlStore(sql) {
 		async saveQueueEntity(entity, data, dependsOn = []) {
 			const offlineId = data.offline_id || generateOfflineId()
 
-			const id = await outbox.enqueueEntity({
-				offlineId,
-				entity,
-				data: { ...data, offline_id: offlineId },
-				dependsOn,
-				shift: data.posa_pos_opening_shift ?? data.pos_opening_shift,
-			})
+			return inOrder(async () => {
+				const existing = await outbox.get(offlineId)
+				if (existing) return { success: true, id: existing.seq, offline_id: offlineId }
 
-			log.info(`Queued ${entity} with offline_id: ${offlineId}`)
-			return { success: true, id, offline_id: offlineId }
+				const id = await outbox.enqueueEntity({
+					offlineId,
+					entity,
+					data: { ...data, offline_id: offlineId },
+					dependsOn,
+					shift: data.posa_pos_opening_shift ?? data.pos_opening_shift,
+				})
+
+				log.info(`Queued ${entity} with offline_id: ${offlineId}`)
+				return { success: true, id, offline_id: offlineId }
+			})
 		},
 
 		async getQueueRows() {

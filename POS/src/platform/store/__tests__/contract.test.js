@@ -515,6 +515,16 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 	})
 
 	describe("records that are not sales", () => {
+		it("keeps one row when a record is saved again under its id", async () => {
+			const record = { invoice_name: "SINV-1", amount: 5, offline_id: "pos_offline_payment" }
+
+			const first = await store.saveQueueEntity(ENTITY_PAYMENT, record)
+			const second = await store.saveQueueEntity(ENTITY_PAYMENT, record)
+
+			expect(second).toMatchObject({ success: true, id: first.id, offline_id: first.offline_id })
+			expect(await store.getOfflineInvoiceCount()).toBe(1)
+		})
+
 		const customer = () => ({ doctype: "Customer", customer_name: "Sara", offline_id: "pos_offline_customer" })
 
 		it("queues one in the order it was made, with its own id", async () => {
@@ -541,14 +551,6 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
 			expect(await store.getOfflineInvoiceCount()).toBe(1)
 			expect((await store.getCacheStats()).queuedInvoices).toBe(1)
-		})
-
-		it("refuses a second record with the same id", { timeout: 15000 }, async () => {
-			await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
-
-			await expect(store.saveQueueEntity(ENTITY_CUSTOMER, customer())).rejects.toThrow()
-
-			expect(await store.getOfflineInvoiceCount()).toBe(1)
 		})
 
 		it("makes a sale to a local customer wait for that customer", async () => {

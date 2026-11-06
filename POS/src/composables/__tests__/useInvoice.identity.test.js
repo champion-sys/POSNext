@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("frappe-ui", () => ({
-	createResource: (options) => ({ ...options, submit: async () => ({}), reload: async () => ({}) }),
+	createResource: (options) => ({
+		...options,
+		submit: async () => ({ customer: "DEFAULT-CUSTOMER" }),
+		reload: async () => ({}),
+	}),
 	call: async () => ({}),
 }))
 vi.mock("@/utils/offline", () => ({
@@ -45,5 +49,27 @@ describe("the id of a checkout", () => {
 		await invoice.clearCart()
 
 		expect(invoice.getCheckoutOfflineId(sale())).not.toBe(first)
+	})
+})
+
+describe("the default customer", () => {
+	it("is set on an empty cart", async () => {
+		const invoice = useInvoice()
+		invoice.posProfile.value = "Main"
+
+		await invoice.clearCart()
+
+		expect(invoice.customer.value.name).toBe("DEFAULT-CUSTOMER")
+	})
+
+	it("does not replace a customer chosen while it loaded", async () => {
+		const invoice = useInvoice()
+		invoice.posProfile.value = "Main"
+
+		const cleared = invoice.clearCart()
+		invoice.customer.value = { name: "CHOSEN-CUSTOMER" }
+		await cleared
+
+		expect(invoice.customer.value.name).toBe("CHOSEN-CUSTOMER")
 	})
 })
