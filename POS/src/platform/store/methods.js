@@ -82,6 +82,7 @@ export const DIRECT_METHODS = [
 	"listUnsyncedInvoices",
 	"getQueuedInvoice",
 	"updateQueuedInvoice",
+	"resendQueuedInvoice",
 	"deleteSyncedInvoices",
 
 	"getCachedItem",

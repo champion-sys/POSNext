@@ -16,6 +16,25 @@ import { placeholders } from "./searchText"
 
 const STOCK_DOCTYPES_EXCLUDED = ["Sales Order"]
 
+/**
+ * Retire a sale, unless the server holds it: then the server decides how it ends, and it
+ * keeps its stock until it does.
+ */
+function supersedeStatements(offlineId, replacedBy) {
+	return [
+		{
+			sql: `UPDATE outbox SET state = 'superseded', superseded_by = ?
+				WHERE offline_id = ? AND state = 'pending'`,
+			params: [replacedBy, offlineId],
+		},
+		{
+			sql: `DELETE FROM stock_reservation WHERE offline_id = ?
+				AND EXISTS (SELECT 1 FROM outbox WHERE offline_id = ? AND state = 'superseded')`,
+			params: [offlineId, offlineId],
+		},
+	]
+}
+
 /** States the sync engine still has to send */
 const SENDABLE = ["pending"]
 
@@ -149,14 +168,7 @@ export function createOutbox(sql) {
 			}
 
 			if (supersedes) {
-				statements.push(
-					{
-						sql: `UPDATE outbox SET state = 'superseded', superseded_by = ?
-							WHERE offline_id = ? AND state = 'pending'`,
-						params: [offlineId, supersedes],
-					},
-					{ sql: "DELETE FROM stock_reservation WHERE offline_id = ?", params: [supersedes] },
-				)
+				statements.push(...supersedeStatements(supersedes, offlineId))
 			}
 
 			await sql.batch(statements)
@@ -241,20 +253,9 @@ export function createOutbox(sql) {
 			await sql.run("UPDATE outbox SET payload = ? WHERE offline_id = ?", [JSON.stringify(payload), offlineId])
 		},
 
-		/** Retire a replaced sale. Once sent, the server decides how it ends. */
+		/** Retire a replaced sale */
 		async supersede(offlineId, replacedBy = null) {
-			await sql.batch([
-				{
-					sql: `UPDATE outbox SET state = 'superseded', superseded_by = ?
-						WHERE offline_id = ? AND state = 'pending'`,
-					params: [replacedBy, offlineId],
-				},
-				{
-					sql: `DELETE FROM stock_reservation WHERE offline_id = ?
-						AND EXISTS (SELECT 1 FROM outbox WHERE offline_id = ? AND state = 'superseded')`,
-					params: [offlineId, offlineId],
-				},
-			])
+			await sql.batch(supersedeStatements(offlineId, replacedBy))
 		},
 
 		/** Delete a sale with everything that hangs off it */
@@ -304,6 +305,16 @@ export function createOutbox(sql) {
 				statements.push({ sql: "DELETE FROM stock_reservation WHERE offline_id = ?", params: [offlineId] })
 			}
 			await sql.batch(statements)
+		},
+
+		/** The server has no record of a sale it held, so it waits to be sent again */
+		async returnToPending(offlineId) {
+			await sql.run(
+				`UPDATE outbox SET state = 'pending', attempts = 0, next_attempt_at = 0, last_error = NULL,
+					server_name = NULL, sync_failed = 0, acked_at = NULL
+				WHERE offline_id = ? AND state NOT IN (${placeholders(CLOSED)})`,
+				[offlineId, ...CLOSED],
+			)
 		},
 
 		/** After a crash, sends in flight are unknown. Retrying is safe: the server dedupes. */

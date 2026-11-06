@@ -32,9 +32,14 @@ const SYNC_CONFIG = {
 	BATCH_SIZE: 20,
 	STATUS_POLLS: 3,
 	STATUS_POLL_DELAY_MS: 2000,
+	// get_status in pos_next/api/sync.py ignores ids past this many
+	STATUS_ID_LIMIT: 200,
 }
 
 const DEVICE_ID_KEY = "pos_next_device_id"
+
+// In memory on purpose: a crash or a reload frees a held row, so it cannot get stuck
+const heldFromSync = new Set()
 
 // ============================================================================
 // SERVER CONNECTIVITY
@@ -110,6 +115,25 @@ export const getOfflineInvoiceByOfflineId = async (offlineId) => {
 		log.error("Failed to look up offline invoice", { offlineId, error })
 		return null
 	}
+}
+
+/**
+ * Keep a queued sale from being sent, for as long as it is in the cart for editing.
+ * This tab only: a sync running in another tab does not see it.
+ * @param {string} offlineId
+ * @returns {boolean} False when it was already held
+ */
+export const holdFromSync = (offlineId) => {
+	if (heldFromSync.has(offlineId)) return false
+	heldFromSync.add(offlineId)
+	return true
+}
+
+/**
+ * @param {string} offlineId
+ */
+export const releaseFromSync = (offlineId) => {
+	heldFromSync.delete(offlineId)
 }
 
 /**
@@ -263,13 +287,34 @@ const pushBatch = async (rows) => {
 }
 
 /**
+ * Send again what the server left out of a full answer. After a site restore or a manual
+ * delete it has no record of these rows, so they would wait forever. Safe, because push
+ * dedupes by offline_id and processing looks for an existing invoice first.
+ * @param {Array} asked - Rows the server was asked about
+ * @param {*} statuses - Its answer
+ * @returns {Promise<number>} How many went back to pending
+ */
+const resendForgottenRows = async (asked, statuses) => {
+	if (!Array.isArray(statuses) || !statuses.every((status) => status?.offline_id)) return 0
+
+	const known = new Set(statuses.map((status) => status.offline_id))
+	const forgotten = asked.filter((row) => !known.has(row.offline_id))
+	for (const row of forgotten) {
+		log.warn("The server has no record of a queued row, sending it again", { offlineId: row.offline_id })
+		await localStore.resendQueuedInvoice(row.id)
+	}
+	return forgotten.length
+}
+
+/**
  * Update rows the server already holds with how they ended
  * @param {Array} rows - Queue rows
  * @param {Object} result - Totals to update
  * @returns {Promise<number>} How many are still being processed
  */
 const refreshServerStatus = async (rows, result) => {
-	const byOfflineId = new Map(rows.map((row) => [row.offline_id, row]))
+	const asked = rows.slice(0, SYNC_CONFIG.STATUS_ID_LIMIT)
+	const byOfflineId = new Map(asked.map((row) => [row.offline_id, row]))
 	const statuses = await call("pos_next.api.sync.get_status", {
 		offline_ids: Array.from(byOfflineId.keys()),
 	})
@@ -285,7 +330,7 @@ const refreshServerStatus = async (rows, result) => {
 			countEnding(result, row, newStatus, status.message)
 		}
 	}
-	return waiting
+	return waiting - (await resendForgottenRows(asked, statuses))
 }
 
 /**
@@ -318,7 +363,10 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 		// A manual sync does not wait for a failed invoice's backoff
 		const now = Date.now()
 		const unsent = pendingInvoices.filter(
-			(row) => !row.server_status && (force || (row.next_attempt_at || 0) <= now),
+			(row) =>
+				!row.server_status &&
+				!heldFromSync.has(row.offline_id) &&
+				(force || (row.next_attempt_at || 0) <= now),
 		)
 
 		for (let i = 0; i < unsent.length; i += SYNC_CONFIG.BATCH_SIZE) {

@@ -1310,16 +1310,20 @@ export function useInvoice() {
 	/**
 	 * Clears the cart and resets to default state.
 	 * If a POS Profile is active and has a default customer, it will be pre-selected.
+	 * @param {Object} [options]
+	 * @param {boolean} [options.sold] - The items left as a sale, so their serials stay taken
 	 */
-	async function clearCart() {
+	async function clearCart({ sold = false } = {}) {
 		// The next sale may look identical, and sharing an id would make the server treat it
 		// as this one
 		checkoutIdentity = null
 
 		// Return all serial numbers back to cache before clearing
-		for (const item of invoiceItems.value) {
-			if (item.has_serial_no && item.serial_no) {
-				serialStore.returnSerials(item.item_code, item.serial_no)
+		if (!sold) {
+			for (const item of invoiceItems.value) {
+				if (item.has_serial_no && item.serial_no) {
+					serialStore.returnSerials(item.item_code, item.serial_no)
+				}
 			}
 		}
 

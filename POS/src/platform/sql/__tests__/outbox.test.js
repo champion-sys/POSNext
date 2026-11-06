@@ -166,6 +166,7 @@ describe("outbox", () => {
 		await outbox.enqueueSale(sale("b", 1, { supersedes: "a" }))
 
 		expect(await outbox.countsByState()).toEqual({ pending: 1, received: 1 })
+		expect(await outbox.availableStock("A", "W1")).toBe(64)
 	})
 
 	it("sends interrupted sales again after a crash", async () => {
@@ -195,6 +196,23 @@ describe("outbox", () => {
 		])
 		expect(rows[1].payload.customer_name).toBe("Sara")
 		expect(rows[2].depends_on).toEqual(["c"])
+	})
+
+	it("sends a sale again, still holding its stock, when the server has lost it", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.applyResult("a", { state: "needs_review", serverName: "X", error: "Stock" })
+
+		await outbox.returnToPending("a")
+
+		expect((await outbox.nextBatch(10)).map((row) => row.offline_id)).toEqual(["a"])
+		expect(await outbox.get("a")).toMatchObject({
+			attempts: 0,
+			server_name: null,
+			last_error: null,
+			sync_failed: 0,
+			acked_at: null,
+		})
+		expect(await outbox.availableStock("A", "W1")).toBe(76)
 	})
 
 	it("keeps a row's dependencies with it", async () => {

@@ -402,6 +402,9 @@ async function getOfflineInvoices() {
 	}
 }
 
+// Once the server holds a sale, the server decides how it ends
+const canSupersede = (row) => Boolean(row) && !row.synced && !row.server_status && !row.superseded
+
 // Save invoice to offline queue
 async function saveOfflineInvoice(invoiceData, options = {}) {
 	try {
@@ -421,6 +424,13 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 		const queue = db.table("invoice_queue")
 		let id
 		await db.transaction("rw", queue, async () => {
+			// The client re-sends a save it timed out on, and that save may have landed
+			const existing = await queue.where("offline_id").equals(offlineId).first()
+			if (existing) {
+				id = existing.id
+				return
+			}
+
 			id = await queue.add({
 				offline_id: offlineId,
 				entity: ENTITY_INVOICE,
@@ -431,7 +441,8 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 				retry_count: 0,
 			})
 
-			if (options.supersedesId) {
+			const original = options.supersedesId ? await queue.get(options.supersedesId) : null
+			if (canSupersede(original)) {
 				await queue.update(options.supersedesId, {
 					superseded: true,
 					replaced_by: offlineId,
@@ -1430,10 +1441,15 @@ async function deleteOfflineInvoice(id) {
 async function supersedeOfflineInvoice(id, replacedBy) {
 	try {
 		const db = await initDB()
-		await db.table("invoice_queue").update(id, {
-			superseded: true,
-			replaced_by: replacedBy || null,
-			superseded_at: Date.now(),
+		const queue = db.table("invoice_queue")
+		await db.transaction("rw", queue, async () => {
+			if (!canSupersede(await queue.get(id))) return
+
+			await queue.update(id, {
+				superseded: true,
+				replaced_by: replacedBy || null,
+				superseded_at: Date.now(),
+			})
 		})
 		return { success: true }
 	} catch (error) {

@@ -131,20 +131,25 @@ export function createSqlStore(sql) {
 			const offlineId = invoiceData.offline_id || generateOfflineId()
 			const invoice = { ...invoiceData, offline_id: offlineId }
 
-			// An original that is already gone must not cost the sale
-			const supersedes = options.supersedesId ? await offlineIdOf(options.supersedesId) : undefined
+			return inOrder(async () => {
+				const existing = await outbox.get(offlineId)
+				if (existing) return { success: true, id: existing.seq, offline_id: offlineId }
 
-			const id = await outbox.enqueueSale({
-				offlineId,
-				invoice,
-				receipt: invoice,
-				shift: invoice.posa_pos_opening_shift,
-				supersedes,
-				dependsOn: getInvoiceDependencies(invoice),
+				// An original that is already gone must not cost the sale
+				const supersedes = options.supersedesId ? await offlineIdOf(options.supersedesId) : undefined
+
+				const id = await outbox.enqueueSale({
+					offlineId,
+					invoice,
+					receipt: invoice,
+					shift: invoice.posa_pos_opening_shift,
+					supersedes,
+					dependsOn: getInvoiceDependencies(invoice),
+				})
+
+				log.info(`Invoice saved to offline queue with offline_id: ${offlineId}`)
+				return { success: true, id, offline_id: offlineId }
 			})
-
-			log.info(`Invoice saved to offline queue with offline_id: ${offlineId}`)
-			return { success: true, id, offline_id: offlineId }
 		},
 
 		async saveQueueEntity(entity, data, dependsOn = []) {
@@ -217,6 +222,11 @@ export function createSqlStore(sql) {
 					attempts: changes.retry_count,
 				})
 			}
+		},
+
+		async resendQueuedInvoice(id) {
+			const offlineId = await offlineIdOf(id)
+			if (offlineId) await outbox.returnToPending(offlineId)
 		},
 
 		deleteSyncedInvoices(cutoff) {

@@ -1062,6 +1062,15 @@
 // Tracks the profile+shift key so a user/shift change correctly re-initializes.
 let _initializedKey = null
 let _posInitPromise = null
+
+// Tracks the in-flight edit of a queued offline invoice. Set by
+// handleEditOfflineInvoice, used by checkout to supersede the original row,
+// and ended only by endOfflineEdit. Out here because the cart survives a
+// remount, and the edit has to survive with it.
+let editingOfflineContext = null
+
+// A sale accepted online empties the cart before checkout has retired its original row
+let checkoutRunning = false
 </script>
 
 <script setup>
@@ -1116,7 +1125,12 @@ import {
 	shouldQueueCheckout,
 	withOfflinePosting,
 } from "@/utils/offline/invoicePayload";
-import { cacheInvoiceHistory, getCachedInvoiceHistory } from "@/utils/offline/sync";
+import {
+	cacheInvoiceHistory,
+	getCachedInvoiceHistory,
+	holdFromSync,
+	releaseFromSync,
+} from "@/utils/offline/sync";
 import {
 	hydrateLocalOnlyInvoice,
 	printInvoice,
@@ -1206,11 +1220,28 @@ const offerReapplyTimer = ref(null);
 // Performance: Cache previous cart state to avoid unnecessary reapplications
 let previousCartHash = "";
 
-// Tracks the in-flight edit of a queued offline invoice. Set by
-// handleEditOfflineInvoice, consumed by the offline branch of
-// handlePaymentCompleted to supersede the original row, and cleared
-// whenever the edit is abandoned (cart cleared without checkout).
-let editingOfflineContext = null;
+function endOfflineEdit() {
+	if (!editingOfflineContext) return;
+	releaseFromSync(editingOfflineContext.originalOfflineId);
+	editingOfflineContext = null;
+}
+
+// A draft of an edit would become a second sale, and sign-out clears drafts while the
+// original would already be gone
+function refuseDraftDuringEdit() {
+	if (!editingOfflineContext) return false;
+	showWarning(__("Finish or clear the queued invoice you are editing first"));
+	return true;
+}
+
+// Immediate: the cart may have emptied while no page was mounted, as on sign-out
+watch(
+	() => cartStore.isEmpty,
+	(isEmpty) => {
+		if (isEmpty && !checkoutRunning) endOfflineEdit();
+	},
+	{ immediate: true },
+);
 
 // Helper function to compute cart hash
 function computeCartHash() {
@@ -2290,6 +2321,8 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 
 	const invoiceData = {
 		...withOfflinePosting(basePayload),
+		// Chosen here, so a save the store re-sends or the cashier retries keeps one id
+		offline_id: offlineId || cartStore.getCheckoutOfflineId(basePayload),
 		cashier: session.user,
 		company: shiftStore.profileCompany,
 		customer: customerValue || shiftStore.profileCustomer,
@@ -2302,27 +2335,19 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		edited_from: editingOfflineContext?.originalOfflineId || null,
 	};
 
-	if (offlineId) {
-		invoiceData.offline_id = offlineId;
-	}
-
 	if (redeemedCustomerCredit > 0) {
 		invoiceData.redeemed_customer_credit = redeemedCustomerCredit;
 		invoiceData.customer_credit_dict = customerCreditDict;
 	}
 
-	// Save to the offline queue first so we can use the worker's
-	// canonical pos_offline_<uuid> id as the cache key — keeping
-	// IndexedDB and sessionStorage aligned on a single identifier.
 	// An edit replaces its original row in the same transaction.
-	const saveResult = await offlineStore.saveInvoiceOffline(invoiceData, {
+	await offlineStore.saveInvoiceOffline(invoiceData, {
 		supersedesId: editingOfflineContext?.originalQueueId,
 	});
-	editingOfflineContext = null;
+	endOfflineEdit();
 	deductSoldBatches(invoiceData.items);
 
-	const offlineReceiptName =
-		saveResult?.offline_id || invoiceData.offline_id || `pos_offline_${Date.now()}`;
+	const offlineReceiptName = invoiceData.offline_id;
 
 	const paidAmount = paymentData.paid_amount ?? cartStore.grandTotal ?? 0;
 	const grandTotal = cartStore.grandTotal || 0;
@@ -2360,7 +2385,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 	cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
 	uiStore.lastInvoiceName = offlineReceiptName;
 	uiStore.showPaymentDialog = false;
-	cartStore.clearCart();
+	cartStore.clearCart({ sold: true });
 	// Reset cart hash after successful payment
 	previousCartHash = "";
 
@@ -2396,6 +2421,7 @@ async function handlePaymentCompleted(paymentData) {
 	let customerValue = null;
 	let draftIdToDelete = null;
 
+	checkoutRunning = true;
 	try {
 		customerValue = cartStore.customer?.name || cartStore.customer;
 		if (!customerValue && !shiftStore.profileCustomer) {
@@ -2470,7 +2496,7 @@ async function handlePaymentCompleted(paymentData) {
 				// offline invoice, mark the original row as superseded so the
 				// background sync doesn't push it as a duplicate. We pass the
 				// server invoice name as replaced_by for audit trail.
-				if (editingOfflineContext?.originalQueueId) {
+				if (editingOfflineContext) {
 					const serverName = result.name || result.message?.name || null;
 					try {
 						await offlineWorker.supersedeOfflineInvoice(
@@ -2480,7 +2506,7 @@ async function handlePaymentCompleted(paymentData) {
 					} catch (err) {
 						log.error("Failed to supersede edited offline invoice after online submit:", err);
 					}
-					editingOfflineContext = null;
+					endOfflineEdit();
 					// Refresh pending count so the OfflineInvoicesDialog badge updates.
 					await offlineStore.updatePendingCount();
 				}
@@ -2552,10 +2578,6 @@ async function handlePaymentCompleted(paymentData) {
 
 		uiStore.showPaymentDialog = false;
 
-		// Checkout failed mid-edit — clear the edit context so the NEXT
-		// checkout doesn't supersede the wrong row on a fresh, unrelated sale.
-		editingOfflineContext = null;
-
 		const errorContext = parseError(error);
 		uiStore.showError(
 			errorContext.title || __("Error"),
@@ -2571,6 +2593,9 @@ async function handlePaymentCompleted(paymentData) {
 		} else {
 			showWarning(errorContext.message);
 		}
+	} finally {
+		checkoutRunning = false;
+		if (cartStore.isEmpty) endOfflineEdit();
 	}
 }
 
@@ -2583,7 +2608,6 @@ function confirmClearCart() {
 	cartStore.clearCart();
 	// Reset cart hash when cart is cleared
 	previousCartHash = "";
-	editingOfflineContext = null;
 	uiStore.showClearCartDialog = false;
 	showSuccess(__("All items removed from cart"));
 }
@@ -2785,6 +2809,8 @@ async function logoutWithCloseShift() {
 }
 
 async function handleSaveDraft() {
+	if (refuseDraftDuringEdit()) return;
+
 	const savedDraft = await draftsStore.saveDraftInvoice(
 		cartStore.invoiceItems,
 		cartStore.customer,
@@ -2800,6 +2826,8 @@ async function handleSaveDraft() {
 }
 
 async function handleLoadDraft(draft) {
+	if (refuseDraftDuringEdit()) return;
+
 	try {
 		// If current cart has items, save it as draft before loading new one
 		if (!cartStore.isEmpty) {
@@ -3003,31 +3031,50 @@ async function confirmClearCache() {
 }
 
 async function handleEditOfflineInvoice(invoice) {
+	if (offlineStore.isSyncing) {
+		showWarning(__("Cannot edit while syncing — please wait for sync to finish."));
+		return;
+	}
+
+	if (invoice.data?.was_printed) {
+		uiStore.showError(
+			__("Cannot edit printed invoice"),
+			__(
+				"A receipt for this invoice was already printed — the customer may have a physical copy. Use Return Invoice to issue a credit note instead.",
+			),
+		);
+		return;
+	}
+
+	// Before any await, so a sync that starts from here on cannot send this row
+	if (!holdFromSync(invoice.offline_id)) {
+		showWarning(__("This invoice is already being edited"));
+		return;
+	}
+
+	let editStarted = false;
 	try {
-		if (offlineStore.isSyncing) {
-			showWarning(__("Cannot edit while syncing — please wait for sync to finish."));
-			return;
-		}
-
-		if (invoice.data?.was_printed) {
-			uiStore.showError(
-				__("Cannot edit printed invoice"),
-				__(
-					"A receipt for this invoice was already printed — the customer may have a physical copy. Use Return Invoice to issue a credit note instead.",
-				),
-			);
-			return;
-		}
-
 		await offlineStore.loadPendingInvoices();
+
+		const row = offlineStore.pendingInvoicesList.find(
+			(candidate) => candidate.offline_id === invoice.offline_id,
+		);
+		if (!row || row.server_status) {
+			showWarning(__("This invoice can no longer be edited. It may already have reached the server"));
+			return;
+		}
+
 		if (getDependentRows(offlineStore.pendingInvoicesList, invoice.offline_id).length > 0) {
 			showWarning(__("A return or a shift close depends on this invoice, so it cannot be edited"));
 			return;
 		}
 
+		// The cart may hold another queued sale being edited. No await from here on, so the
+		// cart is never seen empty.
+		endOfflineEdit();
 		cartStore.clearCart();
 
-		const invoiceData = invoice.data;
+		const invoiceData = row.data;
 
 		if (invoiceData.customer) {
 			cartStore.setCustomer(invoiceData.customer);
@@ -3052,13 +3099,16 @@ async function handleEditOfflineInvoice(invoice) {
 		// Record the edit source so the next checkout can supersede the
 		// original queue row (preserving audit trail instead of deleting it).
 		editingOfflineContext = {
-			originalQueueId: invoice.id,
-			originalOfflineId: invoice.offline_id,
+			originalQueueId: row.id,
+			originalOfflineId: row.offline_id,
 		};
+		editStarted = true;
 
 		showSuccess(__("Invoice loaded to cart for editing"));
 	} catch (error) {
 		log.error("Error editing offline invoice:", error);
+	} finally {
+		if (!editStarted) releaseFromSync(invoice.offline_id);
 	}
 }
 
