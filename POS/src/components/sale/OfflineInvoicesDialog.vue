@@ -66,6 +66,9 @@
 										{{ __('Printed') }}
 									</span>
 								</div>
+								<p v-if="invoice.error" class="mt-1 text-xs text-red-700 break-words">
+									{{ invoice.error }}
+								</p>
 								<div class="mt-2 flex flex-col gap-1 text-xs sm:text-sm text-gray-600">
 									<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
 										<span>{{ __('{0} items', [invoice.data.items?.length || 0]) }}</span>

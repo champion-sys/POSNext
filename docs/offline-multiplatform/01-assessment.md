@@ -2,6 +2,8 @@
 
 تاريخ الفحص: 2026-11-06. الفرع: `feature/bluetooth-printer`.
 
+الأدلة وأرقام الأسطر تخص commit `ecc8151`، قبل بدء التنفيذ. ما أُصلح بعدها مسجل في [05-roadmap.md](05-roadmap.md#حالة-المرحلة-0).
+
 ## 1. ما هو التطبيق
 
 POS Next نقطة بيع مبنية فوق ERPNext، وهو تطبيق Frappe يضم خلفية Python وواجهة Vue منفصلة.
@@ -15,7 +17,7 @@ POS Next نقطة بيع مبنية فوق ERPNext، وهو تطبيق Frappe ي
 | الطباعة | Web Bluetooth، WebUSB، QZ Tray، نافذة `/printview` | |
 | النشر | PWA يُخدم من `/pos`، وأصوله من `/assets/pos_next/pos/` | |
 
-البيئة الفعلية على هذا الخادم Frappe 16.54 وERPNext 16.53، بينما يذكر `README.md` الإصدار 15. يجب تثبيت الإصدار المستهدف قبل بدء التنفيذ.
+البيئة الفعلية على هذا الخادم Frappe 16.54 وERPNext 16.53، بينما يذكر `README.md` الإصدار 15. المرجع المعتمد هو خط `version-16` في مستودع `champion-sys`.
 
 ### أكبر الملفات التي ستتأثر
 
@@ -76,9 +78,9 @@ flowchart TD
 | F-03 | فشل الشبكة أثناء الدفع أونلاين لا يحفظ الفاتورة في الطابور، بل يعرض خطأ فقط. | [POSSale.vue:2351](../../POS/src/pages/POSSale.vue#L2351)، [POSSale.vue:2414](../../POS/src/pages/POSSale.vue#L2414) | الكاشير عالق والعميل ينتظر حتى يكتشف النظام الانقطاع، وهو يحتاج فشلين متتاليين في فحص الاتصال. |
 | F-04 | بيانات الفاتورة أوفلاين أقل من الأونلاين. ينقصها `discount_amount` و`coupon_code` و`pos_order_type` و`pos_table_no` وفصل رصيد العميل. | قارن [POSSale.vue:2242](../../POS/src/pages/POSSale.vue#L2242) مع [useInvoice.js:1053](../../POS/src/composables/useInvoice.js#L1053) | قد يعيد الخادم حساب إجمالي أعلى مما دفعه العميل فتظهر الفاتورة بمبلغ مستحق غير حقيقي، ولا يُحتسب استخدام الكوبون. |
 | F-05 | وقت البيع لا يُرسل، فلا يوجد `posting_date` ولا `posting_time`. وقت الطابور موجود محليًا فقط. | [POSSale.vue:2242](../../POS/src/pages/POSSale.vue#L2242) | فاتورة بيعت يوم الأحد وتزامنت الاثنين تُسجل بتاريخ الاثنين، وهذا يغير الفترة الضريبية والتقارير. |
-| F-06 | التخزين غير مضمون البقاء. لا يوجد طلب `navigator.storage.persist()`، وبيانات الإيصال في `sessionStorage`. | بحث في `POS/src` بلا نتائج، و[offlineReceiptCache.js:14](../../POS/src/utils/offline/offlineReceiptCache.js#L14) | قد يحذف المتصفح IndexedDB عند ضغط المساحة، ومعها فواتير غير مرفوعة. |
+| F-06 | التخزين غير مضمون البقاء. لا يوجد طلب `navigator.storage.persist()`. أما الإيصال فمحفوظ في `sessionStorage`، وله مسار استرجاع من الطابور في [printInvoice.js:112](../../POS/src/utils/printInvoice.js#L112). | بحث في `POS/src` بلا نتائج | قد يحذف المتصفح IndexedDB عند ضغط المساحة، ومعها فواتير غير مرفوعة. |
 | F-07 | قواعد الضرائب غير مخزنة. عند فشل التحميل تصبح القائمة فارغة دون تنبيه. | [useInvoice.js:1301](../../POS/src/composables/useInvoice.js#L1301)، [useInvoice.js:1323](../../POS/src/composables/useInvoice.js#L1323) | بعد إعادة تحميل الصفحة أوفلاين قد تُحسب الفاتورة بلا ضريبة، فيأتي الإيصال خاطئًا ويظهر فرق في الخادم. |
-| F-08 | نطاق Service Worker هو `/assets/pos_next/pos/` بينما الصفحة في `/pos`، فهي خارج نطاقه. لا يوجد ترويسة `Service-Worker-Allowed`. | [vite.config.js:81](../../POS/vite.config.js#L81)، [vite.config.js:113](../../POS/vite.config.js#L113) | البدء أو إعادة التحميل بلا إنترنت لا يُتوقع أن ينجح. يحتاج تأكيدًا في متصفح حقيقي. |
+| F-08 | نطاق Service Worker هو `/assets/pos_next/pos/` بينما الصفحة في `/pos`، فهي خارج نطاقه. لا يوجد ترويسة `Service-Worker-Allowed`. | [vite.config.js:81](../../POS/vite.config.js#L81)، [vite.config.js:113](../../POS/vite.config.js#L113) | البدء أو إعادة التحميل بلا إنترنت لا يُتوقع أن ينجح. يحتاج تأكيدًا في متصفح حقيقي. المشروع الأصل BrainWise أصلح المشكلة نفسها بالتسجيل من `/pos-sw.js` ونطاق `/pos`. |
 | F-09 | المزامنة لا تعمل إلا عند الانتقال من أوفلاين إلى أونلاين أو بالزر اليدوي. لا مزامنة دورية ولا عند فتح التطبيق. | [posSync.js:80](../../POS/src/stores/posSync.js#L80)، [POSSale.vue:2904](../../POS/src/pages/POSSale.vue#L2904) | فاتورة فشلت والشبكة تعمل تبقى معلقة بلا حد. فواتير يوم أمس لا تُرسل عند فتح الجهاز صباحًا متصلًا. |
 | F-10 | إقفال الوردية لا يتحقق من وجود فواتير معلقة. | لا ذكر لها في `ShiftClosingDialog.vue` و`shifts.py` و`pos_closing_shift.py` | الفواتير المتأخرة تدخل وردية مقفلة، فلا تطابق أرقام الإقفال النقد الفعلي. |
 | F-11 | `update_invoice` يأخذ `doctype` من العميل ويحفظ بـ `ignore_permissions`، ولا يتحقق من صلاحية المستخدم على POS Profile. `submit_invoice` يرحّل بالصلاحية نفسها. | [invoices.py:693](../../pos_next/api/invoices.py#L693)، [invoices.py:977](../../pos_next/api/invoices.py#L977)، [invoices.py:1418](../../pos_next/api/invoices.py#L1418) | أي مستخدم مسجل يستطيع استدعاء الواجهة. نطاق الأثر محدود بالمستندات التي تملك `set_missing_values`، وهذا يشمل مستندات مبيعات ومشتريات، وليس كل DocType. |

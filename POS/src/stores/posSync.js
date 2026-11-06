@@ -26,12 +26,22 @@ import {
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
+import { sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
 
 const log = logger.create('POSSync')
+
+/** Safety net: queued invoices go out on this interval whatever else happens */
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000
+
+/** Wait for the app to settle before the sync on opening */
+const STARTUP_SYNC_DELAY_MS = 5000
+
+const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
 
 export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
@@ -80,11 +90,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Auto-sync when transitioning from offline to online
 		if (wasOffline && !nowOffline) {
 			log.info('Transition to online detected, auto-syncing pending invoices')
-			try {
-				await syncPending()
-			} catch (error) {
-				log.error('Auto-sync failed on reconnection', error)
-			}
+			await autoSync()
 		}
 
 		wasOffline = nowOffline
@@ -107,8 +113,74 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	async function updatePendingCount() {
 		try {
 			pendingInvoicesCount.value = await offlineWorker.getOfflineInvoiceCount()
+			await refreshQueuedStock()
 		} catch (error) {
 			log.error('Failed to get pending invoice count', error)
+		}
+	}
+
+	/**
+	 * Hold stock for queued sales, so the same units cannot be sold twice
+	 */
+	async function refreshQueuedStock() {
+		const stockStore = useStockStore()
+		stockStore.setQueued(sumQueuedStock(await getPending(), stockStore.warehouse))
+	}
+
+	/**
+	 * Ask the browser not to evict the queue under storage pressure
+	 * @returns {Promise<boolean>} Whether the storage is protected
+	 */
+	async function ensurePersistentStorage() {
+		const storage = typeof navigator !== "undefined" ? navigator.storage : null
+		if (!storage?.persist) return false
+		try {
+			return (await storage.persisted()) || (await storage.persist())
+		} catch (error) {
+			log.warn('Could not request persistent storage', error)
+			return false
+		}
+	}
+
+	/**
+	 * Warn once per session when queued sales sit in evictable storage
+	 */
+	async function warnIfStorageNotPersistent() {
+		if (await ensurePersistentStorage()) return
+		if (sessionStorage.getItem(STORAGE_WARNING_KEY)) return
+		sessionStorage.setItem(STORAGE_WARNING_KEY, "1")
+		showWarning(__("This browser may clear offline invoices when storage is low. Connect soon to sync them."))
+	}
+
+	/**
+	 * Sync in the background. Web Locks keeps it to one tab, and the server
+	 * still dedupes if a browser lacks them.
+	 */
+	async function autoSync() {
+		const { session } = await import("@/data/session")
+		if (!session.isLoggedIn || isOffline.value || isSyncing.value) return
+
+		await updatePendingCount()
+		if (pendingInvoicesCount.value === 0) return
+
+		const run = async () => {
+			try {
+				await syncPending()
+			} catch (error) {
+				log.error('Auto-sync failed', error)
+			}
+		}
+
+		if (navigator.locks) {
+			await navigator.locks.request(
+				"pos_next_invoice_sync",
+				{ ifAvailable: true },
+				async (lock) => {
+					if (lock) await run()
+				},
+			)
+		} else {
+			await run()
 		}
 	}
 
@@ -123,8 +195,17 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		isSyncing.value = true
 		try {
+			const stockStore = useStockStore()
+			const soldCodes = Array.from(stockStore.queued.keys())
 			const result = await syncOfflineInvoices()
 			await updatePendingCount()
+
+			// The server's numbers now include these sales
+			if (result.success > 0 && soldCodes.length > 0) {
+				stockStore.refresh(soldCodes, stockStore.warehouse).catch((error) => {
+					log.warn('Stock refresh after sync failed', error)
+				})
+			}
 			return result
 		} catch (error) {
 			log.error('Failed to sync invoices', error)
@@ -177,11 +258,14 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/**
 	 * Save an invoice offline for later sync
 	 * @param {Object} invoiceData - Invoice data to save
+	 * @param {Object} [options]
+	 * @param {number} [options.supersedesId] - Queue row this invoice replaces
 	 */
-	async function saveInvoiceOffline(invoiceData) {
+	async function saveInvoiceOffline(invoiceData, options = {}) {
 		try {
-			const result = await offlineWorker.saveOfflineInvoice(invoiceData)
+			const result = await offlineWorker.saveOfflineInvoice(invoiceData, options)
 			await updatePendingCount()
+			warnIfStorageNotPersistent()
 			log.info('Invoice saved offline successfully')
 			return result || { success: true }
 		} catch (error) {
@@ -397,6 +481,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	// Initialize pending count on store creation
 	updatePendingCount()
+	ensurePersistentStorage()
+
+	// Yesterday's queue must not wait for a reconnect that never comes
+	setTimeout(autoSync, STARTUP_SYNC_DELAY_MS)
+	setInterval(autoSync, AUTO_SYNC_INTERVAL_MS)
 
 	// =========================================================================
 	// EXPORTS

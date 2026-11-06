@@ -36,6 +36,7 @@ export const useStockStore = defineStore('stock', () => {
 	// ========================================================================
 	const server = ref(new Map())    // item_code -> { qty, warehouse, ts }
 	const reserved = ref(new Map())  // item_code -> qty
+	const queued = ref(new Map())    // item_code -> qty sold offline, not yet synced
 	const warehouse = ref(null)      // Current warehouse
 	const refreshing = ref(false)    // Loading state
 
@@ -45,13 +46,16 @@ export const useStockStore = defineStore('stock', () => {
 	const getDisplayStock = (itemCode) => {
 		// Always return the actual calculated stock (can be negative)
 		// Display is independent of whether negative stock sales are allowed
-		return (server.value.get(itemCode)?.qty || 0) - (reserved.value.get(itemCode) || 0)
+		return (server.value.get(itemCode)?.qty || 0)
+			- (reserved.value.get(itemCode) || 0)
+			- (queued.value.get(itemCode) || 0)
 	}
 
 	const getStockInfo = (itemCode) => ({
 		code: itemCode,
 		server: server.value.get(itemCode)?.qty || 0,
 		reserved: reserved.value.get(itemCode) || 0,
+		queued: queued.value.get(itemCode) || 0,
 		display: getDisplayStock(itemCode),
 		warehouse: server.value.get(itemCode)?.warehouse || warehouse.value
 	})
@@ -172,6 +176,7 @@ export const useStockStore = defineStore('stock', () => {
 		// State
 		server,
 		reserved,
+		queued,
 		warehouse,
 		refreshing,
 
@@ -185,7 +190,8 @@ export const useStockStore = defineStore('stock', () => {
 		update,
 		refresh,
 		setWarehouse: (targetWarehouse) => warehouse.value = targetWarehouse,
+		setQueued: (totals) => { queued.value = totals },
 		clear: () => reserved.value.clear(),
-		reset: () => { server.value.clear(); reserved.value.clear() }
+		reset: () => { server.value.clear(); reserved.value.clear(); queued.value = new Map() }
 	}
 })

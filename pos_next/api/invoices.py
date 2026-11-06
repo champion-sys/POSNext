@@ -50,6 +50,69 @@ except Exception:  # pragma: no cover - ERPNext not installed in some environmen
 # ==========================================
 
 
+ALLOWED_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice", "Sales Order")
+
+
+def _assert_invoice_write_access(doctype, pos_profile):
+    """Reject writes outside the POS invoice doctypes or the user's POS Profiles.
+
+    update_invoice and submit_invoice save with ignore_permissions, so this is
+    the only authorization on those paths. The doctype comes from the client.
+    """
+    if doctype not in ALLOWED_INVOICE_DOCTYPES:
+        frappe.throw(
+            _("Document type {0} is not allowed here").format(doctype),
+            frappe.PermissionError,
+        )
+
+    if not pos_profile:
+        frappe.throw(_("POS Profile is required"), frappe.PermissionError)
+
+    is_assigned = frappe.db.exists(
+        "POS Profile User", {"parent": pos_profile, "user": frappe.session.user}
+    )
+    if not is_assigned and not frappe.has_permission("POS Profile", "write"):
+        frappe.throw(
+            _("You do not have access to POS Profile {0}").format(pos_profile),
+            frappe.PermissionError,
+        )
+
+
+def _apply_write_off(invoice_doc, write_off_amount, pos_profile):
+    """Set write-off fields from the POS Profile.
+
+    Validation errors propagate so an over-limit amount fails the invoice.
+    Anything else is logged and the invoice continues without the write-off.
+    """
+    try:
+        pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+        write_off_account = pos_profile_doc.write_off_account
+        write_off_cost_center = pos_profile_doc.write_off_cost_center
+        write_off_limit = flt(pos_profile_doc.write_off_limit or 0)
+
+        # Validate write-off amount is within limit
+        if write_off_limit > 0 and write_off_amount > write_off_limit:
+            frappe.throw(
+                _("Write-off amount {0} exceeds limit {1}").format(
+                    write_off_amount, write_off_limit
+                )
+            )
+
+        # Set write-off fields on invoice
+        if write_off_account:
+            invoice_doc.write_off_account = write_off_account
+            invoice_doc.write_off_cost_center = write_off_cost_center
+            invoice_doc.write_off_amount = write_off_amount
+            invoice_doc.base_write_off_amount = write_off_amount  # Assuming same currency
+    except frappe.ValidationError:
+        raise
+    except Exception as e:
+        frappe.log_error(
+            f"Failed to apply write-off from POS Profile {pos_profile}: {e}",
+            "POS Write-Off Error"
+        )
+
+
 def calculate_price_list_rate(item_rate, discount_pct, current_price_list_rate):
     """
     Calculate price_list_rate from discounted rate and discount percentage.
@@ -679,6 +742,8 @@ def update_invoice(data):
                 invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
             doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
 
+        _assert_invoice_write_access(doctype, pos_profile)
+
         # Ensure the document type is set
         data.setdefault("doctype", doctype)
 
@@ -688,6 +753,7 @@ def update_invoice(data):
         # Create or update invoice
         if data.get("name"):
             invoice_doc = frappe.get_doc(doctype, data.get("name"))
+            _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"))
             invoice_doc.update(data)
         else:
             invoice_doc = frappe.get_doc(data)
@@ -1132,6 +1198,7 @@ def _complete_offline_sync(sync_record_name, invoice_name):
         sync_doc.status = "Synced"
         sync_doc.synced_at = frappe.utils.now_datetime()
         sync_doc.flags.ignore_permissions = True
+        sync_doc.flags.ignore_links = True  # The name may belong to a POS Invoice
         sync_doc.save()
     except Exception as error:
         frappe.log_error(
@@ -1262,6 +1329,8 @@ def submit_invoice(invoice=None, data=None):
             invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
         doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
 
+    _assert_invoice_write_access(doctype, pos_profile)
+
     # Normalize pricing_rules before processing
     standardize_pricing_rules(invoice.get("items"))
 
@@ -1307,6 +1376,7 @@ def submit_invoice(invoice=None, data=None):
             invoice_doc = frappe.get_doc(doctype, invoice_name)
         else:
             invoice_doc = frappe.get_doc(doctype, invoice_name)
+            _assert_invoice_write_access(doctype, invoice_doc.get("pos_profile"))
             invoice_doc.update(invoice)
 
         # Ensure update_stock is set for Sales/POS Invoice
@@ -1375,33 +1445,8 @@ def submit_invoice(invoice=None, data=None):
         # Handle write-off amount if provided
         write_off_amount = flt(data.get("write_off_amount") or invoice.get("write_off_amount") or 0)
         if write_off_amount > 0 and doctype == "Sales Invoice":
-            # Get write-off account and cost center from POS Profile
             if pos_profile:
-                try:
-                    pos_profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-                    write_off_account = pos_profile_doc.write_off_account
-                    write_off_cost_center = pos_profile_doc.write_off_cost_center
-                    write_off_limit = flt(pos_profile_doc.write_off_limit or 0)
-
-                    # Validate write-off amount is within limit
-                    if write_off_limit > 0 and write_off_amount > write_off_limit:
-                        frappe.throw(
-                            _("Write-off amount {0} exceeds limit {1}").format(
-                                write_off_amount, write_off_limit
-                            )
-                        )
-
-                    # Set write-off fields on invoice
-                    if write_off_account:
-                        invoice_doc.write_off_account = write_off_account
-                        invoice_doc.write_off_cost_center = write_off_cost_center
-                        invoice_doc.write_off_amount = write_off_amount
-                        invoice_doc.base_write_off_amount = write_off_amount  # Assuming same currency
-                except Exception as e:
-                    frappe.log_error(
-                        f"Failed to apply write-off from POS Profile {pos_profile}: {e}",
-                        "POS Write-Off Error"
-                    )
+                _apply_write_off(invoice_doc, write_off_amount, pos_profile)
 
         # Validate stock availability before submission
         # _validate_stock_on_invoice checks _should_block internally
@@ -1477,22 +1522,10 @@ def submit_invoice(invoice=None, data=None):
         if sync_record_name:
             _complete_offline_sync(sync_record_name, invoice_doc.name)
 
-        # Handle credit redemption after successful submission
+        # Redeeming credit is part of the payment, so a failure rolls back the invoice
         if redeemed_customer_credit and customer_credit_dict:
-            try:
-                from pos_next.api.credit_sales import redeem_customer_credit
-                redeem_customer_credit(invoice_doc.name, customer_credit_dict)
-            except Exception as credit_error:
-                frappe.log_error(
-                    title="Credit Redemption Error",
-                    message=f"Invoice: {invoice_doc.name}, Error: {str(credit_error)}\n{frappe.get_traceback()}"
-                )
-                # Don't fail the entire transaction, just log the error
-                frappe.msgprint(
-                    _("Invoice submitted successfully but credit redemption failed. Please contact administrator."),
-                    alert=True,
-                    indicator="orange"
-                )
+            from pos_next.api.credit_sales import redeem_customer_credit
+            redeem_customer_credit(invoice_doc.name, customer_credit_dict)
 
         # Log manual rate edits for audit trail (only after successful submission)
         if doctype == DOCTYPE_SALES_INVOICE:

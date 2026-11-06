@@ -1,5 +1,5 @@
 import { call } from "@/utils/apiWrapper"
-import { isOffline } from "@/utils/offline"
+import { getSetting, isOffline, setSetting } from "@/utils/offline"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { updateItemBatchSerialData } from "@/utils/offline/items"
 import { performanceConfig } from "@/utils/performanceConfig"
@@ -2087,14 +2087,10 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			log.info(`Loaded ${itemGroups.value.length} item groups with hierarchy`)
 
 			// Cache profile data for offline use (survives component remount)
-			try {
-				sessionStorage.setItem(`pos_profile_data:${profile}`, JSON.stringify({
-					profileItemGroups: profileItemGroups.value,
-					itemGroups: itemGroups.value,
-				}))
-			} catch (e) {
-				// sessionStorage might be full or unavailable
-			}
+			setSetting(`pos_profile_data:${profile}`, JSON.parse(JSON.stringify({
+				profileItemGroups: profileItemGroups.value,
+				itemGroups: itemGroups.value,
+			})))
 
 			// Set up real-time listener
 			posProfileUpdateCleanup = onPosProfileUpdate(async (updateData) => {
@@ -2114,12 +2110,11 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			// Offline fallback: restore item groups from session cache
 			// This keeps group tabs visible after language change while offline
 			try {
-				const cached = sessionStorage.getItem(`pos_profile_data:${profile}`)
+				const cached = await getSetting(`pos_profile_data:${profile}`, null)
 				if (cached) {
-					const parsed = JSON.parse(cached)
-					profileItemGroups.value = parsed.profileItemGroups || []
-					itemGroups.value = parsed.itemGroups || []
-					log.info(`Restored ${itemGroups.value.length} item groups from session cache (offline)`)
+					profileItemGroups.value = cached.profileItemGroups || []
+					itemGroups.value = cached.itemGroups || []
+					log.info(`Restored ${itemGroups.value.length} item groups from cache (offline)`)
 
 					// Still load items from IndexedDB cache
 					if (autoLoadItems) {

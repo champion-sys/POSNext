@@ -118,6 +118,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		recalculateItem,
 		rebuildIncrementalCache,
 		formatItemsForSubmission,
+		buildInvoicePayload,
+		getCheckoutOfflineId,
 	} = useInvoice()
 
 	const offersStore = usePOSOffersStore()
@@ -328,6 +330,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			writeOffAmount.value = 0
 		}
 		return result
+	}
+
+	function buildCheckoutPayload() {
+		return buildInvoicePayload(targetDoctype.value, deliveryDate.value)
 	}
 
 	async function createSalesOrder() {
@@ -1940,6 +1946,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		applyOffersResource,
 		buildOfferEvaluationPayload,
 		formatItemsForSubmission,
+		buildCheckoutPayload,
+		getCheckoutOfflineId,
 
 		// Sales Order feature
 		targetDoctype,

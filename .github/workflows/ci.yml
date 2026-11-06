@@ -100,10 +100,30 @@ jobs:
         env:
           CI: 'Yes'
 
-      # - name: Run Tests
-      #   working-directory: /home/runner/frappe-bench
-      #   run: |
-      #     bench --site test_site set-config allow_tests true
-      #     bench --site test_site run-tests --app pos_next
-      #   env:
-      #     TYPE: server
+      - name: Run Tests
+        working-directory: /home/runner/frappe-bench
+        run: |
+          bench --site test_site set-config allow_tests true
+          bench --site test_site run-tests --app pos_next
+        env:
+          TYPE: server
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        working-directory: POS
+        run: yarn install
+
+      - name: Run Tests
+        working-directory: POS
+        run: yarn test:run

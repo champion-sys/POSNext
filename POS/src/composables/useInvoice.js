@@ -1,6 +1,8 @@
 import { createResource } from "frappe-ui"
 import { computed, ref, toRaw } from "vue"
-import { isOffline, getCachedItem } from "@/utils/offline"
+import { isOffline, getCachedItem, getSetting, setSetting } from "@/utils/offline"
+import { generateOfflineId } from "@/utils/offline/uuid"
+import { getSaleSignature, supportsOfflineId } from "@/utils/offline/invoicePayload"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
@@ -21,6 +23,9 @@ const submitMutex = new CoalescingMutex({
 export function useInvoice() {
 	// Serial Number Store for returning serials when items are removed
 	const serialStore = useSerialNumberStore()
+
+	// Idempotency key of the sale in progress, kept across retries
+	let checkoutIdentity = null
 
 	// State
 	const invoiceItems = ref([])
@@ -976,6 +981,71 @@ export function useInvoice() {
 		}
 	}
 
+	/**
+	 * Single source of the invoice payload, shared by the online and offline
+	 * checkout paths so a queued invoice carries the same fields as a live one.
+	 * @param {string} targetDoctype - Sales Invoice, POS Invoice or Sales Order
+	 * @param {string|null} deliveryDate - Delivery date for Sales Orders
+	 * @returns {{invoiceData: Object, redeemedCustomerCredit: number, customerCreditDict: Array}}
+	 */
+	function buildInvoicePayload(targetDoctype = "Sales Invoice", deliveryDate = null) {
+		// Use toRaw() to ensure we get current, non-reactive values (prevents stale cached quantities)
+		const rawItems = toRaw(invoiceItems.value)
+		const rawPayments = toRaw(payments.value)
+		const rawSalesTeam = toRaw(salesTeam.value)
+		const { invoicePayments, redeemedCustomerCredit, customerCreditDict } =
+			buildCustomerCreditPayload(rawPayments)
+
+		const invoiceData = {
+			doctype: targetDoctype,
+			pos_profile: posProfile.value,
+			posa_pos_opening_shift: posOpeningShift.value,
+			customer: customer.value?.name || customer.value,
+			items: formatItemsForSubmission(rawItems),
+			payments: invoicePayments,
+			discount_amount: additionalDiscount.value || 0,
+			coupon_code: couponCode.value,
+			remarks: invoiceRemarks.value || "",
+			is_pos: 1,
+			update_stock: 1, // Critical: Ensures stock is updated
+		}
+
+		if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posOrderType.value) {
+			invoiceData.pos_order_type = posOrderType.value
+		}
+
+		if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posTableNo.value) {
+			invoiceData.pos_table_no = posTableNo.value
+		}
+
+		if (targetDoctype === "Sales Order" && deliveryDate) {
+			invoiceData.delivery_date = deliveryDate
+		}
+
+		// Add sales_team if provided
+		if (rawSalesTeam && rawSalesTeam.length > 0) {
+			invoiceData.sales_team = rawSalesTeam.map((member) => ({
+				sales_person: member.sales_person,
+				allocated_percentage: member.allocated_percentage || 0,
+			}))
+		}
+
+		return { invoiceData, redeemedCustomerCredit, customerCreditDict }
+	}
+
+	/**
+	 * Stable id for this sale. A retry of the same cart reuses it, so the server
+	 * returns the existing invoice when a previous attempt succeeded but its
+	 * response was lost. A changed cart counts as a different sale.
+	 */
+	function getCheckoutOfflineId(invoiceData) {
+		const signature = getSaleSignature(invoiceData)
+		if (checkoutIdentity?.signature !== signature) {
+			checkoutIdentity = { signature, offlineId: generateOfflineId() }
+		}
+		return checkoutIdentity.offlineId
+	}
+
 	async function saveDraft(targetDoctype = "Sales Invoice") {
 		/**
 		 * Save invoice as draft (Step 1)
@@ -1042,47 +1112,8 @@ export function useInvoice() {
 
 			try {
 				// Step 1: Create invoice draft
-				// Use toRaw() to ensure we get current, non-reactive values (prevents stale cached quantities)
-				const rawItems = toRaw(invoiceItems.value)
-				// console.log("Submitting invoice with items:", rawItems)
-				const rawPayments = toRaw(payments.value)
-				const rawSalesTeam = toRaw(salesTeam.value)
-				const { invoicePayments, redeemedCustomerCredit, customerCreditDict } =
-					buildCustomerCreditPayload(rawPayments)
-
-				const invoiceData = {
-					doctype: targetDoctype,
-					pos_profile: posProfile.value,
-					posa_pos_opening_shift: posOpeningShift.value,
-					customer: customer.value?.name || customer.value,
-					items: formatItemsForSubmission(rawItems),
-					payments: invoicePayments,
-					discount_amount: additionalDiscount.value || 0,
-					coupon_code: couponCode.value,
-					remarks: invoiceRemarks.value || "",
-					is_pos: 1,
-					update_stock: 1, // Critical: Ensures stock is updated
-				}
-
-				if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posOrderType.value) {
-					invoiceData.pos_order_type = posOrderType.value
-				}
-
-				if (["Sales Invoice", "POS Invoice"].includes(targetDoctype) && posTableNo.value) {
-					invoiceData.pos_table_no = posTableNo.value
-				}
-
-				if (targetDoctype === "Sales Order" && deliveryDate) {
-					invoiceData.delivery_date = deliveryDate
-				}
-
-				// Add sales_team if provided
-				if (rawSalesTeam && rawSalesTeam.length > 0) {
-					invoiceData.sales_team = rawSalesTeam.map((member) => ({
-						sales_person: member.sales_person,
-						allocated_percentage: member.allocated_percentage || 0,
-					}))
-				}
+				const { invoiceData, redeemedCustomerCredit, customerCreditDict } =
+					buildInvoicePayload(targetDoctype, deliveryDate)
 
 				const draftInvoice = await updateInvoiceResource.submit({
 					data: invoiceData,
@@ -1119,6 +1150,10 @@ export function useInvoice() {
 					change_amount:
 						remainingAmount.value < 0 ? Math.abs(remainingAmount.value) : 0,
 					write_off_amount: writeOffAmount || 0,
+				}
+
+				if (supportsOfflineId(targetDoctype)) {
+					submitData.offline_id = getCheckoutOfflineId(invoiceData)
 				}
 
 				if (redeemedCustomerCredit > 0 && customerCreditDict.length > 0) {
@@ -1240,6 +1275,7 @@ export function useInvoice() {
 	 * If a POS Profile is active and has a default customer, it will be pre-selected.
 	 */
 	function resetInvoice() {
+		checkoutIdentity = null
 		invoiceItems.value = []
 		payments.value = []
 		additionalDiscount.value = 0
@@ -1302,9 +1338,20 @@ export function useInvoice() {
 		/**
 		 * Load tax rules from POS Profile and tax inclusive setting from POS Settings
 		 */
+		const cacheKey = `tax_rules_${profileName}`
+
 		try {
-			const result = await getTaxesResource.submit({ pos_profile: profileName })
-			taxRules.value = result?.data || result || []
+			try {
+				const result = await getTaxesResource.submit({ pos_profile: profileName })
+				taxRules.value = result?.data || result || []
+				await setSetting(cacheKey, toRaw(taxRules.value))
+			} catch (error) {
+				// A failed load must not silently sell without tax
+				const cachedRules = await getSetting(cacheKey, null)
+				if (!cachedRules) throw error
+				log.warn("Using cached tax rules", { profile: profileName })
+				taxRules.value = cachedRules
+			}
 
 			// Load tax inclusive setting from POS Settings if provided
 			if (posSettings && posSettings.tax_inclusive !== undefined) {
@@ -1408,6 +1455,8 @@ export function useInvoice() {
 		recalculateItem,
 		rebuildIncrementalCache,
 		formatItemsForSubmission,
+		buildInvoicePayload,
+		getCheckoutOfflineId,
 		resolveUomPricing,
 		setPosOrderType,
 		setPosTableNo,

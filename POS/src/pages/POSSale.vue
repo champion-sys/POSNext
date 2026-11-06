@@ -1101,6 +1101,11 @@ import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
+import {
+	getShiftCloseDecision,
+	isNetworkFailure,
+	withOfflinePosting,
+} from "@/utils/offline/invoicePayload";
 import { cacheInvoiceHistory, getCachedInvoiceHistory } from "@/utils/offline/sync";
 import {
 	hydrateLocalOnlyInvoice,
@@ -2189,9 +2194,125 @@ async function handleErrorRetry() {
 	}
 }
 
+/**
+ * Queue the current cart and finish the sale without the server.
+ * @param {Object} paymentData - Payment dialog result
+ * @param {string} customerValue - Selected customer
+ * @param {string|null} draftIdToDelete - Local draft to remove after saving
+ * @param {string|null} offlineId - Keep the id of an online attempt, so the
+ *   server dedupes if that attempt actually succeeded
+ */
+async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, offlineId = null) {
+	// Same payload as the online path, so a queued invoice loses nothing
+	const { invoiceData: basePayload, redeemedCustomerCredit, customerCreditDict } =
+		cartStore.buildCheckoutPayload();
+
+	const invoiceData = {
+		...withOfflinePosting(basePayload),
+		company: shiftStore.profileCompany,
+		customer: customerValue || shiftStore.profileCustomer,
+		grand_total: cartStore.grandTotal,
+		total_tax: cartStore.totalTax,
+		total_discount: cartStore.totalDiscount,
+		write_off_amount: paymentData.write_off_amount || 0,
+		change_amount: paymentData.change_amount || 0,
+		edited_from: editingOfflineContext?.originalOfflineId || null,
+	};
+
+	if (offlineId) {
+		invoiceData.offline_id = offlineId;
+	}
+
+	if (redeemedCustomerCredit > 0) {
+		invoiceData.redeemed_customer_credit = redeemedCustomerCredit;
+		invoiceData.customer_credit_dict = customerCreditDict;
+	}
+
+	// Save to the offline queue first so we can use the worker's
+	// canonical pos_offline_<uuid> id as the cache key — keeping
+	// IndexedDB and sessionStorage aligned on a single identifier.
+	// An edit replaces its original row in the same transaction.
+	const saveResult = await offlineStore.saveInvoiceOffline(invoiceData, {
+		supersedesId: editingOfflineContext?.originalQueueId,
+	});
+	editingOfflineContext = null;
+	const offlineReceiptName =
+		saveResult?.offline_id || invoiceData.offline_id || `pos_offline_${Date.now()}`;
+
+	const paidAmount = paymentData.paid_amount ?? cartStore.grandTotal ?? 0;
+	const grandTotal = cartStore.grandTotal || 0;
+	const customerLabel =
+		cartStore.customer?.customer_name ||
+		cartStore.customer?.name ||
+		customerValue ||
+		shiftStore.profileCustomer;
+
+	const offlinePrintDoc = {
+		name: offlineReceiptName,
+		doctype: cartStore.targetDoctype || "Sales Invoice",
+		is_offline: true,
+		pos_profile: cartStore.posProfile,
+		owner: userName.value || undefined,
+		pos_order_type: invoiceData.pos_order_type || undefined,
+		posting_date: invoiceData.posting_date,
+		company: shiftStore.profileCompany || undefined,
+		customer_name: customerLabel,
+		items: preparedItems.map((item) => ({
+			...item,
+			quantity: item.qty ?? item.quantity,
+		})),
+		grand_total: grandTotal,
+		total_taxes_and_charges: cartStore.totalTax,
+		payments: invoiceData.payments,
+		paid_amount: paidAmount,
+		change_amount: paymentData.change_amount || 0,
+		outstanding_amount: Math.max(0, grandTotal - paidAmount),
+		status: Math.max(0, grandTotal - paidAmount) < 0.01 ? "Paid" : "Unpaid",
+		remarks: invoiceData.remarks,
+		docstatus: 0,
+	};
+	uiStore.setLastOfflinePrintDoc(offlinePrintDoc);
+	cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
+	uiStore.lastInvoiceName = offlineReceiptName;
+	uiStore.showPaymentDialog = false;
+	cartStore.clearCart();
+	// Reset cart hash after successful payment
+	previousCartHash = "";
+
+	// Delete draft after successful save
+	if (draftIdToDelete) {
+		draftsStore.deleteDraft(draftIdToDelete);
+	}
+
+	if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
+		try {
+			await handlePrintInvoice({ name: offlineReceiptName }, true);
+			showSuccess(
+				__("Invoice {0} saved offline and sent to printer — will sync when online", [
+					offlineReceiptName,
+				]),
+			);
+		} catch (error) {
+			log.error("Offline auto-print error:", error);
+			uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
+			showWarning(
+				__("Invoice {0} saved offline but print failed — open Print from the success dialog", [
+					offlineReceiptName,
+				]),
+			);
+		}
+	} else {
+		uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
+		showSuccess(__("Invoice saved offline. Will sync when online"));
+	}
+}
+
 async function handlePaymentCompleted(paymentData) {
+	let customerValue = null;
+	let draftIdToDelete = null;
+
 	try {
-		const customerValue = cartStore.customer?.name || cartStore.customer;
+		customerValue = cartStore.customer?.name || cartStore.customer;
 		if (!customerValue && !shiftStore.profileCustomer) {
 			showWarning(__("Please select a customer before proceeding"));
 			uiStore.showPaymentDialog = false;
@@ -2231,119 +2352,10 @@ async function handlePaymentCompleted(paymentData) {
 		}
 
 		// Delete draft if it exists (since we're submitting/saving invoice)
-		const draftIdToDelete = cartStore.currentDraftId;
+		draftIdToDelete = cartStore.currentDraftId;
 
 		if (offlineStore.isOffline) {
-			// Use the same item transformation as online flow for consistency
-			// This ensures rate, discount_percentage, discount_amount, and pricing_rules
-			// are all correctly formatted for ERPNext
-			const preparedItems = cartStore.formatItemsForSubmission(cartStore.invoiceItems);
-
-			const invoiceData = {
-				doctype: cartStore.targetDoctype || "Sales Invoice",
-				pos_profile: cartStore.posProfile,
-				posa_pos_opening_shift: cartStore.posOpeningShift,
-				company: shiftStore.profileCompany,
-				customer: customerValue || shiftStore.profileCustomer,
-				items: preparedItems,
-				payments: JSON.parse(JSON.stringify(cartStore.payments)),
-				sales_team: JSON.parse(JSON.stringify(cartStore.salesTeam || [])),
-				grand_total: cartStore.grandTotal,
-				total_tax: cartStore.totalTax,
-				total_discount: cartStore.totalDiscount,
-				write_off_amount: paymentData.write_off_amount || 0,
-				change_amount: paymentData.change_amount || 0,
-				remarks: paymentData.remarks || "",
-				edited_from: editingOfflineContext?.originalOfflineId || null,
-			};
-
-			// Save to the offline queue first so we can use the worker's
-			// canonical pos_offline_<uuid> id as the cache key — keeping
-			// IndexedDB and sessionStorage aligned on a single identifier.
-			const saveResult = await offlineStore.saveInvoiceOffline(invoiceData);
-			const offlineReceiptName =
-				saveResult?.offline_id || invoiceData.offline_id || `pos_offline_${Date.now()}`;
-
-			// If this checkout was an edit of a previously-queued invoice, mark
-			// the original row as superseded (keeps audit trail, excludes from sync).
-			if (editingOfflineContext?.originalQueueId) {
-				try {
-					await offlineWorker.supersedeOfflineInvoice(
-						editingOfflineContext.originalQueueId,
-						offlineReceiptName,
-					);
-				} catch (err) {
-					log.error("Failed to supersede original offline invoice:", err);
-				}
-				editingOfflineContext = null;
-			}
-
-			const paidAmount = paymentData.paid_amount ?? cartStore.grandTotal ?? 0;
-			const grandTotal = cartStore.grandTotal || 0;
-			const customerLabel =
-				cartStore.customer?.customer_name ||
-				cartStore.customer?.name ||
-				customerValue ||
-				shiftStore.profileCustomer;
-
-			const offlinePrintDoc = {
-				name: offlineReceiptName,
-				doctype: cartStore.targetDoctype || "Sales Invoice",
-				is_offline: true,
-				pos_profile: cartStore.posProfile,
-				owner: userName.value || undefined,
-				pos_order_type: invoiceData.pos_order_type || undefined,
-				posting_date: new Date().toISOString().slice(0, 10),
-				company: shiftStore.profileCompany || undefined,
-				customer_name: customerLabel,
-				items: preparedItems.map((item) => ({
-					...item,
-					quantity: item.qty ?? item.quantity,
-				})),
-				grand_total: grandTotal,
-				total_taxes_and_charges: cartStore.totalTax,
-				payments: invoiceData.payments,
-				paid_amount: paidAmount,
-				change_amount: paymentData.change_amount || 0,
-				outstanding_amount: Math.max(0, grandTotal - paidAmount),
-				status: Math.max(0, grandTotal - paidAmount) < 0.01 ? "Paid" : "Unpaid",
-				remarks: invoiceData.remarks,
-				docstatus: 0,
-			};
-			uiStore.setLastOfflinePrintDoc(offlinePrintDoc);
-			cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
-			uiStore.lastInvoiceName = offlineReceiptName;
-			uiStore.showPaymentDialog = false;
-			cartStore.clearCart();
-			// Reset cart hash after successful payment
-			previousCartHash = "";
-
-			// Delete draft after successful save
-			if (draftIdToDelete) {
-				draftsStore.deleteDraft(draftIdToDelete);
-			}
-
-			if (shiftStore.autoPrintEnabled || posSettingsStore.silentPrint) {
-				try {
-					await handlePrintInvoice({ name: offlineReceiptName }, true);
-					showSuccess(
-						__("Invoice {0} saved offline and sent to printer — will sync when online", [
-							offlineReceiptName,
-						]),
-					);
-				} catch (error) {
-					log.error("Offline auto-print error:", error);
-					uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
-					showWarning(
-						__("Invoice {0} saved offline but print failed — open Print from the success dialog", [
-							offlineReceiptName,
-						]),
-					);
-				}
-			} else {
-				uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
-				showSuccess(__("Invoice saved offline. Will sync when online"));
-			}
+			await saveCheckoutOffline(paymentData, customerValue, draftIdToDelete);
 		} else {
 			// Get item codes from cart before clearing
 			const soldItemCodes = cartStore.invoiceItems.map((item) => item.item_code);
@@ -2412,6 +2424,27 @@ async function handlePaymentCompleted(paymentData) {
 		}
 	} catch (error) {
 		log.error("Error submitting invoice:", error);
+
+		// The connection dropped during an online checkout: keep the sale. Queueing
+		// under the same id lets the server dedupe if the request did get through.
+		if (
+			!offlineStore.isOffline &&
+			!posSettingsStore.disableOfflineMode &&
+			isNetworkFailure(error)
+		) {
+			try {
+				await saveCheckoutOffline(
+					paymentData,
+					customerValue,
+					draftIdToDelete,
+					cartStore.getCheckoutOfflineId(cartStore.buildCheckoutPayload().invoiceData),
+				);
+				return;
+			} catch (queueError) {
+				log.error("Failed to queue invoice after a network failure:", queueError);
+			}
+		}
+
 		uiStore.showPaymentDialog = false;
 
 		// Checkout failed mid-edit — clear the edit context so the NEXT
@@ -2533,12 +2566,51 @@ async function handleOptionSelected(option) {
 	}
 }
 
-function handleCloseShift() {
+/**
+ * Closing totals only include invoices the server has, so try to send the queue
+ * first. Anything left behind would be missing from the shift's cash count.
+ * @returns {Promise<boolean>} Whether the shift may close
+ */
+async function ensureInvoicesSyncedBeforeClose() {
+	await offlineStore.updatePendingCount();
+	if (offlineStore.pendingInvoicesCount > 0 && !offlineStore.isOffline) {
+		try {
+			await offlineStore.syncAllPending();
+		} catch (error) {
+			log.error("Sync before closing the shift failed:", error);
+		}
+	}
+
+	await offlineStore.loadPendingInvoices();
+	const pending = offlineStore.pendingInvoicesList;
+	const decision = getShiftCloseDecision(pending, offlineStore.isOffline);
+
+	if (decision === "confirm") {
+		const confirmed = window.confirm(
+			__("{0} invoice(s) failed to sync and will not be in this shift's totals. Close the shift anyway?", [
+				pending.length,
+			]),
+		);
+		if (confirmed) return true;
+	}
+
+	if (decision !== "allow") {
+		showWarning(__("Sync {0} pending invoice(s) before closing the shift", [pending.length]));
+		uiStore.showOfflineInvoicesDialog = true;
+		return false;
+	}
+	return true;
+}
+
+async function handleCloseShift() {
 	if (!canAccessShiftActions.value) {
 		return;
 	}
 	if (!canCloseShift.value) {
 		showError(__("You do not have the required role to close this shift."));
+		return;
+	}
+	if (!(await ensureInvoicesSyncedBeforeClose())) {
 		return;
 	}
 
@@ -2588,10 +2660,14 @@ async function confirmLogout() {
 	session.logout.submit();
 }
 
-function logoutWithCloseShift() {
+async function logoutWithCloseShift() {
+	uiStore.showLogoutDialog = false;
+	if (!(await ensureInvoicesSyncedBeforeClose())) {
+		return;
+	}
+
 	// Open close shift dialog and remember to logout after closing
 	logoutAfterClose.value = true;
-	uiStore.showLogoutDialog = false;
 	uiStore.showCloseShiftDialog = true;
 }
 

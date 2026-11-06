@@ -3,6 +3,7 @@ import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
 import { db } from "./db"
 import { offlineState } from "./offlineState"
+import { classifySyncError, withOfflinePosting } from "./invoicePayload"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
 import { generateOfflineId } from "./uuid"
 
@@ -258,11 +259,10 @@ const markInvoiceSynced = async (id, serverInvoice, offlineId) => {
  */
 const handleSyncFailure = async (invoice, errorMessage) => {
 	const newRetryCount = (invoice.retry_count || 0) + 1
-	const updates = { retry_count: newRetryCount }
+	const updates = { retry_count: newRetryCount, error: errorMessage }
 
 	if (newRetryCount >= SYNC_CONFIG.MAX_RETRY_COUNT) {
 		updates.sync_failed = true
-		updates.error = errorMessage
 	}
 
 	await db.invoice_queue.update(invoice.id, updates)
@@ -295,8 +295,8 @@ const stringifyPricingRules = (value) => {
  * Items should already be formatted by formatItemsForSubmission() when saved.
  * This provides a safety net for legacy data.
  */
-const normalizeInvoiceForSync = (invoiceData, offlineId) => ({
-	...invoiceData,
+const normalizeInvoiceForSync = (invoiceData, offlineId, queuedAt) => ({
+	...withOfflinePosting(invoiceData, queuedAt),
 	offline_id: offlineId || invoiceData.offline_id,
 	items: invoiceData.items?.map((item) => ({
 		...item,
@@ -332,7 +332,7 @@ const syncInvoiceToServer = async (invoice, retryCount = 0) => {
 	}
 
 	// Prepare and submit
-	const invoiceData = normalizeInvoiceForSync(invoice.data, offlineId)
+	const invoiceData = normalizeInvoiceForSync(invoice.data, offlineId, invoice.timestamp)
 
 	try {
 		const response = await call("pos_next.api.invoices.submit_invoice", {
@@ -414,6 +414,13 @@ export const syncOfflineInvoices = async () => {
 					log.debug("Invoice is duplicate, marked as synced", { id: invoice.id })
 					result.skipped++
 					continue
+				}
+
+				// The connection or session failed, not this invoice. The rest of the
+				// queue would fail the same way, so stop without counting a failure.
+				if (classifySyncError(error) !== "invoice") {
+					log.warn("Sync paused", { id: invoice.id, reason: classifySyncError(error) })
+					break
 				}
 
 				// Handle genuine failure

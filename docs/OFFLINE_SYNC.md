@@ -9,10 +9,10 @@ POS Next supports fully offline operation, allowing cashiers to continue creatin
 ### Key Features
 
 - **Offline Invoice Creation**: Create invoices without network connectivity
-- **Automatic Sync**: Invoices sync automatically when back online
+- **Automatic Sync**: Invoices sync on reconnect, when the app opens, and every 5 minutes
 - **Deduplication**: Unique offline IDs prevent duplicate invoice creation
-- **Retry Logic**: Failed syncs are retried with exponential backoff
-- **Local Stock Updates**: Stock levels are tracked locally during offline operation
+- **Retry Logic**: Failed invoices are retried on each sync, and connection or session failures pause the queue
+- **Local Stock Updates**: Queued sales are held against the displayed stock until they sync
 
 ## Architecture
 

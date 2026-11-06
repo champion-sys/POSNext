@@ -405,7 +405,7 @@ async function getOfflineInvoices() {
 }
 
 // Save invoice to offline queue
-async function saveOfflineInvoice(invoiceData) {
+async function saveOfflineInvoice(invoiceData, options = {}) {
 	try {
 		const db = await initDB()
 
@@ -413,18 +413,31 @@ async function saveOfflineInvoice(invoiceData) {
 			throw new Error("Cannot save empty invoice")
 		}
 
-		// Generate unique offline_id for deduplication
-		const offlineId = generateOfflineId()
+		// Keep the id of a failed online attempt so the server can dedupe it
+		const offlineId = invoiceData.offline_id || generateOfflineId()
 
 		// Store offline_id in the invoice data for server-side tracking
 		invoiceData.offline_id = offlineId
 
-		const id = await db.table("invoice_queue").add({
-			offline_id: offlineId,
-			data: invoiceData,
-			timestamp: Date.now(),
-			synced: false,
-			retry_count: 0,
+		// One transaction, so an edit can never leave both versions to sync
+		const queue = db.table("invoice_queue")
+		let id
+		await db.transaction("rw", queue, async () => {
+			id = await queue.add({
+				offline_id: offlineId,
+				data: invoiceData,
+				timestamp: Date.now(),
+				synced: false,
+				retry_count: 0,
+			})
+
+			if (options.supersedesId) {
+				await queue.update(options.supersedesId, {
+					superseded: true,
+					replaced_by: offlineId,
+					superseded_at: Date.now(),
+				})
+			}
 		})
 
 		// NOTE: We don't update local stock here because:
@@ -1694,7 +1707,7 @@ self.onmessage = async (event) => {
 				break
 
 			case "SAVE_INVOICE":
-				result = await saveOfflineInvoice(payload.invoiceData)
+				result = await saveOfflineInvoice(payload.invoiceData, payload.options)
 				break
 
 			case "SEARCH_ITEMS":
