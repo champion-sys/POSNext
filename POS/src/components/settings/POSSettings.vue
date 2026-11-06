@@ -394,6 +394,11 @@
 												:label="__('Allow Closing the Shift While Offline')"
 												:description="__('The closing is finalized on the server once every invoice of the shift has arrived.')"
 											/>
+											<CheckboxField
+												v-model="settings.allow_offline_shift_open"
+												:label="__('Allow Opening the Shift While Offline')"
+												:description="__('The cashier can open a shift and sell with no connection. The shift is created on the server when the device connects.')"
+											/>
 											<SystemPrinterSettings v-if="isDesktop" />
 											<CheckboxField
 												v-else

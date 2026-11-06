@@ -541,7 +541,7 @@
 			:subtotal="cartStore.subtotal"
 			:pos-profile="shiftStore.profileName"
 			:currency="shiftStore.profileCurrency"
-			:is-offline="offlineStore.isOffline"
+			:is-offline="mustQueue"
 			:allow-partial-payment="posSettingsStore.allowPartialPayment"
 			:allow-credit-sale="posSettingsStore.allowCreditSale"
 			:allow-customer-credit-payment="posSettingsStore.allowCustomerCreditPayment"
@@ -1425,6 +1425,8 @@ const profileWarehouses = computed(() => {
 });
 
 const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
+// The server cannot take a sale of a shift it does not know yet, connection or not
+const mustQueue = computed(() => offlineStore.isOffline || isLocalName(shiftStore.currentShift?.name));
 const canCloseShift = computed(() => {
 	if (!shiftStore.hasOpenShift) return false;
 	const allowedRole = shiftStore.currentProfile?.role_allowed_to_closing_shift;
@@ -2468,7 +2470,7 @@ async function handlePaymentCompleted(paymentData) {
 		draftIdToDelete = cartStore.currentDraftId;
 
 		const queueCheckout =
-			offlineStore.isOffline ||
+			mustQueue.value ||
 			shouldQueueCheckout({
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
@@ -2716,7 +2718,7 @@ async function ensureInvoicesSyncedBeforeClose() {
 	const pending = offlineStore.pendingInvoicesList;
 	const decision = getShiftCloseDecision(
 		pending,
-		offlineStore.isOffline,
+		mustQueue.value,
 		posSettingsStore.allowOfflineShiftClose,
 	);
 

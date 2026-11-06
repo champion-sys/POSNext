@@ -1,4 +1,5 @@
 import { useInvoice } from "@/composables/useInvoice"
+import { shiftState } from "@/composables/useShift"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
@@ -141,6 +142,14 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			targetDoctype.value = newVal || "Sales Invoice"
 		},
 		{ immediate: true },
+	)
+
+	// Sales from here on use the name the server gave a shift opened offline
+	watch(
+		() => shiftState.value.pos_opening_shift?.name,
+		(name) => {
+			if (name && isLocalName(posOpeningShift.value)) posOpeningShift.value = name
+		},
 	)
 
 	// POS Order Type (optional, from POS Profile)

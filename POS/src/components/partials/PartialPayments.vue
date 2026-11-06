@@ -225,7 +225,7 @@ import { onMounted, ref, watch } from "vue"
 
 const posSettingsStore = usePOSSettingsStore()
 const offlineStore = usePOSSyncStore()
-const { isOffline } = useOfflineStatus()
+const { mustQueue: isOffline } = useOfflineStatus()
 const { showSuccess, showError } = useToast()
 const { formatDate, formatTime } = useFormatters()
 
