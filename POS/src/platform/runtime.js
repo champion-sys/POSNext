@@ -16,10 +16,32 @@ const SERVER_URL_KEY = "pos_next_server_url"
 export const PLATFORM = import.meta.env.VITE_PLATFORM || WEB
 export const isNative = PLATFORM !== WEB
 
+/**
+ * What clearing caches must leave on a device: what keeps it enrolled, and a shift closed
+ * offline, which would otherwise take sales again until its close reaches the server.
+ */
+const DEVICE_KEYS = [
+	SERVER_URL_KEY,
+	"pos_next_device_token",
+	"pos_next_cashier_grant",
+	"pos_next_cashiers",
+	"pos_next_device_id",
+	"pos_next_closing_shifts",
+]
+
 // Read on every request, which cannot wait for the OS keystore. platform/auth loads and saves them.
 let deviceToken = null
 let cashierGrant = null
 let accessListener = null
+
+/**
+ * @param {string} key - A localStorage key
+ * @param {string} [platform]
+ * @returns {boolean} Whether this key is not a cache. The web has no such keys.
+ */
+export function isDeviceKey(key, platform = PLATFORM) {
+	return platform !== WEB && DEVICE_KEYS.includes(key)
+}
 
 /** @returns {string} The server's origin, empty on the web */
 export function getServerUrl() {

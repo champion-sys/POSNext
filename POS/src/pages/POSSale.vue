@@ -2920,13 +2920,12 @@ async function confirmClearCache() {
 		// Keep overlay open to show clearing animation
 		log.info("Clearing cached data...");
 
-		// Import the clear functions from db.js
-		const { clearCachedData, clearBrowserCache, db } = await import("@/utils/offline/db.js");
+		const { clearBrowserCache } = await import("@/utils/offline/cache.js");
 		// Clear local print format templates
-		await db.settings.where("key").startsWith("print_format_template_").delete();
+		await offlineWorker.deleteSettingsByPrefix("print_format_template_");
 
-		// Clear IndexedDB cache (preserves invoices, drafts, and settings by default)
-		const dbResult = await clearCachedData({
+		// Clear the device cache (preserves invoices, drafts, and settings by default)
+		const dbResult = await offlineWorker.clearCachedData({
 			preserveInvoices: true,
 			preserveDrafts: true,
 			preserveSettings: true,

@@ -251,6 +251,7 @@ export default defineConfig({
 	define: {
 		__BUILD_VERSION__: JSON.stringify(buildVersion),
 		__SOCKETIO_PORT__: getSocketioPort(),
+		"import.meta.env.VITE_PLATFORM": JSON.stringify("web"),
 	},
 	test: {
 		environment: "jsdom",

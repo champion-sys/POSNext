@@ -2,7 +2,7 @@ import path from "node:path"
 import vue from "@vitejs/plugin-vue"
 import frappeui from "frappe-ui/vite"
 import { defineConfig } from "vite"
-import { viteStaticCopy } from "vite-plugin-static-copy"
+import { dropWebWorker } from "./vite.native.mjs"
 
 /**
  * Frontend build for the Android app. Like desktop/vite.config.electron.mjs it has no
@@ -19,7 +19,7 @@ export default defineConfig({
 			buildConfig: false,
 		}),
 		vue(),
-		viteStaticCopy({ targets: [{ src: "src/workers", dest: "." }] }),
+		dropWebWorker,
 	],
 	build: {
 		outDir: path.resolve(__dirname, "dist-android"),
@@ -31,7 +31,8 @@ export default defineConfig({
 	resolve: {
 		alias: [
 			{
-				find: "@/platform/capacitor",
+				// Exact, or it would also catch the platform/capacitor folder
+				find: /^@\/platform\/capacitor$/,
 				replacement: path.resolve(
 					__dirname,
 					"src/platform/capacitor.android.js",

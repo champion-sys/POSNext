@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import { beforeEach, describe, expect, it } from "vitest"
 import { migrate, MIGRATIONS } from "../migrations"
@@ -65,10 +66,34 @@ describe("migrate", () => {
 
 		await migrate(sql, [
 			...MIGRATIONS,
-			{ version: 2, statements: ["ALTER TABLE outbox ADD COLUMN note TEXT"] },
+			{ version: MIGRATIONS.at(-1).version + 1, statements: ["ALTER TABLE outbox ADD COLUMN note TEXT"] },
 		])
 
+		const [{ name }] = await sql.all("SELECT name FROM pragma_table_info('outbox') WHERE name = 'note'")
+		expect(name).toBe("note")
 		expect((await createOutbox(sql).nextBatch(10))[0].offline_id).toBe("a")
+	})
+
+	it("keeps a sale queued before the catalog tables existed", async () => {
+		const sql = createExecutor()
+		await migrate(sql, MIGRATIONS.slice(0, 1))
+		await sql.run(
+			`INSERT INTO outbox (offline_id, seq, entity, entity_version, payload, state, created_at)
+			VALUES ('old', 1, 'invoice', 1, '{"customer":"C"}', 'pending', 1)`,
+		)
+
+		expect(await migrate(sql)).toBe(MIGRATIONS.at(-1).version)
+
+		const [row] = await createOutbox(sql).nextBatch(10)
+		expect(row.offline_id).toBe("old")
+		expect(row.payload.customer).toBe("C")
+		expect(row.sync_failed).toBe(0)
+	})
+
+	// Devices upgrade through these while holding unsynced sales. Add a migration instead.
+	it("never rewrites a shipped migration", () => {
+		const hash = createHash("sha256").update(JSON.stringify(MIGRATIONS[0])).digest("hex")
+		expect(hash).toBe("09030cebe768c6dd9e15161afa73ea2a47d99b44076d7c02097252b98fce9736")
 	})
 })
 
@@ -150,6 +175,41 @@ describe("outbox", () => {
 		await outbox.recoverInterrupted()
 
 		expect(await outbox.nextBatch(10)).toHaveLength(1)
+	})
+
+	it("queues a record that is not a sale in the same order", async () => {
+		await outbox.enqueueSale(sale("a"))
+		const seq = await outbox.enqueueEntity({
+			offlineId: "c",
+			entity: "customer",
+			data: { customer_name: "Sara" },
+		})
+		await outbox.enqueueSale(sale("b", 1, { dependsOn: ["c"] }))
+
+		expect(seq).toBe(2)
+		const rows = await outbox.nextBatch(10)
+		expect(rows.map((row) => [row.offline_id, row.entity])).toEqual([
+			["a", "invoice"],
+			["c", "customer"],
+			["b", "invoice"],
+		])
+		expect(rows[1].payload.customer_name).toBe("Sara")
+		expect(rows[2].depends_on).toEqual(["c"])
+	})
+
+	it("keeps a row's dependencies with it", async () => {
+		await outbox.enqueueEntity({ offlineId: "s", entity: "shift_close", data: {}, dependsOn: ["a", "b"] })
+		expect((await outbox.get("s")).depends_on).toEqual(["a", "b"])
+	})
+
+	it("lists what is kept, apart from what was retired", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.applyResult("a", { state: "synced" })
+		await outbox.enqueueSale(sale("b"))
+		await outbox.enqueueSale(sale("c", 1, { supersedes: "b" }))
+
+		expect((await outbox.listKept()).map((row) => row.offline_id)).toEqual(["a", "c"])
+		expect((await outbox.listQueued()).map((row) => row.offline_id)).toEqual(["c"])
 	})
 
 	it("does not hold stock for a Sales Order", async () => {

@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock("@/utils/apiWrapper", () => ({ call: mocks.call }))
-vi.mock("@/utils/offline/db", () => ({
+vi.mock("@/utils/offline/settings", () => ({
 	getSetting: vi.fn(async (key) => mocks.settings.get(key) ?? null),
 	setSetting: vi.fn(async (key, value) => void mocks.settings.set(key, value)),
 }))

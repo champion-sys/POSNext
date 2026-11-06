@@ -3,7 +3,7 @@ import path from "node:path"
 import vue from "@vitejs/plugin-vue"
 import frappeui from "frappe-ui/vite"
 import { defineConfig } from "vite"
-import { viteStaticCopy } from "vite-plugin-static-copy"
+import { dropWebWorker } from "../vite.native.mjs"
 
 const POS_ROOT = path.resolve(__dirname, "..")
 
@@ -17,7 +17,7 @@ export default defineConfig({
 	plugins: [
 		frappeui({ frappeProxy: false, jinjaBootData: false, lucideIcons: true, buildConfig: false }),
 		vue(),
-		viteStaticCopy({ targets: [{ src: "src/workers", dest: "." }] }),
+		dropWebWorker,
 	],
 	build: {
 		outDir: path.resolve(__dirname, "renderer"),

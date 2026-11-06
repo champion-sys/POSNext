@@ -1,11 +1,12 @@
 # POS Next Desktop
 
 Starting pieces for the Windows app, planned in phase 3 of
-[the roadmap](../../docs/offline-multiplatform/05-roadmap.md). The app does not run yet: `electron/main.js` and storage are still to come.
+[the roadmap](../../docs/offline-multiplatform/05-roadmap.md).
 
 | File | Purpose | Source |
 |---|---|---|
 | `electron/printing/printer.js` | Silent printing through a hidden window | BrainWise `feature/electron-desktop`, without its receipt template |
+| `electron/db/` | SQLite in a utility process, reached by the window over three allow-listed IPC calls | Written here |
 | `electron/updater.js` | Downloads updates in the background and installs them on quit | New |
 | `electron/secrets.js` | The device token and cashier sign-in, encrypted with `safeStorage` | New |
 | `package.json` | Windows installer settings | Same branch, with the Express server dependencies removed |

@@ -1,6 +1,6 @@
 // Main offline module - exports all offline functionality
 
-export { db, initDB, getSetting, setSetting } from "./db"
+export { getSetting, setSetting } from "./settings"
 
 // Centralized offline state manager (single source of truth)
 export {

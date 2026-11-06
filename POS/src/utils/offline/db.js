@@ -199,6 +199,7 @@ export const resetPullState = (entities = PULL_ENTITIES) =>
  * @param {boolean} options.preserveInvoices - Keep invoice queue (default: true)
  * @param {boolean} options.preserveDrafts - Keep drafts (default: true)
  * @param {boolean} options.preserveSettings - Keep settings (default: true)
+ * @param {boolean} options.preservePaymentMethods - Keep payment methods (default: false)
  * @returns {Promise<Object>} - Status of cleared tables
  */
 export const clearCachedData = async (options = {}) => {
@@ -206,6 +207,7 @@ export const clearCachedData = async (options = {}) => {
 		preserveInvoices = true,
 		preserveDrafts = true,
 		preserveSettings = true,
+		preservePaymentMethods = false,
 	} = options
 
 	const results = {
@@ -228,7 +230,9 @@ export const clearCachedData = async (options = {}) => {
 		results.customers = await db.customers.clear()
 		results.stock = await db.stock.clear()
 		results.item_prices = await db.item_prices.clear()
-		results.payment_methods = await db.payment_methods.clear()
+		if (!preservePaymentMethods) {
+			results.payment_methods = await db.payment_methods.clear()
+		}
 		results.sales_persons = await db.sales_persons.clear()
 		await resetPullState()
 
@@ -253,53 +257,6 @@ export const clearCachedData = async (options = {}) => {
 		return { success: true, cleared: results }
 	} catch (error) {
 		log.error("Error clearing cached data:", error)
-		return { success: false, error: error.message, cleared: results }
-	}
-}
-
-/**
- * Clear browser cache and localStorage (POS-specific data only)
- * @returns {Object} - Status of cleared data
- */
-export const clearBrowserCache = () => {
-	const results = {
-		localStorage: 0,
-		sessionStorage: 0,
-	}
-
-	try {
-		// Clear POS-specific localStorage items
-		const keysToRemove = []
-		for (let i = 0; i < localStorage.length; i++) {
-			const key = localStorage.key(i)
-			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
-				keysToRemove.push(key)
-			}
-		}
-
-		keysToRemove.forEach(key => {
-			localStorage.removeItem(key)
-			results.localStorage++
-		})
-
-		// Clear sessionStorage
-		const sessionKeys = []
-		for (let i = 0; i < sessionStorage.length; i++) {
-			const key = sessionStorage.key(i)
-			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
-				sessionKeys.push(key)
-			}
-		}
-
-		sessionKeys.forEach(key => {
-			sessionStorage.removeItem(key)
-			results.sessionStorage++
-		})
-
-		log.info("Browser cache cleared:", results)
-		return { success: true, cleared: results }
-	} catch (error) {
-		log.error("Error clearing browser cache:", error)
 		return { success: false, error: error.message, cleared: results }
 	}
 }

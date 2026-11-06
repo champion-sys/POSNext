@@ -1,5 +1,7 @@
+import { isDeviceKey } from "@/platform/runtime"
+import { localStore } from "@/platform/store"
 import { call } from "@/utils/apiWrapper"
-import { db, getSetting, resetPullState, setSetting } from "./db"
+import { getSetting, setSetting } from "./settings"
 import { offlineState } from "./offlineState"
 
 // Cache structure definition - modify this when cache structure changes
@@ -82,7 +84,7 @@ export const memory = {
 	cache_version: CACHE_VERSION,
 }
 
-// Initialize memory cache from IndexedDB
+// Initialize memory cache from the device
 export const initMemoryCache = async () => {
 	try {
 		console.log("Initializing memory cache...")
@@ -109,11 +111,10 @@ export const initMemoryCache = async () => {
 		}
 
 		// Load items count (don't load all items into memory, too heavy)
-		const itemsCount = await db.items.count()
-		const customersCount = await db.customers.count()
+		const stats = await localStore.getCacheStats()
 
 		console.log(
-			`Cache initialized: ${itemsCount} items, ${customersCount} customers`,
+			`Cache initialized: ${stats.items} items, ${stats.customers} customers`,
 		)
 		console.log(
 			`Cache ready: ${memory.cache_ready}, Stock ready: ${memory.stock_cache_ready}`,
@@ -220,24 +221,7 @@ export const cacheCustomersFromServer = async (posProfile) => {
 // Search items in cache
 export const searchCachedItems = async (searchTerm = "", limit = 50) => {
 	try {
-		if (!searchTerm) {
-			return await db.items.limit(limit).toArray()
-		}
-
-		const term = searchTerm.toLowerCase()
-
-		// Search by item code, name, or barcode
-		const results = await db.items
-			.where("item_code")
-			.startsWithIgnoreCase(term)
-			.or("item_name")
-			.startsWithIgnoreCase(term)
-			.or("barcodes")
-			.equals(term)
-			.limit(limit)
-			.toArray()
-
-		return results
+		return await localStore.searchCachedItems(searchTerm, limit)
 	} catch (error) {
 		console.error("Error searching cached items:", error)
 		return []
@@ -247,24 +231,7 @@ export const searchCachedItems = async (searchTerm = "", limit = 50) => {
 // Search customers in cache
 export const searchCachedCustomers = async (searchTerm = "", limit = 50) => {
 	try {
-		if (!searchTerm) {
-			return await db.customers.limit(limit).toArray()
-		}
-
-		const term = searchTerm.toLowerCase()
-
-		// Search by name, mobile, or email
-		const results = await db.customers
-			.where("customer_name")
-			.startsWithIgnoreCase(term)
-			.or("mobile_no")
-			.startsWithIgnoreCase(term)
-			.or("email_id")
-			.startsWithIgnoreCase(term)
-			.limit(limit)
-			.toArray()
-
-		return results
+		return await localStore.searchCachedCustomers(searchTerm, limit)
 	} catch (error) {
 		console.error("Error searching cached customers:", error)
 		return []
@@ -274,7 +241,7 @@ export const searchCachedCustomers = async (searchTerm = "", limit = 50) => {
 // Get item from cache by code
 export const getCachedItem = async (itemCode) => {
 	try {
-		return await db.items.get(itemCode)
+		return await localStore.getCachedItem(itemCode)
 	} catch (error) {
 		console.error("Error getting cached item:", error)
 		return null
@@ -284,7 +251,7 @@ export const getCachedItem = async (itemCode) => {
 // Get customer from cache by name
 export const getCachedCustomer = async (customerName) => {
 	try {
-		return await db.customers.get(customerName)
+		return await localStore.getCachedCustomer(customerName)
 	} catch (error) {
 		console.error("Error getting cached customer:", error)
 		return null
@@ -305,13 +272,8 @@ export const clearAllCache = async () => {
 	try {
 		console.log("Clearing all cache...")
 
-		// Clear IndexedDB tables
-		await db.items.clear()
-		await db.customers.clear()
-		await db.item_prices.clear()
-		await db.stock.clear()
-		await db.sales_persons.clear()
-		await resetPullState()
+		const result = await localStore.clearCachedData({ preservePaymentMethods: true })
+		if (!result.success) throw new Error(result.error)
 
 		// Reset memory
 		memory.items = []
@@ -340,16 +302,12 @@ export const clearAllCache = async () => {
 // Get cache stats
 export const getCacheStats = async () => {
 	try {
-		const itemsCount = await db.items.count()
-		const customersCount = await db.customers.count()
-		const queuedInvoices = await db.invoice_queue
-			.filter((inv) => inv.synced === false)
-			.count()
+		const stats = await localStore.getCacheStats()
 
 		return {
-			items: itemsCount,
-			customers: customersCount,
-			queuedInvoices,
+			items: stats.items,
+			customers: stats.customers,
+			queuedInvoices: stats.queuedInvoices,
 			cacheReady: memory.cache_ready,
 			stockReady: memory.stock_cache_ready,
 			lastSync: memory.items_last_sync
@@ -387,13 +345,8 @@ export async function cachePaymentMethodsFromServer(posProfile) {
 			pos_profile: posProfile,
 		}))
 
-		// Store in IndexedDB
-		await db.payment_methods.bulkPut(methodsWithProfile)
-
-		// Update last sync timestamp
-		const timestamp = Date.now()
-		await setSetting("payment_methods_last_sync", timestamp)
-		memory.payment_methods_last_sync = timestamp
+		await localStore.cachePaymentMethods(methodsWithProfile)
+		memory.payment_methods_last_sync = Date.now()
 
 		console.log(
 			`Cached ${paymentMethods.length} payment methods for ${posProfile}`,
@@ -413,12 +366,7 @@ export async function cachePaymentMethodsFromServer(posProfile) {
  */
 export async function getCachedPaymentMethods(posProfile) {
 	try {
-		const methods = await db.payment_methods
-			.where("pos_profile")
-			.equals(posProfile)
-			.toArray()
-
-		return methods
+		return await localStore.getCachedPaymentMethods(posProfile)
 	} catch (error) {
 		console.error("Error getting cached payment methods:", error)
 		return []
@@ -443,12 +391,7 @@ export async function cacheSalesPersonsFromServer(posProfile) {
 			pos_profile: posProfile,
 		}))
 
-		// Store in IndexedDB
-		await db.sales_persons.bulkPut(personsWithProfile)
-
-		// Update last sync timestamp
-		const timestamp = Date.now()
-		await setSetting("sales_persons_last_sync", timestamp)
+		await localStore.cacheSalesPersons(personsWithProfile)
 
 		console.log(
 			`Cached ${salesPersons.length} sales persons for ${posProfile}`,
@@ -468,15 +411,57 @@ export async function cacheSalesPersonsFromServer(posProfile) {
  */
 export async function getCachedSalesPersons(posProfile) {
 	try {
-		const persons = await db.sales_persons
-			.where("pos_profile")
-			.equals(posProfile)
-			.toArray()
-
-		return persons
+		return await localStore.getCachedSalesPersons(posProfile)
 	} catch (error) {
 		console.error("Error getting cached sales persons:", error)
 		return []
+	}
+}
+
+/**
+ * Clear browser cache and localStorage (POS-specific data only)
+ * @returns {Object} - Status of cleared data
+ */
+export const clearBrowserCache = () => {
+	const results = {
+		localStorage: 0,
+		sessionStorage: 0,
+	}
+
+	try {
+		// Clear POS-specific localStorage items
+		const keysToRemove = []
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i)
+			if ((key?.startsWith('pos_next_') || key?.startsWith('frappe_')) && !isDeviceKey(key)) {
+				keysToRemove.push(key)
+			}
+		}
+
+		keysToRemove.forEach(key => {
+			localStorage.removeItem(key)
+			results.localStorage++
+		})
+
+		// Clear sessionStorage
+		const sessionKeys = []
+		for (let i = 0; i < sessionStorage.length; i++) {
+			const key = sessionStorage.key(i)
+			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
+				sessionKeys.push(key)
+			}
+		}
+
+		sessionKeys.forEach(key => {
+			sessionStorage.removeItem(key)
+			results.sessionStorage++
+		})
+
+		console.log("Browser cache cleared:", results)
+		return { success: true, cleared: results }
+	} catch (error) {
+		console.error("Error clearing browser cache:", error)
+		return { success: false, error: error.message, cleared: results }
 	}
 }
 

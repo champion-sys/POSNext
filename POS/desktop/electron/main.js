@@ -2,6 +2,7 @@ const path = require("node:path")
 const { app, BrowserWindow, ipcMain, protocol, net } = require("electron")
 const { pathToFileURL } = require("node:url")
 const { getAvailablePrinters, printHTML } = require("./printing/printer")
+const { registerDatabaseIpc } = require("./db/ipc")
 const { startAutoUpdate } = require("./updater")
 const { registerSecretHandlers } = require("./secrets")
 
@@ -43,6 +44,7 @@ function createWindow() {
 
 ipcMain.handle("printers:list", () => getAvailablePrinters(mainWindow))
 ipcMain.handle("printers:print", (_event, html, printerName) => printHTML(html, printerName))
+registerDatabaseIpc()
 registerSecretHandlers()
 
 // A second window would mean two senders for the same sales queue

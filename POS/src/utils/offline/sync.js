@@ -1,7 +1,7 @@
+import { localStore } from "@/platform/store"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
-import { db } from "./db"
 import { offlineState } from "./offlineState"
 import {
 	buildSyncEnvelope,
@@ -87,7 +87,7 @@ export const isOffline = () => {
  */
 export const getOfflineInvoices = async () => {
 	try {
-		return await db.invoice_queue.filter((inv) => !inv.synced && !inv.superseded).toArray()
+		return await localStore.listUnsyncedInvoices()
 	} catch (error) {
 		log.error("Failed to get offline invoices", error)
 		return []
@@ -104,7 +104,7 @@ export const getOfflineInvoices = async () => {
 export const getOfflineInvoiceByOfflineId = async (offlineId) => {
 	if (!offlineId) return null
 	try {
-		const row = await db.invoice_queue.where("offline_id").equals(offlineId).first()
+		const row = await localStore.getQueuedInvoice(offlineId)
 		return row?.data || null
 	} catch (error) {
 		log.error("Failed to look up offline invoice", { offlineId, error })
@@ -140,7 +140,7 @@ const handleSyncFailure = async (invoice, errorMessage) => {
 		updates.sync_failed = true
 	}
 
-	await db.invoice_queue.update(invoice.id, updates)
+	await localStore.updateQueuedInvoice(invoice.id, updates)
 }
 
 /**
@@ -203,7 +203,7 @@ const applyResult = async (row, result) => {
 	const updates = getQueueUpdateForResult(result)
 	if (!updates) return null
 
-	await db.invoice_queue.update(row.id, updates)
+	await localStore.updateQueuedInvoice(row.id, updates)
 	if (updates.synced) {
 		removeOfflineReceiptPayload(row.offline_id)
 		window.dispatchEvent(new CustomEvent("offlineEntitySynced", {
@@ -378,9 +378,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
  */
 const cleanupSyncedInvoices = async () => {
 	const cutoff = Date.now() - SYNC_CONFIG.CLEANUP_AGE_DAYS * 24 * 60 * 60 * 1000
-	await db.invoice_queue
-		.filter((inv) => inv.synced && inv.timestamp < cutoff)
-		.delete()
+	await localStore.deleteSyncedInvoices(cutoff)
 }
 
 // ============================================================================
@@ -404,7 +402,7 @@ export const cacheInvoiceHistory = async (invoices, posProfile) => {
 			cached_at: Date.now(),
 		}))
 
-		await db.invoice_history.bulkPut(invoicesToCache)
+		await localStore.putInvoiceHistory(invoicesToCache)
 		log.info(`Cached ${invoices.length} invoices for offline viewing`)
 		return true
 	} catch (error) {
@@ -427,14 +425,7 @@ export const getCachedInvoiceHistory = async (posProfile, options = {}) => {
 	try {
 		const { limit = 100, customer, fromDate, toDate } = options
 
-		let query = db.invoice_history
-
-		// Filter by POS profile if provided
-		if (posProfile) {
-			query = query.where("pos_profile").equals(posProfile)
-		}
-
-		let invoices = await query.toArray()
+		let invoices = await localStore.listInvoiceHistory(posProfile)
 
 		// Apply additional filters
 		if (customer) {
@@ -472,11 +463,7 @@ export const getCachedInvoiceHistory = async (posProfile, options = {}) => {
  */
 export const clearInvoiceHistoryCache = async (posProfile) => {
 	try {
-		if (posProfile) {
-			await db.invoice_history.where("pos_profile").equals(posProfile).delete()
-		} else {
-			await db.invoice_history.clear()
-		}
+		await localStore.deleteInvoiceHistory(posProfile)
 		log.info("Invoice history cache cleared")
 		return true
 	} catch (error) {
@@ -499,7 +486,7 @@ export const cacheUnpaidInvoices = async (invoices, posProfile) => {
 	if (!invoices || invoices.length === 0) {
 		// Clear existing cache if no invoices
 		try {
-			await db.unpaid_invoices.where("pos_profile").equals(posProfile).delete()
+			await localStore.replaceUnpaidInvoices([], posProfile)
 		} catch (e) {
 			// Ignore errors on clear
 		}
@@ -514,11 +501,7 @@ export const cacheUnpaidInvoices = async (invoices, posProfile) => {
 			cached_at: Date.now(),
 		}))
 
-		// Clear existing cache for this profile first
-		await db.unpaid_invoices.where("pos_profile").equals(posProfile).delete()
-
-		// Add new data
-		await db.unpaid_invoices.bulkPut(invoicesToCache)
+		await localStore.replaceUnpaidInvoices(invoicesToCache, posProfile)
 		log.info(`Cached ${invoices.length} unpaid invoices for offline viewing`)
 		return true
 	} catch (error) {
@@ -542,10 +525,7 @@ export const getCachedUnpaidInvoices = async (posProfile, options = {}) => {
 			return []
 		}
 
-		let invoices = await db.unpaid_invoices
-			.where("pos_profile")
-			.equals(posProfile)
-			.toArray()
+		let invoices = await localStore.listUnpaidInvoices(posProfile)
 
 		// Sort by outstanding_amount descending (highest first)
 		invoices.sort((a, b) => {
@@ -569,12 +549,9 @@ export const getCachedUnpaidInvoices = async (posProfile, options = {}) => {
  */
 export const cacheUnpaidSummary = async (summary, posProfile) => {
 	try {
-		await db.settings.put({
-			key: `unpaid_summary_${posProfile}`,
-			value: {
-				...summary,
-				cached_at: Date.now(),
-			},
+		await localStore.setSetting(`unpaid_summary_${posProfile}`, {
+			...summary,
+			cached_at: Date.now(),
 		})
 		log.debug("Cached unpaid invoice summary")
 		return true
@@ -591,8 +568,8 @@ export const cacheUnpaidSummary = async (summary, posProfile) => {
  */
 export const getCachedUnpaidSummary = async (posProfile) => {
 	try {
-		const result = await db.settings.get(`unpaid_summary_${posProfile}`)
-		return result?.value || { count: 0, total_outstanding: 0, total_paid: 0 }
+		const summary = await localStore.getSetting(`unpaid_summary_${posProfile}`)
+		return summary || { count: 0, total_outstanding: 0, total_paid: 0 }
 	} catch (error) {
 		log.error("Failed to get cached unpaid summary", error)
 		return { count: 0, total_outstanding: 0, total_paid: 0 }

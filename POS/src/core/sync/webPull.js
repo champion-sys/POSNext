@@ -12,7 +12,7 @@ import { usePOSOffersStore } from "@/stores/posOffers"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
-import { getSetting, setSetting } from "@/utils/offline/db"
+import { getSetting, setSetting } from "@/utils/offline/settings"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { PULL_ENTITIES, pullStateKey, runPull } from "./pullEngine"
 

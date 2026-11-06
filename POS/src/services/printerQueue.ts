@@ -1,5 +1,5 @@
 import { logger } from "../utils/logger"
-import { db } from "../utils/offline/db"
+import { localStore } from "../platform/store"
 
 const log = logger.create("PrinterQueue")
 
@@ -427,7 +427,7 @@ export class PrinterQueue {
 		if (!persistenceEnabled) return
 
 		try {
-			await db.table("print_queue").put({
+			await localStore.putPrintJob({
 				jobId: job.id,
 				data: job.data,
 				priority: job.priority,
@@ -447,7 +447,7 @@ export class PrinterQueue {
 	 */
 	private async removePersistedJob(jobId: string): Promise<void> {
 		try {
-			await db.table("print_queue").delete(jobId)
+			await localStore.deletePrintJob(jobId)
 		} catch (err) {
 			log.error("Failed to delete print job from IndexedDB:", err)
 		}
@@ -461,7 +461,7 @@ export class PrinterQueue {
 		if (!persistenceEnabled) return
 
 		try {
-			const saved = await db.table("print_queue").toArray()
+			const saved = await localStore.listPrintJobs()
 			if (saved && saved.length > 0) {
 				log.info(`Found ${saved.length} persisted print jobs in IndexedDB. Restoring...`)
 				const priorityWeight = { high: 3, normal: 2, low: 1 }

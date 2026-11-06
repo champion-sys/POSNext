@@ -23,6 +23,7 @@ import Dexie from 'dexie'
 import { logger } from '../utils/logger'
 import { ENTITY_INVOICE, getInvoiceDependencies } from "../utils/offline/entities"
 import { generateOfflineId } from '../utils/offline/uuid'
+import { createStockSync } from '../platform/store/stockSync'
 import { pullStateKey } from '../core/sync/pullEngine'
 
 const log = logger.create('OfflineWorker')
@@ -178,15 +179,6 @@ function serverUrl(path) {
 // true = variants shown directly, templates hidden
 // false = templates shown, variants hidden from browse (but still cached for barcode scan)
 let showVariantsAsItems = false
-
-// Periodic stock sync state
-let stockSyncInterval = null
-let stockSyncEnabled = false
-let stockSyncIntervalMs = 60000 // Default: 1 minute
-let currentWarehouse = null
-let trackedItemCodes = new Set() // Items to sync
-let lastStockSyncTime = null
-let stockSyncRunning = false
 
 // ============================================================================
 // PERFORMANCE UTILITIES
@@ -1604,213 +1596,16 @@ async function applyPullPage({ entity, page, posProfile }) {
 // PERIODIC STOCK SYNC - Background stock refresh from server
 // ============================================================================
 
-/**
- * Fetch stock quantities from server for tracked items
- * @returns {Promise<Array>} Stock updates array
- */
-async function fetchStockFromServer() {
-	if (!currentWarehouse || trackedItemCodes.size === 0) {
-		log.debug('Stock sync skipped: No warehouse or items tracked')
-		return []
-	}
-
-	try {
-		const controller = new AbortController()
-		const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
-
-		const itemCodes = Array.from(trackedItemCodes)
-
-		const headers = {
-			'Content-Type': 'application/json',
-			'Accept': 'application/json'
-		}
-
-		// Add CSRF token if available
-		if (csrfToken) {
-			headers['X-Frappe-CSRF-Token'] = csrfToken
-		}
-
-		if (serverAccess.grant) {
-			headers['Authorization'] = `Bearer ${serverAccess.grant}`
-		}
-
-		const response = await fetch(serverUrl("/api/method/pos_next.api.items.get_stock_quantities"), {
-			method: 'POST',
-			headers,
-			body: JSON.stringify({
-				item_codes: JSON.stringify(itemCodes),
-				warehouse: currentWarehouse
-			}),
-			signal: controller.signal
-		})
-
-		clearTimeout(timeoutId)
-
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-		}
-
-		const data = await response.json()
-		return data?.message || data || []
-	} catch (error) {
-		if (error.name === 'AbortError') {
-			log.warn('Stock fetch timeout')
-		} else {
-			log.error('Error fetching stock from server', error)
-		}
-		return []
-	}
-}
-
-/**
- * Perform periodic stock sync
- */
-async function performStockSync() {
-	if (stockSyncRunning) {
-		log.debug('Stock sync already running, skipping')
-		return
-	}
-
-	if (!serverOnline || manualOffline) {
-		log.debug('Stock sync skipped: Server offline')
-		return
-	}
-
-	try {
-		stockSyncRunning = true
-		const startTime = Date.now()
-
-		// Fetch fresh stock from server
-		const stockUpdates = await fetchStockFromServer()
-
-		if (stockUpdates.length > 0) {
-			// Update IndexedDB cache
-			const result = await updateStockQuantities(stockUpdates)
-
-			lastStockSyncTime = Date.now()
-			const duration = lastStockSyncTime - startTime
-
-			log.success(`Stock sync completed: ${result.updated}/${stockUpdates.length} items updated in ${duration}ms`)
-
-			// Notify main thread about successful sync
-			self.postMessage({
-				type: 'STOCK_SYNC_COMPLETE',
-				payload: {
-					updated: result.updated,
-					total: stockUpdates.length,
-					duration,
-					timestamp: lastStockSyncTime
-				}
-			})
-		} else {
-			log.debug('Stock sync: No updates received')
-		}
-	} catch (error) {
-		log.error('Stock sync failed', error)
-
-		// Notify main thread about sync failure
-		self.postMessage({
-			type: 'STOCK_SYNC_ERROR',
-			payload: {
-				message: error.message,
-				timestamp: Date.now()
-			}
-		})
-	} finally {
-		stockSyncRunning = false
-	}
-}
-
-/**
- * Start periodic stock sync
- */
-function startPeriodicStockSync() {
-	if (stockSyncInterval) {
-		log.debug('Stock sync already running')
-		return
-	}
-
-	stockSyncEnabled = true
-
-	// Perform initial sync immediately
-	performStockSync().catch(err => {
-		log.error('Initial stock sync failed', err)
-	})
-
-	// Set up periodic sync
-	stockSyncInterval = setInterval(() => {
-		performStockSync().catch(err => {
-			log.error('Periodic stock sync failed', err)
-		})
-	}, stockSyncIntervalMs)
-
-	log.success(`Periodic stock sync started (interval: ${stockSyncIntervalMs}ms)`)
-}
-
-/**
- * Stop periodic stock sync
- */
-function stopPeriodicStockSync() {
-	if (stockSyncInterval) {
-		clearInterval(stockSyncInterval)
-		stockSyncInterval = null
-		stockSyncEnabled = false
-		log.info('Periodic stock sync stopped')
-	}
-}
-
-/**
- * Configure periodic stock sync
- */
-function configureStockSync({ warehouse, itemCodes, intervalMs }) {
-	let restartNeeded = false
-
-	if (warehouse !== undefined) {
-		currentWarehouse = warehouse
-		log.debug(`Stock sync warehouse set: ${warehouse}`)
-		restartNeeded = true
-	}
-
-	if (itemCodes !== undefined && Array.isArray(itemCodes)) {
-		trackedItemCodes = new Set(itemCodes)
-		log.debug(`Stock sync tracking ${itemCodes.length} items`)
-		restartNeeded = true
-	}
-
-	if (intervalMs !== undefined && intervalMs >= 10000) { // Min 10 seconds
-		stockSyncIntervalMs = intervalMs
-		log.debug(`Stock sync interval set: ${intervalMs}ms`)
-		restartNeeded = true
-	}
-
-	// Restart sync if it's currently running and config changed
-	if (restartNeeded && stockSyncEnabled) {
-		stopPeriodicStockSync()
-		startPeriodicStockSync()
-	}
-
-	return {
-		warehouse: currentWarehouse,
-		itemCount: trackedItemCodes.size,
-		intervalMs: stockSyncIntervalMs,
-		enabled: stockSyncEnabled,
-		lastSync: lastStockSyncTime
-	}
-}
-
-/**
- * Get stock sync status
- */
-function getStockSyncStatus() {
-	return {
-		enabled: stockSyncEnabled,
-		warehouse: currentWarehouse,
-		itemCount: trackedItemCodes.size,
-		intervalMs: stockSyncIntervalMs,
-		lastSync: lastStockSyncTime,
-		running: stockSyncRunning
-	}
-}
+const stockSync = createStockSync({
+	serverUrl,
+	getHeaders: () => ({
+		...(csrfToken ? { "X-Frappe-CSRF-Token": csrfToken } : {}),
+		...(serverAccess.grant ? { Authorization: `Bearer ${serverAccess.grant}` } : {}),
+	}),
+	isConnected: () => serverOnline && !manualOffline,
+	updateStock: updateStockQuantities,
+	notify: (type, payload) => self.postMessage({ type, payload }),
+})
 
 // Message handler
 self.onmessage = async (event) => {
@@ -1965,27 +1760,27 @@ self.onmessage = async (event) => {
 				break
 
 			case "START_STOCK_SYNC":
-				startPeriodicStockSync()
-				result = { success: true, status: getStockSyncStatus() }
+				stockSync.start()
+				result = { success: true, status: stockSync.getStatus() }
 				break
 
 			case "STOP_STOCK_SYNC":
-				stopPeriodicStockSync()
-				result = { success: true, status: getStockSyncStatus() }
+				stockSync.stop()
+				result = { success: true, status: stockSync.getStatus() }
 				break
 
 			case "CONFIGURE_STOCK_SYNC":
-				result = configureStockSync(payload)
+				result = stockSync.configure(payload)
 				break
 
 			case "GET_STOCK_SYNC_STATUS":
-				result = getStockSyncStatus()
+				result = stockSync.getStatus()
 				break
 
 			case "TRIGGER_STOCK_SYNC":
 				// Manually trigger a sync cycle
-				await performStockSync()
-				result = { success: true, status: getStockSyncStatus() }
+				await stockSync.perform()
+				result = { success: true, status: stockSync.getStatus() }
 				break
 
 			// ===== OFFER CACHE OPERATIONS =====

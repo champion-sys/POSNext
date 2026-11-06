@@ -1,4 +1,4 @@
-import { db } from "./db"
+import { localStore } from "@/platform/store"
 import { logger } from "../logger"
 
 /** @type {import('../logger').Logger} */
@@ -54,7 +54,7 @@ async function persist(locale, messages, timestamp) {
 	try {
 		const entry = { locale, messages, timestamp }
 		memoryCache.set(locale, entry)
-		await db.translations.put(entry)
+		await localStore.putTranslations(entry)
 		return entry
 	} catch (error) {
 		log.error("Failed to cache translations:", error)
@@ -75,7 +75,7 @@ async function read(locale) {
 	}
 
 	try {
-		const stored = await db.translations.get(locale)
+		const stored = await localStore.getTranslations(locale)
 		if (stored) {
 			memoryCache.set(locale, stored)
 		}
@@ -173,7 +173,7 @@ export const translationCache = {
 		if (!locale) {
 			memoryCache.clear()
 			try {
-				await db.translations.clear()
+				await localStore.deleteTranslations()
 				return true
 			} catch (error) {
 				log.error("Failed to clear translation cache:", error)
@@ -184,7 +184,7 @@ export const translationCache = {
 		const normalized = normalizeLocale(locale)
 		memoryCache.delete(normalized)
 		try {
-			await db.translations.delete(normalized)
+			await localStore.deleteTranslations(normalized)
 			return true
 		} catch (error) {
 			log.error(`Failed to clear translation cache for locale ${normalized}:`, error)
