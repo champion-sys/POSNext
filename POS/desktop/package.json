@@ -7,8 +7,12 @@
 	"license": "AGPL-3.0",
 	"scripts": {
 		"build:frontend": "cd .. && npx vite build --config desktop/vite.config.electron.mjs",
-		"build:win": "electron-builder --win",
+		"build:win": "electron-builder --win --publish never",
+		"dist:win": "npm run build:frontend && npm run build:win",
 		"postinstall": "electron-builder install-app-deps"
+	},
+	"dependencies": {
+		"electron-updater": "6.8.11"
 	},
 	"devDependencies": {
 		"electron": "^33.2.0",
@@ -22,6 +26,7 @@
 			"buildResources": "resources"
 		},
 		"files": ["electron/**/*", "renderer/**/*", "package.json"],
+		"publish": [{ "provider": "generic", "url": "${env.POS_NEXT_UPDATE_URL}" }],
 		"win": {
 			"target": [{ "target": "nsis", "arch": ["x64"] }],
 			"icon": "resources/icon.ico"

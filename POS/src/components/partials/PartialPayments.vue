@@ -110,10 +110,14 @@
 													{{ formatDate(invoice.posting_date) }} {{ formatTime(invoice.posting_time) }}
 												</div>
 											</div>
+											<p v-if="invoice.queued_payment" class="mt-1 text-xs font-medium text-amber-700 text-start">
+												{{ __('{0} waiting to reach the server', [formatCurrency(invoice.queued_payment)]) }}
+											</p>
 										</div>
 										<button
 											@click="selectInvoice(invoice)"
-											class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-semibold"
+											:disabled="invoice.outstanding_amount <= 0"
+											class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
 										>
 											{{ __('Add Payment') }}
 										</button>
@@ -200,7 +204,7 @@
 		:grand-total="selectedInvoice?.outstanding_amount || 0"
 		:pos-profile="posProfile"
 		:currency="currency"
-		:is-offline="false"
+		:is-offline="isOffline"
 		:allow-partial-payment="posSettingsStore.allowPartialPayment"
 		@payment-completed="handlePaymentCompleted"
 	/>
@@ -210,13 +214,18 @@
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
+import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSSyncStore } from "@/stores/posSync"
 import { useToast } from "@/composables/useToast"
 import { useFormatters } from "@/composables/useFormatters"
+import { getCachedUnpaidInvoices } from "@/utils/offline/sync"
 import { Button, call } from "frappe-ui"
 import { onMounted, ref, watch } from "vue"
 
 const posSettingsStore = usePOSSettingsStore()
+const offlineStore = usePOSSyncStore()
+const { isOffline } = useOfflineStatus()
 const { showSuccess, showError } = useToast()
 const { formatDate, formatTime } = useFormatters()
 
@@ -248,8 +257,7 @@ watch(
 	(val) => {
 		show.value = val
 		if (val) {
-			loadInvoices()
-			loadSummary()
+			loadInvoices().then(loadSummary)
 		}
 	},
 )
@@ -269,12 +277,18 @@ async function loadInvoices() {
 	loading.value = true
 
 	try {
+		if (isOffline.value) {
+			const cached = await getCachedUnpaidInvoices(props.posProfile, { limit: 100 })
+			invoices.value = await offlineStore.withQueuedPayments(cached.filter((invoice) => invoice.paid_amount > 0))
+			return
+		}
+
 		const result = await call("pos_next.api.partial_payments.get_partial_paid_invoices", {
 			pos_profile: props.posProfile,
 			limit: 50,
 		})
 
-		invoices.value = result || []
+		invoices.value = await offlineStore.withQueuedPayments(result || [])
 	} catch (error) {
 		console.error("Error loading partial payments:", error)
 		showError(error.message || __("Failed to load partial payments"))
@@ -285,6 +299,15 @@ async function loadInvoices() {
 
 async function loadSummary() {
 	if (!props.posProfile) return
+
+	if (isOffline.value) {
+		summary.value = {
+			count: invoices.value.length,
+			total_outstanding: invoices.value.reduce((sum, invoice) => sum + invoice.outstanding_amount, 0),
+			total_paid: invoices.value.reduce((sum, invoice) => sum + invoice.paid_amount, 0),
+		}
+		return
+	}
 
 	try {
 		const result = await call("pos_next.api.partial_payments.get_partial_payment_summary", {
@@ -319,6 +342,15 @@ async function handlePaymentCompleted(paymentData) {
 	}
 
 	try {
+		if (isOffline.value) {
+			await offlineStore.savePaymentOffline(selectedInvoice.value, paymentData.payments)
+			showSuccess(__("Payment saved. It will reach the server shortly"))
+			await loadInvoices()
+			await loadSummary()
+			selectedInvoice.value = null
+			return
+		}
+
 		console.log('[PartialPayments] Calling API to add payment...')
 		const result = await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
@@ -363,8 +395,7 @@ function getPaymentSourceLabel(source) {
 // Lifecycle
 onMounted(() => {
 	if (show.value) {
-		loadInvoices()
-		loadSummary()
+		loadInvoices().then(loadSummary)
 	}
 })
 </script>

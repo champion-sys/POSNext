@@ -348,6 +348,7 @@ class OfflineWorkerClient {
 			case "GET_INVOICE_COUNT":
 				return 0
 			case "GET_INVOICES":
+			case "GET_QUEUE_ROWS":
 			case "SEARCH_ITEMS":
 			case "SEARCH_ITEMS_BY_GROUP":
 			case "SEARCH_ITEMS_BY_BRAND":
@@ -371,6 +372,7 @@ class OfflineWorkerClient {
 			case "CHECK_OFFLINE":
 				return true // Assume offline when worker unavailable
 			case "SAVE_INVOICE":
+			case "SAVE_QUEUE_ENTITY":
 			case "DELETE_INVOICE":
 			case "CACHE_ITEMS":
 			case "CACHE_CUSTOMERS":
@@ -381,6 +383,7 @@ class OfflineWorkerClient {
 			case "REMOVE_ITEMS_BY_GROUPS":
 			case "CACHE_OFFERS":
 			case "CLEAR_OFFERS_CACHE":
+			case "APPLY_PULL_PAGE":
 				// For write operations, throw error so caller knows to handle differently
 				throw new Error(`Worker unavailable: Cannot perform ${type}`)
 			default:
@@ -407,6 +410,14 @@ class OfflineWorkerClient {
 
 	async saveOfflineInvoice(invoiceData, options = {}) {
 		return this.sendMessage("SAVE_INVOICE", { invoiceData, options })
+	}
+
+	async saveQueueEntity(entity, data, dependsOn = []) {
+		return this.sendMessage("SAVE_QUEUE_ENTITY", { entity, data, dependsOn })
+	}
+
+	async getQueueRows() {
+		return this.sendMessage("GET_QUEUE_ROWS")
 	}
 
 	async searchCachedItems(searchTerm = "", limit = 50, offset = 0) {
@@ -488,6 +499,10 @@ class OfflineWorkerClient {
 		return this.sendMessage("SET_CSRF_TOKEN", { token })
 	}
 
+	async setServerAccess(serverUrl, grant) {
+		return this.sendMessage("SET_SERVER_ACCESS", { serverUrl, grant })
+	}
+
 	async setShowVariantsAsItems(value) {
 		return this.sendMessage("SET_SHOW_VARIANTS_AS_ITEMS", { value: Boolean(value) })
 	}
@@ -506,6 +521,10 @@ class OfflineWorkerClient {
 
 	async removeItemsByGroups(itemGroups) {
 		return this.sendMessage("REMOVE_ITEMS_BY_GROUPS", { itemGroups })
+	}
+
+	async applyPullPage(entity, page, posProfile) {
+		return this.sendMessage("APPLY_PULL_PAGE", { entity, page, posProfile })
 	}
 
 	// ========================================================================

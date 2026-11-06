@@ -392,6 +392,29 @@ class OfferBuilder:
 # Main API Functions
 # ============================================================================
 
+def _get_offers(pos_profile: str) -> List[Dict]:
+	"""Offers for the POS profile. Unlike get_offers, a failure raises."""
+	profile = frappe.get_doc("POS Profile", pos_profile)
+
+	# Respect POS Profile's ignore_pricing_rule setting
+	if profile.ignore_pricing_rule:
+		return []
+
+	date = nowdate()
+
+	offers = []
+
+	# Get offers from promotional schemes
+	scheme_offers = _get_promotional_scheme_offers(profile.company, date)
+	offers.extend(scheme_offers)
+
+	# Get standalone pricing rule offers
+	standalone_offers = _get_standalone_pricing_rule_offers(profile.company, date)
+	offers.extend(standalone_offers)
+
+	return [offer.to_dict() for offer in offers]
+
+
 @frappe.whitelist()
 def get_offers(pos_profile: str) -> List[Dict]:
 	"""
@@ -404,25 +427,7 @@ def get_offers(pos_profile: str) -> List[Dict]:
 		List of offer dictionaries
 	"""
 	try:
-		profile = frappe.get_doc("POS Profile", pos_profile)
-
-		# Respect POS Profile's ignore_pricing_rule setting
-		if profile.ignore_pricing_rule:
-			return []
-
-		date = nowdate()
-
-		offers = []
-
-		# Get offers from promotional schemes
-		scheme_offers = _get_promotional_scheme_offers(profile.company, date)
-		offers.extend(scheme_offers)
-
-		# Get standalone pricing rule offers
-		standalone_offers = _get_standalone_pricing_rule_offers(profile.company, date)
-		offers.extend(standalone_offers)
-
-		return [offer.to_dict() for offer in offers]
+		return _get_offers(pos_profile)
 
 	except Exception as e:
 		frappe.log_error(f"Error fetching offers: {str(e)}", "Offers API")
@@ -545,6 +550,54 @@ def get_active_coupons(customer: str, company: str) -> List[Dict]:
 	)
 
 	return coupons
+
+
+@frappe.whitelist()
+def get_offline_coupons(pos_profile: str) -> List[Dict]:
+	"""Promotional coupons a device may check while offline.
+
+	Gift cards stay online only: each holds value that can only be spent once.
+	"""
+	from pos_next.api.invoices import _assert_invoice_write_access
+
+	_assert_invoice_write_access("Sales Invoice", pos_profile)
+
+	if not frappe.db.table_exists("POS Coupon"):
+		return []
+
+	if frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "disable_offline_coupons"):
+		return []
+
+	coupons = frappe.get_all(
+		"POS Coupon",
+		filters={
+			"company": frappe.db.get_value("POS Profile", pos_profile, "company"),
+			"coupon_type": "Promotional",
+			"disabled": 0,
+		},
+		fields=[
+			"name",
+			"coupon_name",
+			"coupon_code",
+			"coupon_type",
+			"company",
+			"customer",
+			"discount_type",
+			"discount_percentage",
+			"discount_amount",
+			"min_amount",
+			"max_amount",
+			"apply_on",
+			"valid_from",
+			"valid_upto",
+			"maximum_use",
+			"used",
+			"one_use",
+		],
+	)
+
+	today = getdate()
+	return [coupon for coupon in coupons if not coupon.valid_upto or coupon.valid_upto >= today]
 
 
 @frappe.whitelist()

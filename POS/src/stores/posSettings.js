@@ -5,6 +5,8 @@ import { SYNC_REALTIME } from "@/utils/offline/invoicePayload"
 import { useBootstrapStore } from "./bootstrap"
 import { setCurrencyPrecision } from "@/utils/currency"
 
+const SETTINGS_CACHE_PREFIX = "pos_next_settings_"
+
 export const usePOSSettingsStore = defineStore("posSettings", () => {
 	// State
 	const settings = ref({
@@ -82,7 +84,12 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		custom_allow_edit_offline_invoice: 1,
 		custom_allow_print_offline_invoice: 1,
 		hide_images: 0,
-		invoice_type: "Sales Invoice"
+		invoice_type: "Sales Invoice",
+		// Offline
+		return_validity_days: 0,
+		disable_offline_coupons: 0,
+		allow_offline_returns: 0,
+		allow_offline_shift_close: 0,
 	})
 
 	const isLoading = ref(false)
@@ -274,6 +281,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const syncIntervalMinutes = computed(() => Number(settings.value.sync_interval_minutes) || 5)
 	const syncMode = computed(() => settings.value.sync_mode || SYNC_REALTIME)
 	const realtimeTimeoutSeconds = computed(() => Number(settings.value.realtime_timeout_seconds) || 8)
+	const offlineCouponsEnabled = computed(() => !settings.value.disable_offline_coupons)
+	const allowOfflineReturns = computed(() => Boolean(settings.value.allow_offline_returns))
+	const allowOfflineShiftClose = computed(() => Boolean(settings.value.allow_offline_shift_close))
 
 	// Hardcoded for testing — controls whether item group tabs get distinct colors
 	const coloredItemGroups = ref(true)
@@ -321,8 +331,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		url: "pos_next.pos_next.doctype.pos_settings.pos_settings.get_pos_settings",
 		onSuccess(data) {
 			if (data) {
-				Object.assign(settings.value, data)
-				isLoaded.value = true
+				applySettings(data)
 			}
 			isLoading.value = false
 		},
@@ -330,6 +339,25 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			isLoading.value = false
 		},
 	})
+
+	function applySettings(data) {
+		Object.assign(settings.value, data)
+		isLoaded.value = true
+		localStorage.setItem(`${SETTINGS_CACHE_PREFIX}${settings.value.pos_profile}`, JSON.stringify(settings.value))
+	}
+
+	/**
+	 * An offline start has no server to ask, and what the POS may do offline is in here
+	 * @returns {boolean} Whether a saved copy was found
+	 */
+	function restoreSavedSettings(posProfile) {
+		const saved = localStorage.getItem(`${SETTINGS_CACHE_PREFIX}${posProfile}`)
+		if (!saved) return false
+
+		Object.assign(settings.value, JSON.parse(saved))
+		isLoaded.value = true
+		return true
+	}
 
 	// Actions
 	async function loadSettings(posProfile) {
@@ -349,8 +377,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 				preloadedSettings.pos_profile === posProfile &&
 				Object.keys(preloadedSettings).length > 0
 			) {
-				Object.assign(settings.value, preloadedSettings)
-				isLoaded.value = true
+				applySettings(preloadedSettings)
 				isLoading.value = false
 				return true
 			}
@@ -363,7 +390,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 			await settingsResource.submit({ pos_profile: posProfile })
 			return true
 		} catch {
-			return false
+			return restoreSavedSettings(posProfile)
 		}
 	}
 
@@ -566,6 +593,9 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		syncIntervalMinutes,
 		syncMode,
 		realtimeTimeoutSeconds,
+		offlineCouponsEnabled,
+		allowOfflineReturns,
+		allowOfflineShiftClose,
 		// Computed - Miscellaneous
 		inputQty,
 		allowNegativeStock,

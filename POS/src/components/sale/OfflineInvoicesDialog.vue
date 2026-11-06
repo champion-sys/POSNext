@@ -1,5 +1,5 @@
 <template>
-	<Dialog v-model="show" :options="{ title: __('Offline Invoices'), size: '2xl' }">
+	<Dialog v-model="show" :options="{ title: __('Offline Queue'), size: '2xl' }">
 		<template #body-content>
 			<div class="flex flex-col gap-3">
 				<!-- Are the sales safe? -->
@@ -38,7 +38,7 @@
 
 				<!-- Empty State -->
 				<p v-if="invoices.length === 0" class="py-6 text-center text-gray-600">
-					{{ __('No invoices are waiting on this device') }}
+					{{ __('Nothing is waiting on this device') }}
 				</p>
 
 				<!-- Invoices List -->
@@ -50,15 +50,25 @@
 						:class="stateOf(invoice).edge"
 					>
 						<div class="flex items-start justify-between gap-2">
-							<h4 class="min-w-0 font-semibold text-gray-900 text-sm sm:text-base truncate">
-								{{ invoice.data.customer || __('Walk-in Customer') }}
-							</h4>
+							<div class="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+								<h4 class="min-w-0 max-w-full font-semibold text-gray-900 text-sm sm:text-base truncate">
+									{{ getRowTitle(invoice) }}
+								</h4>
+								<span
+									v-if="getRowKind(invoice)"
+									class="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full"
+								>
+									{{ getRowKind(invoice) }}
+								</span>
+							</div>
 							<SyncStateBadge :state="stateOf(invoice)" />
 						</div>
 
 						<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
-							<span class="font-semibold text-gray-900">{{ formatCurrency(invoice.data.grand_total || 0) }}</span>
-							<span>{{ __('{0} items', [invoice.data.items?.length || 0]) }}</span>
+							<template v-if="isSale(invoice)">
+								<span class="font-semibold text-gray-900">{{ formatCurrency(invoice.data.grand_total || 0) }}</span>
+								<span>{{ __('{0} items', [invoice.data.items?.length || 0]) }}</span>
+							</template>
 							<span class="text-xs text-gray-600">{{ formatDate(invoice.timestamp) }}</span>
 							<span
 								v-if="invoice.data?.was_printed"
@@ -90,7 +100,7 @@
 							</div>
 							<div class="flex items-center flex-shrink-0">
 								<button
-									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status"
+									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status && isSale(invoice) && !invoice.data.is_return"
 									@click="editInvoice(invoice)"
 									:disabled="isSyncing || invoice.data?.was_printed"
 									class="w-11 h-11 flex items-center justify-center hover:bg-blue-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -108,6 +118,7 @@
 									</svg>
 								</button>
 								<button
+									v-if="isSale(invoice)"
 									@click="viewDetails(invoice)"
 									class="w-11 h-11 flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors touch-manipulation"
 									:title="__('View Details')"
@@ -120,7 +131,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
-									v-if="settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
+									v-if="isSale(invoice) && settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
 									class="w-11 h-11 flex items-center justify-center hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 									:aria-label="__('Print receipt')"
@@ -130,7 +141,7 @@
 									</svg>
 								</button>
 								<button
-									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status"
+									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && getEntity(invoice) !== ENTITY_SHIFT_CLOSE"
 									@click="deleteInvoice(invoice)"
 									:disabled="isSyncing"
 									class="w-11 h-11 flex items-center justify-center hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -223,7 +234,7 @@
 	</Dialog>
 
 	<!-- Delete Confirmation Dialog -->
-	<Dialog v-model="showDeleteConfirm" :options="{ title: __('Delete Offline Invoice'), size: 'md' }">
+	<Dialog v-model="showDeleteConfirm" :options="{ title: __('Delete From Queue'), size: 'md' }">
 		<template #body-content>
 			<div v-if="invoiceToDelete" class="flex flex-col gap-3 sm:gap-4">
 				<div class="flex items-start gap-2 sm:gap-3">
@@ -231,20 +242,22 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
 					</svg>
 					<div class="min-w-0 flex-1">
-						<p class="text-gray-900 font-medium mb-2 text-sm sm:text-base">{{ __('Are you sure you want to delete this offline invoice?') }}</p>
+						<p class="text-gray-900 font-medium mb-2 text-sm sm:text-base">{{ __('Delete this record from the queue?') }}</p>
 						<div class="bg-gray-50 rounded-lg p-2.5 sm:p-3 flex flex-col gap-1 text-xs sm:text-sm">
 							<div class="flex justify-between gap-2">
 								<span class="text-gray-600">{{ __('Customer:') }}</span>
-								<span class="font-semibold truncate">{{ invoiceToDelete.data.customer || __('Walk-in Customer') }}</span>
+								<span class="font-semibold truncate">{{ getRowTitle(invoiceToDelete) }}</span>
 							</div>
-							<div class="flex justify-between gap-2">
-								<span class="text-gray-600">{{ __('Amount:') }}</span>
-								<span class="font-semibold">{{ formatCurrency(invoiceToDelete.data.grand_total) }}</span>
-							</div>
-							<div class="flex justify-between gap-2">
-								<span class="text-gray-600">{{ __('Items:') }}</span>
-								<span class="font-semibold">{{ invoiceToDelete.data.items?.length || 0 }}</span>
-							</div>
+							<template v-if="isSale(invoiceToDelete)">
+								<div class="flex justify-between gap-2">
+									<span class="text-gray-600">{{ __('Amount:') }}</span>
+									<span class="font-semibold">{{ formatCurrency(invoiceToDelete.data.grand_total) }}</span>
+								</div>
+								<div class="flex justify-between gap-2">
+									<span class="text-gray-600">{{ __('Items:') }}</span>
+									<span class="font-semibold">{{ invoiceToDelete.data.items?.length || 0 }}</span>
+								</div>
+							</template>
 						</div>
 						<p class="text-red-600 text-xs sm:text-sm mt-3">{{ __('This action cannot be undone.') }}</p>
 					</div>
@@ -253,7 +266,7 @@
 		</template>
 		<template #actions>
 			<Button variant="subtle" @click="showDeleteConfirm = false" class="w-full sm:w-auto !h-11">{{ __('Cancel') }}</Button>
-			<Button variant="solid" theme="red" @click="confirmDelete" class="w-full sm:w-auto !h-11">{{ __('Delete Invoice') }}</Button>
+			<Button variant="solid" theme="red" @click="confirmDelete" class="w-full sm:w-auto !h-11">{{ __('Delete') }}</Button>
 		</template>
 	</Dialog>
 </template>
@@ -267,6 +280,13 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSSyncStore } from "@/stores/posSync"
 import { usePOSUIStore } from "@/stores/posUI"
 import { useToast } from "@/composables/useToast"
+import {
+	ENTITY_CUSTOMER,
+	ENTITY_INVOICE,
+	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
+	getEntity,
+} from "@/utils/offline/entities"
 import {
 	QUEUE_FAILED,
 	QUEUE_RECEIVED,
@@ -403,19 +423,19 @@ const summaryStyle = computed(() => {
 })
 
 const summaryTitle = computed(() => {
-	if (syncStore.reviewCount > 0) return __("{0} invoice(s) need attention", [syncStore.reviewCount])
-	if (syncStore.queuedCount > 0) return __("{0} invoice(s) waiting to send", [syncStore.queuedCount])
+	if (syncStore.reviewCount > 0) return __("{0} record(s) need attention", [syncStore.reviewCount])
+	if (syncStore.queuedCount > 0) return __("{0} record(s) waiting to send", [syncStore.queuedCount])
 	return __("All sales are safe")
 })
 
 const summaryText = computed(() => {
-	if (syncStore.reviewCount > 0) return __("Other sales are not affected and keep sending.")
+	if (syncStore.reviewCount > 0) return __("Other records keep sending.")
 	if (syncStore.queuedCount > 0) {
 		return props.isOffline
 			? __("They are saved on this device and will be sent when the connection returns.")
 			: __("They are saved on this device and are on their way to the server.")
 	}
-	return __("Every sale has reached the server.")
+	return __("Everything has reached the server.")
 })
 
 const lastSyncText = computed(() =>
@@ -424,6 +444,34 @@ const lastSyncText = computed(() =>
 
 function formatCurrency(amount) {
 	return formatCurrencyUtil(amount, props.currency)
+}
+
+function isSale(row) {
+	return getEntity(row) === ENTITY_INVOICE
+}
+
+function getRowTitle(row) {
+	const data = row.data
+	return (
+		data.customer_name ||
+		data.pos_opening_shift ||
+		data.customer ||
+		__("Walk-in Customer")
+	)
+}
+
+function getRowKind(row) {
+	if (row.data.is_return) return __("Return")
+	switch (getEntity(row)) {
+		case ENTITY_CUSTOMER:
+			return __("New Customer")
+		case ENTITY_PAYMENT:
+			return __("Payment for {0}", [row.data.invoice_name])
+		case ENTITY_SHIFT_CLOSE:
+			return __("Shift Close")
+		default:
+			return ""
+	}
 }
 
 function formatDate(timestamp) {

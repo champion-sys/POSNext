@@ -60,8 +60,14 @@ class POSCoupon(Document):
 
 
 
-def check_coupon_code(coupon_code, customer=None, company=None):
-    """Validate and return coupon details"""
+def check_coupon_code(coupon_code, customer=None, company=None, queued_on=None):
+    """Validate and return coupon details
+
+    Args:
+        queued_on: The date of a sale made offline. Its customer already has the discount,
+            so the dates are judged on that day, and a promotional coupon over a limit is
+            reported in res["overrun"] instead of being refused.
+    """
     res = {"coupon": None}
 
     if not frappe.db.exists("POS Coupon", {"coupon_code": coupon_code.upper()}):
@@ -76,20 +82,27 @@ def check_coupon_code(coupon_code, customer=None, company=None):
         return res
 
     # Check validity dates
+    check_date = getdate(queued_on or today())
     if coupon.valid_from:
-        if coupon.valid_from > getdate(today()):
+        if getdate(coupon.valid_from) > check_date:
             res["msg"] = _("Sorry, this coupon code's validity has not started")
             return res
 
     if coupon.valid_upto:
-        if coupon.valid_upto < getdate(today()):
+        if getdate(coupon.valid_upto) < check_date:
             res["msg"] = _("Sorry, this coupon code has expired")
             return res
 
+    # A gift card holds value, so spending it twice is never accepted
+    accepts_overrun = bool(queued_on) and coupon.coupon_type != "Gift Card"
+    overrun = None
+
     # Check usage limits
     if coupon.used and coupon.maximum_use and coupon.used >= coupon.maximum_use:
-        res["msg"] = _("Sorry, this coupon code has been fully redeemed")
-        return res
+        if not accepts_overrun:
+            res["msg"] = _("Sorry, this coupon code has been fully redeemed")
+            return res
+        overrun = _("Already used {0} times of {1} allowed").format(coupon.used, coupon.maximum_use)
 
     # Check company
     if company and coupon.company != company:
@@ -106,12 +119,15 @@ def check_coupon_code(coupon_code, customer=None, company=None):
     if coupon.one_use and customer:
         used_count = _get_customer_coupon_usage_count(customer, coupon.coupon_code)
         if used_count > 0:
-            res["msg"] = _("Sorry, you have already used this coupon code")
-            return res
+            if not accepts_overrun:
+                res["msg"] = _("Sorry, you have already used this coupon code")
+                return res
+            overrun = overrun or _("One use per customer, and {0} had already used it").format(customer)
 
     # All validations passed
     res["coupon"] = coupon
     res["valid"] = True
+    res["overrun"] = overrun
 
     return res
 
@@ -133,6 +149,14 @@ def _get_customer_coupon_usage_count(customer, coupon_code):
             "coupon_code": coupon_code,
             "docstatus": 1,
         })
+
+        # Sales from the sync queue keep their code in a field of their own
+        if meta.has_field("pos_coupon_code"):
+            used_count += frappe.db.count(doctype, filters={
+                "customer": customer,
+                "pos_coupon_code": coupon_code,
+                "docstatus": 1,
+            })
 
     return used_count
 
@@ -177,8 +201,13 @@ def apply_coupon_discount(coupon, cart_total, net_total=None):
 
 
 def increment_coupon_usage(coupon_code):
-    """Increment the usage counter for a coupon, in the caller's transaction"""
-    coupon = frappe.get_doc("POS Coupon", {"coupon_code": coupon_code.upper()})
+    """Increment the usage counter for a coupon, in the caller's transaction
+
+    Devices syncing at the same time often carry the same coupon, so the row stays
+    locked until the sale commits and no count is lost.
+    """
+    name = frappe.db.get_value("POS Coupon", {"coupon_code": coupon_code.upper()}, "name", for_update=True)
+    coupon = frappe.get_doc("POS Coupon", name)
     coupon.used = (coupon.used or 0) + 1
     coupon.db_set('used', coupon.used)
 

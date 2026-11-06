@@ -6,6 +6,17 @@ Handles customer search, creation, and management for POS operations
 import frappe
 from frappe import _
 
+CUSTOMER_RESULT_FIELDS = ["name", "customer_name", "mobile_no", "email_id", "disabled"]
+
+
+def _get_profile_customer_filters(pos_profile):
+    """Filters that limit customers to what a POS Profile may see."""
+    profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+    # Check if customer_group field exists (it may not exist in all versions)
+    if hasattr(profile_doc, "customer_group") and profile_doc.customer_group:
+        return {"customer_group": profile_doc.customer_group}
+    return {}
+
 
 @frappe.whitelist()
 def get_customers(search_term="", pos_profile=None, limit=20, modified_since=None):
@@ -33,11 +44,7 @@ def get_customers(search_term="", pos_profile=None, limit=20, modified_since=Non
         # Filter by POS Profile customer group if specified
         if pos_profile:
             frappe.logger().debug(f"Loading POS Profile: {pos_profile}")
-            profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-            # Check if customer_group field exists (it may not exist in all versions)
-            if hasattr(profile_doc, "customer_group") and profile_doc.customer_group:
-                filters["customer_group"] = profile_doc.customer_group
-                frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
+            filters.update(_get_profile_customer_filters(pos_profile))
 
         if modified_since:
             # Delta sync: include disabled customers so frontend can purge them
@@ -61,7 +68,7 @@ def get_customers(search_term="", pos_profile=None, limit=20, modified_since=Non
             "Customer",
             filters=filters,
             or_filters=or_filters or None,
-            fields=["name", "customer_name", "mobile_no", "email_id", "disabled"],
+            fields=CUSTOMER_RESULT_FIELDS,
             limit=customer_limit,
             order_by="customer_name asc",
         )
@@ -105,6 +112,38 @@ def create_customer(
     if not customer_name:
         frappe.throw(_("Customer name is required"))
 
+    customer = insert_customer(
+        customer_name,
+        mobile_no=mobile_no,
+        email_id=email_id,
+        customer_group=customer_group,
+        territory=territory,
+        company=company,
+        pos_profile=pos_profile,
+    )
+    return customer.as_dict()
+
+
+def insert_customer(
+    customer_name,
+    mobile_no=None,
+    email_id=None,
+    customer_group=None,
+    territory=None,
+    company=None,
+    pos_profile=None,
+    offline_id=None,
+    ignore_permissions=False,
+):
+    """Insert a customer. The caller decides who may do so.
+
+    Args:
+        offline_id: The queue record it came from, whose unique index stops a second copy
+        ignore_permissions: The queue checks the cashier, who may not be the session user
+
+    Returns:
+        Document: The new customer
+    """
     loyalty_program = get_default_loyalty_program_from_settings(
         company=company,
         pos_profile=pos_profile,
@@ -122,6 +161,9 @@ def create_customer(
             "loyalty_program": loyalty_program,
         }
     )
+    if offline_id:
+        customer.offline_id = offline_id
+    customer.flags.ignore_permissions = ignore_permissions
 
     frappe.flags.pos_next_customer_company = company
     frappe.flags.pos_next_customer_pos_profile = pos_profile
@@ -131,7 +173,7 @@ def create_customer(
         frappe.flags.pos_next_customer_company = None
         frappe.flags.pos_next_customer_pos_profile = None
 
-    return customer.as_dict()
+    return customer
 
 
 def get_default_loyalty_program(company):

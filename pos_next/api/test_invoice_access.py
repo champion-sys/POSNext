@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import frappe
 
-from pos_next.api.invoices import _apply_write_off, _assert_invoice_write_access
+from pos_next.api.invoices import _apply_coupon, _apply_write_off, _assert_invoice_write_access
 
 
 def _raise(message, exc=frappe.ValidationError, **_kwargs):
@@ -55,6 +55,44 @@ class TestInvoiceWriteAccess(NoSiteTestCase):
     def test_allows_profile_manager(self, _mock_has_permission):
         frappe.local.db.exists.return_value = None
         _assert_invoice_write_access("Sales Order", "Main")
+
+
+class TestApplyCoupon(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        checker = patch(
+            "pos_next.pos_next.doctype.pos_coupon.pos_coupon.check_coupon_code",
+            return_value={"valid": True, "overrun": "limit"},
+        )
+        checker.start()
+        self.addCleanup(checker.stop)
+
+    def test_pos_coupon_stays_out_of_erpnexts_link_field(self):
+        frappe.local.db.exists.return_value = None
+        invoice = Mock(coupon_code="SAVE10")
+
+        overrun = _apply_coupon(invoice, "SAVE10", queued=False)
+
+        self.assertIsNone(invoice.coupon_code)
+        self.assertEqual(invoice.pos_coupon_code, "SAVE10")
+        self.assertIsNone(overrun)
+
+    def test_erpnext_coupon_keeps_its_field_online(self):
+        frappe.local.db.exists.return_value = "SAVE10"
+        invoice = Mock(coupon_code=None)
+
+        _apply_coupon(invoice, "SAVE10", queued=False)
+
+        self.assertEqual(invoice.coupon_code, "SAVE10")
+
+    def test_queued_sale_reports_an_overrun(self):
+        frappe.local.db.exists.return_value = "SAVE10"
+        invoice = Mock()
+
+        overrun = _apply_coupon(invoice, "SAVE10", queued=True)
+
+        self.assertIsNone(invoice.coupon_code)
+        self.assertEqual(overrun, "limit")
 
 
 class TestApplyWriteOff(NoSiteTestCase):

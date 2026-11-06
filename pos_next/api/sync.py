@@ -227,4 +227,5 @@ def get_center_summary():
         order_by="count desc",
         limit=100,
     )
-    return {"counts": counts, "groups": groups}
+    coupon_overruns = frappe.db.count("Offline Invoice Sync", {"coupon_overrun": ["is", "set"]})
+    return {"counts": counts, "groups": groups, "coupon_overruns": coupon_overruns}

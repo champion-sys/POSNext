@@ -1,4 +1,5 @@
 import Dexie from "dexie"
+import { PULL_ENTITIES, pullStateKey } from "../../core/sync/pullEngine"
 import { logger } from "../logger"
 
 /** @type {import('../logger').Logger} */
@@ -184,6 +185,14 @@ export const setSetting = async (key, value) => {
 }
 
 /**
+ * Forget how far entities were pulled, so emptied tables are filled again.
+ * @param {string[]} [entities] - Entities to reset, all of them by default
+ * @returns {Promise<void>}
+ */
+export const resetPullState = (entities = PULL_ENTITIES) =>
+	db.settings.bulkDelete(entities.map(pullStateKey))
+
+/**
  * Clear all cached data (items, customers, stock, etc.)
  * Preserves critical data like invoices, drafts, and settings
  * @param {Object} options - Options for clearing
@@ -221,6 +230,7 @@ export const clearCachedData = async (options = {}) => {
 		results.item_prices = await db.item_prices.clear()
 		results.payment_methods = await db.payment_methods.clear()
 		results.sales_persons = await db.sales_persons.clear()
+		await resetPullState()
 
 		// Conditionally clear invoice and payment queues
 		if (!preserveInvoices) {

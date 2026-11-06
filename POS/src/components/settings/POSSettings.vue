@@ -379,6 +379,21 @@
 													:min="1"
 												/>
 											</div>
+											<CheckboxField
+												v-model="settings.disable_offline_coupons"
+												:label="__('Disable Coupons While Offline')"
+												:description="__('Offline, a coupon can go over its limit. The sale is accepted and the overrun is recorded.')"
+											/>
+											<CheckboxField
+												v-model="settings.allow_offline_returns"
+												:label="__('Allow Returns While Offline')"
+												:description="__('Refunds are paid before the server can confirm them.')"
+											/>
+											<CheckboxField
+												v-model="settings.allow_offline_shift_close"
+												:label="__('Allow Closing the Shift While Offline')"
+												:description="__('The closing is finalized on the server once every invoice of the shift has arrived.')"
+											/>
 											<SystemPrinterSettings v-if="isDesktop" />
 											<CheckboxField
 												v-else

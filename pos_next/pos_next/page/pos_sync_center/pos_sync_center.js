@@ -29,6 +29,7 @@ const STATUS_GROUPS = [
 			["Resolved", "green"],
 			["Voided", "gray"],
 		],
+		with_overruns: true,
 	},
 ];
 
@@ -78,6 +79,9 @@ class SyncCenter {
 				...(fingerprint ? { error_fingerprint: fingerprint } : {}),
 			});
 		});
+		this.body.on("click", "[data-overruns]", () => {
+			frappe.set_route("List", "Offline Invoice Sync", { coupon_overrun: ["is", "set"] });
+		});
 		this.body.on("click", "[data-reprocess]", (event) => {
 			this.reprocessGroup(event.currentTarget.dataset.reprocess);
 		});
@@ -114,13 +118,13 @@ class SyncCenter {
 		`);
 	}
 
-	render({ counts, groups }) {
+	render({ counts, groups, coupon_overruns }) {
 		const byStatus = Object.fromEntries(counts.map((row) => [row.status, row.count]));
 
 		this.body.html(`
 			${this.renderHeadline(cint(byStatus[REVIEW_STATUS]))}
 			<div class="sync-center-groups">
-				${STATUS_GROUPS.map((group) => this.renderStatusGroup(group, byStatus)).join("")}
+				${STATUS_GROUPS.map((group) => this.renderStatusGroup(group, byStatus, coupon_overruns)).join("")}
 			</div>
 			<div class="sync-center-card">
 				<h5 class="sync-center-title">${__("Failures to review, grouped by cause")}</h5>
@@ -145,22 +149,26 @@ class SyncCenter {
 			</button>`;
 	}
 
-	renderStatusGroup({ title, statuses }, byStatus) {
-		const tiles = statuses
-			.map(([status, color]) => {
-				const count = cint(byStatus[status]);
-				return `
-					<button type="button" class="sync-center-tile${count ? "" : " is-empty"}" data-status="${status}">
-						<span class="sync-center-count">${count}</span>
-						<span class="indicator ${color}">${__(status)}</span>
-					</button>`;
-			})
-			.join("");
+	renderTile(action, label, color, count) {
+		return `
+			<button type="button" class="sync-center-tile${count ? "" : " is-empty"}" ${action}>
+				<span class="sync-center-count">${count}</span>
+				<span class="indicator ${color}">${label}</span>
+			</button>`;
+	}
+
+	renderStatusGroup({ title, statuses, with_overruns }, byStatus, coupon_overruns) {
+		const tiles = statuses.map(([status, color]) =>
+			this.renderTile(`data-status="${status}"`, __(status), color, cint(byStatus[status])),
+		);
+		if (with_overruns) {
+			tiles.push(this.renderTile('data-overruns="1"', __("Coupon Overruns"), "orange", cint(coupon_overruns)));
+		}
 
 		return `
 			<div class="sync-center-card">
 				<h5 class="sync-center-title">${title}</h5>
-				<div class="sync-center-tiles">${tiles}</div>
+				<div class="sync-center-tiles">${tiles.join("")}</div>
 			</div>`;
 	}
 

@@ -1,5 +1,5 @@
 import { call } from "@/utils/apiWrapper"
-import { db, getSetting, setSetting } from "./db"
+import { db, getSetting, resetPullState, setSetting } from "./db"
 import { offlineState } from "./offlineState"
 
 // Cache structure definition - modify this when cache structure changes
@@ -311,6 +311,7 @@ export const clearAllCache = async () => {
 		await db.item_prices.clear()
 		await db.stock.clear()
 		await db.sales_persons.clear()
+		await resetPullState()
 
 		// Reset memory
 		memory.items = []

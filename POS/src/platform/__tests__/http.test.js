@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { resolveRequest } from "../http"
+import { describe, expect, it, vi } from "vitest"
+import { createBridgedFetch, resolveRequest } from "../http"
 
 const target = { serverUrl: "https://shop.example.com", token: "abc" }
 
@@ -35,5 +35,88 @@ describe("resolveRequest", () => {
 	it("changes nothing without a server", () => {
 		const init = { method: "POST" }
 		expect(resolveRequest("/api/x", init, { serverUrl: "", token: null })).toEqual({ url: "/api/x", init })
+	})
+})
+
+describe("createBridgedFetch", () => {
+	function bridge(status, token = "abc") {
+		const nativeFetch = vi
+			.fn()
+			.mockResolvedValue(new Response(null, { status }))
+		const onAccepted = vi.fn()
+		const onRejected = vi.fn()
+		const fetcher = createBridgedFetch(nativeFetch, {
+			getTarget: () => ({ serverUrl: target.serverUrl, token }),
+			onAccepted,
+			onRejected,
+		})
+		return { fetcher, nativeFetch, onAccepted, onRejected }
+	}
+
+	it("sends the request to the server", async () => {
+		const { fetcher, nativeFetch } = bridge(200)
+
+		await fetcher("/api/method/ping", { method: "POST" })
+
+		expect(nativeFetch.mock.calls[0][0]).toBe(
+			"https://shop.example.com/api/method/ping",
+		)
+		expect(nativeFetch.mock.calls[0][1].headers.get("Authorization")).toBe(
+			"Bearer abc",
+		)
+	})
+
+	it("reports that the server answered this cashier", async () => {
+		const { fetcher, onAccepted, onRejected } = bridge(200)
+
+		await fetcher("/api/method/ping")
+
+		expect(onAccepted).toHaveBeenCalledOnce()
+		expect(onRejected).not.toHaveBeenCalled()
+	})
+
+	it("reports which grant the server refused, and still returns the response", async () => {
+		const { fetcher, onAccepted, onRejected } = bridge(401)
+
+		const response = await fetcher("/api/method/ping")
+
+		expect(response.status).toBe(401)
+		expect(onRejected).toHaveBeenCalledWith("abc")
+		expect(onAccepted).not.toHaveBeenCalled()
+	})
+
+	it("reads other failures as neither", async () => {
+		const { fetcher, onAccepted, onRejected } = bridge(403)
+
+		await fetcher("/api/method/ping")
+
+		expect(onAccepted).not.toHaveBeenCalled()
+		expect(onRejected).not.toHaveBeenCalled()
+	})
+
+	it("reports nothing without a grant", async () => {
+		const { fetcher, onRejected } = bridge(401, null)
+
+		await fetcher("/api/method/ping")
+
+		expect(onRejected).not.toHaveBeenCalled()
+	})
+
+	it("ignores what did not go to the server", async () => {
+		const { fetcher, onAccepted } = bridge(200)
+
+		await fetcher("https://shop.example.com/api/method/enroll")
+		await fetcher("./assets/index.js")
+
+		expect(onAccepted).not.toHaveBeenCalled()
+	})
+
+	it("passes a Request through untouched", async () => {
+		const { fetcher, nativeFetch } = bridge(200)
+		const request = new Request("https://other.example.com/")
+
+		await fetcher(request)
+
+		expect(nativeFetch).toHaveBeenCalledWith(request, undefined)
 	})
 })

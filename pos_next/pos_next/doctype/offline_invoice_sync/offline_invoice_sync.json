@@ -29,6 +29,10 @@
   "column_break_totals",
   "server_grand_total",
   "accept_total_difference",
+  "accept_unfinished",
+  "section_coupon",
+  "coupon_code",
+  "coupon_overrun",
   "section_error",
   "error_class",
   "error_code",
@@ -129,7 +133,8 @@
    "label": "Entity",
    "options": "invoice\ncustomer\npayment\nshift_close",
    "default": "invoice",
-   "read_only": 1
+   "read_only": 1,
+   "in_standard_filter": 1
   },
   {
    "fieldname": "section_source",
@@ -218,6 +223,33 @@
    "label": "Accept Total Difference",
    "read_only": 1,
    "description": "Approved by a manager during review."
+  },
+  {
+   "fieldname": "accept_unfinished",
+   "fieldtype": "Check",
+   "label": "Close With Unfinished Invoices",
+   "read_only": 1,
+   "description": "Approved by a manager during review. The closing leaves out invoices that have not finished."
+  },
+  {
+   "fieldname": "section_coupon",
+   "fieldtype": "Section Break",
+   "label": "Coupon",
+   "collapsible": 1,
+   "depends_on": "coupon_code"
+  },
+  {
+   "fieldname": "coupon_code",
+   "fieldtype": "Data",
+   "label": "Coupon Code",
+   "read_only": 1
+  },
+  {
+   "fieldname": "coupon_overrun",
+   "fieldtype": "Small Text",
+   "label": "Coupon Overrun",
+   "read_only": 1,
+   "description": "The sale was accepted over the coupon's limit, because the customer already had the discount."
   },
   {
    "fieldname": "section_error",
@@ -387,7 +419,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-06 18:00:00.000000",
+ "modified": "2026-11-06 20:00:00",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",

@@ -53,6 +53,14 @@ class TotalMismatchError(frappe.ValidationError):
     """The server's total differs from what the customer was charged."""
 
 
+class DependencyError(frappe.ValidationError):
+    """A record this one needs was voided, so a person has to decide what happens to it."""
+
+
+class WaitingForDependencyError(DependencyError):
+    """What a record waits for will not come by itself, so a person has to look at it."""
+
+
 @dataclass(frozen=True)
 class Classification:
     error_class: str
@@ -103,6 +111,8 @@ def classify(exc):
         error_class = STOCK
     elif isinstance(exc, SyncContractError):
         error_class = CONTRACT
+    elif isinstance(exc, DependencyError):
+        error_class = DEPENDENCY
     elif isinstance(exc, frappe.ValidationError | frappe.PermissionError | frappe.DoesNotExistError):
         error_class = BUSINESS
     else:

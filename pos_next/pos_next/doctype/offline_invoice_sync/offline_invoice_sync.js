@@ -3,22 +3,37 @@
 
 const SYNC_API = "pos_next.api.sync";
 
+/** What a record of each entity can be linked to when it was entered by hand */
+const LINK_DOCTYPES = {
+	invoice: ["Sales Invoice", "POS Invoice"],
+	customer: ["Customer"],
+	payment: ["Payment Entry"],
+	shift_close: ["POS Closing Shift"],
+};
+
 const REVIEW_GUIDE = {
-	stock: __("There was not enough stock. Receive the stock and press Reprocess, or use Fix Invoice to change the warehouse."),
-	business: __("A rule on the server refused this invoice. Use Fix Invoice to correct it, then press Reprocess."),
-	dependency: __("It needs a record that has not reached the server yet. Press Reprocess once it arrives."),
-	contract: __("The invoice data is not valid. Correct the Payload field and press Reprocess, or contact support."),
-	bug: __("The server hit an unexpected error. Contact support before voiding this invoice."),
+	stock: __("There was not enough stock. Receive the stock and press Reprocess, or use Fix Record to change the warehouse."),
+	business: __("A rule on the server refused this record. Use Fix Record to correct it, then press Reprocess."),
+	dependency: __("It needs another record that did not arrive or was voided. Once that is settled, press Reprocess."),
+	contract: __("The data of this record is not valid. Correct the Payload field and press Reprocess, or contact support."),
+	bug: __("The server hit an unexpected error. Contact support before voiding this record."),
 	transient_server: __("The server was busy. Press Reprocess to try again."),
 };
 
 const TOTAL_MISMATCH_GUIDE = __(
-	"The server's total differs from what the customer paid. Use Accept Total Difference under Fix Invoice, or correct the invoice, then press Reprocess.",
+	"The server's total differs from what the customer paid. Use Accept Total Difference under Fix Record, or correct the invoice, then press Reprocess.",
 );
+
+const SHIFT_CLOSE_GUIDE = __(
+	"Some invoices of this shift have not finished. Finish them and press Reprocess, or use Close Without Unfinished Invoices under Fix Record.",
+);
+
+const SAVED_MESSAGE = __("Saved. Reprocess the record to apply it.");
 
 const SYNC_FIXES = {
 	posting_date: {
 		label: __("Change Posting Date"),
+		entities: ["invoice", "payment"],
 		fields: [
 			{
 				fieldname: "posting_date",
@@ -31,6 +46,7 @@ const SYNC_FIXES = {
 	},
 	customer: {
 		label: __("Change Customer"),
+		entities: ["invoice"],
 		fields: [
 			{
 				fieldname: "customer",
@@ -44,6 +60,7 @@ const SYNC_FIXES = {
 	},
 	warehouse: {
 		label: __("Change Warehouse"),
+		entities: ["invoice"],
 		fields: [
 			{ fieldname: "warehouse", fieldtype: "Link", options: "Warehouse", label: __("Warehouse"), reqd: 1 },
 			{
@@ -57,6 +74,7 @@ const SYNC_FIXES = {
 	},
 	replace_item: {
 		label: __("Replace Item"),
+		entities: ["invoice"],
 		fields: [
 			{
 				fieldname: "item_code",
@@ -70,6 +88,7 @@ const SYNC_FIXES = {
 	},
 	batch: {
 		label: __("Change Batch"),
+		entities: ["invoice"],
 		fields: [
 			{ fieldname: "item_code", fieldtype: "Link", options: "Item", label: __("Item"), reqd: 1 },
 			{
@@ -84,11 +103,12 @@ const SYNC_FIXES = {
 	},
 	payment_mode: {
 		label: __("Change Payment Method"),
+		entities: ["invoice", "payment"],
 		fields: [
 			{
 				fieldname: "mode_of_payment",
 				fieldtype: "Data",
-				label: __("Method On The Invoice"),
+				label: __("Method To Replace"),
 				description: __("Use when this method has no account on the server."),
 				reqd: 1,
 			},
@@ -103,13 +123,56 @@ const SYNC_FIXES = {
 	},
 	shift: {
 		label: __("Change Shift"),
+		entities: ["invoice", "payment"],
 		fields: [
 			{
 				fieldname: "shift",
 				fieldtype: "Link",
 				options: "POS Opening Shift",
 				label: __("Open Shift"),
-				description: __("Use when the shift of the sale is already closed."),
+				description: __("Use when the original shift is already closed."),
+				reqd: 1,
+			},
+		],
+	},
+	payment_amount: {
+		label: __("Change Payment Amount"),
+		entities: ["payment"],
+		fields: [
+			{ fieldname: "mode_of_payment", fieldtype: "Data", label: __("Method On The Payment"), reqd: 1 },
+			{
+				fieldname: "amount",
+				fieldtype: "Currency",
+				label: __("Amount"),
+				description: __("Use when the amount does not match what is still owed."),
+				reqd: 1,
+			},
+		],
+	},
+	customer_group: {
+		label: __("Change Customer Group"),
+		entities: ["customer"],
+		fields: [
+			{
+				fieldname: "customer_group",
+				fieldtype: "Link",
+				options: "Customer Group",
+				label: __("Customer Group"),
+				description: __("Use when the group sent by the device does not exist on the server."),
+				reqd: 1,
+			},
+		],
+	},
+	territory: {
+		label: __("Change Territory"),
+		entities: ["customer"],
+		fields: [
+			{
+				fieldname: "territory",
+				fieldtype: "Link",
+				options: "Territory",
+				label: __("Territory"),
+				description: __("Use when the territory sent by the device does not exist on the server."),
 				reqd: 1,
 			},
 		],
@@ -130,14 +193,14 @@ function callSyncAction(frm, method, args, alert) {
 
 function reprocessResult(row) {
 	return row?.status === "Synced"
-		? { message: __("Invoice created"), indicator: "green" }
-		: { message: __("Not posted yet. Check the status and the error."), indicator: "orange" };
+		? { message: __("Processed"), indicator: "green" }
+		: { message: __("Not processed yet. Check the status and the error."), indicator: "orange" };
 }
 
 function promptFix(frm, fix, definition) {
 	frappe.prompt(
 		definition.fields,
-		(values) => callSyncAction(frm, "apply_fix", { fix, values }, __("Saved. Reprocess the invoice to apply it.")),
+		(values) => callSyncAction(frm, "apply_fix", { fix, values }, SAVED_MESSAGE),
 		definition.label,
 		__("Apply"),
 	);
@@ -153,18 +216,15 @@ function confirmTotalDifference(frm) {
 		: __("Post this invoice with the server's total?");
 
 	frappe.confirm(question, () =>
-		callSyncAction(
-			frm,
-			"apply_fix",
-			{ fix: "accept_total_difference" },
-			__("Saved. Reprocess the invoice to apply it."),
-		),
+		callSyncAction(frm, "apply_fix", { fix: "accept_total_difference" }, SAVED_MESSAGE),
 	);
 }
 
 function addReviewActions(frm) {
-	const fix_group = __("Fix Invoice");
-	const close_group = __("Close Without Posting");
+	const entity = frm.doc.entity || "invoice";
+	const linkDoctypes = LINK_DOCTYPES[entity];
+	const fix_group = __("Fix Record");
+	const close_group = __("Close Without Processing");
 
 	frm.add_custom_button(__("Reprocess"), () => {
 		frappe.prompt(
@@ -172,7 +232,7 @@ function addReviewActions(frm) {
 				fieldname: "note",
 				fieldtype: "Small Text",
 				label: __("Note"),
-				description: __("Tries to post the invoice again, with any fixes you saved."),
+				description: __("Tries to process the record again, with any fixes you saved."),
 			},
 			({ note }) => callSyncAction(frm, "reprocess", { note }, reprocessResult),
 			__("Reprocess"),
@@ -181,36 +241,65 @@ function addReviewActions(frm) {
 	}).addClass("btn-primary");
 
 	for (const [fix, definition] of Object.entries(SYNC_FIXES)) {
-		frm.add_custom_button(definition.label, () => promptFix(frm, fix, definition), fix_group);
+		if (definition.entities.includes(entity)) {
+			frm.add_custom_button(definition.label, () => promptFix(frm, fix, definition), fix_group);
+		}
 	}
 
-	frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+	if (entity === "invoice") {
+		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+	}
+
+	if (entity === "shift_close") {
+		frm.add_custom_button(
+			__("Close Without Unfinished Invoices"),
+			() => {
+				frappe.confirm(
+					__("The closing will leave out every invoice of this shift that has not finished. Continue?"),
+					() => callSyncAction(frm, "apply_fix", { fix: "accept_unfinished" }, SAVED_MESSAGE),
+				);
+			},
+			fix_group,
+		);
+	}
+
+	if (entity === "invoice" && frm.doc.coupon_code) {
+		frm.add_custom_button(
+			__("Keep the Sale Without the Coupon"),
+			() => {
+				frappe.confirm(__("The invoice keeps its discount, but this coupon's usage will not count it."), () =>
+					callSyncAction(frm, "apply_fix", { fix: "remove_coupon" }, SAVED_MESSAGE),
+				);
+			},
+			fix_group,
+		);
+	}
 
 	frm.add_custom_button(
-		__("Link Existing Invoice"),
+		__("Link Existing Document"),
 		() => {
 			frappe.prompt(
 				[
 					{
 						fieldname: "doctype",
 						fieldtype: "Select",
-						options: "Sales Invoice\nPOS Invoice",
+						options: linkDoctypes.join("\n"),
 						label: __("Type"),
-						default: "Sales Invoice",
+						default: linkDoctypes[0],
 						reqd: 1,
 					},
 					{
 						fieldname: "invoice_name",
 						fieldtype: "Dynamic Link",
 						options: "doctype",
-						label: __("Invoice"),
-						description: __("Use when the sale was already entered by hand."),
+						label: __("Document"),
+						description: __("Use when it was already entered by hand."),
 						reqd: 1,
 					},
 					{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
 				],
 				(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
-				__("Link Existing Invoice"),
+				__("Link Existing Document"),
 				__("Link"),
 			);
 		},
@@ -225,11 +314,11 @@ function addReviewActions(frm) {
 					fieldname: "note",
 					fieldtype: "Small Text",
 					label: __("Reason"),
-					description: __("The sale will not be posted. The reason is kept for audit."),
+					description: __("It will not be processed. The reason is kept for audit."),
 					reqd: 1,
 				},
 				({ note }) => callSyncAction(frm, "void", { note }, __("Voided")),
-				__("Void Invoice"),
+				__("Void Record"),
 				__("Void"),
 			);
 		},
@@ -238,9 +327,11 @@ function addReviewActions(frm) {
 }
 
 function getReviewGuide(frm, canReview) {
-	if (!canReview) return __("A POS manager needs to review this invoice.");
-	if (frm.doc.error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
-	return REVIEW_GUIDE[frm.doc.error_class] || "";
+	const { entity, error_code, error_class } = frm.doc;
+	if (!canReview) return __("A POS manager needs to review this record.");
+	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
+	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
+	return REVIEW_GUIDE[error_class] || "";
 }
 
 function showError(frm, inReview, canReview) {

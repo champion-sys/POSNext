@@ -1,4 +1,4 @@
-import { db, getSetting, setSetting } from "./db";
+import { db, getSetting, resetPullState, setSetting } from "./db";
 
 // Cache items in IndexedDB
 export const cacheItems = async (items, priceList = null) => {
@@ -379,6 +379,7 @@ export const clearItemsCache = async () => {
 	try {
 		await db.items.clear();
 		await db.item_prices.clear();
+		await resetPullState(["items", "item_prices"]);
 		await setSetting("items_last_sync", null);
 		console.log("Items cache cleared");
 		return true;
@@ -391,6 +392,7 @@ export const clearItemsCache = async () => {
 export const clearCustomersCache = async () => {
 	try {
 		await db.customers.clear();
+		await resetPullState(["customers"]);
 		await setSetting("customers_last_sync", null);
 		console.log("Customers cache cleared");
 		return true;
