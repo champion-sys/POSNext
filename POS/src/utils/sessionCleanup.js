@@ -1,4 +1,3 @@
-import { localStore } from "@/platform/store"
 import { clearAllDrafts } from "@/utils/draftManager"
 import { clearAllOfflineReceiptPayloads } from "@/utils/offline/offlineReceiptCache"
 import { usePOSCartStore } from "@/stores/posCart"
@@ -9,12 +8,13 @@ import { shiftState } from "@/composables/useShift"
 // All user-specific localStorage keys that must be cleared on logout.
 // Device-level settings (pos_qz_printer_name, pos_stock_sync_settings,
 // pos_performance_tier, pos_next_language, pos_next_schema_*, pos_next_cache_*)
-// are intentionally NOT cleared.
+// are intentionally NOT cleared. Neither is the shift kept on the device (pos_shift_data,
+// current_shift on SQLite): its cashier may sign back in offline, and useShift gives it to
+// nobody else.
 const USER_KEYS = [
 	"pos_session_lock",
 	"pos_session_pwd_hash",
 	"pos_lock_attempts",
-	"pos_shift_data",
 	"pos_recent_customers",
 	"pos_frequent_customers",
 	"pos_customers_last_sync",
@@ -62,15 +62,10 @@ export async function cleanupUserSession() {
 		_receivedAt: 0,
 	}
 
-	// 4. Clear draft invoices and the shift kept on the device
+	// 4. Clear draft invoices
 	try {
 		await clearAllDrafts()
 	} catch (error) {
 		console.error("Failed to clear draft invoices:", error)
-	}
-	try {
-		await localStore.clearShift()
-	} catch (error) {
-		console.error("Failed to clear cached shift:", error)
 	}
 }

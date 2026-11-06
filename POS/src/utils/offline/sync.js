@@ -214,6 +214,30 @@ const applyResult = async (row, result) => {
 }
 
 /**
+ * Count how a sale ended, wherever the server's answer came from. A row already in
+ * that state was counted by an earlier sync.
+ * @param {Object} result - Totals to update
+ * @param {Object} row - Queue row, as it was before the answer
+ * @param {string|null} status - Its new status, from applyResult
+ * @param {string} [message] - The server's reason
+ */
+const countEnding = (result, row, status, message) => {
+	if (status === row.server_status) return
+
+	if (status === "synced") {
+		result.success++
+	} else if (status === "needs_review") {
+		result.failed++
+		result.errors.push({
+			invoiceId: row.id,
+			offlineId: row.offline_id,
+			customer: row.data?.customer || "Walk-in Customer",
+			error: new Error(message || "Needs review"),
+		})
+	}
+}
+
+/**
  * Hand a batch of sales to the server. Once stored there, a sale's fate is the
  * server's job: this device only follows it.
  * @param {Array} rows - Queue rows
@@ -255,18 +279,10 @@ const refreshServerStatus = async (rows, result) => {
 		const row = byOfflineId.get(status.offline_id)
 		const newStatus = row ? await applyResult(row, status) : null
 
-		if (newStatus === "synced" && row.server_status !== "synced") {
-			result.success++
-		} else if (newStatus === "received" || newStatus === "processing") {
+		if (newStatus === "received" || newStatus === "processing") {
 			waiting++
-		} else if (newStatus === "needs_review" && row.server_status !== "needs_review") {
-			result.failed++
-			result.errors.push({
-				invoiceId: row.id,
-				offlineId: row.offline_id,
-				customer: row.data?.customer || "Walk-in Customer",
-				error: new Error(status.message || "Needs review"),
-			})
+		} else if (newStatus) {
+			countEnding(result, row, newStatus, status.message)
 		}
 	}
 	return waiting
@@ -280,6 +296,8 @@ const refreshServerStatus = async (rows, result) => {
  * @param {Object} [options]
  * @param {boolean} [options.force] - Retry invoices still waiting out a backoff
  * @returns {Promise<{success: number, failed: number, skipped: number, errors: Array}>}
+ *   Each sale that ended is in success or failed once. `delivered` also counts sales
+ *   the server took on this run and has not finished yet.
  */
 export const syncOfflineInvoices = async ({ force = false } = {}) => {
 	if (isOffline()) {
@@ -296,7 +314,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 
 		log.info(`Starting sync of ${pendingInvoices.length} invoice(s)`)
 
-		const result = { success: 0, failed: 0, skipped: 0, waiting: 0, errors: [] }
+		const result = { success: 0, failed: 0, skipped: 0, waiting: 0, delivered: 0, errors: [] }
 		// A manual sync does not wait for a failed invoice's backoff
 		const now = Date.now()
 		const unsent = pendingInvoices.filter(
@@ -305,6 +323,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 
 		for (let i = 0; i < unsent.length; i += SYNC_CONFIG.BATCH_SIZE) {
 			const batch = unsent.slice(i, i + SYNC_CONFIG.BATCH_SIZE)
+			const unanswered = new Set(batch)
 
 			try {
 				const results = await pushBatch(batch)
@@ -314,8 +333,11 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 						await handleSyncFailure(row, answer.message)
 						result.failed++
 					} else if (answer) {
-						await applyResult(row, answer)
+						const status = await applyResult(row, answer)
+						if (status) result.delivered++
+						countEnding(result, row, status, answer.message)
 					}
+					unanswered.delete(row)
 				}
 			} catch (error) {
 				log.error("Failed to push invoices", { error })
@@ -327,7 +349,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 					break
 				}
 
-				for (const row of batch) {
+				for (const row of unanswered) {
 					await handleSyncFailure(row, error.message)
 					result.errors.push({
 						invoiceId: row.id,

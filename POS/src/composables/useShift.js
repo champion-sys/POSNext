@@ -1,5 +1,6 @@
 import { createResource } from "frappe-ui"
 import { computed, ref } from "vue"
+import { readIdentity } from "@/platform/identity"
 import { localStore } from "@/platform/store"
 
 export const shiftState = ref({
@@ -18,9 +19,20 @@ let cachedShiftRestore = Promise.resolve()
 /** Resolves once the shift kept on the device has been put back after a failed check */
 export const whenCachedShiftRestored = () => cachedShiftRestore
 
+/**
+ * The shift stays on the device across a sign-out, so its cashier can carry on offline
+ * with a PIN. The server's own record says whose it is.
+ * @param {Object|null} data - As kept by localStore.saveShift
+ * @param {string|null} [user]
+ * @returns {boolean}
+ */
+function isOwnShift(data, user = readIdentity().userId) {
+	return Boolean(user) && data?.pos_opening_shift?.user === user
+}
+
 async function restoreCachedShift() {
 	const data = await localStore.getShift()
-	if (!data) return
+	if (!isOwnShift(data) || isClosing(data)) return
 
 	shiftState.value = {
 		pos_opening_shift: data.pos_opening_shift,
@@ -36,14 +48,26 @@ function keepShift(data) {
 	localStore.saveShift(data).catch((error) => console.error("Error caching shift data:", error))
 }
 
-function forgetShift() {
-	localStore.clearShift().catch((error) => console.error("Error clearing cached shift data:", error))
+async function forgetShift() {
+	// Read first: closing a shift can sign the cashier out while the device is being asked
+	const user = readIdentity().userId
+	try {
+		// Another cashier having no shift says nothing about the one kept here
+		if (isOwnShift(await localStore.getShift(), user)) await localStore.clearShift()
+	} catch (error) {
+		console.error("Error clearing cached shift data:", error)
+	}
 }
 
 const CLOSING_SHIFTS_KEY = "pos_next_closing_shifts"
 
 function getClosingShifts() {
 	return JSON.parse(localStorage.getItem(CLOSING_SHIFTS_KEY) || "[]")
+}
+
+/** @param {Object|null} data - A shift, as the server or the device reports it */
+function isClosing(data) {
+	return getClosingShifts().includes(data?.pos_opening_shift?.name)
 }
 
 /**
@@ -81,9 +105,10 @@ export function useShift() {
 		url: "pos_next.api.shifts.check_opening_shift",
 		auto: false,
 		// false, because frappe-ui keeps the original answer when this returns null
-		transform: (data) => (getClosingShifts().includes(data?.pos_opening_shift?.name) ? false : data),
+		transform: (data) => (isClosing(data) ? false : data),
+		// frappe-ui gives onSuccess the server's answer, not what transform returned
 		onSuccess(data) {
-			if (data) {
+			if (data && !isClosing(data)) {
 				// Compute initial elapsed time using server timestamps
 				// (avoids timezone mismatch between server and browser)
 				let initialElapsedMs = 0

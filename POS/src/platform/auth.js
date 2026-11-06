@@ -21,6 +21,7 @@ import {
 	PLATFORM,
 	getDeviceToken,
 	getServerUrl,
+	isNative,
 	setCashierGrant,
 	setDeviceToken,
 	setServerUrl,
@@ -410,6 +411,17 @@ export function isWithinOfflineLimit(now = Date.now()) {
 		Boolean(cashier) &&
 		!offlineWindow(cashier, now, deviceState.clockHighWater).expired
 	)
+}
+
+/**
+ * Whether a sale that cannot reach the server must be refused. Only the apps have a limit,
+ * because it comes with a cashier's sign-in there. The web has no such sign-in, so
+ * isWithinOfflineLimit is always false on it and must not decide anything.
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+export function isPastOfflineSaleLimit(now = Date.now()) {
+	return isNative && !isWithinOfflineLimit(now)
 }
 
 /** Count the server having answered this cashier as time online. */

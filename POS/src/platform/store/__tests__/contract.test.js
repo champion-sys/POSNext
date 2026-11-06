@@ -5,6 +5,7 @@
  * layer under them is fake: an in-memory Dexie and raw IndexedDB, because fake-indexeddb
  * is not installed. So these tests cannot show that Dexie itself behaves like the fake.
  */
+import { createPinia, setActivePinia } from "pinia"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
 import { createNativeStore } from "@/platform/store/native"
@@ -30,6 +31,25 @@ vi.mock("dexie", () => ({ default: FakeDexie }))
 
 const callServer = vi.hoisted(() => vi.fn())
 vi.mock("@/utils/apiWrapper", () => ({ call: callServer }))
+
+// frappe-ui does not load under vitest. This keeps what its createResource does: the
+// caller gets what transform returned, and onSuccess gets the server's own answer.
+vi.mock("frappe-ui", () => ({
+	createResource: (options) => ({
+		async fetch() {
+			try {
+				const response = await fetch(`/api/method/${options.url}`)
+				const { message } = await response.json()
+				const data = options.transform?.(message) ?? message
+				options.onSuccess?.(message)
+				return data
+			} catch (error) {
+				options.onError?.(error)
+				throw error
+			}
+		},
+	}),
+}))
 
 /** Runs offline.worker.js in this process, wired to the real client as a Worker would be */
 class InProcessWorker {
@@ -961,6 +981,142 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect(row.error).toBe("No stock")
 		})
 
+		describe("counting how each sale ended", () => {
+			const statusChecks = () =>
+				callServer.mock.calls.filter(([method]) => method.endsWith("get_status")).length
+
+			const saleThatSynced = () =>
+				new Promise((resolve) => {
+					window.addEventListener("offlineInvoicesSynced", (event) => resolve(event.detail), { once: true })
+				})
+
+			it("counts a sale the first response finished, with no status check", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "synced", invoice: "SINV-1" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(0)
+				expect(statusChecks()).toBe(0)
+				expect(await store.getOfflineInvoiceCount()).toBe(0)
+			})
+
+			it("counts a duplicate as a sale that is on the server", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "duplicate", invoice: "SINV-1" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(0)
+				expect((await store.getQueuedInvoice(offline_id)).server_invoice).toBe("SINV-1")
+			})
+
+			it("tells the POS when the first response finished a sale", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "synced", invoice: "SINV-1" }])
+				const announced = saleThatSynced()
+
+				await syncOfflineInvoices()
+
+				expect((await announced).success).toBe(1)
+			})
+
+			it("counts each sale of a batch once, whichever answer finished it", async () => {
+				const first = await store.saveOfflineInvoice(invoice())
+				const second = await store.saveOfflineInvoice(invoice())
+				const third = await store.saveOfflineInvoice(invoice())
+				answers(
+					[
+						{ offline_id: first.offline_id, status: "synced", invoice: "SINV-1" },
+						{ offline_id: second.offline_id, status: "duplicate", invoice: "SINV-2" },
+						{ offline_id: third.offline_id, status: "received" },
+					],
+					[{ offline_id: third.offline_id, status: "synced", invoice: "SINV-3" }],
+				)
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(3)
+				expect(result.failed).toBe(0)
+			})
+
+			it.each([
+				["needs_review", "No stock"],
+				["conflict", "A different invoice was already stored under this offline_id"],
+			])("reports %s from the first response once, as a failure", async (status, message) => {
+				const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status, message }], [{ offline_id, status: "needs_review", message }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.success).toBe(0)
+				expect(result.failed).toBe(1)
+				expect(result.errors).toHaveLength(1)
+				expect(result.errors[0]).toMatchObject({ invoiceId: id, offlineId: offline_id, customer: "CUST-1" })
+				expect(result.errors[0].error.message).toBe(message)
+			})
+
+			it("does not count a sale again on the next sync", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers(
+					[{ offline_id, status: "needs_review", message: "No stock" }],
+					[{ offline_id, status: "needs_review", message: "No stock" }],
+				)
+
+				await syncOfflineInvoices()
+				const result = await syncOfflineInvoices()
+
+				expect(result.failed).toBe(0)
+				expect(result.errors).toEqual([])
+			})
+
+			it("counts a sale once when a later one cannot be recorded", async () => {
+				const { localStore } = await import("@/platform/store")
+				const first = await store.saveOfflineInvoice(invoice())
+				const second = await store.saveOfflineInvoice(invoice())
+				answers([
+					{ offline_id: first.offline_id, status: "synced", invoice: "SINV-1" },
+					{ offline_id: second.offline_id, status: "synced", invoice: "SINV-2" },
+				])
+				const realUpdate = localStore.updateQueuedInvoice
+				let updates = 0
+				const spy = vi.spyOn(localStore, "updateQueuedInvoice").mockImplementation(async (...args) => {
+					updates++
+					if (updates === 2) throw new Error("Storage is full")
+					return realUpdate(...args)
+				})
+
+				const result = await syncOfflineInvoices()
+				spy.mockRestore()
+
+				expect(result.success).toBe(1)
+				expect(result.failed).toBe(1)
+				expect(result.errors.map((entry) => entry.offlineId)).toEqual([second.offline_id])
+			})
+
+			it("reports a sale the server took but has not finished as delivered", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				callServer.mockImplementation(async (method) => {
+					if (method.endsWith("push")) return { results: [{ offline_id, status: "received" }] }
+					throw new Error("Status is not available")
+				})
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.delivered).toBe(1)
+				expect(result.success).toBe(0)
+			})
+
+			it("does not report a rejected sale as delivered", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice())
+				answers([{ offline_id, status: "rejected", message: "Bad" }])
+
+				expect((await syncOfflineInvoices()).delivered).toBe(0)
+			})
+		})
+
 		it("finds a queued invoice by its offline id", async () => {
 			const { getOfflineInvoiceByOfflineId } = await import("@/utils/offline/sync")
 			const { offline_id } = await store.saveOfflineInvoice(invoice())
@@ -1593,6 +1749,184 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 
 			await store.clearShift()
 			expect(await store.getShift()).toBeNull()
+		})
+	})
+
+	describe("the shift kept on the device", () => {
+		const CASHIER = "a@example.com"
+		const OTHER_CASHIER = "b@example.com"
+
+		const keptShift = (user = CASHIER, name = "SHIFT-1") => ({
+			pos_opening_shift: { name, user },
+			pos_profile: { name: "Main" },
+			company: { name: "Acme" },
+			_initialElapsedMs: 5,
+			_receivedAt: 6,
+		})
+
+		const signInAs = (user) => {
+			document.cookie = `user_id=${user}; path=/`
+		}
+
+		const serverIsUnreachable = () => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => {
+					throw new TypeError("Failed to fetch")
+				}),
+			)
+		}
+
+		// Clearing the shift is not awaited by whoever asks for it
+		const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+		let shiftStore
+		let shiftState
+		let markShiftClosing
+		let resetShiftState
+		let cleanupUserSession
+
+		beforeEach(async () => {
+			setActivePinia(createPinia())
+			;({ cleanupUserSession } = await import("@/utils/sessionCleanup"))
+			;({ shiftState, markShiftClosing, resetShiftState } = await import("@/composables/useShift"))
+			const { usePOSShiftStore } = await import("@/stores/posShift")
+			shiftStore = usePOSShiftStore()
+			signInAs(CASHIER)
+			await store.saveShift(keptShift())
+		})
+
+		afterEach(() => {
+			document.cookie = "user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
+		})
+
+		it("survives the sign-out, and comes back to its cashier offline", async () => {
+			await cleanupUserSession()
+			expect(shiftState.value.isOpen).toBe(false)
+			expect(await store.getShift()).toEqual(keptShift())
+
+			serverIsUnreachable()
+			expect(await shiftStore.checkShift()).toBe(true)
+
+			expect(shiftStore.currentShift.name).toBe("SHIFT-1")
+			expect(shiftStore.profileName).toBe("Main")
+		})
+
+		it("goes to nobody else", async () => {
+			await cleanupUserSession()
+
+			signInAs(OTHER_CASHIER)
+			serverIsUnreachable()
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			expect(shiftState.value.pos_opening_shift).toBeNull()
+		})
+
+		it("waits for its cashier while somebody else is signed in", async () => {
+			await cleanupUserSession()
+
+			signInAs(OTHER_CASHIER)
+			serverIsUnreachable()
+			await shiftStore.checkShift()
+			await cleanupUserSession()
+
+			signInAs(CASHIER)
+			expect(await shiftStore.checkShift()).toBe(true)
+		})
+
+		it("goes to nobody while nobody is signed in", async () => {
+			await cleanupUserSession()
+
+			signInAs("Guest")
+			serverIsUnreachable()
+
+			expect(await shiftStore.checkShift()).toBe(false)
+		})
+
+		it("stays when the server says another cashier has no shift", async () => {
+			signInAs(OTHER_CASHIER)
+			fetchResponses.set("check_opening_shift", { message: null })
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			await settle()
+
+			expect(await store.getShift()).toEqual(keptShift())
+		})
+
+		it("goes when the server says its own cashier has no shift", async () => {
+			fetchResponses.set("check_opening_shift", { message: null })
+
+			expect(await shiftStore.checkShift()).toBe(false)
+			await settle()
+
+			expect(await store.getShift()).toBeNull()
+		})
+
+		it("goes when its shift closes, even if the cashier signs out straight after", async () => {
+			resetShiftState()
+			signInAs("Guest")
+			await settle()
+
+			expect(await store.getShift()).toBeNull()
+		})
+
+		it("gives way to another cashier's own shift", async () => {
+			signInAs(OTHER_CASHIER)
+			fetchResponses.set("check_opening_shift", {
+				message: {
+					pos_opening_shift: { name: "SHIFT-2", user: OTHER_CASHIER },
+					pos_profile: { name: "Main" },
+					company: { name: "Acme" },
+				},
+			})
+
+			expect(await shiftStore.checkShift()).toBe(true)
+			await settle()
+
+			expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+		})
+
+		describe("closed offline", () => {
+			const serverStillReportsItOpen = () => {
+				fetchResponses.set("check_opening_shift", { message: keptShift() })
+			}
+
+			beforeEach(async () => {
+				markShiftClosing("SHIFT-1")
+				await store.clearShift()
+			})
+
+			it("does not reopen while the server has not heard of the close", async () => {
+				serverStillReportsItOpen()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+				await settle()
+
+				expect(shiftState.value.isOpen).toBe(false)
+				expect(await store.getShift()).toBeNull()
+			})
+
+			it("does not reopen after the cache is cleared", async () => {
+				const { clearBrowserCache } = await import("@/utils/offline/cache")
+				clearBrowserCache()
+				serverStillReportsItOpen()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+			})
+
+			it("does not come back from a copy left on the device", async () => {
+				await store.saveShift(keptShift())
+				serverIsUnreachable()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+			})
+
+			it("leaves the cashier's next shift alone", async () => {
+				fetchResponses.set("check_opening_shift", { message: keptShift(CASHIER, "SHIFT-2") })
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				expect(shiftStore.currentShift.name).toBe("SHIFT-2")
+			})
 		})
 	})
 

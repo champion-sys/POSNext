@@ -754,6 +754,59 @@ describe("cashierMustSignIn", () => {
 	})
 })
 
+describe("isPastOfflineSaleLimit", () => {
+	beforeEach(async () => {
+		await enroll()
+		await signIn()
+		online = false
+	})
+
+	it("lets a cashier keep selling within the limit", () => {
+		vi.advanceTimersByTime(71 * HOUR)
+
+		expect(auth.isPastOfflineSaleLimit()).toBe(false)
+	})
+
+	it("refuses a sale once the limit has passed", () => {
+		vi.advanceTimersByTime(72 * HOUR)
+
+		expect(auth.isPastOfflineSaleLimit()).toBe(true)
+	})
+
+	it("refuses a sale in a PIN session past the limit too", async () => {
+		await auth.dropRejectedGrant("posg_a@example.com")
+		vi.advanceTimersByTime(72 * HOUR)
+
+		expect(auth.isPastOfflineSaleLimit()).toBe(true)
+	})
+
+	it("is not fooled by moving the clock back", async () => {
+		vi.advanceTimersByTime(60 * HOUR)
+		await auth.cashierMustSignIn()
+
+		vi.setSystemTime(START + HOUR)
+
+		expect(auth.isPastOfflineSaleLimit()).toBe(true)
+	})
+
+	it("counts from the last answer of the server", async () => {
+		vi.advanceTimersByTime(60 * HOUR)
+		await auth.noteServerContact()
+		vi.advanceTimersByTime(60 * HOUR)
+
+		expect(auth.isPastOfflineSaleLimit()).toBe(false)
+	})
+
+	it("never refuses a sale on the web, where the limit does not exist", async () => {
+		vi.stubEnv("VITE_PLATFORM", "web")
+		vi.resetModules()
+		auth = await import("../auth")
+
+		expect(auth.isWithinOfflineLimit()).toBe(false)
+		expect(auth.isPastOfflineSaleLimit()).toBe(false)
+	})
+})
+
 describe("pinRefusalMessage", () => {
 	it("gives the cashier the wait", () => {
 		expect(
