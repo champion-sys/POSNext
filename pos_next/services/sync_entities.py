@@ -38,10 +38,18 @@ def is_local_name(value):
 
 
 def load_payload(row):
+    """Read a stored payload. A manager's fix also lands here, so the reason must reach them."""
+    if not row.payload:
+        frappe.throw(_("This record has no payload. Its device has to send it again."), SyncContractError)
+
     try:
-        return json.loads(row.payload)
-    except (TypeError, ValueError) as exc:
-        raise SyncContractError(_("The stored payload is not valid JSON")) from exc
+        payload = json.loads(row.payload)
+    except ValueError:
+        payload = None
+
+    if not isinstance(payload, dict):
+        frappe.throw(_("The stored payload is not valid JSON"), SyncContractError)
+    return payload
 
 
 def get_dependencies(payload, declared=None):

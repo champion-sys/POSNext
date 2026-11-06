@@ -491,6 +491,21 @@ class TestFixes(NoSiteTestCase):
 
         self.assertEqual(row.cashier, "sara@example.com")
 
+    def test_a_fix_on_a_record_without_a_payload_says_so(self):
+        for payload in (None, ""):
+            with self.assertRaises(SyncContractError) as caught:
+                self._apply("invoice", "customer", {"customer": "CUST-0001"}, payload)
+            self.assertIn("no payload", str(caught.exception))
+
+    def test_a_fix_on_a_payload_a_person_broke_says_so(self):
+        for payload in ("not json", "[]", "1"):
+            with self.assertRaises(SyncContractError):
+                self._apply("invoice", "customer", {"customer": "CUST-0001"}, payload)
+
+    def test_an_approval_needs_no_payload(self):
+        row = self._apply("invoice", "accept_total_difference", {}, None)
+        row.set.assert_called_once_with("accept_total_difference", 1)
+
     def test_a_fix_for_another_entity_is_refused(self):
         with self.assertRaises(frappe.ValidationError):
             self._apply("customer", "warehouse", {"warehouse": "Stores"})
@@ -576,6 +591,30 @@ class TestCouponUsage(NoSiteTestCase):
 
     def test_a_sale_without_a_coupon(self):
         self._submit({"name": "SINV-1"}, {}).assert_not_called()
+
+
+class TestReprocessWithoutPayload(NoSiteTestCase):
+    def _reprocess(self, row):
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
+            patch.object(sync_inbox, "process") as self.process,
+        ):
+            return sync_inbox.reprocess("row-1", "note")
+
+    def test_the_review_stays_open(self):
+        row = MagicMock(status=sync_inbox.REVIEW, payload=None)
+        row.as_dict.return_value = frappe._dict(status=sync_inbox.REVIEW)
+
+        result = self._reprocess(row)
+
+        self.assertEqual(result.status, sync_inbox.REVIEW)
+        self.process.assert_not_called()
+        row.save.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+
+    def test_a_record_with_a_payload_is_processed(self):
+        self._reprocess(MagicMock(status=sync_inbox.REVIEW, payload="{}"))
+        self.process.assert_called_once_with("row-1")
 
 
 class TestQueuedCoupons(NoSiteTestCase):

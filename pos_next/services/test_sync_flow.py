@@ -265,6 +265,108 @@ class TestCashierSession(Flow):
         self.assertEqual(process_invoice.call_args.kwargs, {"offline_id": SALE, "queued": True})
 
 
+class TestRecordWithoutPayload(Flow):
+    """Records migrated from before the inbox kept payloads."""
+
+    def setUp(self):
+        super().setUp()
+        self.name = self.inbox.insert(
+            {
+                "offline_id": SALE,
+                "status": sync_inbox.REVIEW,
+                "error_class": "contract",
+                "error_code": None,
+                "error_message": "Recorded before the sync log kept payloads",
+                "customer": "CUST-1",
+                "payload": None,
+                "payload_hash": None,
+            }
+        )
+
+    def _resend(self, offline_id=SALE, payload=None, pos_profile="Main"):
+        item = {
+            "offline_id": offline_id,
+            "pos_profile": pos_profile,
+            "cashier": "cashier@example.com",
+            "payload": payload or {"pos_profile": pos_profile, "grand_total": 25},
+        }
+        return sync_inbox.ingest(item, "cashier@example.com")
+
+    def test_a_resend_gives_it_its_payload(self):
+        name, conflict = self._resend()
+
+        self.assertEqual(name, self.name)
+        self.assertFalse(conflict)
+        row = self._row(name)
+        self.assertEqual(json.loads(row.payload)["grand_total"], 25)
+        self.assertEqual(row.original_payload, row.payload)
+        self.assertTrue(row.payload_hash)
+
+    def test_a_record_under_review_goes_back_to_the_queue_with_no_old_error(self):
+        name, _conflict = self._resend()
+
+        row = self._row(name)
+        self.assertEqual(row.status, "Received")
+        self.assertIsNone(row.error_class)
+        self.assertIsNone(row.error_message)
+
+    def test_it_learns_what_it_needs_to_be_processed(self):
+        name, _conflict = self._resend()
+
+        row = self._row(name)
+        self.assertEqual(row.cashier, "cashier@example.com")
+        self.assertEqual(row.uploaded_by, "cashier@example.com")
+        self.assertEqual(row.client_grand_total, 25)
+
+    def test_what_it_already_held_stays(self):
+        name, _conflict = self._resend()
+        self.assertEqual(self._row(name).customer, "CUST-1")
+
+    def test_a_record_that_had_finished_stays_finished(self):
+        self._row(self.name).update({"status": "Synced", "sales_invoice": "SINV-1"})
+
+        self._resend()
+
+        row = self._row(self.name)
+        self.assertEqual(row.status, "Synced")
+        self.assertEqual(row.sales_invoice, "SINV-1")
+        self.assertTrue(row.payload)
+
+    def test_it_posts_like_any_other_sale_afterwards(self):
+        name, _conflict = self._resend()
+
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
+        ):
+            process_invoice.return_value = {"name": "SINV-1", "grand_total": 25}
+            sync_inbox.process(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_a_second_resend_of_the_same_sale_is_a_plain_retry(self):
+        self._resend()
+        self.assertEqual(self._resend(), (self.name, False))
+
+    def test_a_different_sale_afterwards_is_a_conflict(self):
+        self._resend()
+
+        _name, conflict = self._resend(payload={"pos_profile": "Main", "grand_total": 99})
+
+        self.assertTrue(conflict)
+        self.assertEqual(json.loads(self._row(self.name).payload)["grand_total"], 25)
+
+    def test_a_resend_for_another_profile_cannot_take_it_over(self):
+        self._row(self.name)["pos_profile"] = "Other"
+
+        _name, conflict = self._resend()
+
+        self.assertTrue(conflict)
+        row = self._row(self.name)
+        self.assertIsNone(row.payload)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+
+
 class TestClosedShift(Flow):
     def _post(self, payload):
         name = self._send(SALE, {"pos_profile": "Main", **payload})

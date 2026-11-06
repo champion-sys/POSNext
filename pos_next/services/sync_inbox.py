@@ -48,6 +48,14 @@ VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
 
 DEFAULT_TOTAL_TOLERANCE = 0.05
 
+_NO_ERROR = {
+    "error_class": None,
+    "error_code": None,
+    "error_message": None,
+    "error_fingerprint": None,
+    "traceback": None,
+}
+
 
 def compute_payload_hash(payload):
     """Hash a payload so a retry can be told from a changed invoice."""
@@ -101,6 +109,60 @@ def _resolve_cashier(claimed, uploaded_by, pos_profile):
     return claimed if is_colleague else uploaded_by
 
 
+def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version):
+    """What a record takes from the envelope it arrived in."""
+    payload = item["payload"]
+    serialized = frappe.as_json(payload, indent=1)
+    pos_profile = get_item_profile(item)
+    totals = item.get("client_totals") or {}
+
+    return {
+        "entity": item.get("entity") or ENTITY_INVOICE,
+        "invoice_doctype": payload.get("doctype") or "Sales Invoice",
+        "pos_profile": _link_or_none("POS Profile", pos_profile),
+        "customer": _link_or_none("Customer", payload.get("customer")),
+        "shift": _link_or_none(
+            "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+        ),
+        "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
+        "uploaded_by": uploaded_by,
+        "device_id": device_id,
+        "client_created_at": _parse_datetime(item.get("created_at_device")),
+        "received_at": now_datetime(),
+        "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
+        "client_paid_amount": flt(totals.get("paid", _sum_payments(payload))),
+        "payload": serialized,
+        "original_payload": serialized,
+        "payload_hash": compute_payload_hash(payload),
+        "coupon_code": payload.get("coupon_code"),
+        "seq": cint(item.get("seq")),
+        "client_version": client_version,
+        "protocol_version": cint(protocol_version),
+        "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
+    }
+
+
+def _adopt_payload(name, fields):
+    """Give a record stored without a payload the one its device sent again.
+
+    Only what the record lacks is filled in, so it keeps the profile it was stored under,
+    and a resend for a different profile is not the same sale.
+
+    Returns:
+        bool: Whether the record now holds this payload
+    """
+    row = _lock(name)
+    adopted = not row.payload and row.pos_profile in (None, "", fields["pos_profile"])
+    if adopted:
+        values = {fieldname: value for fieldname, value in fields.items() if not row.get(fieldname)}
+        if row.status == REVIEW:
+            values.update(status="Received", next_retry_at=None, **_NO_ERROR)
+        frappe.db.set_value(DOCTYPE, name, values)
+
+    frappe.db.commit()  # nosemgrep: release the row lock, and keep the sale
+    return adopted or row.payload_hash == fields["payload_hash"]
+
+
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
     """Store one record and commit, before anything can fail on its contents.
 
@@ -108,47 +170,26 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         tuple[str, bool]: The record name, and whether this payload conflicts with
             a different one already stored under the same offline_id
     """
-    payload = item["payload"]
     offline_id = item["offline_id"]
-    payload_hash = compute_payload_hash(payload)
 
-    existing = frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash"], as_dict=True)
+    existing = frappe.db.get_value(
+        DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash", "payload"], as_dict=True
+    )
+    if existing and not existing.payload:
+        fields = _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
+        return existing.name, not _adopt_payload(existing.name, fields)
     if existing:
-        # Records written before the inbox existed have no hash to compare
+        # A manager can paste a payload into a record that has no hash to compare
+        payload_hash = compute_payload_hash(item["payload"])
         conflict = bool(existing.payload_hash) and existing.payload_hash != payload_hash
         return existing.name, conflict
-
-    serialized = frappe.as_json(payload, indent=1)
-    pos_profile = get_item_profile(item)
-    totals = item.get("client_totals") or {}
 
     doc = frappe.get_doc(
         {
             "doctype": DOCTYPE,
             "offline_id": offline_id,
             "status": "Received",
-            "entity": item.get("entity") or ENTITY_INVOICE,
-            "invoice_doctype": payload.get("doctype") or "Sales Invoice",
-            "pos_profile": _link_or_none("POS Profile", pos_profile),
-            "customer": _link_or_none("Customer", payload.get("customer")),
-            "shift": _link_or_none(
-                "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
-            ),
-            "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
-            "uploaded_by": uploaded_by,
-            "device_id": device_id,
-            "client_created_at": _parse_datetime(item.get("created_at_device")),
-            "received_at": now_datetime(),
-            "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
-            "client_paid_amount": flt(totals.get("paid", _sum_payments(payload))),
-            "payload": serialized,
-            "original_payload": serialized,
-            "payload_hash": payload_hash,
-            "coupon_code": payload.get("coupon_code"),
-            "seq": cint(item.get("seq")),
-            "client_version": client_version,
-            "protocol_version": cint(protocol_version),
-            "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
+            **_envelope_fields(item, uploaded_by, device_id, client_version, protocol_version),
         }
     )
     doc.flags.ignore_permissions = True
@@ -368,11 +409,7 @@ def _mark_synced(name, result, outcome, started=None):
         "processed_at": now_datetime(),
         "synced_at": now_datetime(),
         "next_retry_at": None,
-        "error_class": None,
-        "error_code": None,
-        "error_message": None,
-        "error_fingerprint": None,
-        "traceback": None,
+        **_NO_ERROR,
     }
     if result.get("customer"):
         values["customer"] = result["customer"]
@@ -699,6 +736,10 @@ def _stamp_resolution(row, resolution, note):
 def reprocess(name, note=None):
     """Send a reviewed invoice through processing again, right now."""
     row = _review_row(name)
+    # Nothing can change until the device sends it again, and its review must stay open
+    if not row.payload:
+        return row.as_dict()
+
     _stamp_resolution(row, "Reprocessed", note)
     row.status = "Received"
     row.attempts = 0
@@ -773,7 +814,7 @@ def apply_fix(name, fix, values):
     if fixes[fix] is None:
         row.set(fix, 1)
     else:
-        payload = json.loads(row.payload)
+        payload = sync_entities.load_payload(row)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
         if fix == "shift":
