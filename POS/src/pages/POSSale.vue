@@ -1100,6 +1100,8 @@ import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
+import { getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
+import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
 import { useSerialNumberStore } from "@/stores/serialNumber";
@@ -3270,8 +3272,18 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 				}
 			}
 
+		const printRoute = getPrintRoute(PLATFORM, {
+			thermalReady: Boolean(btStore.isEnabled) && btStore.printers.length > 0,
+			silentPrint: posSettingsStore.silentPrint,
+		});
+
+		if (printRoute === NONE) {
+			showWarning(__("Pair a Bluetooth or Wi-Fi printer in the settings to print"));
+			return;
+		}
+
 		// Thermal printer routing path — routes print job to all configured printers
-		if (btStore.isEnabled && btStore.printers.length > 0) {
+		if (printRoute === THERMAL) {
 			try {
 				await printInvoiceToAllPrinters(invoiceData);
 				return;
@@ -3281,8 +3293,8 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 			}
 		}
 
-		// Silent print path — send directly to thermal printer via QZ Tray
-		if (posSettingsStore.silentPrint) {
+		// Silent print path — QZ Tray on the web, the system printer on desktop
+		if (printRoute === SILENT || posSettingsStore.silentPrint) {
 			const result = await printWithSilentFallback(invoiceData);
 			if (result.method === "browser") {
 				log.info("Used browser print fallback");

@@ -3,6 +3,9 @@ import { logger } from "@/utils/logger"
 import { getOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
+import { canUseBrowserPrint } from "@/platform/printing/routes"
+import { printSystemHTML } from "@/platform/printing/system"
+import { ELECTRON, PLATFORM } from "@/platform/runtime"
 import { printHTML as qzPrintHTML } from "@/utils/qzTray"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 
@@ -340,7 +343,7 @@ async function processAndExecuteSilentPrint(fullHTML, injectedStyles = "") {
 </body>
 </html>`
 
-		await qzPrintHTML(isolatedDocument)
+		await (PLATFORM === ELECTRON ? printSystemHTML : qzPrintHTML)(isolatedDocument)
 	}
 }
 
@@ -575,6 +578,7 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 			await silentPrintInvoiceFromDoc(invoiceData)
 			return { method: "silent", success: true }
 		} catch (err) {
+			if (!canUseBrowserPrint(PLATFORM)) throw err
 			log.warn(
 				"Silent local receipt failed, falling back to browser:",
 				err?.message || err,
@@ -601,6 +605,7 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 		await silentPrintInvoice(invoiceName, printFormat, doctype)
 		return { method: "silent", success: true }
 	} catch (err) {
+		if (!canUseBrowserPrint(PLATFORM)) throw err
 		log.warn(
 			"Silent print failed, falling back to browser:",
 			err?.message || err,

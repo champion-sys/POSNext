@@ -35,11 +35,7 @@ flowchart TB
 | التشفير المحلي | غير متاح فعليًا | SQLCipher، والمفتاح عبر `safeStorage` | SQLCipher، والمفتاح في Android Keystore |
 | المصادقة | كوكي الجلسة وCSRF | Device token وجلسة كاشير | Device token وجلسة كاشير |
 | الشبكة | `fetch` بمسار نسبي | `fetch` بعنوان كامل | `CapacitorHttp` أو `fetch` بعنوان كامل |
-| طباعة إيصال HTML | `/printview` أو QZ | `webContents.print` صامت | مولد ESC/POS المحلي |
-| طابعة بلوتوث | Web Bluetooth | Web Bluetooth، وCOM للبلوتوث الكلاسيكي | إضافة BLE وإضافة SPP |
-| طابعة USB | WebUSB | Spooler أو WebUSB | USB OTG عبر إضافة |
-| طابعة شبكة | QZ Tray | TCP 9100 من العملية الرئيسية | TCP عبر إضافة |
-| طابعة مدمجة | لا | لا | SDK الشركة المصنعة، مثل Sunmi |
+| الطباعة | بلوتوث، أو QZ بطابعة افتراضية، أو نافذة Chrome | طابعة محددة في الإعدادات، أو نافذة طابعات النظام | بلوتوث، أو طابعة Wi-Fi عبر TCP 9100 |
 | التحديث | Service Worker | `electron-updater` | متجر أو MDM، مع تحديث حزمة الويب لاحقًا |
 | نسخة واحدة | Web Locks لاختيار تبويب قائد | `requestSingleInstanceLock` | نشاط واحد |
 
@@ -154,12 +150,9 @@ CREATE TABLE device_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
 
 ### طبقة HTTP
 
-كل الاتصالات تمر عبر `HttpClient` واحد:
+كل الطلبات تنتهي في `fetch`، سواء من frappe-ui أو من كودنا. لذلك يكفي جسر واحد في [http.js](../../POS/src/platform/http.js) يعمل على exe وAndroid فقط، ويضيف عنوان الخادم ورمز الجهاز. وهذا أبسط من الخطة الأولى التي كانت تعدل أكثر من 150 موضعًا.
 
-- **`createResource`:** يتغير عبر `setConfig("resourceFetcher")` الموجود في [main.js](../../POS/src/main.js).
-- **`call`:** يُوحَّد عبر [apiWrapper.js](../../POS/src/utils/apiWrapper.js). توجد 9 ملفات تستورد `call` مباشرة من frappe-ui ويجب تحويلها، لأن النسخة الأصلية تستخدم مسارًا نسبيًا ثابتًا.
-- **`fetch` المباشر:** المواضع الستة تتحول إلى `HttpClient`.
-- **عنوان الخادم:** يُحفظ عند تسجيل الجهاز. يبقى نسبيًا على الويب.
+عنوان الخادم يُحفظ عند تسجيل الجهاز، ويبقى نسبيًا على الويب.
 
 ### تسجيل الجهاز
 
@@ -198,23 +191,18 @@ sequenceDiagram
 
 ## 6. الطباعة
 
-`PrintService` مشترك ويبني الإيصال، و`PrinterPort` يرسل البايتات أو HTML.
+قرار الفريق حسب المنصة، والقاعدة في [routes.js](../../POS/src/platform/printing/routes.js):
 
-```ts
-export interface PrinterPort {
-  capabilities(): PrinterCapabilities
-  discover(kind: PrinterKind): Promise<PrinterInfo[]>
-  connect(id: string): Promise<void>
-  sendRaw(bytes: Uint8Array): Promise<void>    // ESC/POS
-  printHtml?(html: string, opts: PrintOptions): Promise<void>
-  openCashDrawer?(): Promise<void>
-}
-```
+| المنصة | الطرق بالترتيب | إذا فشلت |
+|---|---|---|
+| الويب | بلوتوث، ثم QZ Tray بالطابعة الافتراضية، ثم نافذة Chrome | ينتقل للطريقة التالية |
+| سطح المكتب | الطابعة المحددة في الإعدادات، وبدونها نافذة طابعات النظام | رسالة خطأ |
+| Android | طابعة بلوتوث أو Wi-Fi مقترنة | رسالة تطلب إقران طابعة |
 
-- **إعادة الاستخدام:** [escpos.ts](../../POS/src/utils/escpos.ts) و[printerQueue.ts](../../POS/src/services/printerQueue.ts) يبقيان مشتركين. الفرع الحالي `feature/bluetooth-printer` قريب من هذا الفصل ويجب إكماله قبل التحويل.
-- **الفصل عن Dexie:** `printerQueue.ts` يستورد قاعدة البيانات مباشرة، ويجب أن يمر عبر `printQueue`.
+- **إعادة الاستخدام:** [escpos.ts](../../POS/src/utils/escpos.ts) و[printerQueue.ts](../../POS/src/services/printerQueue.ts) يبقيان مشتركين.
+- **Android:** لا تعتمدوا على Web Bluetooth في WebView. نحتاج إضافة أصلية للبلوتوث، وإضافة TCP لطابعات Wi-Fi.
 - **العربية في ESC/POS:** كثير من الطابعات الحرارية لا تدعم تشكيل العربية نصًا، فتبقى الطباعة كصورة الخيار الافتراضي.
-- **إيصال قبل المزامنة:** يُبنى من `receipts` بلا خادم، ولا يعتمد على `/printview`.
+- **إيصال قبل المزامنة:** يُبنى من البيانات المحلية بلا خادم، ولا يعتمد على `/printview`.
 
 ## 7. البناء وهيكل المجلدات
 
@@ -259,7 +247,6 @@ pos_next/
 
 - **الأمان:** `contextIsolation: true` و`nodeIntegration: false` و`sandbox: true`، مع CSP صارم وقائمة IPC محددة.
 - **تحميل الواجهة:** بروتوكول `app://` عبر `protocol.handle` مع رجوع إلى `index.html`.
-- **الأجهزة:** معالجة `select-bluetooth-device` و`select-usb-device` و`setDevicePermissionHandler` لتجنب نوافذ اختيار كل مرة. الصلاحيات تُحفظ لأن الافتراضي ينتهي مع `WebContents`.
 - **SQLite:** `better-sqlite3` وحدة أصلية تحتاج إعادة بناء لكل إصدار Electron، ويُعالج ذلك بـ `electron-builder install-app-deps` في CI. للتشفير يُجرب `better-sqlite3-multiple-ciphers` في S-2.
 - **الإغلاق:** تنبيه إذا كانت هناك فواتير غير مرفوعة، مع إبقاء التطبيق في شريط النظام.
 - **التوقيع:** توقيع الكود ضروري لتجنب تحذير SmartScreen، ويحتاج شهادة مدفوعة.
@@ -272,9 +259,8 @@ pos_next/
 - **السبب في عدم استخدام `server.url`:** تحميل الواجهة من الخادم يمنع البدء أوفلاين، لذا تُحزم الواجهة داخل التطبيق.
 - **SQLite:** `@capacitor-community/sqlite` المرشح الأول. مصادر مراجعتي ثانوية، لذا توافق الإصدار مع Capacitor يُؤكد في S-1.
 - **مفتاح التشفير:** الإضافة تستخدم سرًا واحدًا لكل القواعد، وهذا يكفي هنا لأن للتطبيق قاعدة واحدة، ويُولد عشوائيًا لكل جهاز ويُخزن في Keystore.
-- **البلوتوث:** لا تعتمدوا على Web Bluetooth في WebView. نحتاج `@capacitor-community/bluetooth-le` لطابعات BLE، وإضافة SPP لطابعات البلوتوث الكلاسيكي الشائعة.
+- **الطباعة:** بلوتوث عبر `@capacitor-community/bluetooth-le` لطابعات BLE وإضافة SPP للبلوتوث الكلاسيكي، وWi-Fi عبر TCP 9100.
 - **المزامنة:** تعمل في الواجهة. WorkManager اختياري لاحقًا لرفع الفواتير والتطبيق في الخلفية.
-- **أجهزة POS:** طابعات Sunmi وiMin المدمجة تحتاج إضافة صغيرة حول SDK الشركة.
 
 ## 10. الأمان
 

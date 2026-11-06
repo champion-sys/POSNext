@@ -354,14 +354,16 @@
 												:label="__('Allow Partial Payment')"
 												:description="__('Enable partial payment for invoices')"
 											/>
+											<SystemPrinterSettings v-if="isDesktop" />
 											<CheckboxField
+												v-else
 												v-model="settings.silent_print"
 												:label="__('Silent Print')"
 												:description="__('Send receipts directly to a thermal printer via QZ Tray (no browser dialog)')"
 											/>
 
 											<!-- QZ Tray Printer Settings (shown when silent print is enabled) -->
-											<div v-if="settings.silent_print" class="ps-6 flex flex-col gap-3 border-s-2 border-teal-200">
+											<div v-if="settings.silent_print && !isDesktop" class="ps-6 flex flex-col gap-3 border-s-2 border-teal-200">
 												<!-- Connection Status -->
 												<div class="flex items-center gap-2">
 													<div
@@ -568,6 +570,8 @@ import CheckboxField from "@/components/settings/CheckboxField.vue"
 import NumberField from "@/components/settings/NumberField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
 import PrinterManagement from "@/components/settings/PrinterManagement.vue"
+import SystemPrinterSettings from "@/components/settings/SystemPrinterSettings.vue"
+import { ELECTRON, PLATFORM } from "@/platform/runtime"
 import { useToast } from "@/composables/useToast"
 import { Button, call, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, ref, watch } from "vue"
@@ -582,6 +586,8 @@ import { usePOSEvents } from "@/composables/usePOSEvents"
 import TranslatedHTML from "../common/TranslatedHTML.vue"
 import { useQzTray } from "@/composables/useQzTray"
 
+
+const isDesktop = PLATFORM === ELECTRON
 const log = logger.create('POSSettings')
 const { detectSettingsChanges, updateSettingsSnapshot, emitStockSyncConfigured } = usePOSEvents()
 const { showSuccess, showError } = useToast()

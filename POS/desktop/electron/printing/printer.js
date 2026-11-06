@@ -52,7 +52,8 @@ async function printHTML(html, printerName = "", options = {}) {
 		return new Promise((resolve, reject) => {
 			printWindow.webContents.print(
 				{
-					silent: options.silent !== false,
+					// No printer chosen in settings: let the system dialog pick one
+					silent: Boolean(printerName),
 					printBackground: options.printBackground !== false,
 					deviceName: printerName,
 					copies: options.copies || 1,
