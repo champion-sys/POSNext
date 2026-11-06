@@ -1,20 +1,15 @@
+import {
+	createLink,
+	listPairedPrinters,
+	PRINTER_CHARACTERISTICS,
+	PRINTER_SERVICES,
+	scanForBlePrinter,
+	usesNativeLink,
+} from "@/platform/printing/transport"
 import { logger } from "../utils/logger"
 import { PrinterQueue, PrintJobPriority } from "./printerQueue"
 
 const log = logger.create("PrinterService")
-
-// Common UUIDs for Bluetooth Thermal Printers
-const PRINTER_SERVICES = [
-	"000018f0-0000-1000-8000-00805f9b34fb",
-	"0000ffe0-0000-1000-8000-00805f9b34fb",
-	"49535343-fe7d-4ae5-8fa9-9fafd205e455",
-]
-
-const PRINTER_CHARACTERISTICS = [
-	"00002af1-0000-1000-8000-00805f9b34fb",
-	"0000ffe1-0000-1000-8000-00805f9b34fb",
-	"49535343-8841-43f4-a8d4-ecbe34729bb3",
-]
 
 // Declare WebUSB types locally for typescript compiler compatibility
 export interface USBDevice {
@@ -33,9 +28,24 @@ export interface USBDevice {
 	transferOut(endpointNumber: number, data: BufferSource): Promise<any>
 }
 
+// A BLE, Bluetooth Classic or Wi-Fi connection in the Android app
+export interface PrinterLink {
+	deviceId: string
+	printerType: "bluetooth" | "network"
+	connect(): Promise<void>
+	isConnected(): boolean
+	write(data: Uint8Array, pacing: { chunkSize: number; writeDelay: number }): Promise<void>
+	disconnect(): Promise<void>
+}
+
+export interface NativePrinter {
+	id: string
+	name: string
+}
+
 export class PrinterService {
 	// Connection type state
-	public activeType: "bluetooth" | "usb" | null = null
+	public activeType: "bluetooth" | "usb" | "network" | null = null
 
 	// Bluetooth states
 	private device: BluetoothDevice | null = null
@@ -46,6 +56,9 @@ export class PrinterService {
 	private usbDevice: USBDevice | null = null
 	private usbInterfaceNumber = -1
 	private usbEndpointNumber = -1
+
+	// Android state, always empty in the browser
+	private link: PrinterLink | null = null
 
 	private onDisconnectCallback: (() => void) | null = null
 	public queue: PrinterQueue
@@ -69,6 +82,7 @@ export class PrinterService {
 	 * Checks if Web Bluetooth is supported in the current environment
 	 */
 	public isSupported(): boolean {
+		if (usesNativeLink()) return true
 		return typeof window !== "undefined" && typeof navigator !== "undefined" && "bluetooth" in navigator
 	}
 
@@ -82,7 +96,13 @@ export class PrinterService {
 	/**
 	 * Scans for nearby Bluetooth printers and connects
 	 */
-	public async scanAndConnect(): Promise<BluetoothDevice> {
+	public async scanAndConnect(): Promise<BluetoothDevice | NativePrinter | null> {
+		if (usesNativeLink()) {
+			const printer = await scanForBlePrinter()
+			if (printer) await this.connectNative(printer.id)
+			return printer
+		}
+
 		if (!this.isSupported()) {
 			throw new Error("Web Bluetooth is not supported in this browser.")
 		}
@@ -116,6 +136,28 @@ export class PrinterService {
 
 		await this.connectToDevice(device)
 		return device
+	}
+
+	/**
+	 * Lists the Bluetooth devices paired in Android's settings
+	 */
+	public listPairedPrinters(): Promise<NativePrinter[]> {
+		return listPairedPrinters()
+	}
+
+	/**
+	 * Connects in the Android app, by the ID saved with the printer
+	 */
+	public async connectNative(deviceId: string): Promise<void> {
+		await this.closeLink()
+
+		const link: PrinterLink = createLink(deviceId, () => {
+			if (this.link === link) this.handleDisconnection()
+		})
+		await link.connect()
+
+		this.link = link
+		this.activeType = link.printerType
 	}
 
 	/**
@@ -267,6 +309,11 @@ export class PrinterService {
 	 * Disconnects from the current device
 	 */
 	public disconnect(): void {
+		if (this.link) {
+			this.closeLink()
+			return
+		}
+
 		if (this.activeType === "usb") {
 			if (this.usbDevice && this.usbDevice.opened) {
 				log.info("Disconnecting from USB device...")
@@ -289,6 +336,8 @@ export class PrinterService {
 	 * Checks if currently connected
 	 */
 	public isConnected(): boolean {
+		if (this.link) return this.link.isConnected()
+
 		if (this.activeType === "usb") {
 			return !!(this.usbDevice && this.usbDevice.opened)
 		} else {
@@ -300,6 +349,8 @@ export class PrinterService {
 	 * Get connected device name
 	 */
 	public getConnectedDeviceName(): string {
+		if (this.link) return this.link.deviceId
+
 		if (this.activeType === "usb") {
 			return this.usbDevice?.productName || this.usbDevice?.serialNumber || "USB Printer"
 		}
@@ -310,6 +361,8 @@ export class PrinterService {
 	 * Get connected device ID
 	 */
 	public getConnectedDeviceId(): string {
+		if (this.link) return this.link.deviceId
+
 		if (this.activeType === "usb" && this.usbDevice) {
 			return `usb_${this.usbDevice.vendorId}_${this.usbDevice.productId}_${this.usbDevice.serialNumber || ""}`
 		}
@@ -339,7 +392,10 @@ export class PrinterService {
 			throw new Error("No printer connected.")
 		}
 
-		if (this.activeType === "usb") {
+		if (this.link) {
+			log.info(`Sending ${data.length} bytes to ${this.link.deviceId}...`)
+			await this.link.write(data, this.getBluetoothPacing())
+		} else if (this.activeType === "usb") {
 			if (!this.usbDevice || this.usbEndpointNumber === -1) {
 				throw new Error("USB printer not configured.")
 			}
@@ -380,27 +436,7 @@ export class PrinterService {
 			if (!this.characteristic) {
 				throw new Error("Bluetooth printer characteristic is missing.")
 			}
-			let chunkSize = 128
-			let writeDelay = 10
-			try {
-				if (typeof localStorage !== "undefined") {
-					const activePrinterId = localStorage.getItem("pos_active_printer_id")
-					const printersStr = localStorage.getItem("pos_printers")
-					if (printersStr && activePrinterId) {
-						const printers = JSON.parse(printersStr)
-						const active = printers.find((p: any) => p.id === activePrinterId)
-						if (active) {
-							if (active.chunkSize !== undefined) chunkSize = parseInt(active.chunkSize, 10)
-							if (active.writeDelay !== undefined) writeDelay = parseInt(active.writeDelay, 10)
-						}
-					} else {
-						chunkSize = parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10)
-						writeDelay = parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10)
-					}
-				}
-			} catch (e) {
-				log.warn("Failed to retrieve bluetooth printer configurations:", e)
-			}
+			const { chunkSize, writeDelay } = this.getBluetoothPacing()
 
 			for (let i = 0; i < data.length; i += chunkSize) {
 				const chunk = data.slice(i, i + chunkSize)
@@ -420,10 +456,48 @@ export class PrinterService {
 	}
 
 	/**
+	 * How fast the active printer takes data over Bluetooth, from its saved settings
+	 */
+	private getBluetoothPacing(): { chunkSize: number; writeDelay: number } {
+		let chunkSize = 128
+		let writeDelay = 10
+		try {
+			if (typeof localStorage !== "undefined") {
+				const activePrinterId = localStorage.getItem("pos_active_printer_id")
+				const printersStr = localStorage.getItem("pos_printers")
+				if (printersStr && activePrinterId) {
+					const printers = JSON.parse(printersStr)
+					const active = printers.find((p: any) => p.id === activePrinterId)
+					if (active) {
+						if (active.chunkSize !== undefined) chunkSize = parseInt(active.chunkSize, 10)
+						if (active.writeDelay !== undefined) writeDelay = parseInt(active.writeDelay, 10)
+					}
+				} else {
+					chunkSize = parseInt(localStorage.getItem("pos_bt_chunk_size") || "128", 10)
+					writeDelay = parseInt(localStorage.getItem("pos_bt_write_delay") || "10", 10)
+				}
+			}
+		} catch (e) {
+			log.warn("Failed to retrieve bluetooth printer configurations:", e)
+		}
+		return { chunkSize, writeDelay }
+	}
+
+	/**
 	 * Automatic reconnection flow using previously saved device ID
 	 */
-	public async tryAutoReconnect(savedId: string, type: "bluetooth" | "usb" = "bluetooth"): Promise<boolean> {
+	public async tryAutoReconnect(savedId: string, type: "bluetooth" | "usb" | "network" = "bluetooth"): Promise<boolean> {
 		if (!savedId) return false
+
+		if (usesNativeLink()) {
+			try {
+				await this.connectNative(savedId)
+				return true
+			} catch (error) {
+				log.error("Printer reconnection failed:", error)
+				return false
+			}
+		}
 
 		if (type === "usb") {
 			if (!this.isUsbSupported()) return false
@@ -460,6 +534,15 @@ export class PrinterService {
 		return false
 	}
 
+	/**
+	 * A plugin handles calls in order, so the next connect must wait for this to finish
+	 */
+	private async closeLink(): Promise<void> {
+		const link = this.link
+		this.cleanup()
+		await link?.disconnect().catch((error) => log.warn("Error closing printer link:", error))
+	}
+
 	private handleDisconnection(): void {
 		log.warn("Printer device disconnected.")
 		this.cleanup()
@@ -476,6 +559,8 @@ export class PrinterService {
 		this.usbDevice = null
 		this.usbInterfaceNumber = -1
 		this.usbEndpointNumber = -1
+
+		this.link = null
 
 		this.activeType = null
 	}

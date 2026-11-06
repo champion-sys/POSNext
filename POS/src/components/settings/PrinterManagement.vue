@@ -4,7 +4,9 @@
 		<CheckboxField
 			v-model="store.isEnabled"
 			:label="__('Enable Receipt Printer')"
-			:description="__('Send receipts directly to a thermal printer via Web Bluetooth or WebUSB (no local drivers/services required)')"
+			:description="isAndroidApp
+				? __('Send receipts directly to a Bluetooth or Wi-Fi thermal printer')
+				: __('Send receipts directly to a thermal printer via Web Bluetooth or WebUSB (no local drivers/services required)')"
 		/>
 
 		<!-- Printer Settings Container (shown when enabled) -->
@@ -43,10 +45,14 @@
 						<!-- Left Side: Printer details -->
 						<div class="flex items-start gap-3 min-w-0" @click="store.setActivePrinter(printer.id)">
 							<!-- Icon changes based on type -->
-							<div class="p-2 rounded-lg flex-shrink-0" :class="printer.type === 'usb' ? 'bg-teal-50 text-teal-600' : 'bg-blue-50 text-blue-600'">
+							<div class="p-2 rounded-lg flex-shrink-0" :class="printer.type === 'usb' || printer.type === 'network' ? 'bg-teal-50 text-teal-600' : 'bg-blue-50 text-blue-600'">
 								<!-- USB icon -->
 								<svg v-if="printer.type === 'usb'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m0 11v3m0-11a3 3 0 110-6 3 3 0 010 6zm0 11a3 3 0 100-6 3 3 0 000 6z" />
+								</svg>
+								<!-- Wi-Fi icon -->
+								<svg v-else-if="printer.type === 'network'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
 								</svg>
 								<!-- Bluetooth icon -->
 								<svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -68,7 +74,10 @@
 								<!-- Badges description -->
 								<div class="flex flex-wrap gap-1.5 items-center mt-1">
 									<span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
-										{{ printer.type }}
+										{{ printer.type === 'network' ? __('Wi-Fi') : printer.type }}
+									</span>
+									<span v-if="printer.host" class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200" dir="ltr">
+										{{ printer.host }}:{{ printer.port }}
 									</span>
 									<span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
 										{{ printer.paperSize }}mm
@@ -140,7 +149,8 @@
 			</div>
 
 			<!-- Add Printer Section -->
-			<div class="flex flex-col gap-2 pt-2 border-t border-gray-200">
+			<AndroidPrinterPairing v-if="isAndroidApp" />
+			<div v-else class="flex flex-col gap-2 pt-2 border-t border-gray-200">
 				<span class="text-xs font-semibold text-gray-700">{{ __('Pair New Printer') }}</span>
 				<div class="flex flex-wrap gap-2.5">
 					<Button
@@ -309,7 +319,7 @@
 							/>
 						</div>
 
-						<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div v-if="!isAndroidApp" class="grid grid-cols-1 md:grid-cols-2 gap-4">
 							<SelectField
 								v-model="store.usbWriteDelay"
 								:label="__('USB Inter-chunk Delay')"
@@ -369,13 +379,16 @@ import { useToast } from "@/composables/useToast"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { printerService } from "@/services/printerService"
+import { usesNativeLink } from "@/platform/printing/transport"
 import { COMMANDS, encodeCP1256, reshapeArabic, renderReceiptToRaster } from "@/utils/escpos"
+import AndroidPrinterPairing from "@/components/settings/AndroidPrinterPairing.vue"
 import CheckboxField from "@/components/settings/CheckboxField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
 
 const { showSuccess, showError } = useToast()
 const store = useBluetoothPrinterStore()
 const posSettings = usePOSSettingsStore()
+const isAndroidApp = usesNativeLink()
 
 const isScanning = ref(false)
 const isConnecting = ref(false)

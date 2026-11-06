@@ -2,6 +2,7 @@ const path = require("node:path")
 const { app, BrowserWindow, ipcMain, protocol, net } = require("electron")
 const { pathToFileURL } = require("node:url")
 const { getAvailablePrinters, printHTML } = require("./printing/printer")
+const { startAutoUpdate } = require("./updater")
 
 const RENDERER_DIR = path.join(__dirname, "..", "renderer")
 
@@ -50,6 +51,7 @@ if (!app.requestSingleInstanceLock()) {
 	app.whenReady().then(() => {
 		serveRenderer()
 		createWindow()
+		startAutoUpdate()
 	})
 	app.on("window-all-closed", () => app.quit())
 }

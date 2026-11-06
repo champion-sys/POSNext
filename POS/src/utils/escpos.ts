@@ -1,3 +1,4 @@
+import { usesNativeLink } from "@/platform/printing/transport"
 import { serverUrl } from "@/platform/runtime"
 import { logger } from "./logger"
 import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
@@ -1000,7 +1001,8 @@ export async function printInvoiceToAllPrinters(invoiceData: any): Promise<void>
 		for (const printer of store.printers) {
 			try {
 				const printFormatName = printer.printFormat || null
-				if (!printFormatName) {
+				// Android has no other way to print, so a printer with no format uses the local receipt
+				if (!printFormatName && !usesNativeLink()) {
 					log.info(`Printer Router: Skipping printer ${printer.name} because it has no Target Print Format`)
 					continue
 				}
@@ -1021,10 +1023,14 @@ export async function printInvoiceToAllPrinters(invoiceData: any): Promise<void>
 
 				log.info(`Printer Router: Printing to ${printer.name} with format ${printFormatName}`)
 
-				try {
-					await printInvoiceFormatToBluetooth(invoiceData, printFormatName)
-				} catch (fmtError) {
-					log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError)
+				if (printFormatName) {
+					try {
+						await printInvoiceFormatToBluetooth(invoiceData, printFormatName)
+					} catch (fmtError) {
+						log.warn("Bluetooth print format failed, falling back to standard Bluetooth receipt layout:", fmtError)
+						await printInvoiceToBluetooth(invoiceData)
+					}
+				} else {
 					await printInvoiceToBluetooth(invoiceData)
 				}
 				printedCount++
