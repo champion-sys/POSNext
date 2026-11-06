@@ -11,7 +11,7 @@ from frappe.utils import cint
 
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
-from pos_next.services import sync_inbox
+from pos_next.services import sync_inbox, sync_void
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -45,11 +45,14 @@ def _assert_pos_user():
     frappe.throw(_("You are not assigned to a POS Profile"), frappe.PermissionError)
 
 
-def _assert_may_upload(item):
-    """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
-    pos_profile = sync_inbox.get_item_profile(item)
+def _assert_profile_access(pos_profile):
     assert_device_allows_profile(pos_profile)
     _assert_invoice_write_access("Sales Invoice", pos_profile)
+
+
+def _assert_may_upload(item):
+    """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
+    _assert_profile_access(sync_inbox.get_item_profile(item))
 
 
 def _rejected(item, message):
@@ -122,7 +125,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
     Each item is committed on its own, so one bad invoice cannot lose the others.
 
     Args:
-        items: Envelopes, as a list or JSON
+        items: Envelopes, as a list or JSON. One with void_reason asks to void its record
         device_id: The browser's own id. A device with a grant is known without it
         client_version: App version
         protocol_version: Envelope version
@@ -153,6 +156,12 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
             # Not frappe.database.savepoint: ingest commits, and releasing one then raises
             frappe.db.savepoint(ITEM_SAVEPOINT)
             _assert_may_upload(item)
+            if item.get("void_reason"):
+                row = sync_void.request_void(
+                    item, uploader, _assert_profile_access, device_id, client_version, protocol_version
+                )
+                results.append(sync_void.describe_void(row))
+                continue
             name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
         except Exception as exc:
             results.append(_rejected(item, _discard_item(exc)))
@@ -280,4 +289,10 @@ def get_center_summary():
         limit=100,
     )
     coupon_overruns = frappe.db.count("Offline Invoice Sync", {"coupon_overrun": ["is", "set"]})
-    return {"counts": counts, "groups": groups, "coupon_overruns": coupon_overruns}
+    refused_voids = frappe.db.count("Offline Invoice Sync", {"error_code": sync_void.VOID_AFTER_POSTED})
+    return {
+        "counts": counts,
+        "groups": groups,
+        "coupon_overruns": coupon_overruns,
+        "refused_voids": refused_voids,
+    }

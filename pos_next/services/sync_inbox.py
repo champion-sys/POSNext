@@ -92,6 +92,10 @@ def validate_envelope(item):
         return _("The record and its payload name different POS Profiles")
     if (item.get("entity") or ENTITY_INVOICE) not in sync_entities.ENTITIES:
         return "Unknown entity"
+    # Read as a plain push, a blank reason would post the record the device wants gone
+    reason = item.get("void_reason")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        return "A void needs a reason"
     return None
 
 
@@ -716,7 +720,9 @@ def _flag_if_stuck(row):
     else:
         return
 
-    _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
+    # A device can void a waiting record at any moment, and that must not turn back into a review
+    if frappe.db.get_value(DOCTYPE, row.name, "status", for_update=True) == "Blocked":
+        _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
 
 
 def _requeue(name, expected, **conditions):

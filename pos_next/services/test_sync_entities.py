@@ -150,6 +150,7 @@ class TestBlocking(NoSiteTestCase):
 class TestStuckRows(NoSiteTestCase):
     def _flag(self, received_at, statuses):
         row = _row(status="Blocked", depends_on=LOCAL_CUSTOMER, received_at=received_at)
+        frappe.local.db.get_value.return_value = "Blocked"
         with (
             patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses),
             patch.object(sync_inbox, "_handle_failure") as handle_failure,
@@ -913,6 +914,7 @@ class TestShiftCloseWaiting(NoSiteTestCase):
             return sync_inbox._is_blocked(row)
 
     def _flag(self, row, statuses):
+        frappe.local.db.get_value.return_value = "Blocked"
         with (
             patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses),
             patch.object(sync_inbox, "_handle_failure") as handle_failure,
