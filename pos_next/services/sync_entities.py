@@ -262,7 +262,7 @@ def close_shift(row):
     from pos_next.api.shifts import assert_may_close_shift
     from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
         make_closing_shift_from_opening,
-        submit_closing_shift,
+        save_closing_shift,
     )
 
     payload = load_payload(row)
@@ -281,5 +281,5 @@ def close_shift(row):
     closing["period_end_date"] = payload.get("period_end_date") or closing["period_end_date"]
     closing["posting_date"] = payload.get("posting_date") or closing["posting_date"]
 
-    name = submit_closing_shift(json.dumps(closing))
+    name = save_closing_shift(closing)
     return {"name": name, "doctype": "POS Closing Shift", "grand_total": closing.get("grand_total")}

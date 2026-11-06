@@ -878,7 +878,31 @@ def make_closing_shift_from_opening(opening_shift):
 
 @frappe.whitelist()
 def submit_closing_shift(closing_shift):
+    """Close a shift for the session user.
+
+    The document comes from the request and is saved without permission checks, so nothing
+    but a closing of a shift this user may close can be allowed through.
+    """
+    from pos_next.api.invoices import _assert_invoice_write_access
+    from pos_next.api.shifts import assert_may_close_shift
+
     closing_shift = json.loads(closing_shift)
+    if closing_shift.get("doctype") != "POS Closing Shift":
+        frappe.throw(_("Only a POS Closing Shift can be submitted here"), frappe.PermissionError)
+
+    opening_shift = closing_shift.get("pos_opening_shift")
+    if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
+        frappe.throw(_("Shift {0} does not exist").format(opening_shift))
+
+    opening = frappe.get_doc("POS Opening Shift", opening_shift)
+    _assert_invoice_write_access("Sales Invoice", opening.pos_profile)
+    assert_may_close_shift(opening)
+
+    return save_closing_shift(closing_shift)
+
+
+def save_closing_shift(closing_shift):
+    """Save and submit a closing the caller has already authorized."""
     closing_shift_doc = frappe.get_doc(closing_shift)
     closing_shift_doc.flags.ignore_permissions = True
     closing_shift_doc.save()

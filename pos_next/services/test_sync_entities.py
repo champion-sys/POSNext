@@ -858,12 +858,12 @@ class TestCloseShift(NoSiteTestCase):
             patch("pos_next.api.invoices._assert_invoice_write_access") as self.access,
             patch("pos_next.api.shifts.assert_may_close_shift", assert_may_close or Mock()) as self.role,
             patch(f"{closing_module}.make_closing_shift_from_opening", return_value=json.loads(json.dumps(self.closing))),
-            patch(f"{closing_module}.submit_closing_shift", return_value="POS-CLOSE-1") as self.submit,
+            patch(f"{closing_module}.save_closing_shift", return_value="POS-CLOSE-1") as self.submit,
         ):
             return sync_entities.close_shift(row or _row(entity="shift_close", payload=self.payload))
 
     def _submitted(self):
-        return json.loads(self.submit.call_args.args[0])
+        return self.submit.call_args.args[0]
 
     def test_returns_the_closing_entry(self):
         self.assertEqual(
