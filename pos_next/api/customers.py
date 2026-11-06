@@ -6,6 +6,17 @@ Handles customer search, creation, and management for POS operations
 import frappe
 from frappe import _
 
+CUSTOMER_RESULT_FIELDS = ["name", "customer_name", "mobile_no", "email_id", "disabled"]
+
+
+def _get_profile_customer_filters(pos_profile):
+    """Filters that limit customers to what a POS Profile may see."""
+    profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
+    # Check if customer_group field exists (it may not exist in all versions)
+    if hasattr(profile_doc, "customer_group") and profile_doc.customer_group:
+        return {"customer_group": profile_doc.customer_group}
+    return {}
+
 
 @frappe.whitelist()
 def get_customers(search_term="", pos_profile=None, limit=20, modified_since=None):
@@ -33,11 +44,7 @@ def get_customers(search_term="", pos_profile=None, limit=20, modified_since=Non
         # Filter by POS Profile customer group if specified
         if pos_profile:
             frappe.logger().debug(f"Loading POS Profile: {pos_profile}")
-            profile_doc = frappe.get_cached_doc("POS Profile", pos_profile)
-            # Check if customer_group field exists (it may not exist in all versions)
-            if hasattr(profile_doc, "customer_group") and profile_doc.customer_group:
-                filters["customer_group"] = profile_doc.customer_group
-                frappe.logger().debug(f"Filtering by customer_group: {profile_doc.customer_group}")
+            filters.update(_get_profile_customer_filters(pos_profile))
 
         if modified_since:
             # Delta sync: include disabled customers so frontend can purge them
@@ -61,7 +68,7 @@ def get_customers(search_term="", pos_profile=None, limit=20, modified_since=Non
             "Customer",
             filters=filters,
             or_filters=or_filters or None,
-            fields=["name", "customer_name", "mobile_no", "email_id", "disabled"],
+            fields=CUSTOMER_RESULT_FIELDS,
             limit=customer_limit,
             order_by="customer_name asc",
         )
