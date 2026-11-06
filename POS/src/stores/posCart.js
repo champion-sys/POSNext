@@ -7,6 +7,7 @@ import {
 	shouldValidateItemStock,
 	checkStockAvailability,
 } from "@/utils/stockValidator"
+import { isLocalName } from "@/utils/offline/entities"
 import { offlineState } from "@/utils/offline/offlineState"
 import { useToast } from "@/composables/useToast"
 import { defineStore } from "pinia"
@@ -375,11 +376,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		// Use toRaw() to ensure we get current, non-reactive values (prevents stale cached quantities)
 		const rawItems = toRaw(invoiceItems.value)
 
+		// The server cannot price against a customer it has not received yet
+		const customerName = customer.value?.name || customer.value
+
 		return {
 			doctype: targetDoctype.value,
 			pos_profile: posProfile.value,
-			customer:
-				customer.value?.name || customer.value || currentProfile?.customer,
+			customer: isLocalName(customerName) ? currentProfile?.customer : customerName || currentProfile?.customer,
 			company: currentProfile?.company,
 			selling_price_list: currentProfile?.selling_price_list,
 			currency: currentProfile?.currency,

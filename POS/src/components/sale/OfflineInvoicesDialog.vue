@@ -50,8 +50,14 @@
 							<div class="flex-1 min-w-0">
 								<div class="flex flex-wrap items-center gap-2">
 									<h4 class="font-semibold text-gray-900 text-sm sm:text-base truncate">
-										{{ invoice.data.customer || __('Walk-in Customer') }}
+										{{ getRowTitle(invoice) }}
 									</h4>
+									<span
+										v-if="getRowKind(invoice)"
+										class="text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full flex-shrink-0"
+									>
+										{{ getRowKind(invoice) }}
+									</span>
 									<span
 										v-if="invoice.retry_count > 0"
 										class="text-[10px] sm:text-xs px-2 py-0.5 sm:py-1 bg-red-100 text-red-700 rounded-full flex-shrink-0"
@@ -80,10 +86,12 @@
 								</p>
 								<div class="mt-2 flex flex-col gap-1 text-xs sm:text-sm text-gray-600">
 									<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-										<span>{{ __('{0} items', [invoice.data.items?.length || 0]) }}</span>
-										<span class="font-semibold text-gray-900">
-											{{ formatCurrency(invoice.data.grand_total || 0) }}
-										</span>
+										<template v-if="isSale(invoice)">
+											<span>{{ __('{0} items', [invoice.data.items?.length || 0]) }}</span>
+											<span class="font-semibold text-gray-900">
+												{{ formatCurrency(invoice.data.grand_total || 0) }}
+											</span>
+										</template>
 										<span class="text-[10px] sm:text-xs text-gray-500">
 											{{ formatDate(invoice.timestamp) }}
 										</span>
@@ -102,7 +110,7 @@
 							</div>
 							<div class="flex items-center justify-end sm:justify-start gap-1 sm:gap-2">
 								<button
-									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status"
+									v-if="settingsStore.allowEditOfflineInvoice && !invoice.server_status && isSale(invoice) && !invoice.data.is_return"
 									@click="editInvoice(invoice)"
 									:disabled="isSyncing || invoice.data?.was_printed"
 									class="p-1.5 sm:p-2 hover:bg-blue-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -119,6 +127,7 @@
 									</svg>
 								</button>
 								<button
+									v-if="isSale(invoice)"
 									@click="viewDetails(invoice)"
 									class="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors touch-manipulation"
 									:title="__('View Details')"
@@ -130,7 +139,7 @@
 								</button>
 								<button
 									@click="printInvoice(invoice)"
-									v-if="settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
+									v-if="isSale(invoice) && settingsStore.allowPrintOfflineInvoice && (settingsStore.allowPrintPreviousInvoices || (settingsStore.allowPrintLastInvoice && invoice.offline_id && invoice.offline_id === uiStore.lastInvoiceName))"
 									class="p-1.5 sm:p-2 hover:bg-green-50 rounded-lg transition-colors touch-manipulation"
 									:title="invoice.data?.was_printed ? __('Reprint receipt (already printed once)') : __('Print receipt')"
 								>
@@ -139,7 +148,7 @@
 									</svg>
 								</button>
 								<button
-									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status"
+									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && getEntity(invoice) !== ENTITY_SHIFT_CLOSE"
 									@click="deleteInvoice(invoice)"
 									:disabled="isSyncing"
 									class="p-1.5 sm:p-2 hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -232,7 +241,7 @@
 						<div class="bg-gray-50 rounded-lg p-2.5 sm:p-3 flex flex-col gap-1 text-xs sm:text-sm">
 							<div class="flex justify-between gap-2">
 								<span class="text-gray-600">{{ __('Customer:') }}</span>
-								<span class="font-semibold truncate">{{ invoiceToDelete.data.customer || __('Walk-in Customer') }}</span>
+								<span class="font-semibold truncate">{{ getRowTitle(invoiceToDelete) }}</span>
 							</div>
 							<div class="flex justify-between gap-2">
 								<span class="text-gray-600">{{ __('Amount:') }}</span>
@@ -262,6 +271,13 @@ import { computed, ref, watch } from "vue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSUIStore } from "@/stores/posUI"
 import { useToast } from "@/composables/useToast"
+import {
+	ENTITY_CUSTOMER,
+	ENTITY_INVOICE,
+	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
+	getEntity,
+} from "@/utils/offline/entities"
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -334,6 +350,34 @@ async function loadInvoices() {
 
 function formatCurrency(amount) {
 	return formatCurrencyUtil(amount, props.currency)
+}
+
+function isSale(row) {
+	return getEntity(row) === ENTITY_INVOICE
+}
+
+function getRowTitle(row) {
+	const data = row.data
+	return (
+		data.customer_name ||
+		data.pos_opening_shift ||
+		data.customer ||
+		__('Walk-in Customer')
+	)
+}
+
+function getRowKind(row) {
+	if (row.data.is_return) return __("Return")
+	switch (getEntity(row)) {
+		case ENTITY_CUSTOMER:
+			return __("New Customer")
+		case ENTITY_PAYMENT:
+			return __("Payment for {0}", [row.data.invoice_name])
+		case ENTITY_SHIFT_CLOSE:
+			return __("Shift Close")
+		default:
+			return ""
+	}
 }
 
 function formatDate(timestamp) {

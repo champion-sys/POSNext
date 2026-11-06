@@ -26,8 +26,15 @@ import {
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
+import {
+	ENTITY_CUSTOMER,
+	buildCustomerPayload,
+	buildLocalCustomer,
+	getDependentRows,
+} from "@/utils/offline/entities"
 import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
+import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useStockStore } from "@/stores/stock"
@@ -247,6 +254,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @param {string} id - Invoice ID to delete
 	 */
 	async function deletePending(id) {
+		const rows = await getPending()
+		const row = rows.find((candidate) => candidate.id === id)
+		if (row && getDependentRows(rows, row.offline_id).length > 0) {
+			throw new Error(__("Other queued records depend on this one, so it cannot be deleted"))
+		}
 		await offlineWorker.deleteOfflineInvoice(id)
 		await updatePendingCount()
 	}
@@ -297,6 +309,42 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			log.error('Failed to save invoice offline', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Queue a record that is not a sale
+	 * @param {string} entity - One of the ENTITY constants
+	 * @param {Object} data - Its payload
+	 * @param {string[]} [dependsOn] - Offline IDs that must finish first
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function saveQueueEntity(entity, data, dependsOn = []) {
+		const result = await offlineWorker.saveQueueEntity(entity, data, dependsOn)
+		await updatePendingCount()
+		warnIfStorageNotPersistent()
+
+		if (usePOSSettingsStore().syncMode !== SYNC_PERIODIC) {
+			autoSync().catch((error) => log.error('Sync after queueing failed', error))
+		}
+		return result
+	}
+
+	/**
+	 * Queue a new customer. Its offline_id is its name until the server gives it one.
+	 * @param {Object} customer - The form's values
+	 * @param {{posProfile: string, company: string}} context
+	 * @returns {Promise<Object>} The customer to sell to meanwhile
+	 */
+	async function saveCustomerOffline(customer, { posProfile, company }) {
+		const { session } = await import("@/data/session")
+		const payload = buildCustomerPayload(customer, {
+			offlineId: generateOfflineId(),
+			posProfile,
+			company,
+			cashier: session.user,
+		})
+		await saveQueueEntity(ENTITY_CUSTOMER, payload)
+		return buildLocalCustomer(payload)
 	}
 
 	/**
@@ -532,6 +580,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		// Actions
 		saveInvoiceOffline,
+		saveCustomerOffline,
 		loadPendingInvoices,
 		updatePendingCount,
 		deleteOfflineInvoice,

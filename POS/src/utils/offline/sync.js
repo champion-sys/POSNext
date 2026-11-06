@@ -10,6 +10,7 @@ import {
 	getRetryDelayMs,
 	withOfflinePosting,
 } from "./invoicePayload"
+import { ENTITY_INVOICE, getEntity } from "./entities"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
 import { generateUUID } from "./uuid"
 
@@ -205,6 +206,9 @@ const applyResult = async (row, result) => {
 	await db.invoice_queue.update(row.id, updates)
 	if (updates.synced) {
 		removeOfflineReceiptPayload(row.offline_id)
+		window.dispatchEvent(new CustomEvent("offlineEntitySynced", {
+			detail: { row, status: updates.server_status, name: updates.server_invoice },
+		}))
 	}
 	return updates.server_status
 }
@@ -218,7 +222,10 @@ const applyResult = async (row, result) => {
 const pushBatch = async (rows) => {
 	const items = rows.map((row) => {
 		const offlineId = row.offline_id || row.data?.offline_id
-		return buildSyncEnvelope(row, normalizeInvoiceForSync(row.data, offlineId, row.timestamp))
+		const payload = getEntity(row) === ENTITY_INVOICE
+			? normalizeInvoiceForSync(row.data, offlineId, row.timestamp)
+			: { ...row.data, offline_id: offlineId }
+		return buildSyncEnvelope(row, payload)
 	})
 
 	const response = await call("pos_next.api.sync.push", {

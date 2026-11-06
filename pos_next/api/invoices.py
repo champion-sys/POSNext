@@ -11,6 +11,8 @@ from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
 from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 
+from pos_next.services.sync_entities import is_local_name
+
 
 # ==========================================
 # Constants for field names (avoid typos and enable refactoring)
@@ -825,6 +827,9 @@ def save_invoice_draft(data, acting_user=None):
 
         # Ensure customer exists
         customer_name = invoice_doc.get("customer")
+        if is_local_name(customer_name):
+            frappe.throw(_("Customer {0} has not reached the server yet").format(customer_name))
+
         if customer_name and not frappe.db.exists("Customer", customer_name):
             try:
                 cust = frappe.get_doc(

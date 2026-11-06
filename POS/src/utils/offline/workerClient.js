@@ -348,6 +348,7 @@ class OfflineWorkerClient {
 			case "GET_INVOICE_COUNT":
 				return 0
 			case "GET_INVOICES":
+			case "GET_QUEUE_ROWS":
 			case "SEARCH_ITEMS":
 			case "SEARCH_ITEMS_BY_GROUP":
 			case "SEARCH_ITEMS_BY_BRAND":
@@ -371,6 +372,7 @@ class OfflineWorkerClient {
 			case "CHECK_OFFLINE":
 				return true // Assume offline when worker unavailable
 			case "SAVE_INVOICE":
+			case "SAVE_QUEUE_ENTITY":
 			case "DELETE_INVOICE":
 			case "CACHE_ITEMS":
 			case "CACHE_CUSTOMERS":
@@ -407,6 +409,14 @@ class OfflineWorkerClient {
 
 	async saveOfflineInvoice(invoiceData, options = {}) {
 		return this.sendMessage("SAVE_INVOICE", { invoiceData, options })
+	}
+
+	async saveQueueEntity(entity, data, dependsOn = []) {
+		return this.sendMessage("SAVE_QUEUE_ENTITY", { entity, data, dependsOn })
+	}
+
+	async getQueueRows() {
+		return this.sendMessage("GET_QUEUE_ROWS")
 	}
 
 	async searchCachedItems(searchTerm = "", limit = 50, offset = 0) {

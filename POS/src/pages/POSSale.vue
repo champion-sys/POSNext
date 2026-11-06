@@ -1105,6 +1105,7 @@ import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
 import { useSerialNumberStore } from "@/stores/serialNumber";
+import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/entities";
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -1820,8 +1821,25 @@ watch(
 
 window.addEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
 
+// A customer added offline may still be in the cart when the server settles its name
+function handleEntitySynced({ detail }) {
+	if (detail.row.entity !== ENTITY_CUSTOMER) return;
+
+	const current = cartStore.customer;
+	if ((current?.name || current) !== detail.row.offline_id) return;
+
+	if (detail.name) {
+		cartStore.setCustomer({ ...current, name: detail.name, is_local: 0 });
+	} else {
+		cartStore.setDefaultCustomer();
+	}
+}
+
+window.addEventListener("offlineEntitySynced", handleEntitySynced);
+
 onUnmounted(() => {
 	window.removeEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
+	window.removeEventListener("offlineEntitySynced", handleEntitySynced);
 	window.removeEventListener("resize", () => {
 		uiStore.setWindowWidth(window.innerWidth);
 		updateLayoutBounds();
@@ -2245,6 +2263,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		cashier: session.user,
 		company: shiftStore.profileCompany,
 		customer: customerValue || shiftStore.profileCustomer,
+		customer_name: cartStore.customer?.customer_name,
 		grand_total: cartStore.grandTotal,
 		total_tax: cartStore.totalTax,
 		total_discount: cartStore.totalDiscount,
@@ -2396,6 +2415,8 @@ async function handlePaymentCompleted(paymentData) {
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
 				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
+				usesGiftCard: cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card",
+				hasLocalCustomer: isLocalName(customerValue),
 			});
 
 		if (queueCheckout) {
@@ -2952,6 +2973,12 @@ async function handleEditOfflineInvoice(invoice) {
 					"A receipt for this invoice was already printed — the customer may have a physical copy. Use Return Invoice to issue a credit note instead.",
 				),
 			);
+			return;
+		}
+
+		await offlineStore.loadPendingInvoices();
+		if (getDependentRows(offlineStore.pendingInvoicesList, invoice.offline_id).length > 0) {
+			showWarning(__("A return or a shift close depends on this invoice, so it cannot be edited"));
 			return;
 		}
 
