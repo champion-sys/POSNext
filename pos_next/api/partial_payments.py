@@ -256,11 +256,31 @@ def _determine_payment_source(
         return PaymentSource.POS.value
     elif payment_ledger_entry.voucher_type == "Payment Entry":
         pe_data = payment_entries_map.get(payment_ledger_entry.voucher_no)
-        if pe_data and (pe_data.offline_id or (pe_data.reference_no or "").startswith("POS-")):
+        if pe_data and _is_pos_payment(pe_data):
             return PaymentSource.POS_PAYMENT_ENTRY.value
         return PaymentSource.PAYMENT_ENTRY.value
 
     return PaymentSource.UNKNOWN.value
+
+
+def _is_pos_payment(payment_entry_data: Dict) -> bool:
+    reference_no = payment_entry_data.reference_no or ""
+    return bool(
+        payment_entry_data.offline_id
+        or reference_no.startswith("POS-")
+        or frappe.db.exists("POS Opening Shift", reference_no)
+    )
+
+
+def _get_open_shift() -> Optional[str]:
+    """The cashier's open shift. Closing counts a payment by this reference, so the cash
+    it brought in appears in the expected amount."""
+    return frappe.db.get_value(
+        "POS Opening Shift",
+        {"user": frappe.session.user, "status": "Open", "docstatus": 1},
+        "name",
+        order_by="period_start_date desc",
+    )
 
 
 def _derive_payment_method(payment_entry_data: Dict) -> str:
@@ -882,7 +902,9 @@ def add_payment_to_partial_invoice(invoice_name: str, payments) -> Dict:
 
     try:
         frappe.db.savepoint(batch_savepoint)
-        payment_entries_created = _create_payment_entries(invoice_name, payments)
+        payment_entries_created = _create_payment_entries(
+            invoice_name, payments, reference_no=_get_open_shift()
+        )
 
     except Exception as e:
         frappe.db.rollback(save_point=batch_savepoint)
