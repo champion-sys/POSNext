@@ -20,6 +20,7 @@
 | [04-failed-invoices-log.md](04-failed-invoices-log.md) | سجل الفواتير الفاشلة وتصحيحها في الخادم |
 | [05-roadmap.md](05-roadmap.md) | المراحل والمهام ومعايير القبول والمخاطر |
 | [06-testing-and-rollout.md](06-testing-and-rollout.md) | الاختبار، سيناريوهات الأعطال، الترحيل، النشر |
+| [07-operations-guide.md](07-operations-guide.md) | دليل التشغيل: النشر، تسجيل الأجهزة، الكاشير، المدير، إصدار النسخ |
 
 ## القرارات المتخذة في الخطة
 
