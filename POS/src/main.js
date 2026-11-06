@@ -48,6 +48,8 @@ import "./index.css"
 
 const log = logger.create("Main")
 
+const CSRF_WAIT_MS = 1500
+
 // Before anything can make a request
 installHttpBridge()
 
@@ -132,26 +134,8 @@ async function initializeApp() {
 	const csrfAwareFrappeRequest = createCSRFAwareRequest(frappeRequest)
 	setConfig("resourceFetcher", csrfAwareFrappeRequest)
 
-	// Register plugins
-	app.use(pinia)
-	app.use(resourcesPlugin)
-	app.use(pageMetaPlugin)
-	app.use(translationPlugin)
-
-	// Register global components
-	for (const key in globalComponents) {
-		app.component(key, globalComponents[key])
-	}
-
-	// Disable double-tap zoom on mobile for faster touch response
-	app.directive("touch-action", {
-		mounted: (el) => (el.style.touchAction = "manipulation"),
-	})
-
-	// -------------------------------------------------------------------------
-	// Authentication (CSRF + User fetched in parallel for faster startup)
-	// -------------------------------------------------------------------------
-
+	// The translation plugin and the user check both post right away, so get the CSRF
+	// token first. The wait is capped, because it must not hold up an offline start.
 	const csrfPromise = (async () => {
 		// CSRF protects cookies, and the native apps send a token instead
 		if (isNative) return true
@@ -173,6 +157,27 @@ async function initializeApp() {
 			return false
 		}
 	})()
+	await Promise.race([csrfPromise, new Promise((resolve) => setTimeout(resolve, CSRF_WAIT_MS))])
+
+	// Register plugins
+	app.use(pinia)
+	app.use(resourcesPlugin)
+	app.use(pageMetaPlugin)
+	app.use(translationPlugin)
+
+	// Register global components
+	for (const key in globalComponents) {
+		app.component(key, globalComponents[key])
+	}
+
+	// Disable double-tap zoom on mobile for faster touch response
+	app.directive("touch-action", {
+		mounted: (el) => (el.style.touchAction = "manipulation"),
+	})
+
+	// -------------------------------------------------------------------------
+	// Authentication
+	// -------------------------------------------------------------------------
 
 	const userPromise = (async () => {
 		try {
