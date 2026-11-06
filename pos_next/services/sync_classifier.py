@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 
 import frappe
+from frappe import _
 
 TRANSIENT_SERVER = "transient_server"
 DEPENDENCY = "dependency"
@@ -85,17 +86,26 @@ def _type_names(exc):
     return {klass.__name__ for klass in type(exc).__mro__}
 
 
-def _message(exc):
+def _text(exc):
     message = str(exc) or type(exc).__name__
-    return re.sub(r"<[^>]+>", " ", message).strip()[:1000]
+    return re.sub(r"<[^>]+>", " ", message).strip()
 
 
-def _is_stock_message(message):
+def _stock_shortages(text):
     """The POS stock check raises a plain ValidationError with a JSON error list."""
     try:
-        return "errors" in json.loads(message)
-    except (TypeError, ValueError):
-        return False
+        return json.loads(text).get("errors") or []
+    except (AttributeError, TypeError, ValueError):
+        return []
+
+
+def _describe_shortage(shortage):
+    return _("{0}: {1} requested, {2} available in {3}").format(
+        shortage.get("item_code"),
+        shortage.get("requested_qty"),
+        shortage.get("available_qty"),
+        shortage.get("warehouse"),
+    )
 
 
 def _fingerprint(error_code, message):
@@ -115,11 +125,14 @@ def classify(exc):
     """
     names = _type_names(exc)
     code = type(exc).__name__
-    message = _message(exc)
+    text = _text(exc)
+    shortages = _stock_shortages(text)
+    # A manager reads this, and the JSON has to be parsed before it can be cut short
+    message = ("\n".join(_describe_shortage(row) for row in shortages) or text)[:1000]
 
     if names & _TRANSIENT_TYPES:
         error_class = TRANSIENT_SERVER
-    elif names & _STOCK_TYPES or _is_stock_message(message):
+    elif names & _STOCK_TYPES or shortages:
         error_class = STOCK
     elif isinstance(exc, SyncContractError):
         error_class = CONTRACT

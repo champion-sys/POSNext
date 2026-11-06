@@ -2163,6 +2163,7 @@ Your shift is still open. Only users with role '{0}' are allowed to close this s
 {0}% OFF,خصم {0}%,
 {0}% off {1},خصم {0}% على {1},
 {0}: maximum {1},{0}: الحد الأقصى {1},
+"{0}: {1} requested, {2} available in {3}",{0}: المطلوب {1}، والمتوفر {2} في {3},
 {0}h {1}m,{0}س {1}د,
 {0}m,{0}د,
 {0}m ago,منذ {0}د,

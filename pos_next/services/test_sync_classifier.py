@@ -36,6 +36,28 @@ class TestClassify(unittest.TestCase):
         exc = frappe.ValidationError(frappe.as_json({"errors": [{"item_code": "A"}]}))
         self.assertEqual(classify(exc).error_class, sc.STOCK)
 
+    def test_a_stock_shortage_reads_as_a_sentence(self):
+        shortage = {"item_code": "COFFEE", "requested_qty": 5, "available_qty": 2, "warehouse": "Main"}
+        message = classify(frappe.ValidationError(frappe.as_json({"errors": [shortage]}))).message
+
+        self.assertEqual(message, "COFFEE: 5 requested, 2 available in Main")
+
+    def test_each_short_item_gets_a_line(self):
+        rows = [{"item_code": code, "requested_qty": 1, "available_qty": 0, "warehouse": "Main"} for code in "AB"]
+        message = classify(frappe.ValidationError(frappe.as_json({"errors": rows}))).message
+
+        self.assertEqual(len(message.splitlines()), 2)
+
+    def test_a_long_shortage_list_is_still_a_stock_problem(self):
+        rows = [{"item_code": f"ITEM-{n}", "requested_qty": 9, "available_qty": 0, "warehouse": "Main"} for n in range(60)]
+        result = classify(frappe.ValidationError(frappe.as_json({"errors": rows})))
+
+        self.assertEqual(result.error_class, sc.STOCK)
+        self.assertLessEqual(len(result.message), 1000)
+
+    def test_a_json_message_that_is_not_a_list_of_errors_stays_as_it_is(self):
+        self.assertEqual(classify(frappe.ValidationError("[1, 2]")).message, "[1, 2]")
+
     def test_business_rule(self):
         self.assertEqual(classify(frappe.ValidationError("Closed period")).error_class, sc.BUSINESS)
         self.assertEqual(classify(TotalMismatchError("Differs")).error_class, sc.BUSINESS)
