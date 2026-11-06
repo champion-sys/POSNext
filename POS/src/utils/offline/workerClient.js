@@ -4,6 +4,7 @@
  * Enhanced with retry logic, graceful degradation, and error recovery
  */
 
+import workerUrl from "../../workers/offline.worker.js?worker&url"
 import { logger } from '../logger'
 import { offlineState } from './offlineState'
 
@@ -45,11 +46,13 @@ class OfflineWorkerClient {
 			this.initAttempts++
 			this.workerCrashed = false
 
-			// Create worker using Vite's worker import syntax
-			this.worker = new Worker(
-				new URL("../../workers/offline.worker.js?worker", import.meta.url),
-				{ type: "module" },
-			)
+			// A worker script is matched to a service worker by its own URL, and /assets is
+			// outside the /pos scope, so it could not load on an offline start. A blob worker
+			// inherits this page's service worker, so its import is served from the cache.
+			const bootstrap = new Blob([`import ${JSON.stringify(new URL(workerUrl, location.href).href)}`], {
+				type: "text/javascript",
+			})
+			this.worker = new Worker(URL.createObjectURL(bootstrap), { type: "module" })
 
 			// Handle messages from worker
 			this.worker.onmessage = (event) => {

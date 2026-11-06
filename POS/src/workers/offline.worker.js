@@ -17,6 +17,9 @@
  * @module workers/offline.worker
  */
 
+// Static on purpose: the worker's URL is outside the service worker's /pos scope, so a
+// chunk loaded on demand here cannot be served from the cache on an offline start.
+import Dexie from 'dexie'
 import { logger } from '../utils/logger'
 import { generateOfflineId } from '../utils/offline/uuid'
 
@@ -93,10 +96,6 @@ async function initDB() {
 
 		for (let attempt = 1; attempt <= CONFIG.MAX_RETRY_ATTEMPTS; attempt++) {
 			try {
-				// Dynamic import for worker context
-				const dexieModule = await import("dexie")
-				const Dexie = dexieModule.default || dexieModule
-
 				// Create singleton instance
 				db = new Dexie(CONFIG.DB_NAME)
 
@@ -333,7 +332,7 @@ async function pingServer() {
 		const controller = new AbortController()
 		const timeoutId = setTimeout(() => controller.abort(), 3000)
 
-		const response = await fetch("/api/method/pos_next.api.ping", {
+		const response = await fetch(`${self.location.origin}/api/method/pos_next.api.ping`, {
 			method: "GET",
 			signal: controller.signal,
 		})
@@ -1498,7 +1497,7 @@ async function fetchStockFromServer() {
 			headers['X-Frappe-CSRF-Token'] = csrfToken
 		}
 
-		const response = await fetch('/api/method/pos_next.api.items.get_stock_quantities', {
+		const response = await fetch(`${self.location.origin}/api/method/pos_next.api.items.get_stock_quantities`, {
 			method: 'POST',
 			headers,
 			body: JSON.stringify({
