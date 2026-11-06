@@ -156,7 +156,11 @@ CREATE TABLE device_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
 
 ### تسجيل الجهاز
 
-الكوكي لا تناسب `capacitor://` أو `app://` بسبب قيود SameSite. الحل هو DocType جديد باسم `POS Device`، مع `auth_hooks` الذي يدعمه Frappe في `frappe/auth.py`.
+الكوكي لا تناسب `capacitor://` أو `app://` بسبب قيود SameSite. الحل هو DocType جديد باسم `POS Device`، مع `POS Enrollment Code` لرموز التسجيل، و`auth_hooks` الذي يدعمه Frappe في `frappe/auth.py`.
+
+للجهاز سرّان. **رمز الجهاز** طويل العمر، ويُرسل فقط إلى `cashier_login` في الترويسة `X-POS-Device-Token`. و**تفويض الكاشير** مدته 12 ساعة، ويُرسل مع كل طلب كـ Bearer، فيعمل الطلب بصلاحيات الكاشير لا أكثر. لا يصلح رمز الجهاز كـ Bearer، لأن Frappe ينهي أي طلب يبقى بعده الزائر Guest.
+
+**شرط نشر:** يجب أن يتضمن `allow_cors` في إعدادات الموقع `app://pos` و`https://localhost`، وإلا تفشل كل طلبات التطبيقين.
 
 | الحقل | الغرض |
 |---|---|
@@ -164,6 +168,7 @@ CREATE TABLE device_sequence (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
 | `device_code` | رمز قصير يظهر في رقم الإيصال |
 | `platform`، `app_version`، `last_seen` | المراقبة |
 | `token_hash`، `token_expires` | التحقق دون تخزين الرمز نفسه |
+| `cashier`، `grant_hash`، `grant_expires` | جلسة الكاشير الحالية على الجهاز |
 | `allowed_profiles` | جدول POS Profiles المسموحة |
 | `status` | Active أو Revoked |
 
@@ -233,8 +238,8 @@ pos_next/
 | الوضع | الأمر | الاختلافات |
 |---|---|---|
 | web | `vite build --mode web` | `base=/assets/pos_next/pos/`، مع PWA وjinjaBootData |
-| electron | `vite build --mode electron` | `base=./`، بلا PWA، ولا إعداد خاص بالبنش |
-| android | `vite build --mode android` | `base=/`، بلا PWA |
+| electron | `vite build --config desktop/vite.config.electron.mjs` | `base=./`، بلا PWA، ولا إعداد خاص بالبنش |
+| android | `vite build --config vite.config.android.mjs` | `base=/`، بلا PWA، والناتج في `POS/dist-android` |
 
 تعديلات مطلوبة في الكود المشترك:
 
@@ -257,6 +262,8 @@ pos_next/
 ## 9. Android
 
 - **السبب في عدم استخدام `server.url`:** تحميل الواجهة من الخادم يمنع البدء أوفلاين، لذا تُحزم الواجهة داخل التطبيق.
+- **معرّفات الطابعات:** `ble:` و`spp:` و`tcp:host:port`. طابعة البلوتوث الكلاسيكي تُقرن من إعدادات Android أولًا، ثم تُختار في التطبيق.
+- **الرجوع:** زر الرجوع يصغّر التطبيق ولا يغلقه، حتى تبقى السلة والمزامنة. وAndroid لا يعطي إشارة عند سحب التطبيق وإغلاقه.
 - **SQLite:** `@capacitor-community/sqlite` المرشح الأول. مصادر مراجعتي ثانوية، لذا توافق الإصدار مع Capacitor يُؤكد في S-1.
 - **مفتاح التشفير:** الإضافة تستخدم سرًا واحدًا لكل القواعد، وهذا يكفي هنا لأن للتطبيق قاعدة واحدة، ويُولد عشوائيًا لكل جهاز ويُخزن في Keystore.
 - **الطباعة:** بلوتوث عبر `@capacitor-community/bluetooth-le` لطابعات BLE وإضافة SPP للبلوتوث الكلاسيكي، وWi-Fi عبر TCP 9100.
