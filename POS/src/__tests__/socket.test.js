@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const fakeSocket = { on: vi.fn(), off: vi.fn(), connect: vi.fn(), disconnect: vi.fn() }
+const fakeSocket = {
+	on: vi.fn(),
+	off: vi.fn(),
+	connect: vi.fn(),
+	disconnect: vi.fn(),
+}
 
 vi.mock("socket.io-client", () => ({ io: vi.fn(() => fakeSocket) }))
 
