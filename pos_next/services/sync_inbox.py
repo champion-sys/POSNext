@@ -18,6 +18,7 @@ from contextlib import contextmanager
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
+from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities
 from pos_next.services.sync_classifier import (
@@ -43,6 +44,12 @@ STALE_PROCESSING_MINUTES = 10
 
 #: A device sends its queue in one go, so a dependency this late is not on its way
 MISSING_DEPENDENCY_MINUTES = 30
+
+#: How long one job may work through a profile's queue
+QUEUE_JOB_SECONDS = 540
+
+#: A job takes no new row this close to its limit, so the row in hand can finish
+QUEUE_JOB_MARGIN_SECONDS = 120
 
 #: Set by the client after the invoice is queued, so they are not part of the sale
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
@@ -302,6 +309,9 @@ def process(name):
             result = handler.create(row)
         _mark_synced(name, result, "synced", started)
         frappe.db.commit()  # nosemgrep: the document and its Synced status commit as one
+    except JobTimeoutException:
+        _return_to_queue(name, attempts)
+        raise
     except Exception as exc:
         traceback = frappe.get_traceback()
         frappe.db.rollback()  # nosemgrep: discard the partial document before recording why
@@ -311,6 +321,19 @@ def process(name):
 
     frappe.clear_messages()
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
+
+
+def _return_to_queue(name, attempts):
+    """Hand a record back when its job runs out of time. That says nothing about the record.
+
+    Only from Processing, because the limit can land just after its commit went through.
+    """
+    frappe.db.rollback()  # nosemgrep: discard the partial document
+    frappe.clear_messages()
+    frappe.db.set_value(
+        DOCTYPE, {"name": name, "status": "Processing"}, {"status": "Received", "attempts": attempts - 1}
+    )
+    frappe.db.commit()  # nosemgrep: the job is ending, and the sweep needs to see this
 
 
 def _lock(name):
@@ -629,7 +652,7 @@ def enqueue_processing(pos_profile):
     frappe.enqueue(
         "pos_next.services.sync_inbox.process_profile_queue",
         queue="short",
-        timeout=540,
+        timeout=QUEUE_JOB_SECONDS,
         job_id=f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}",
         deduplicate=True,
         enqueue_after_commit=True,
@@ -657,8 +680,15 @@ def _due_rows(pos_profile=None):
 
 
 def process_profile_queue(pos_profile=None):
-    """Work through a profile's due invoices. Backdated stock depends on this order."""
+    """Work through a profile's due invoices. Backdated stock depends on this order.
+
+    A long backlog ends cleanly before the job's limit. What is left stays due, so the
+    sweep starts the next job.
+    """
+    deadline = time.monotonic() + QUEUE_JOB_SECONDS - QUEUE_JOB_MARGIN_SECONDS
     for name in _due_rows(pos_profile):
+        if time.monotonic() >= deadline:
+            return
         process(name)
 
 

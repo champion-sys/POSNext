@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 import frappe
+from rq.timeouts import JobTimeoutException
 
 from pos_next.api import sync as sync_api
 from pos_next.services import sync_inbox
@@ -549,6 +550,87 @@ class TestSweepWritesOnlyWhatItRead(Flow):
         sync_inbox.sweep()
 
         self.assertEqual(self._row(name).status, "Resolved")
+
+
+class TestJobTimeout(Flow):
+    def _time_out(self, name, create=None):
+        create = create or Mock(side_effect=JobTimeoutException("Task exceeded maximum timeout value"))
+        handler = sync_inbox._Entity(create, Mock(return_value=None), ())
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": handler}):
+            with self.assertRaises(JobTimeoutException):
+                sync_inbox.process(name)
+
+    def test_a_healthy_sale_goes_back_to_the_queue(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+
+        self._time_out(name)
+
+        row = self._row(name)
+        self.assertEqual(row.status, "Received")
+        self.assertIsNone(row.get("error_class"))
+        self.assertIn(name, sync_inbox._due_rows())
+        sync_inbox._notify_managers.assert_not_called()
+
+    def test_it_is_not_counted_against_the_sale(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        self._row(name)["attempts"] = 2
+
+        self._time_out(name)
+
+        self.assertEqual(self._row(name).attempts, 2)
+
+    def test_the_partial_document_is_discarded_before_the_row_goes_back(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        statuses = []
+        self.inbox.rollback = lambda **_kwargs: statuses.append(self._row(name).status)
+
+        self._time_out(name)
+
+        self.assertEqual(statuses, ["Processing"])
+
+    def test_a_sale_that_committed_just_before_the_limit_stays_synced(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        finished = {"name": "SINV-1", "doctype": "Sales Invoice"}
+
+        def commit():
+            if self._row(name).status == "Synced":
+                self.inbox.commit = lambda: None
+                raise JobTimeoutException("Task exceeded maximum timeout value")
+
+        self.inbox.commit = commit
+
+        self._time_out(name, Mock(return_value=finished))
+
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_the_session_comes_back_before_the_job_ends(self):
+        name = self._send(SALE, {"pos_profile": "Main"})
+        self._row(name)["cashier"] = "sara@example.com"
+
+        self._time_out(name)
+
+        self.assertEqual(frappe.session.user, "cashier@example.com")
+
+
+class TestQueueJob(Flow):
+    def _run(self, due, clock):
+        with (
+            patch.object(sync_inbox, "_due_rows", return_value=due),
+            patch.object(sync_inbox, "process") as process,
+            patch("pos_next.services.sync_inbox.time.monotonic", side_effect=clock),
+        ):
+            sync_inbox.process_profile_queue("Main")
+        return [call.args[0] for call in process.call_args_list]
+
+    def test_a_short_queue_is_finished(self):
+        self.assertEqual(self._run(["row-1", "row-2"], [0, 1, 2]), ["row-1", "row-2"])
+
+    def test_it_takes_no_new_row_near_the_limit(self):
+        limit = sync_inbox.QUEUE_JOB_SECONDS - sync_inbox.QUEUE_JOB_MARGIN_SECONDS
+
+        taken = self._run(["row-1", "row-2", "row-3"], [0, 1, limit - 1, limit])
+
+        self.assertEqual(taken, ["row-1", "row-2"])
 
 
 class TestClosedShift(Flow):
