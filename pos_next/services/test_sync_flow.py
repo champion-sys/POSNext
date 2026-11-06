@@ -437,6 +437,10 @@ class TestEditOfASaleOnTheServer(Flow):
     def test_an_edit_of_a_sale_that_never_arrived_goes_ahead(self):
         self.assertEqual(self._row(self._edit()).status, "Received")
 
+    def test_an_edit_that_kept_its_id_does_not_conflict_with_itself(self):
+        name = self._send(SALE, {"pos_profile": "Main", "edited_from": SALE})
+        self.assertEqual(self._row(name).status, "Received")
+
     def test_a_sale_that_is_not_an_edit_goes_ahead(self):
         name = self._send(LATE_SALE, {"pos_profile": "Main", "edited_from": None})
         self.assertEqual(self._row(name).status, "Received")

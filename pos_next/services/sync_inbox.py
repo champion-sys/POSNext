@@ -177,14 +177,15 @@ def _holds_sale(offline_id):
     return bool(status and status != "Voided") or bool(find_invoice_by_offline_id(offline_id))
 
 
-def _get_edit_conflict(payload):
+def _get_edit_conflict(item):
     """Spot an edit of a sale that already reached the server.
 
     A device offers an edit while it thinks the sale is unsent. If the push landed and only
-    its response was lost, the edit arrives under a new offline_id and both would post.
+    its response was lost, the edit arrives under a new offline_id and both would post. An
+    edit that kept the original's id is the original, which the device replaced.
     """
-    original = payload.get("edited_from")
-    if isinstance(original, str) and _holds_sale(original):
+    original = item["payload"].get("edited_from")
+    if isinstance(original, str) and original != item["offline_id"] and _holds_sale(original):
         return EditConflictError(
             _("This edits sale {0}, which the server already holds. A manager must decide which one stands.").format(
                 original
@@ -232,7 +233,7 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}), False
 
     # In this transaction, so no worker can see the row before it is held back
-    edit_conflict = _get_edit_conflict(item["payload"])
+    edit_conflict = _get_edit_conflict(item)
     if edit_conflict:
         _handle_failure(doc.name, 1, edit_conflict, None, None)
 
