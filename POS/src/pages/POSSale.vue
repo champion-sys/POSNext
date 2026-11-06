@@ -1101,6 +1101,7 @@ import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
+import { isPastOfflineSaleLimit } from "@/platform/auth";
 import { canUseBrowserPrint, getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
 import { usesNativeLink } from "@/platform/printing/transport";
 import { PLATFORM } from "@/platform/runtime";
@@ -2256,6 +2257,24 @@ async function handleOfflineInvoicesSynced() {
 }
 
 /**
+ * Stop a sale this device may no longer take offline. The cart stays, and so does the
+ * edit of a queued sale, so the same sale can be finished once the device is back online.
+ * @returns {boolean} Whether the sale was refused
+ */
+function refuseSalePastOfflineLimit() {
+	if (!isPastOfflineSaleLimit()) return false;
+
+	uiStore.showPaymentDialog = false;
+	uiStore.showError(
+		__("Offline limit reached"),
+		__(
+			"This device has been offline too long, so this sale was not saved. The cart is still here. Connect to the server and sign in with your password to finish it."
+		)
+	);
+	return true;
+}
+
+/**
  * Queue the current cart and finish the sale without the server.
  * @param {Object} paymentData - Payment dialog result
  * @param {string} customerValue - Selected customer
@@ -2430,6 +2449,9 @@ async function handlePaymentCompleted(paymentData) {
 			});
 
 		if (queueCheckout) {
+			// Online, After Payment and Periodic use the queue too, and the limit is not about them
+			if (offlineStore.isOffline && refuseSalePastOfflineLimit()) return;
+
 			await saveCheckoutOffline(paymentData, customerValue, draftIdToDelete);
 		} else {
 			// Get item codes from cart before clearing
@@ -2511,6 +2533,8 @@ async function handlePaymentCompleted(paymentData) {
 			!posSettingsStore.disableOfflineMode &&
 			isNetworkFailure(error)
 		) {
+			if (refuseSalePastOfflineLimit()) return;
+
 			try {
 				await saveCheckoutOffline(
 					paymentData,
