@@ -40,6 +40,8 @@ def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
 
 SYNC_FINISHED_STATUSES = ("Synced", "Resolved", "Voided")
 
+SHIFT_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
+
 
 class POSClosingShift(Document):
     def validate(self):
@@ -624,8 +626,36 @@ def get_cashiers(doctype, txt, searchfield, start, page_len, filters):
     return result
 
 
+def assert_shift_access(opening_shift):
+    """Hold the session user to the rule for closing a shift.
+
+    Reading a shift's money takes the same access as closing it. The shift's POS Profile
+    is read here, because the one in a request is whatever its sender wrote.
+
+    Args:
+        opening_shift: POS Opening Shift name
+    """
+    from pos_next.api.invoices import _assert_invoice_write_access
+    from pos_next.api.shifts import assert_may_close_shift
+
+    if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
+        frappe.throw(_("Shift {0} does not exist").format(opening_shift))
+
+    opening = frappe.get_doc("POS Opening Shift", opening_shift)
+    _assert_invoice_write_access("Sales Invoice", opening.pos_profile)
+    assert_may_close_shift(opening)
+
+
 @frappe.whitelist()
 def get_pos_invoices(pos_opening_shift, doctype=None):
+    assert_shift_access(pos_opening_shift)
+    if doctype and doctype not in SHIFT_INVOICE_DOCTYPES:
+        frappe.throw(_("Document type {0} is not allowed here").format(doctype), frappe.PermissionError)
+
+    return _read_shift_invoices(pos_opening_shift, doctype)
+
+
+def _read_shift_invoices(pos_opening_shift, doctype=None):
     if not doctype:
         pos_profile = frappe.db.get_value("POS Opening Shift", pos_opening_shift, "pos_profile")
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
@@ -652,6 +682,11 @@ def get_pos_invoices(pos_opening_shift, doctype=None):
 
 @frappe.whitelist()
 def get_payments_entries(pos_opening_shift):
+    assert_shift_access(pos_opening_shift)
+    return _read_shift_payments(pos_opening_shift)
+
+
+def _read_shift_payments(pos_opening_shift):
     return frappe.get_all(
         "Payment Entry",
         filters={
@@ -787,6 +822,19 @@ def _process_invoice(invoice, invoice_field, company_currency, cash_mode, paymen
 
 @frappe.whitelist()
 def make_closing_shift_from_opening(opening_shift):
+    assert_shift_access(json.loads(opening_shift).get("name"))
+    return build_closing_shift(opening_shift)
+
+
+def build_closing_shift(opening_shift):
+    """Work out a shift's closing, for a caller that has already authorized it.
+
+    Args:
+        opening_shift: The POS Opening Shift, as JSON
+
+    Returns:
+        dict: The closing, with the display-only totals
+    """
     opening_shift = json.loads(opening_shift)
     pos_profile = opening_shift.get("pos_profile")
     invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
@@ -831,14 +879,14 @@ def make_closing_shift_from_opening(opening_shift):
         }))
 
     # Process invoices
-    invoices = get_pos_invoices(opening_shift.get("name"), doctype)
+    invoices = _read_shift_invoices(opening_shift.get("name"), doctype)
     for invoice in invoices:
         txn = _process_invoice(invoice, invoice_field, company_currency, cash_mode, payments, taxes, summary)
         pos_transactions.append(txn)
 
     # Process payment entries
     pos_payments_table = []
-    for py in get_payments_entries(opening_shift.get("name")):
+    for py in _read_shift_payments(opening_shift.get("name")):
         pos_payments_table.append(frappe._dict({
             "payment_entry": py.name,
             "mode_of_payment": py.mode_of_payment,
@@ -883,21 +931,11 @@ def submit_closing_shift(closing_shift):
     The document comes from the request and is saved without permission checks, so nothing
     but a closing of a shift this user may close can be allowed through.
     """
-    from pos_next.api.invoices import _assert_invoice_write_access
-    from pos_next.api.shifts import assert_may_close_shift
-
     closing_shift = json.loads(closing_shift)
     if closing_shift.get("doctype") != "POS Closing Shift":
         frappe.throw(_("Only a POS Closing Shift can be submitted here"), frappe.PermissionError)
 
-    opening_shift = closing_shift.get("pos_opening_shift")
-    if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
-        frappe.throw(_("Shift {0} does not exist").format(opening_shift))
-
-    opening = frappe.get_doc("POS Opening Shift", opening_shift)
-    _assert_invoice_write_access("Sales Invoice", opening.pos_profile)
-    assert_may_close_shift(opening)
-
+    assert_shift_access(closing_shift.get("pos_opening_shift"))
     return save_closing_shift(closing_shift)
 
 

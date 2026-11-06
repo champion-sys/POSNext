@@ -278,7 +278,7 @@ def close_shift(row):
     """
     from pos_next.api.shifts import assert_may_close_shift
     from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
-        make_closing_shift_from_opening,
+        build_closing_shift,
         save_closing_shift,
     )
 
@@ -291,9 +291,7 @@ def close_shift(row):
     _assert_target_access(row, opening.pos_profile)
     assert_may_close_shift(opening, row.cashier)
 
-    closing = json.loads(
-        json.dumps(make_closing_shift_from_opening(json.dumps(opening.as_dict(), default=str)), default=str)
-    )
+    closing = json.loads(json.dumps(build_closing_shift(json.dumps(opening.as_dict(), default=str)), default=str))
     _apply_counted_amounts(closing, payload.get("closing_amounts"))
     closing["period_end_date"] = payload.get("period_end_date") or closing["period_end_date"]
     closing["posting_date"] = payload.get("posting_date") or closing["posting_date"]
