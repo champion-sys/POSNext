@@ -7,8 +7,8 @@
 **A modern, lightning-fast Point of Sale system for ERPNext**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](LICENSE)
-[![Frappe Version](https://img.shields.io/badge/Frappe-v15+-orange.svg)](https://github.com/frappe/frappe)
-[![ERPNext Version](https://img.shields.io/badge/ERPNext-v15+-green.svg)](https://github.com/frappe/erpnext)
+[![Frappe Version](https://img.shields.io/badge/Frappe-v16-orange.svg)](https://github.com/frappe/frappe)
+[![ERPNext Version](https://img.shields.io/badge/ERPNext-v16-green.svg)](https://github.com/frappe/erpnext)
 
 [Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Demo](#-demo) • [Documentation](#-documentation)
 
@@ -20,10 +20,10 @@
 
 | Branch | Stability | Purpose |
 |--------|-----------|---------|
-| [`version-15`](https://github.com/BrainWise-DEV/POSNext/tree/version-15) | **Stable** | Production-ready release for Frappe/ERPNext v15 |
-| [`develop`](https://github.com/BrainWise-DEV/POSNext/tree/develop) | **Unstable** | Active development — may contain breaking changes |
+| [`version-16`](https://github.com/champion-sys/POSNext/tree/version-16) | **Stable** | Production-ready release for Frappe/ERPNext v16 |
+| [`develop`](https://github.com/champion-sys/POSNext/tree/develop) | **Unstable** | Active development — may contain breaking changes |
 
-> For production use, always install from the `version-15` branch.
+> For production use, always install from the `version-16` branch.
 
 ---
 
@@ -163,8 +163,8 @@ POS Next is a **complete rewrite** of the ERPNext POS system, built from the gro
 
 ## 📋 Prerequisites
 
-- **Frappe Framework** version 15 or higher
-- **ERPNext** version 15 or higher
+- **Frappe Framework** version 16
+- **ERPNext** version 16
 - Modern browser (Chrome, Firefox, Safari, Edge)
 
 ## 🚀 Installation
@@ -176,7 +176,7 @@ POS Next is a **complete rewrite** of the ERPNext POS system, built from the gro
 cd ~/frappe-bench
 
 # Get the app from GitHub
-bench get-app https://github.com/BrainWise-DEV/pos_next.git --branch version-15
+bench get-app https://github.com/champion-sys/POSNext.git --branch version-16
 
 # Install on your site
 bench --site [your-site-name] install-app pos_next
@@ -215,7 +215,7 @@ Already have POS Next? Update to the latest version:
 
 ```bash
 cd ~/frappe-bench/apps/pos_next
-git pull origin version-15
+git pull origin version-16
 cd ../..
 
 # Apply updates
