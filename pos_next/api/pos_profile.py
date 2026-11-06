@@ -43,6 +43,11 @@ def get_pos_profile_data(pos_profile):
 	if not has_access:
 		frappe.throw(_("You don't have access to this POS Profile"))
 
+	return _get_profile_data(pos_profile)
+
+
+def _get_profile_data(pos_profile):
+	"""The profile data itself. The caller decides who may read it: sync pull also lets managers in."""
 	profile_doc = frappe.get_doc("POS Profile", pos_profile)
 	company_doc = frappe.get_doc("Company", profile_doc.company)
 

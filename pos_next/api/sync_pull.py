@@ -20,7 +20,7 @@ from pos_next.api.items import (
     _select_item_rows,
 )
 from pos_next.api.offers import _get_offers
-from pos_next.api.pos_profile import _get_tax_rows, get_payment_methods, get_pos_profile_data
+from pos_next.api.pos_profile import _get_profile_data, _get_tax_rows, get_payment_methods
 from pos_next.api.sync import _assert_pos_user
 
 DEFAULT_PAGE_SIZE = 500
@@ -254,7 +254,7 @@ _WALKED = {
 _WHOLE_SETS = {
     "taxes": lambda profile: _get_tax_rows(profile.name),
     "payment_methods": lambda profile: get_payment_methods(profile.name),
-    "pos_profile": lambda profile: [get_pos_profile_data(profile.name)],
+    "pos_profile": lambda profile: [_get_profile_data(profile.name)],
     "offers": lambda profile: _get_offers(profile.name),
 }
 

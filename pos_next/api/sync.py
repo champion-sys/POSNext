@@ -50,6 +50,20 @@ def _assert_manager():
         frappe.throw(_("Not permitted"), frappe.PermissionError)
 
 
+def _recorded_device(claimed):
+    """The device a batch is recorded under.
+
+    A grant proves which device is sending, so what the body says does not count. Refusing
+    instead would fail sales that are already paid for, over a label. A browser has no grant
+    and names itself, but only a grant can speak for an enrolled device: without this, signing
+    in with a cookie would get around the rule above.
+    """
+    device = getattr(frappe.local, "pos_device", None)
+    if device:
+        return device
+    return None if claimed and frappe.db.exists("POS Device", claimed) else claimed
+
+
 def _describe(row):
     """What the device needs to know about one record."""
     response = {
@@ -74,7 +88,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
 
     Args:
         items: Envelopes, as a list or JSON
-        device_id: The sending device
+        device_id: The browser's own id. A device with a grant is known without it
         client_version: App version
         protocol_version: Envelope version
         wait_for_result: Process inside this request, for a cashier who is waiting
@@ -90,6 +104,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
 
     wait = cint(wait_for_result)
     uploader = frappe.session.user
+    device_id = _recorded_device(device_id)
     results = []
     stored = []
 

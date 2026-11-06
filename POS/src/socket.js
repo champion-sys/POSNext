@@ -1,9 +1,25 @@
 import { io } from "socket.io-client"
-import { getServerUrl } from "@/platform/runtime"
+import { isNative } from "@/platform/runtime"
 
 let socket = null
 
+/** Stands in when there is no connection, so code that listens for events needs no branch. */
+const noSocket = {
+	on: () => {},
+	off: () => {},
+	emit: () => {},
+	connect: () => {},
+	disconnect: () => {},
+}
+
 export function initSocket(siteNameOverride) {
+	// Frappe's realtime server has no way in for a Bearer grant from a page on another origin.
+	// Directly it refuses the origin. Behind nginx, which rewrites Origin, a WebSocket from a
+	// page cannot carry the grant, and polling's CORS reply names the rewritten origin, so the
+	// page may not read it. Pull sync covers these apps instead, except stock from other tills,
+	// which needs the stock sync setting.
+	if (isNative) return noSocket
+
 	// Don't reinitialize if socket already exists
 	if (socket) {
 		console.log("Socket already initialized")
@@ -21,7 +37,7 @@ export function initSocket(siteNameOverride) {
 		const host = window.location.hostname
 		const port = window.location.port ? `:${__SOCKETIO_PORT__}` : ""
 		const protocol = port ? "http" : "https"
-		const url = `${getServerUrl() || `${protocol}://${host}${port}`}/${siteName}`
+		const url = `${protocol}://${host}${port}/${siteName}`
 
 		console.log("Initializing socket (lazy connection):", url)
 
@@ -46,13 +62,7 @@ export function initSocket(siteNameOverride) {
 		return socket
 	} catch (error) {
 		console.error("Failed to initialize socket:", error)
-		// Return a mock socket object to prevent crashes
-		return {
-			on: () => { },
-			emit: () => { },
-			connect: () => { },
-			disconnect: () => { },
-		}
+		return noSocket
 	}
 }
 
