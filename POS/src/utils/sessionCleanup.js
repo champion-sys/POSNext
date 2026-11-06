@@ -1,3 +1,4 @@
+import { localStore } from "@/platform/store"
 import { clearAllDrafts } from "@/utils/draftManager"
 import { clearAllOfflineReceiptPayloads } from "@/utils/offline/offlineReceiptCache"
 import { usePOSCartStore } from "@/stores/posCart"
@@ -61,10 +62,15 @@ export async function cleanupUserSession() {
 		_receivedAt: 0,
 	}
 
-	// 4. Clear draft invoices from IndexedDB
+	// 4. Clear draft invoices and the shift kept on the device
 	try {
 		await clearAllDrafts()
 	} catch (error) {
 		console.error("Failed to clear draft invoices:", error)
+	}
+	try {
+		await localStore.clearShift()
+	} catch (error) {
+		console.error("Failed to clear cached shift:", error)
 	}
 }

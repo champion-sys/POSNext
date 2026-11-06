@@ -233,6 +233,8 @@ export default defineConfig({
 		emptyOutDir: true,
 		target: "es2015",
 		sourcemap: enableSourceMap,
+		// Only the Android build has this plugin
+		rollupOptions: { external: ["@capacitor-community/sqlite"] },
 	},
 	worker: {
 		format: "es",
@@ -251,6 +253,7 @@ export default defineConfig({
 	define: {
 		__BUILD_VERSION__: JSON.stringify(buildVersion),
 		__SOCKETIO_PORT__: getSocketioPort(),
+		"import.meta.env.VITE_PLATFORM": JSON.stringify("web"),
 	},
 	test: {
 		environment: "jsdom",

@@ -1,3 +1,4 @@
+import { localStore } from "@/platform/store"
 import { logger } from "@/utils/logger"
 
 const log = logger.create("OfflineReceiptCache")
@@ -10,11 +11,20 @@ const KEY_PREFIX = "pos_next_offline_rcpt:"
  */
 export function cacheOfflineReceiptPayload(name, doc) {
 	if (typeof sessionStorage === "undefined" || !name || !doc) return
+	localStore.saveReceipt(name, doc).catch((e) => log.warn("Could not store offline receipt:", e))
 	try {
 		sessionStorage.setItem(`${KEY_PREFIX}${name}`, JSON.stringify(doc))
 	} catch (e) {
 		log.warn("Could not cache offline receipt:", e)
 	}
+}
+
+/**
+ * The receipt kept on the device across restarts. The web keeps none: sessionStorage
+ * is all it has, and a queued sale rebuilds its receipt from the queue row there.
+ */
+export function getStoredReceiptPayload(name) {
+	return localStore.getReceipt(name)
 }
 
 export function getOfflineReceiptPayload(name) {
@@ -33,6 +43,7 @@ export function getOfflineReceiptPayload(name) {
  */
 export function removeOfflineReceiptPayload(name) {
 	if (typeof sessionStorage === "undefined" || !name) return
+	localStore.deleteReceipt(name).catch((e) => log.warn("Could not remove stored receipt:", e))
 	try {
 		sessionStorage.removeItem(`${KEY_PREFIX}${name}`)
 	} catch (e) {
@@ -46,6 +57,7 @@ export function removeOfflineReceiptPayload(name) {
  */
 export function clearAllOfflineReceiptPayloads() {
 	if (typeof sessionStorage === "undefined") return
+	localStore.clearReceipts().catch((e) => log.warn("Could not clear stored receipts:", e))
 	try {
 		const keys = []
 		for (let i = 0; i < sessionStorage.length; i++) {

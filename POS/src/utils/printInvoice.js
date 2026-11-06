@@ -1,6 +1,6 @@
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
-import { getOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
+import { getOfflineReceiptPayload, getStoredReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { canUseBrowserPrint } from "@/platform/printing/routes"
@@ -110,8 +110,11 @@ export async function hydrateLocalOnlyInvoice(invoiceData) {
 	const cached = getOfflineReceiptPayload(invoiceData.name)
 	if (cached?.items?.length > 0) return cached
 
-	// sessionStorage wiped (page reload) — rebuild from IndexedDB queue.
+	// sessionStorage wiped (page reload) — rebuild from the device's queue.
 	try {
+		const stored = await getStoredReceiptPayload(invoiceData.name)
+		if (stored?.is_offline && stored.items?.length > 0) return stored
+
 		const queued = await getOfflineInvoiceByOfflineId(invoiceData.name)
 		if (queued?.items?.length > 0) {
 			return receiptDocFromQueuedInvoice(invoiceData.name, queued)

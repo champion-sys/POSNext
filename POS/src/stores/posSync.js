@@ -133,14 +133,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
-	 * Ask the browser not to evict the queue under storage pressure
+	 * Ask the platform not to evict the queue under storage pressure
 	 * @returns {Promise<boolean>} Whether the storage is protected
 	 */
 	async function ensurePersistentStorage() {
-		const storage = typeof navigator !== "undefined" ? navigator.storage : null
-		if (!storage?.persist) return false
 		try {
-			return (await storage.persisted()) || (await storage.persist())
+			return await offlineWorker.requestPersistentStorage()
 		} catch (error) {
 			log.warn('Could not request persistent storage', error)
 			return false

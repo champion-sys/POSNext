@@ -1,5 +1,6 @@
 import { createResource } from "frappe-ui"
 import { computed, ref } from "vue"
+import { localStore } from "@/platform/store"
 
 export const shiftState = ref({
 	pos_opening_shift: null,
@@ -11,6 +12,33 @@ export const shiftState = ref({
 	/** Local timestamp (Date.now()) when shift data was received */
 	_receivedAt: 0,
 })
+
+let cachedShiftRestore = Promise.resolve()
+
+/** Resolves once the shift kept on the device has been put back after a failed check */
+export const whenCachedShiftRestored = () => cachedShiftRestore
+
+async function restoreCachedShift() {
+	const data = await localStore.getShift()
+	if (!data) return
+
+	shiftState.value = {
+		pos_opening_shift: data.pos_opening_shift,
+		pos_profile: data.pos_profile,
+		company: data.company,
+		isOpen: true,
+		_initialElapsedMs: data._initialElapsedMs || 0,
+		_receivedAt: data._receivedAt || Date.now(),
+	}
+}
+
+function keepShift(data) {
+	localStore.saveShift(data).catch((error) => console.error("Error caching shift data:", error))
+}
+
+function forgetShift() {
+	localStore.clearShift().catch((error) => console.error("Error clearing cached shift data:", error))
+}
 
 export function useShift() {
 	// Check for existing open shift
@@ -35,12 +63,12 @@ export function useShift() {
 					_initialElapsedMs: initialElapsedMs,
 					_receivedAt: Date.now(),
 				}
-				// Store in localStorage for offline support
-				localStorage.setItem("pos_shift_data", JSON.stringify({
+				// Keep on the device for offline support
+				keepShift({
 					...data,
 					_initialElapsedMs: initialElapsedMs,
 					_receivedAt: Date.now(),
-				}))
+				})
 			} else {
 				shiftState.value = {
 					pos_opening_shift: null,
@@ -50,28 +78,15 @@ export function useShift() {
 					_initialElapsedMs: 0,
 					_receivedAt: 0,
 				}
-				localStorage.removeItem("pos_shift_data")
+				forgetShift()
 			}
 		},
 		onError(error) {
 			console.error("Error checking opening shift:", error)
-			// Try to load from localStorage
-			const cachedData = localStorage.getItem("pos_shift_data")
-			if (cachedData) {
-				try {
-					const data = JSON.parse(cachedData)
-					shiftState.value = {
-						pos_opening_shift: data.pos_opening_shift,
-						pos_profile: data.pos_profile,
-						company: data.company,
-						isOpen: true,
-						_initialElapsedMs: data._initialElapsedMs || 0,
-						_receivedAt: data._receivedAt || Date.now(),
-					}
-				} catch (e) {
-					console.error("Error parsing cached shift data:", e)
-				}
-			}
+			// Try to load from the device
+			cachedShiftRestore = restoreCachedShift().catch((e) => {
+				console.error("Error parsing cached shift data:", e)
+			})
 		},
 	})
 
@@ -100,12 +115,11 @@ export function useShift() {
 				_initialElapsedMs: 0,
 				_receivedAt: Date.now(),
 			}
-			// Store in localStorage
-			localStorage.setItem("pos_shift_data", JSON.stringify({
+			keepShift({
 				...data,
 				_initialElapsedMs: 0,
 				_receivedAt: Date.now(),
-			}))
+			})
 		},
 		onError(error) {
 			console.error("Error creating opening shift:", error)
@@ -136,7 +150,7 @@ export function useShift() {
 				_initialElapsedMs: 0,
 				_receivedAt: 0,
 			}
-			localStorage.removeItem("pos_shift_data")
+			forgetShift()
 		},
 		onError(error) {
 			console.error("Error submitting closing shift:", error)

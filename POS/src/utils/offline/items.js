@@ -1,41 +1,12 @@
-import { db, getSetting, setSetting } from "./db";
+import { localStore } from "@/platform/store";
+import { getSetting } from "./settings";
 
-// Cache items in IndexedDB
+// Cache items on the device
 export const cacheItems = async (items, priceList = null) => {
 	try {
 		if (!items || items.length === 0) return;
 
-		// Save to items table, keeping cached batch/serial data (server rows don't carry it)
-		await db.transaction("rw", db.items, async () => {
-			const existing = await db.items.bulkGet(items.map((item) => item.item_code));
-
-			const processedItems = items.map((item, index) => ({
-				...item,
-				batch_no_data: existing[index]?.batch_no_data,
-				serial_no_data: existing[index]?.serial_no_data,
-				barcodes: item.item_barcode
-					? Array.isArray(item.item_barcode)
-						? item.item_barcode.map((b) => b.barcode).filter(Boolean)
-						: [item.item_barcode]
-					: [],
-			}));
-
-			await db.items.bulkPut(processedItems);
-		});
-
-		// Save prices if price list is provided
-		if (priceList) {
-			const prices = items.map((item) => ({
-				price_list: priceList,
-				item_code: item.item_code,
-				rate: item.rate || item.price_list_rate || 0,
-				timestamp: Date.now(),
-			}));
-			await db.item_prices.bulkPut(prices);
-		}
-
-		// Update last sync time
-		await setSetting("items_last_sync", Date.now());
+		await localStore.mergeCachedItems(items, priceList);
 
 		console.log(`Cached ${items.length} items`);
 		return true;
@@ -48,8 +19,7 @@ export const cacheItems = async (items, priceList = null) => {
 // Get cached items
 export const getCachedItems = async (limit = 100) => {
 	try {
-		const items = await db.items.limit(limit).toArray();
-		return items;
+		return await localStore.searchCachedItems("", limit);
 	} catch (error) {
 		console.error("Error getting cached items:", error);
 		return [];
@@ -59,38 +29,7 @@ export const getCachedItems = async (limit = 100) => {
 // Fuzzy search: matches if any search word is contained in item text
 export const searchCachedItems = async (searchTerm, limit = 50) => {
 	try {
-		if (!searchTerm) {
-			return await db.items.limit(limit).toArray();
-		}
-
-		const term = searchTerm.toLowerCase().trim();
-		const searchWords = term.split(/\s+/).filter(Boolean);
-		const allItems = await db.items.limit(limit * 10).toArray();
-
-		// Filter and score items
-		const results = allItems
-			.map((item) => {
-				const searchable = `${item.item_code || ""} ${item.item_name || ""} ${item.description || ""}`.toLowerCase();
-
-				// Word-order independent: all words must appear somewhere
-				if (!searchWords.every(word => searchable.includes(word))) return null;
-
-				// Score: prefer exact and prefix matches
-				let score = 0;
-				if (item.item_name?.toLowerCase() === term) score = 1000;
-				else if (item.item_code?.toLowerCase() === term) score = 900;
-				else if (item.item_name?.toLowerCase().startsWith(term)) score = 500;
-				else if (item.item_code?.toLowerCase().startsWith(term)) score = 400;
-				else score = 100;
-
-				return { item, score };
-			})
-			.filter(Boolean)
-			.sort((a, b) => b.score - a.score)
-			.slice(0, limit)
-			.map(({ item }) => item);
-
-		return results;
+		return await localStore.searchCachedItems(searchTerm, limit);
 	} catch (error) {
 		console.error("Error searching cached items:", error);
 		return [];
@@ -100,8 +39,7 @@ export const searchCachedItems = async (searchTerm, limit = 50) => {
 // Get item by barcode
 export const getItemByBarcode = async (barcode) => {
 	try {
-		const item = await db.items.where("barcodes").equals(barcode).first();
-		return item;
+		return await localStore.getCachedItemByBarcode(barcode);
 	} catch (error) {
 		console.error("Error getting item by barcode:", error);
 		return null;
@@ -113,13 +51,7 @@ export const getCachedVariants = async (templateItemCode) => {
 	try {
 		if (!templateItemCode) return [];
 
-		// Query items where variant_of equals the template item code
-		const variants = await db.items
-			.where("variant_of")
-			.equals(templateItemCode)
-			.toArray();
-
-		return variants;
+		return await localStore.getCachedVariants(templateItemCode);
 	} catch (error) {
 		console.error("Error getting cached variants:", error);
 		return [];
@@ -131,7 +63,7 @@ export const getCachedBatchData = async (itemCode) => {
 	try {
 		if (!itemCode) return [];
 
-		const item = await db.items.get(itemCode);
+		const item = await localStore.getCachedItem(itemCode);
 		return item?.batch_no_data || [];
 	} catch (error) {
 		console.error("Error getting cached batch data:", error);
@@ -144,7 +76,7 @@ export const getCachedSerialData = async (itemCode) => {
 	try {
 		if (!itemCode) return [];
 
-		const item = await db.items.get(itemCode);
+		const item = await localStore.getCachedItem(itemCode);
 		return item?.serial_no_data || [];
 	} catch (error) {
 		console.error("Error getting cached serial data:", error);
@@ -173,16 +105,7 @@ export const persistItemBatchSerialData = async (itemCode, data) => {
 
 		if (Object.keys(update).length === 0) return false;
 
-		return await db.transaction("rw", db.items, async () => {
-			const item = await db.items.get(itemCode);
-			if (!item) {
-				// Avoid phantom rows (no item_name/barcodes) that blank the product grid
-				return false;
-			}
-
-			await db.items.update(itemCode, update);
-			return true;
-		});
+		return (await localStore.updateItemBatchSerial([itemCode], () => update)) > 0;
 	} catch (error) {
 		console.error("Error persisting item batch/serial data:", error);
 		return false;
@@ -194,14 +117,10 @@ export const updateItemBatchSerialData = async (batchSerialDataMap) => {
 	try {
 		if (!batchSerialDataMap || Object.keys(batchSerialDataMap).length === 0) return;
 
-		await db.transaction("rw", db.items, async () => {
-			for (const [itemCode, data] of Object.entries(batchSerialDataMap)) {
-				await persistItemBatchSerialData(itemCode, {
-					batch_no_data: data.batch_no_data || [],
-					serial_no_data: data.serial_no_data || [],
-				});
-			}
-		});
+		await localStore.updateItemBatchSerial(Object.keys(batchSerialDataMap), (item) => ({
+			batch_no_data: batchSerialDataMap[item.item_code].batch_no_data || [],
+			serial_no_data: batchSerialDataMap[item.item_code].serial_no_data || [],
+		}));
 
 		console.log(`Updated batch/serial data for ${Object.keys(batchSerialDataMap).length} items`);
 		return true;
@@ -216,15 +135,12 @@ export const consumeCachedSerials = async (itemCode, serialNumbers) => {
 	try {
 		if (!itemCode) return;
 
-		await db.transaction("rw", db.items, async () => {
-			const item = await db.items.get(itemCode);
-			const serials = item?.serial_no_data || [];
-			if (!serials.length) return;
+		await localStore.updateItemBatchSerial([itemCode], (item) => {
+			const serials = item.serial_no_data || [];
+			if (!serials.length) return null;
 
 			const toRemove = new Set(parseSerialNumbers(serialNumbers));
-			const remaining = serials.filter((s) => !toRemove.has(s.serial_no));
-
-			await db.items.update(itemCode, { serial_no_data: remaining });
+			return { serial_no_data: serials.filter((s) => !toRemove.has(s.serial_no)) };
 		});
 	} catch (error) {
 		console.error("Error consuming cached serials:", error);
@@ -236,29 +152,26 @@ export const returnCachedSerials = async (itemCode, serialNumbers, warehouse = n
 	try {
 		if (!itemCode) return;
 
-		await db.transaction("rw", db.items, async () => {
-			const item = await db.items.get(itemCode);
-			if (!item) return;
-
+		await localStore.updateItemBatchSerial([itemCode], (item) => {
 			const serials = item.serial_no_data || [];
 			const toReturn = parseSerialNumbers(serialNumbers);
-			if (!toReturn.length) return;
+			if (!toReturn.length) return null;
 
 			const scopedWarehouse = warehouse || serials[0]?.warehouse;
-			if (!scopedWarehouse) return;
+			if (!scopedWarehouse) return null;
 
 			const existing = new Set(serials.map((s) => s.serial_no));
 			const added = toReturn
 				.filter((serialNo) => !existing.has(serialNo))
 				.map((serial_no) => ({ serial_no, warehouse: scopedWarehouse }));
 
-			if (!added.length) return;
+			if (!added.length) return null;
 
 			const merged = [...serials, ...added].sort((a, b) =>
 				a.serial_no.localeCompare(b.serial_no, undefined, { numeric: true }),
 			);
 
-			await db.items.update(itemCode, { serial_no_data: merged });
+			return { serial_no_data: merged };
 		});
 	} catch (error) {
 		console.error("Error returning cached serials:", error);
@@ -270,14 +183,13 @@ export const deductCachedBatchQty = async (itemCode, batchNo, qty) => {
 	try {
 		if (!itemCode || !batchNo || !qty) return;
 
-		await db.transaction("rw", db.items, async () => {
-			const item = await db.items.get(itemCode);
-			if (!item?.batch_no_data?.length) return;
+		await localStore.updateItemBatchSerial([itemCode], (item) => {
+			if (!item.batch_no_data?.length) return null;
 
 			const batch_no_data = item.batch_no_data.map((b) =>
 				b.batch_no === batchNo ? { ...b, batch_qty: Math.max(0, (b.batch_qty || 0) - qty) } : b,
 			);
-			await db.items.update(itemCode, { batch_no_data });
+			return { batch_no_data };
 		});
 	} catch (error) {
 		console.error("Error deducting cached batch qty:", error);
@@ -287,17 +199,14 @@ export const deductCachedBatchQty = async (itemCode, batchNo, qty) => {
 // Get item with price
 export const getItemWithPrice = async (itemCode, priceList) => {
 	try {
-		const item = await db.items.get(itemCode);
+		const item = await localStore.getCachedItem(itemCode);
 		if (!item) return null;
 
 		if (priceList) {
-			const price = await db.item_prices.get({
-				price_list: priceList,
-				item_code: itemCode,
-			});
-			if (price) {
-				item.rate = price.rate;
-				item.price_list_rate = price.rate;
+			const rate = await localStore.getCachedItemPrice(priceList, itemCode);
+			if (rate !== undefined) {
+				item.rate = rate;
+				item.price_list_rate = rate;
 			}
 		}
 
@@ -313,8 +222,7 @@ export const cacheCustomers = async (customers) => {
 	try {
 		if (!customers || customers.length === 0) return;
 
-		await db.customers.bulkPut(customers);
-		await setSetting("customers_last_sync", Date.now());
+		await localStore.cacheCustomers(customers);
 
 		console.log(`Cached ${customers.length} customers`);
 		return true;
@@ -326,28 +234,8 @@ export const cacheCustomers = async (customers) => {
 
 // Search cached customers
 export const searchCachedCustomers = async (searchTerm, limit = 20) => {
-        try {
-                if (!searchTerm) {
-                        return limit > 0
-                                ? await db.customers.limit(limit).toArray()
-                                : await db.customers.toArray();
-                }
-
-		const term = searchTerm.toLowerCase();
-
-                const query = db.customers
-                        .where("customer_name")
-                        .startsWithIgnoreCase(term)
-                        .or("mobile_no")
-                        .startsWithIgnoreCase(term)
-                        .or("email_id")
-                        .startsWithIgnoreCase(term);
-
-                const results = await (limit > 0
-                        ? query.limit(limit).toArray()
-                        : query.toArray());
-
-		return results;
+	try {
+		return await localStore.searchCachedCustomers(searchTerm, limit);
 	} catch (error) {
 		console.error("Error searching cached customers:", error);
 		return [];
@@ -377,9 +265,7 @@ export const isCacheFresh = async (type = "items") => {
 // Clear cache
 export const clearItemsCache = async () => {
 	try {
-		await db.items.clear();
-		await db.item_prices.clear();
-		await setSetting("items_last_sync", null);
+		await localStore.clearItemsCache();
 		console.log("Items cache cleared");
 		return true;
 	} catch (error) {
@@ -390,8 +276,7 @@ export const clearItemsCache = async () => {
 
 export const clearCustomersCache = async () => {
 	try {
-		await db.customers.clear();
-		await setSetting("customers_last_sync", null);
+		await localStore.clearCustomersCache();
 		console.log("Customers cache cleared");
 		return true;
 	} catch (error) {

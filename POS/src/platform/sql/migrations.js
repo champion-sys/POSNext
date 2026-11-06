@@ -56,6 +56,104 @@ export const MIGRATIONS = [
 			"CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
 		],
 	},
+	{
+		version: 2,
+		statements: [
+			"ALTER TABLE outbox ADD COLUMN sync_failed INTEGER NOT NULL DEFAULT 0",
+			`CREATE TABLE catalog_item (
+				item_code TEXT PRIMARY KEY,
+				item_name TEXT,
+				item_group TEXT,
+				brand TEXT,
+				variant_of TEXT,
+				has_variants INTEGER NOT NULL DEFAULT 0,
+				disabled INTEGER NOT NULL DEFAULT 0,
+				search_code TEXT NOT NULL,
+				search_name TEXT NOT NULL,
+				search_text TEXT NOT NULL,
+				actual_qty REAL,
+				stock_qty REAL,
+				warehouse TEXT,
+				batch_no_data TEXT,
+				serial_no_data TEXT,
+				doc TEXT NOT NULL
+			)`,
+			// The filters are in the index so a deep page skips rows without reading each doc
+			"CREATE INDEX idx_catalog_item_name ON catalog_item(item_name, disabled, variant_of, has_variants)",
+			"CREATE INDEX idx_catalog_item_group ON catalog_item(item_group)",
+			"CREATE INDEX idx_catalog_item_brand ON catalog_item(brand)",
+			// Partial, or browsing picks it for variant_of IS NULL and sorts the whole table
+			"CREATE INDEX idx_catalog_item_variant ON catalog_item(variant_of) WHERE variant_of IS NOT NULL",
+			"CREATE INDEX idx_catalog_item_search_code ON catalog_item(search_code)",
+			"CREATE INDEX idx_catalog_item_search_name ON catalog_item(search_name)",
+			`CREATE TABLE item_barcode (
+				barcode TEXT NOT NULL,
+				item_code TEXT NOT NULL,
+				PRIMARY KEY (barcode, item_code)
+			)`,
+			"CREATE INDEX idx_item_barcode_item ON item_barcode(item_code)",
+			`CREATE TABLE item_price (
+				price_list TEXT NOT NULL,
+				item_code TEXT NOT NULL,
+				rate REAL NOT NULL,
+				updated_at INTEGER NOT NULL,
+				PRIMARY KEY (price_list, item_code)
+			)`,
+			"CREATE INDEX idx_item_price_item ON item_price(item_code)",
+			`CREATE TABLE customer (
+				name TEXT PRIMARY KEY,
+				search_text TEXT NOT NULL,
+				doc TEXT NOT NULL
+			)`,
+			`CREATE TABLE payment_method (
+				pos_profile TEXT NOT NULL,
+				name TEXT NOT NULL,
+				doc TEXT NOT NULL,
+				PRIMARY KEY (pos_profile, name)
+			)`,
+			`CREATE TABLE sales_person (
+				pos_profile TEXT NOT NULL,
+				name TEXT NOT NULL,
+				doc TEXT NOT NULL,
+				PRIMARY KEY (pos_profile, name)
+			)`,
+			`CREATE TABLE offer (
+				pos_profile TEXT NOT NULL,
+				name TEXT NOT NULL,
+				doc TEXT NOT NULL,
+				PRIMARY KEY (pos_profile, name)
+			)`,
+			`CREATE TABLE invoice_history (
+				name TEXT PRIMARY KEY,
+				pos_profile TEXT NOT NULL,
+				doc TEXT NOT NULL
+			)`,
+			"CREATE INDEX idx_invoice_history_profile ON invoice_history(pos_profile)",
+			`CREATE TABLE unpaid_invoice (
+				name TEXT PRIMARY KEY,
+				pos_profile TEXT NOT NULL,
+				doc TEXT NOT NULL
+			)`,
+			"CREATE INDEX idx_unpaid_invoice_profile ON unpaid_invoice(pos_profile)",
+			`CREATE TABLE translation (
+				locale TEXT PRIMARY KEY,
+				messages TEXT NOT NULL,
+				timestamp INTEGER
+			)`,
+			`CREATE TABLE draft (
+				draft_id TEXT PRIMARY KEY,
+				doc TEXT NOT NULL
+			)`,
+			`CREATE TABLE current_shift (
+				slot INTEGER PRIMARY KEY CHECK (slot = 1),
+				doc TEXT NOT NULL
+			)`,
+			`CREATE TABLE print_job (
+				job_id TEXT PRIMARY KEY,
+				doc TEXT NOT NULL
+			)`,
+		],
+	},
 ]
 
 /**

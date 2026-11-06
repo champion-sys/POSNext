@@ -1,4 +1,4 @@
-import { useShift, shiftState } from "@/composables/useShift"
+import { useShift, shiftState, whenCachedShiftRestored } from "@/composables/useShift"
 import { DEFAULT_CURRENCY, DEFAULT_LOCALE } from "@/utils/currency"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -88,6 +88,7 @@ export const usePOSShiftStore = defineStore("posShift", () => {
 	async function checkShift() {
 		// Offline start: the fetch fails, but its onError restores the shift from the local cache
 		await checkOpeningShift.fetch().catch(() => {})
+		await whenCachedShiftRestored()
 		return hasOpenShift.value
 	}
 

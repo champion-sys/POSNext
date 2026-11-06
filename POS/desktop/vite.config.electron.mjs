@@ -3,9 +3,21 @@ import path from "node:path"
 import vue from "@vitejs/plugin-vue"
 import frappeui from "frappe-ui/vite"
 import { defineConfig } from "vite"
-import { viteStaticCopy } from "vite-plugin-static-copy"
 
 const POS_ROOT = path.resolve(__dirname, "..")
+
+/**
+ * The web store is tree-shaken from this build, but its worker asset is emitted while
+ * modules load, before that happens. Nothing refers to the file, so it must not ship.
+ */
+const dropWebWorker = {
+	name: "pos-drop-web-worker",
+	generateBundle(_options, bundle) {
+		for (const fileName of Object.keys(bundle)) {
+			if (fileName.includes("offline.worker")) delete bundle[fileName]
+		}
+	},
+}
 
 /**
  * Frontend build for the desktop app. Unlike ../vite.config.js it has no PWA,
@@ -17,13 +29,15 @@ export default defineConfig({
 	plugins: [
 		frappeui({ frappeProxy: false, jinjaBootData: false, lucideIcons: true, buildConfig: false }),
 		vue(),
-		viteStaticCopy({ targets: [{ src: "src/workers", dest: "." }] }),
+		dropWebWorker,
 	],
 	build: {
 		outDir: path.resolve(__dirname, "renderer"),
 		emptyOutDir: true,
 		chunkSizeWarningLimit: 2000,
 		target: "es2022",
+		// Only the Android build has this plugin
+		rollupOptions: { external: ["@capacitor-community/sqlite"] },
 	},
 	worker: { format: "es" },
 	resolve: {

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import { beforeEach, describe, expect, it } from "vitest"
 import { migrate, MIGRATIONS } from "../migrations"
@@ -65,10 +66,34 @@ describe("migrate", () => {
 
 		await migrate(sql, [
 			...MIGRATIONS,
-			{ version: 2, statements: ["ALTER TABLE outbox ADD COLUMN note TEXT"] },
+			{ version: MIGRATIONS.at(-1).version + 1, statements: ["ALTER TABLE outbox ADD COLUMN note TEXT"] },
 		])
 
+		const [{ name }] = await sql.all("SELECT name FROM pragma_table_info('outbox') WHERE name = 'note'")
+		expect(name).toBe("note")
 		expect((await createOutbox(sql).nextBatch(10))[0].offline_id).toBe("a")
+	})
+
+	it("keeps a sale queued before the catalog tables existed", async () => {
+		const sql = createExecutor()
+		await migrate(sql, MIGRATIONS.slice(0, 1))
+		await sql.run(
+			`INSERT INTO outbox (offline_id, seq, entity, entity_version, payload, state, created_at)
+			VALUES ('old', 1, 'invoice', 1, '{"customer":"C"}', 'pending', 1)`,
+		)
+
+		expect(await migrate(sql)).toBe(MIGRATIONS.at(-1).version)
+
+		const [row] = await createOutbox(sql).nextBatch(10)
+		expect(row.offline_id).toBe("old")
+		expect(row.payload.customer).toBe("C")
+		expect(row.sync_failed).toBe(0)
+	})
+
+	// Devices upgrade through these while holding unsynced sales. Add a migration instead.
+	it("never rewrites a shipped migration", () => {
+		const hash = createHash("sha256").update(JSON.stringify(MIGRATIONS[0])).digest("hex")
+		expect(hash).toBe("09030cebe768c6dd9e15161afa73ea2a47d99b44076d7c02097252b98fce9736")
 	})
 })
 
