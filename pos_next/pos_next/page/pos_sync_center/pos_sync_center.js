@@ -38,6 +38,9 @@ class SyncCenter {
 				error_fingerprint: event.currentTarget.dataset.open,
 			});
 		});
+		this.body.on("click", "[data-overruns]", () => {
+			frappe.set_route("List", "Offline Invoice Sync", { coupon_overrun: ["is", "set"] });
+		});
 		this.body.on("click", "[data-reprocess]", (event) => {
 			this.reprocessGroup(event.currentTarget.dataset.reprocess);
 		});
@@ -49,7 +52,7 @@ class SyncCenter {
 		this.render(message);
 	}
 
-	render({ counts, groups }) {
+	render({ counts, groups, coupon_overruns }) {
 		const byStatus = Object.fromEntries(counts.map((row) => [row.status, row.count]));
 		const tiles = STATUS_ORDER.map(
 			([status, color]) => `
@@ -60,7 +63,13 @@ class SyncCenter {
 		).join("");
 
 		this.body.html(`
-			<div class="d-flex flex-wrap" style="gap: 8px">${tiles}</div>
+			<div class="d-flex flex-wrap" style="gap: 8px">
+				${tiles}
+				<button class="btn btn-default" data-overruns="1" style="min-width: 130px">
+					<span class="indicator-pill orange">${__("Coupon Overruns")}</span>
+					<div class="mt-2" style="font-size: 20px">${cint(coupon_overruns)}</div>
+				</button>
+			</div>
 			<h5 class="mt-5">${__("Failures to review, grouped by cause")}</h5>
 			${groups.length ? this.renderGroups(groups) : `<p class="text-muted">${__("Nothing needs review.")}</p>`}
 		`);

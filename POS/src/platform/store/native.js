@@ -28,6 +28,7 @@ const EMPTY_STATS = { items: 0, customers: 0, queuedInvoices: 0, cacheReady: fal
 const FALLBACKS = {
 	getOfflineInvoiceCount: () => 0,
 	getOfflineInvoices: () => [],
+	getQueueRows: () => [],
 	listUnsyncedInvoices: () => [],
 	searchCachedItems: () => [],
 	searchCachedItemsByGroup: () => [],

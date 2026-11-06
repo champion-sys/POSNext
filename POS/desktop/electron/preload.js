@@ -10,3 +10,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		batch: (statements) => ipcRenderer.invoke("db:batch", statements),
 	},
 })
+
+// Decrypted in the main process, so the app's storage never holds them in the clear
+contextBridge.exposeInMainWorld("electronSecrets", {
+	get: (key) => ipcRenderer.invoke("secrets:get", key),
+	set: (key, value) => ipcRenderer.invoke("secrets:set", key, value),
+	remove: (key) => ipcRenderer.invoke("secrets:remove", key),
+})

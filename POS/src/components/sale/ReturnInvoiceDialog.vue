@@ -13,7 +13,9 @@
 					<div class="flex-1 min-w-0 text-start">
 						<h4 class="text-sm font-bold text-amber-900">{{ __('Offline Mode') }}</h4>
 						<p class="text-xs text-amber-700 mt-1">
-							{{ __('Return invoices cannot be processed while offline. Please connect to the internet to search for invoices and create returns.') }}
+							{{ offlineReturns
+								? __('Returns are saved on this device and reach the server when you are back online. Only invoices kept on this device are listed.')
+								: __('Return invoices cannot be processed while offline. Please connect to the internet to search for invoices and create returns.') }}
 						</p>
 					</div>
 				</div>
@@ -33,11 +35,11 @@
 									ref="invoiceSearchInput"
 									v-model="invoiceListFilter"
 									type="text"
-									:placeholder="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (isOffline ? __('Search unavailable offline') : __('Search by invoice, customer, or mobile...'))"
-									:disabled="isOffline || !settingsStore.allowReturn"
+									:placeholder="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (cannotLoadOffline ? __('Search unavailable offline') : __('Search by invoice, customer, or mobile...'))"
+									:disabled="cannotLoadOffline || !settingsStore.allowReturn"
 									:class="[
 										'w-full ps-10 pe-10 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500',
-										(isOffline || !settingsStore.allowReturn) ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300'
+										(cannotLoadOffline || !settingsStore.allowReturn) ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300'
 									]"
 									@input="onSearchInput"
 									@keydown.down.prevent="navigateSuggestion(1)"
@@ -100,10 +102,10 @@
 						</div>
 						<Button
 							variant="subtle"
-							@click="loadInvoicesResource.reload()"
+							@click="loadInvoices"
 							:loading="loadInvoicesResource.loading"
-							:disabled="isOffline || !settingsStore.allowReturn"
-							:title="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (isOffline ? __('Refresh unavailable offline') : __('Refresh'))"
+							:disabled="cannotLoadOffline || !settingsStore.allowReturn"
+							:title="!settingsStore.allowReturn ? __('Return operations restricted for this profile') : (cannotLoadOffline ? __('Refresh unavailable offline') : __('Refresh'))"
 						>
 							<FeatherIcon name="refresh-cw" class="w-4 h-4" />
 						</Button>
@@ -173,7 +175,7 @@
 						<!-- Enhanced Empty State -->
 						<div v-else-if="!loadInvoicesResource.loading && filteredInvoiceList.length === 0" class="text-center py-12">
 							<!-- Offline Empty State -->
-							<template v-if="isOffline">
+							<template v-if="cannotLoadOffline">
 								<div class="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
 									<FeatherIcon name="wifi-off" class="w-8 h-8 text-amber-500" />
 								</div>
@@ -473,7 +475,7 @@
 					</div>
 
 					<!-- Add to Customer Credit Option (only for non-credit sales) -->
-					<div v-if="!isOriginalCreditSale" class="bg-emerald-50 rounded-xl p-4 border border-emerald-200 mb-4">
+					<div v-if="!isOriginalCreditSale && !isOffline" class="bg-emerald-50 rounded-xl p-4 border border-emerald-200 mb-4">
 						<label class="flex items-start gap-3 cursor-pointer">
 							<input
 								type="checkbox"
@@ -763,7 +765,12 @@
 <script setup>
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useToast } from "@/composables/useToast"
+import { session } from "@/data/session"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSSyncStore } from "@/stores/posSync"
+import { checkReturnValidity, isLocalName } from "@/utils/offline/entities"
+import { formatLocalPosting, withOfflinePosting } from "@/utils/offline/invoicePayload"
+import { offlineWorker } from "@/utils/offline/workerClient"
 import { getPaymentIcon } from "@/utils/payment"
 import {
 	DEFAULT_CURRENCY,
@@ -778,6 +785,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 const { showSuccess, showError, showWarning } = useToast()
 const { isOffline } = useOfflineStatus()
 const settingsStore = usePOSSettingsStore()
+const offlineStore = usePOSSyncStore()
 
 // ============================================
 // Constants (hoisted for performance)
@@ -822,6 +830,11 @@ const submitError = ref("")
 const isSubmitting = ref(false)
 // When true, return amount is added to customer credit balance instead of cash refund
 const addToCustomerCredit = ref(false)
+
+const offlineReturns = computed(() => isOffline.value && settingsStore.allowOfflineReturns)
+const cannotLoadOffline = computed(() => isOffline.value && !settingsStore.allowOfflineReturns)
+// Prepared returns kept on this device, by invoice
+const offlineDocuments = ref(new Map())
 
 // Autocomplete state
 const invoiceSearchInput = ref(null)
@@ -921,6 +934,95 @@ const loadPaymentMethodsResource = createResource({
 	},
 })
 
+/**
+ * Load a prepared return into the dialog, from the server or from this device.
+ */
+function applyPreparedReturn(data) {
+	if (data) {
+		// Store the complete return document from make_sales_return.
+		// This includes sales_team entries needed for commission reversal.
+		preparedReturnDoc.value = data
+
+		// The API returns original invoice data in _original_invoice for reference
+		const origInvoice = data._original_invoice || {}
+
+		// Filter items that still have quantity available for return.
+		// The API calculates remaining_qty by subtracting previously returned quantities.
+		const availableItems = data.items.filter((item) => item.remaining_qty > 0)
+
+		if (availableItems.length === 0) {
+			showWarning(
+				__("All items from this invoice have already been returned"),
+			)
+			originalInvoice.value = null
+			preparedReturnDoc.value = null
+			returnItems.value = []
+			return
+		}
+
+		// Store original invoice data for display in the UI
+		originalInvoice.value = {
+			name: data.return_against,
+			customer: data.customer,
+			customer_name: origInvoice.customer_name || data.customer_name,
+			company: data.company,
+			posting_date: origInvoice.posting_date,
+			grand_total: origInvoice.grand_total,
+			paid_amount: origInvoice.paid_amount,
+			outstanding_amount: origInvoice.outstanding_amount,
+			payments: origInvoice.payments || [],
+			docstatus: 1, // Already validated by backend
+			is_return: 0,
+		}
+
+		// Map items for UI display and selection.
+		// - sales_invoice_item / pos_invoice_item: links to original item row for accurate return tracking
+		// - remaining_qty: maximum quantity user can return for this item
+		returnItems.value = availableItems.map((item) => ({
+			...item,
+			name: item.sales_invoice_item || item.pos_invoice_item || `${item.item_code}:${item.original_idx}`,
+			quantity: item.remaining_qty,
+			selected: false,
+			return_qty: item.remaining_qty,
+			original_qty: item.original_qty,
+		}))
+		returnItems.value.forEach(normalizeItemQuantity)
+
+		// Calculate payment totals from original invoice for refund handling
+		const totalPaidFromPayments =
+			origInvoice.payments?.reduce(
+				(sum, p) => sum + Math.abs(p.amount || 0),
+				0,
+			) || 0
+		originalPaidAmount.value =
+			origInvoice.paid_amount || totalPaidFromPayments || 0
+		originalOutstandingAmount.value = origInvoice.outstanding_amount || 0
+
+		// Detect credit sale (Pay on Account): no payments recorded OR full amount outstanding.
+		// Credit sales don't require cash refund - they reverse the accounts receivable.
+		const hasNoPayments =
+			!origInvoice.payments || origInvoice.payments.length === 0
+		const isFullyUnpaid =
+			Math.abs(origInvoice.outstanding_amount - origInvoice.grand_total) <
+			0.01
+		isOriginalCreditSale.value =
+			hasNoPayments || (totalPaidFromPayments < 0.01 && isFullyUnpaid)
+
+		// Detect partial payment: some amount paid but still has outstanding balance.
+		// Partial payments require proportional refund calculation.
+		isPartiallyPaid.value =
+			originalPaidAmount.value > 0 && originalOutstandingAmount.value > 0
+
+		// Load payment methods if not already loaded
+		if (paymentMethods.value.length === 0 && props.posProfile) {
+			loadPaymentMethods()
+		}
+
+		// Set up refund payment rows based on original invoice payments
+		initializePaymentsFromInvoice()
+	}
+}
+
 // Resource for fetching a prepared return invoice.
 // Uses ERPNext's make_sales_return() which creates a properly structured return document
 // with all child tables (sales_team, taxes, etc.) copied from the original invoice.
@@ -928,91 +1030,7 @@ const loadPaymentMethodsResource = createResource({
 const fetchInvoiceResource = createResource({
 	url: "pos_next.api.invoices.prepare_return_invoice",
 	auto: false,
-	onSuccess(data) {
-		if (data) {
-			// Store the complete return document from make_sales_return.
-			// This includes sales_team entries needed for commission reversal.
-			preparedReturnDoc.value = data
-
-			// The API returns original invoice data in _original_invoice for reference
-			const origInvoice = data._original_invoice || {}
-
-			// Filter items that still have quantity available for return.
-			// The API calculates remaining_qty by subtracting previously returned quantities.
-			const availableItems = data.items.filter((item) => item.remaining_qty > 0)
-
-			if (availableItems.length === 0) {
-				showWarning(
-					__("All items from this invoice have already been returned"),
-				)
-				originalInvoice.value = null
-				preparedReturnDoc.value = null
-				returnItems.value = []
-				return
-			}
-
-			// Store original invoice data for display in the UI
-			originalInvoice.value = {
-				name: data.return_against,
-				customer: data.customer,
-				customer_name: origInvoice.customer_name || data.customer_name,
-				company: data.company,
-				posting_date: origInvoice.posting_date,
-				grand_total: origInvoice.grand_total,
-				paid_amount: origInvoice.paid_amount,
-				outstanding_amount: origInvoice.outstanding_amount,
-				payments: origInvoice.payments || [],
-				docstatus: 1, // Already validated by backend
-				is_return: 0,
-			}
-
-			// Map items for UI display and selection.
-			// - sales_invoice_item / pos_invoice_item: links to original item row for accurate return tracking
-			// - remaining_qty: maximum quantity user can return for this item
-			returnItems.value = availableItems.map((item) => ({
-				...item,
-				name: item.sales_invoice_item || item.pos_invoice_item,
-				quantity: item.remaining_qty,
-				selected: false,
-				return_qty: item.remaining_qty,
-				original_qty: item.original_qty,
-			}))
-			returnItems.value.forEach(normalizeItemQuantity)
-
-			// Calculate payment totals from original invoice for refund handling
-			const totalPaidFromPayments =
-				origInvoice.payments?.reduce(
-					(sum, p) => sum + Math.abs(p.amount || 0),
-					0,
-				) || 0
-			originalPaidAmount.value =
-				origInvoice.paid_amount || totalPaidFromPayments || 0
-			originalOutstandingAmount.value = origInvoice.outstanding_amount || 0
-
-			// Detect credit sale (Pay on Account): no payments recorded OR full amount outstanding.
-			// Credit sales don't require cash refund - they reverse the accounts receivable.
-			const hasNoPayments =
-				!origInvoice.payments || origInvoice.payments.length === 0
-			const isFullyUnpaid =
-				Math.abs(origInvoice.outstanding_amount - origInvoice.grand_total) <
-				0.01
-			isOriginalCreditSale.value =
-				hasNoPayments || (totalPaidFromPayments < 0.01 && isFullyUnpaid)
-
-			// Detect partial payment: some amount paid but still has outstanding balance.
-			// Partial payments require proportional refund calculation.
-			isPartiallyPaid.value =
-				originalPaidAmount.value > 0 && originalOutstandingAmount.value > 0
-
-			// Load payment methods if not already loaded
-			if (paymentMethods.value.length === 0 && props.posProfile) {
-				loadPaymentMethodsResource.reload()
-			}
-
-			// Set up refund payment rows based on original invoice payments
-			initializePaymentsFromInvoice()
-		}
-	},
+	onSuccess: applyPreparedReturn,
 	onError(error) {
 		console.error("Error fetching invoice:", error)
 		// Close the return modal since we can't proceed
@@ -1026,67 +1044,75 @@ const fetchInvoiceResource = createResource({
 	},
 })
 
+/**
+ * The return invoice, the same online and offline
+ */
+function buildReturnInvoiceData() {
+	// Use the prepared return document as the base.
+	// This document was created by ERPNext's make_sales_return() and contains
+	// the sales_team entries from the original invoice.
+	const baseDoc = preparedReturnDoc.value || {}
+	const doctype = preparedReturnDoc.value?.doctype || "Sales Invoice"
+
+	return {
+		doctype: doctype,
+		pos_profile: props.posProfile,
+		posa_pos_opening_shift: props.posOpeningShift,
+		customer: baseDoc.customer || originalInvoice.value.customer,
+		company: baseDoc.company || originalInvoice.value.company,
+		is_return: 1,
+		return_against: baseDoc.return_against || originalInvoice.value.name,
+		// Setting to 0 ensures GL entries point to original invoice,
+		// which reduces its outstanding amount and updates its status
+		update_outstanding_for_self: 0,
+		is_pos: 1,
+		update_stock: 1,
+		// Include sales_team from the prepared document.
+		// This ensures sales commission is reversed for the returned items.
+		sales_team:
+			baseDoc.sales_team?.map((member) => ({
+				sales_person: member.sales_person,
+				allocated_percentage: member.allocated_percentage || 0,
+			})) || [],
+		// Build items array from user's selection with negative quantities for return
+		items: selectedItems.value.map((item) => ({
+			item_code: item.item_code,
+			item_name: item.item_name,
+			qty: -Math.abs(item.return_qty),
+			rate: item.rate,
+			warehouse: item.warehouse,
+			uom: item.uom,
+			conversion_factor: item.conversion_factor || 1,
+			// Link to original invoice item row for accurate return tracking in ERPNext.
+			// A sale still in the queue has no rows yet, so the server finds them by position.
+			[doctype === "POS Invoice" ? "pos_invoice_item" : "sales_invoice_item"]:
+				item.sales_invoice_item || item.pos_invoice_item,
+			original_idx: item.original_idx,
+		})),
+		// Flag to indicate return amount should be added to customer credit balance
+		add_to_customer_balance: addToCustomerCredit.value,
+		// Payment amounts are negative for refunds
+		// If addToCustomerCredit is true, send empty payments array so outstanding stays negative
+		// This negative outstanding becomes customer credit balance
+		payments: addToCustomerCredit.value
+			? []
+			: refundPayments.value.map((payment) => ({
+					mode_of_payment: payment.mode_of_payment,
+					amount: -Math.abs(payment.amount),
+			  })),
+		remarks:
+			returnReason.value ||
+			__("Return against {0}", [originalInvoice.value.name]),
+	}
+}
+
 // Resource for submitting the return invoice to the server
 const createReturnResource = createResource({
 	url: "pos_next.api.invoices.submit_invoice",
 	makeParams() {
-		// Use the prepared return document as the base.
-		// This document was created by ERPNext's make_sales_return() and contains
-		// the sales_team entries from the original invoice.
-		const baseDoc = preparedReturnDoc.value || {}
-		const doctype = preparedReturnDoc.value?.doctype || "Sales Invoice"
-
-		const invoiceData = {
-			doctype: doctype,
-			pos_profile: props.posProfile,
-			posa_pos_opening_shift: props.posOpeningShift,
-			customer: baseDoc.customer || originalInvoice.value.customer,
-			company: baseDoc.company || originalInvoice.value.company,
-			is_return: 1,
-			return_against: baseDoc.return_against || originalInvoice.value.name,
-			// Setting to 0 ensures GL entries point to original invoice,
-			// which reduces its outstanding amount and updates its status
-			update_outstanding_for_self: 0,
-			is_pos: 1,
-			update_stock: 1,
-			// Include sales_team from the prepared document.
-			// This ensures sales commission is reversed for the returned items.
-			sales_team:
-				baseDoc.sales_team?.map((member) => ({
-					sales_person: member.sales_person,
-					allocated_percentage: member.allocated_percentage || 0,
-				})) || [],
-			// Build items array from user's selection with negative quantities for return
-			items: selectedItems.value.map((item) => ({
-				item_code: item.item_code,
-				item_name: item.item_name,
-				qty: -Math.abs(item.return_qty),
-				rate: item.rate,
-				warehouse: item.warehouse,
-				uom: item.uom,
-				conversion_factor: item.conversion_factor || 1,
-				// Link to original invoice item row for accurate return tracking in ERPNext
-				[doctype === "POS Invoice" ? "pos_invoice_item" : "sales_invoice_item"]: item.name,
-			})),
-			// Flag to indicate return amount should be added to customer credit balance
-			add_to_customer_balance: addToCustomerCredit.value,
-			// Payment amounts are negative for refunds
-			// If addToCustomerCredit is true, send empty payments array so outstanding stays negative
-			// This negative outstanding becomes customer credit balance
-			payments: addToCustomerCredit.value
-				? []
-				: refundPayments.value.map((payment) => ({
-						mode_of_payment: payment.mode_of_payment,
-						amount: -Math.abs(payment.amount),
-				  })),
-			remarks:
-				returnReason.value ||
-				__("Return against {0}", [originalInvoice.value.name]),
-		}
-
 		// Return in the correct format: invoice as JSON string
 		return {
-			invoice: JSON.stringify(invoiceData),
+			invoice: JSON.stringify(buildReturnInvoiceData()),
 			data: JSON.stringify({}),
 		}
 	},
@@ -1122,7 +1148,7 @@ const createReturnResource = createResource({
 // Lifecycle hooks
 onMounted(() => {
 	if (props.posProfile) {
-		loadPaymentMethodsResource.reload()
+		loadPaymentMethods()
 	}
 	document.addEventListener("keydown", handleKeyboardShortcuts)
 })
@@ -1149,7 +1175,7 @@ watch(
 				checkValidityAndOpenModal(props.preselectedInvoice.name, true)
 			} else {
 				// Normal flow - show the invoice selection dialog
-				loadInvoicesResource.reload()
+				loadInvoices()
 			}
 		} else {
 			resetForm()
@@ -1262,6 +1288,8 @@ const canCreateReturn = computed(() => {
 	if (!settingsStore.allowReturn) return false
 	const hasSelectedItems = selectedItems.value.length > 0
 	if (!hasSelectedItems || !hasOpenShift.value) return false
+	// The connection can drop after this was ticked, and a balance is the server's to change
+	if (isOffline.value && addToCustomerCredit.value) return false
 	// Credit sale returns and "add to customer credit" returns don't need payment validation
 	if (isOriginalCreditSale.value || addToCustomerCredit.value) return true
 
@@ -1332,6 +1360,7 @@ watch(normalizedSearchTerm, (searchTerm) => {
 	}
 
 	// Early exit conditions
+	if (isOffline.value) return
 	if (!searchTerm || searchTerm.length < MIN_SERVER_SEARCH_LENGTH) return
 	if (!looksLikeInvoiceNumber(searchTerm)) return
 
@@ -1359,6 +1388,70 @@ watch(returnTotal, (newTotal) => {
 })
 
 // Methods
+async function loadPaymentMethods() {
+	if (!isOffline.value) return loadPaymentMethodsResource.reload()
+
+	const cached = await offlineWorker.getCachedPaymentMethods(props.posProfile)
+	paymentMethods.value = cached.filter((method) => !method.is_wallet_payment)
+	if (originalInvoice.value) {
+		initializePaymentsFromInvoice()
+	}
+}
+
+async function loadOfflineInvoices() {
+	const documents = await offlineStore.getOfflineReturnDocuments(props.posProfile)
+	offlineDocuments.value = new Map(documents.map((doc) => [doc.return_against, doc]))
+
+	invoiceList.value = documents
+		.filter((doc) => doc.items.some((item) => item.remaining_qty > 0))
+		.map((doc) => ({
+			name: doc.return_against,
+			customer: doc.customer,
+			customer_name: doc._original_invoice.customer_name || doc.customer_name || doc.customer,
+			posting_date: doc._original_invoice.posting_date,
+			grand_total: doc._original_invoice.grand_total,
+			status: isLocalName(doc.return_against) ? __("Waiting to Sync") : __("Submitted"),
+		}))
+}
+
+function loadInvoices() {
+	return offlineReturns.value ? loadOfflineInvoices() : loadInvoicesResource.reload()
+}
+
+/**
+ * The offline form of checking validity and fetching the prepared return
+ */
+async function openOfflineReturn(invoiceName) {
+	if (!offlineDocuments.value.has(invoiceName)) {
+		await loadOfflineInvoices()
+	}
+
+	const doc = offlineDocuments.value.get(invoiceName)
+	if (!doc) {
+		showError(__("This invoice is not kept on this device, so it cannot be returned offline"))
+		return
+	}
+
+	if (handleValidityResponse(checkReturnValidity(doc, formatLocalPosting().posting_date))) {
+		applyPreparedReturn(doc)
+		returnModal.visible = Boolean(originalInvoice.value)
+	}
+}
+
+async function saveReturnOffline() {
+	const invoiceData = {
+		...withOfflinePosting(buildReturnInvoiceData()),
+		customer_name: preparedReturnDoc.value?.customer_name,
+		cashier: session.user,
+		grand_total: -returnTotal.value,
+	}
+	const result = await offlineStore.saveInvoiceOffline(invoiceData)
+
+	emit("return-created", { name: result.offline_id })
+	closeReturnModal()
+	showSuccess(__("Return saved. It will reach the server shortly"))
+}
+
 function extractErrorMessage(
 	error,
 	fallbackMessage = __("Failed to create return invoice"),
@@ -1536,6 +1629,11 @@ function openReturnModal(invoice) {
  * @param {boolean} fallbackOnError - If true, opens modal directly on validity check error
  */
 async function checkValidityAndOpenModal(invoiceName, fallbackOnError = false) {
+	if (offlineReturns.value) {
+		await openOfflineReturn(invoiceName)
+		return
+	}
+
 	try {
 		const validity = await checkInvoiceValidityResource.fetch({
 			invoice_name: invoiceName,
@@ -1645,6 +1743,11 @@ async function handleCreateReturn() {
 	isSubmitting.value = true
 
 	try {
+		if (offlineReturns.value) {
+			await saveReturnOffline()
+			return
+		}
+
 		const result = await createReturnResource.submit()
 
 		// Check if result contains an error (HTTP 417 might return error in response body)
@@ -1693,6 +1796,7 @@ function resetForm() {
 
 	// Reset customer credit option
 	addToCustomerCredit.value = false
+	offlineDocuments.value = new Map()
 }
 
 // Date formatter instance (reused for performance)

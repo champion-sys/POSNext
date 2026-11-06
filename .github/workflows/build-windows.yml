@@ -1,0 +1,83 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/offline-multiplatform
+    paths:
+      - "POS/**"
+
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Only says whether the secrets exist, so dependency install scripts never see them
+  CAN_SIGN: ${{ secrets.WINDOWS_CERTIFICATE != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+  # .invalid never resolves, so a build with no update server just finds no updates
+  POS_NEXT_UPDATE_URL: ${{ vars.POS_NEXT_UPDATE_URL || 'https://updates.invalid/pos-next/' }}
+
+jobs:
+  build:
+    name: Windows installer
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Warn about a missing update server
+        if: vars.POS_NEXT_UPDATE_URL == ''
+        run: echo "::warning::POS_NEXT_UPDATE_URL is not set, so this build will not find updates"
+
+      - name: Install frontend dependencies
+        working-directory: POS
+        run: yarn install --non-interactive
+
+      - name: Install desktop dependencies
+        working-directory: POS/desktop
+        run: npm install --no-audit --no-fund
+
+      - name: Number this build
+        working-directory: POS/desktop
+        run: npm version "0.1.$GITHUB_RUN_NUMBER" --no-git-tag-version
+
+      - name: Build frontend
+        working-directory: POS/desktop
+        run: npm run build:frontend
+
+      - name: Build unsigned installer
+        if: env.CAN_SIGN != 'true'
+        working-directory: POS/desktop
+        run: npm run build:win
+
+      - name: Build signed installer
+        if: env.CAN_SIGN == 'true'
+        working-directory: POS/desktop
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: npm run build:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: pos-next-windows
+          path: |
+            POS/desktop/dist/*.exe
+            POS/desktop/dist/*.exe.blockmap
+            POS/desktop/dist/latest.yml
+          if-no-files-found: error

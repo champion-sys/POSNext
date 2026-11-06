@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
 import { createOutbox } from "@/platform/sql/outbox"
+import { sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { createSqlStore } from "../sqlStore"
 import { createNodeExecutor } from "./sqliteHarness"
 
@@ -105,6 +106,22 @@ describe("the SQLite store", () => {
 			expect(await outbox.availableStock("A", "W1")).toBe(100)
 		})
 
+		it("gives stock back while a return is on its way, as the web's queued total does", async () => {
+			const data = invoice({ is_return: 1, items: [{ item_code: "A", qty: -2, warehouse: "W1" }] })
+
+			await store.saveOfflineInvoice(data)
+
+			expect(await outbox.availableStock("A", "W1")).toBe(102)
+			expect(sumQueuedStock(await store.getOfflineInvoices(), "W1").get("A")).toBe(-2)
+		})
+
+		it("keeps holding stock while it waits for a local customer", async () => {
+			const { offline_id } = await store.saveQueueEntity("customer", { doctype: "Customer" })
+			await store.saveOfflineInvoice(invoice({ customer: offline_id }))
+
+			expect(await outbox.availableStock("A", "W1")).toBe(76)
+		})
+
 		it("takes its hold and receipt with it when deleted", async () => {
 			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
 
@@ -157,6 +174,82 @@ describe("the SQLite store", () => {
 
 			expect(await store.getReceipt(offline_id)).toBeNull()
 			expect((await store.getQueuedInvoice(offline_id)).data.items).toHaveLength(1)
+		})
+	})
+
+	describe("records that are not sales", () => {
+		it("keep the shift they belong to, for closing it", async () => {
+			await store.saveQueueEntity("payment", { posa_pos_opening_shift: "SHIFT-1" })
+			await store.saveQueueEntity("shift_close", { pos_opening_shift: "SHIFT-2" })
+			await store.saveQueueEntity("customer", { doctype: "Customer" })
+
+			const rows = await sql.all("SELECT shift FROM outbox ORDER BY seq")
+			expect(rows.map((row) => row.shift)).toEqual(["SHIFT-1", "SHIFT-2", null])
+		})
+
+		it("hold no stock and have no receipt", async () => {
+			await store.saveQueueEntity("payment", { items: [{ item_code: "A", qty: 5, warehouse: "W1" }] })
+
+			expect(await sql.all("SELECT * FROM stock_reservation")).toEqual([])
+			expect(await sql.all("SELECT * FROM receipt")).toEqual([])
+		})
+
+		it("share the sequence with sales, so the server gets them in order", async () => {
+			const results = await Promise.all([
+				store.saveQueueEntity("customer", { doctype: "Customer" }),
+				store.saveOfflineInvoice(invoice()),
+				store.saveQueueEntity("payment", { invoice_name: "S" }),
+			])
+
+			expect(results.map((result) => result.id).sort()).toEqual([1, 2, 3])
+		})
+
+		it("store nothing when saving fails", async () => {
+			await sql.run(`CREATE TRIGGER fail_outbox BEFORE INSERT ON outbox
+				BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
+
+			await expect(store.saveQueueEntity("customer", {})).rejects.toThrow("disk full")
+
+			expect(await sql.all("SELECT * FROM device_sequence")).toEqual([])
+		})
+
+		it("read a row from before the queue had dependencies", async () => {
+			await sql.run(
+				`INSERT INTO outbox (offline_id, seq, entity, entity_version, payload, state, created_at)
+				VALUES ('old', 1, 'invoice', 1, '{}', 'pending', 1)`,
+			)
+
+			expect((await store.getQueuedInvoice("old")).depends_on).toEqual([])
+		})
+	})
+
+	describe("pulled items", () => {
+		const page = (rows, deleted = []) => ({ rows, deleted })
+
+		it("set the base stock", async () => {
+			await store.applyPullPage("items", page([item("A", "Item", { warehouse: "W1", actual_qty: 8 })]))
+			expect(await outbox.availableStock("A", "W1")).toBe(8)
+		})
+
+		it("leave nothing behind when deleted", async () => {
+			await store.cacheItems([item("A", "Item", { rate: 1, barcodes: ["1"], warehouse: "W1", actual_qty: 8 })])
+
+			await store.applyPullPage("items", page([], ["A"]))
+
+			for (const table of ["catalog_item", "item_barcode", "item_price", "stock_base"]) {
+				expect(await sql.all(`SELECT * FROM ${table}`)).toEqual([])
+			}
+		})
+
+		it("delete far more items than one statement can bind", async () => {
+			await store.cacheItems(Array.from({ length: 1200 }, (_, index) => item(`I-${index}`, "Item")))
+			const deleted = Array.from({ length: 1200 }, (_, index) => `I-${index}`)
+
+			await store.applyPullPage("items", page([], deleted))
+
+			expect(await store.isCacheReady()).toBe(false)
+			const largest = Math.max(...sql.statements.map((statement) => statement.params?.length ?? 0))
+			expect(largest).toBeLessThanOrEqual(500)
 		})
 	})
 

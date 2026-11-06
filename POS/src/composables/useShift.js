@@ -40,11 +40,48 @@ function forgetShift() {
 	localStore.clearShift().catch((error) => console.error("Error clearing cached shift data:", error))
 }
 
+const CLOSING_SHIFTS_KEY = "pos_next_closing_shifts"
+
+function getClosingShifts() {
+	return JSON.parse(localStorage.getItem(CLOSING_SHIFTS_KEY) || "[]")
+}
+
+/**
+ * A shift closed offline stays open on the server until that close arrives, and
+ * nothing more may be sold into it on this device meanwhile.
+ * @param {string} name - POS Opening Shift
+ */
+export function markShiftClosing(name) {
+	localStorage.setItem(CLOSING_SHIFTS_KEY, JSON.stringify([...getClosingShifts(), name]))
+}
+
+/**
+ * @param {string} name - POS Opening Shift
+ */
+export function clearShiftClosing(name) {
+	const remaining = getClosingShifts().filter((shift) => shift !== name)
+	localStorage.setItem(CLOSING_SHIFTS_KEY, JSON.stringify(remaining))
+}
+
+export function resetShiftState() {
+	shiftState.value = {
+		pos_opening_shift: null,
+		pos_profile: null,
+		company: null,
+		isOpen: false,
+		_initialElapsedMs: 0,
+		_receivedAt: 0,
+	}
+	forgetShift()
+}
+
 export function useShift() {
 	// Check for existing open shift
 	const checkOpeningShift = createResource({
 		url: "pos_next.api.shifts.check_opening_shift",
 		auto: false,
+		// false, because frappe-ui keeps the original answer when this returns null
+		transform: (data) => (getClosingShifts().includes(data?.pos_opening_shift?.name) ? false : data),
 		onSuccess(data) {
 			if (data) {
 				// Compute initial elapsed time using server timestamps
@@ -70,15 +107,7 @@ export function useShift() {
 					_receivedAt: Date.now(),
 				})
 			} else {
-				shiftState.value = {
-					pos_opening_shift: null,
-					pos_profile: null,
-					company: null,
-					isOpen: false,
-					_initialElapsedMs: 0,
-					_receivedAt: 0,
-				}
-				forgetShift()
+				resetShiftState()
 			}
 		},
 		onError(error) {
@@ -142,15 +171,7 @@ export function useShift() {
 			return { closing_shift: JSON.stringify(closing_shift) }
 		},
 		onSuccess() {
-			shiftState.value = {
-				pos_opening_shift: null,
-				pos_profile: null,
-				company: null,
-				isOpen: false,
-				_initialElapsedMs: 0,
-				_receivedAt: 0,
-			}
-			forgetShift()
+			resetShiftState()
 		},
 		onError(error) {
 			console.error("Error submitting closing shift:", error)

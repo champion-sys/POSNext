@@ -14,7 +14,9 @@
  * @module stores/posSync
  */
 
+import { clearShiftClosing, markShiftClosing } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
+import { pullChanges } from "@/core/sync/webPull"
 import {
 	cacheCustomersFromServer,
 	cachePaymentMethodsFromServer,
@@ -26,10 +28,31 @@ import {
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
-import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
+import { getSetting, setSetting } from "@/utils/offline/settings"
+import {
+	ENTITY_CUSTOMER,
+	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
+	applyQueuedPayments,
+	buildCustomerPayload,
+	buildLocalCustomer,
+	buildPaymentPayload,
+	buildReturnDocFromQueue,
+	buildShiftClosePayload,
+	countQueuedCouponUses,
+	exceedsOutstanding,
+	getCachedCouponProblem,
+	getDependentRows,
+	getShiftManifest,
+	isReturnableQueueRow,
+	subtractQueuedReturns,
+} from "@/utils/offline/entities"
+import { SYNC_PERIODIC, formatLocalPosting, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
+import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSShiftStore } from "@/stores/posShift"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -42,7 +65,14 @@ const SYNC_TICK_MS = 60 * 1000
 /** Wait for the app to settle before the sync on opening */
 const STARTUP_SYNC_DELAY_MS = 5000
 
+/** How often to ask the server what changed */
+const PULL_INTERVAL_MS = 15 * 60 * 1000
+
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
+
+const COUPONS_CACHE_PREFIX = "offline_coupons_"
+const RETURN_DOCUMENTS_CACHE_PREFIX = "offline_return_documents_"
+const RETURN_DOCUMENTS_LIMIT = 100
 
 export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
@@ -96,6 +126,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (wasOffline && !nowOffline) {
 			log.info('Transition to online detected, auto-syncing pending invoices')
 			await autoSync()
+			pullServerChanges()
 		}
 
 		wasOffline = nowOffline
@@ -202,6 +233,20 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * Bring down what changed on the server
+	 */
+	async function pullServerChanges() {
+		try {
+			const { session } = await import("@/data/session")
+			if (!session.isLoggedIn || isOffline.value) return
+
+			await pullChanges(usePOSShiftStore().profileName)
+		} catch (error) {
+			log.warn('Pull from the server failed', error)
+		}
+	}
+
+	/**
 	 * Sync pending invoices to the server
 	 * @throws {Error} If called while offline
 	 */
@@ -245,6 +290,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @param {string} id - Invoice ID to delete
 	 */
 	async function deletePending(id) {
+		const rows = await getPending()
+		const row = rows.find((candidate) => candidate.id === id)
+		if (row && getDependentRows(rows, row.offline_id).length > 0) {
+			throw new Error(__("Other queued records depend on this one, so it cannot be deleted"))
+		}
 		await offlineWorker.deleteOfflineInvoice(id)
 		await updatePendingCount()
 	}
@@ -295,6 +345,152 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			log.error('Failed to save invoice offline', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Queue a record that is not a sale
+	 * @param {string} entity - One of the ENTITY constants
+	 * @param {Object} data - Its payload
+	 * @param {string[]} [dependsOn] - Offline IDs that must finish first
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function saveQueueEntity(entity, data, dependsOn = []) {
+		const result = await offlineWorker.saveQueueEntity(entity, data, dependsOn)
+		await updatePendingCount()
+		warnIfStorageNotPersistent()
+
+		if (usePOSSettingsStore().syncMode !== SYNC_PERIODIC) {
+			autoSync().catch((error) => log.error("Sync after queueing failed", error))
+		}
+		return result
+	}
+
+	/**
+	 * Queue a new customer. Its offline_id is its name until the server gives it one.
+	 * @param {Object} customer - The form's values
+	 * @param {{posProfile: string, company: string}} context
+	 * @returns {Promise<Object>} The customer to sell to meanwhile
+	 */
+	async function saveCustomerOffline(customer, { posProfile, company }) {
+		const { session } = await import("@/data/session")
+		const payload = buildCustomerPayload(customer, {
+			offlineId: generateOfflineId(),
+			posProfile,
+			company,
+			cashier: session.user,
+		})
+		await saveQueueEntity(ENTITY_CUSTOMER, payload)
+		return buildLocalCustomer(payload)
+	}
+
+	/**
+	 * Queue a payment on an invoice the server already has
+	 * @param {Object} invoice - The invoice, as withQueuedPayments reports it
+	 * @param {Array} payments - The payment dialog's entries
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function savePaymentOffline(invoice, payments) {
+		if (exceedsOutstanding(invoice, payments)) {
+			throw new Error(__("Total payment amount exceeds the outstanding amount of {0}", [invoice.name]))
+		}
+
+		const { session } = await import("@/data/session")
+		const shiftStore = usePOSShiftStore()
+		return saveQueueEntity(
+			ENTITY_PAYMENT,
+			buildPaymentPayload({
+				invoice,
+				payments,
+				posProfile: shiftStore.profileName,
+				shift: shiftStore.currentShift?.name,
+				cashier: session.user,
+			}),
+		)
+	}
+
+	/**
+	 * Show unpaid invoices as they will be once queued payments have reached the server
+	 * @param {Array} invoices
+	 * @returns {Promise<Array>}
+	 */
+	async function withQueuedPayments(invoices) {
+		return applyQueuedPayments(invoices, await getPending())
+	}
+
+	/**
+	 * Check a coupon against the last copy from the server and this device's queue
+	 * @param {string} code
+	 * @param {{posProfile: string, customer: string, company: string}} context
+	 * @returns {Promise<{coupon: Object|undefined, problem: string|null}>}
+	 */
+	async function checkCouponOffline(code, { posProfile, customer, company }) {
+		const coupons = (await getSetting(`${COUPONS_CACHE_PREFIX}${posProfile}`)) || []
+		const coupon = coupons.find((row) => row.coupon_code?.toUpperCase() === code.toUpperCase())
+		const problem = getCachedCouponProblem(coupon, {
+			customer,
+			company,
+			today: formatLocalPosting().posting_date,
+			...countQueuedCouponUses(await getPending(), code, customer),
+		})
+		return { coupon, problem }
+	}
+
+	/**
+	 * Keep prepared returns of recent invoices on this device. Empty on the
+	 * server unless POS Settings allows offline returns.
+	 * @param {string} posProfile
+	 */
+	async function refreshReturnDocuments(posProfile) {
+		const documents = await call("pos_next.api.invoices.get_offline_return_documents", {
+			pos_profile: posProfile,
+			pos_opening_shift: usePOSShiftStore().currentShift?.name,
+			limit: RETURN_DOCUMENTS_LIMIT,
+		})
+		await setSetting(`${RETURN_DOCUMENTS_CACHE_PREFIX}${posProfile}`, {
+			cached_at: Date.now(),
+			documents: documents || [],
+		})
+	}
+
+	/**
+	 * What can be returned with no server to ask: the kept documents, and sales
+	 * still in the queue. Returns already queued are taken off both.
+	 * @param {string} posProfile
+	 * @returns {Promise<Array>} Prepared returns, by return_against
+	 */
+	async function getOfflineReturnDocuments(posProfile) {
+		const settingsStore = usePOSSettingsStore()
+		const rows = await offlineWorker.getQueueRows()
+		const cached = await getSetting(`${RETURN_DOCUMENTS_CACHE_PREFIX}${posProfile}`)
+
+		const kept = (cached?.documents || []).map((doc) => ({ ...doc, _cached_at: cached.cached_at }))
+		const keptNames = new Set(kept.map((doc) => doc.return_against))
+		const rules = {
+			allow_return: settingsStore.allowReturn,
+			return_validity_days: settingsStore.settings.return_validity_days,
+		}
+		const queued = rows
+			.filter(isReturnableQueueRow)
+			.map((row) => buildReturnDocFromQueue(row, rules))
+			.filter((doc) => !keptNames.has(doc.return_against))
+
+		return [...queued, ...kept].map((doc) => subtractQueuedReturns(doc, rows))
+	}
+
+	/**
+	 * Queue a shift close behind every sale of the shift. The server finalizes it
+	 * once they have all arrived, and works out the totals itself.
+	 * @param {Object} closing - The draft from buildClosingDraft, with what was counted
+	 * @returns {Promise<{id: number, offline_id: string}>}
+	 */
+	async function saveShiftCloseOffline(closing) {
+		const { session } = await import("@/data/session")
+		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), closing.pos_opening_shift)
+		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
+
+		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, manifest)
+		markShiftClosing(closing.pos_opening_shift)
+		return result
 	}
 
 	/**
@@ -416,6 +612,19 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 				showSuccess(__("Data is ready for offline use"))
 			}
 
+			refreshReturnDocuments(currentProfile.name).catch((error) => {
+				log.error("Failed to load returnable invoices", error)
+			})
+
+			try {
+				const coupons = await call("pos_next.api.offers.get_offline_coupons", {
+					pos_profile: currentProfile.name,
+				})
+				await setSetting(`${COUPONS_CACHE_PREFIX}${currentProfile.name}`, coupons || [])
+			} catch (error) {
+				log.error("Failed to load coupons", error)
+			}
+
 			// Preload invoice history and unpaid invoices in parallel for faster startup
 			log.info('Loading invoice data for offline use')
 			try {
@@ -470,6 +679,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		} finally {
 			_preloadingProfile = null
 		}
+
+		// Not awaited: the sale page waits for this function, and a first pull can take minutes
+		pullServerChanges()
 	}
 
 	/**
@@ -502,6 +714,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	// INITIALIZATION
 	// =========================================================================
 
+	window.addEventListener("offlineEntitySynced", ({ detail }) => {
+		if (detail.row.entity === ENTITY_SHIFT_CLOSE) {
+			clearShiftClosing(detail.row.data.pos_opening_shift)
+		}
+	})
+
 	// Initialize pending count on store creation
 	updatePendingCount()
 	ensurePersistentStorage()
@@ -513,6 +731,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Without a socket, this is how a sale the server is working on gets its result
 		if (isWaitingForServer || Date.now() - lastAutoSyncAt >= intervalMs) autoSync()
 	}, SYNC_TICK_MS)
+	setInterval(pullServerChanges, PULL_INTERVAL_MS)
 
 	// =========================================================================
 	// EXPORTS
@@ -530,9 +749,17 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		// Actions
 		saveInvoiceOffline,
+		saveCustomerOffline,
+		savePaymentOffline,
+		withQueuedPayments,
+		saveShiftCloseOffline,
+		checkCouponOffline,
+		refreshReturnDocuments,
+		getOfflineReturnDocuments,
 		loadPendingInvoices,
 		updatePendingCount,
 		deleteOfflineInvoice,
+		autoSync,
 		syncAllPending,
 		preloadDataForOffline,
 		checkOfflineCacheAvailability,

@@ -14,13 +14,13 @@ const FETCH_TIMEOUT_MS = 5000
 
 /**
  * @param {Object} deps
- * @param {string} deps.origin - Where the API is. Empty sends a relative request.
- * @param {() => string|null} deps.getCsrfToken
+ * @param {(path: string) => string} deps.serverUrl - Where a path lives on the server
+ * @param {() => Object} deps.getHeaders - What the request needs to be let in
  * @param {() => boolean} deps.isConnected
  * @param {(updates: Array) => Promise<{updated: number}>} deps.updateStock
  * @param {(type: "STOCK_SYNC_COMPLETE"|"STOCK_SYNC_ERROR", payload: Object) => void} deps.notify
  */
-export function createStockSync({ origin, getCsrfToken, isConnected, updateStock, notify }) {
+export function createStockSync({ serverUrl, getHeaders, isConnected, updateStock, notify }) {
 	let timer = null
 	let enabled = false
 	let intervalMs = 60000
@@ -39,19 +39,13 @@ export function createStockSync({ origin, getCsrfToken, isConnected, updateStock
 			const controller = new AbortController()
 			const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
-			const headers = {
-				"Content-Type": "application/json",
-				Accept: "application/json",
-			}
-
-			const csrfToken = getCsrfToken()
-			if (csrfToken) {
-				headers["X-Frappe-CSRF-Token"] = csrfToken
-			}
-
-			const response = await fetch(`${origin}/api/method/pos_next.api.items.get_stock_quantities`, {
+			const response = await fetch(serverUrl("/api/method/pos_next.api.items.get_stock_quantities"), {
 				method: "POST",
-				headers,
+				headers: {
+					"Content-Type": "application/json",
+					Accept: "application/json",
+					...getHeaders(),
+				},
 				body: JSON.stringify({
 					item_codes: JSON.stringify(Array.from(trackedItemCodes)),
 					warehouse,

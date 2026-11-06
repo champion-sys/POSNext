@@ -9,6 +9,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
 import { createNativeStore } from "@/platform/store/native"
 import { createSqlStore } from "@/platform/store/sqlStore"
+import { PULL_ENTITIES, pullStateKey, runPull } from "@/core/sync/pullEngine"
+import {
+	ENTITY_CUSTOMER,
+	ENTITY_PAYMENT,
+	ENTITY_SHIFT_CLOSE,
+	countQueuedCouponUses,
+	getDependentRows,
+	getShiftManifest,
+	isReturnableQueueRow,
+	sumQueuedPayments,
+} from "@/utils/offline/entities"
 import { getQueueUpdateForResult, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { createFakeIndexedDB } from "./fakeIndexedDB"
 import { createCapacitorHarness, createElectronHarness, createNodeExecutor } from "./sqliteHarness"
@@ -287,6 +298,588 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			await store.deleteSyncedInvoices(Date.now() + 1000)
 			expect(await store.getQueuedInvoice(finished.offline_id)).toBeUndefined()
 			expect(await store.getQueuedInvoice(kept.offline_id)).toBeDefined()
+		})
+	})
+
+	describe("every field of a queue row, through its whole life", () => {
+		/** What the app reads. Undefined and null, or missing and false, mean the same to it. */
+		const shape = (row) => ({
+			entity: row.entity ?? "invoice",
+			depends_on: row.depends_on ?? [],
+			synced: row.synced,
+			retry_count: row.retry_count,
+			next_attempt_at: row.next_attempt_at ?? 0,
+			error: row.error ?? null,
+			server_status: row.server_status ?? null,
+			server_invoice: row.server_invoice ?? null,
+			sync_failed: Boolean(row.sync_failed),
+			superseded: Boolean(row.superseded),
+			replaced_by: row.replaced_by ?? null,
+		})
+
+		const fresh = {
+			entity: "invoice",
+			depends_on: [],
+			synced: false,
+			retry_count: 0,
+			next_attempt_at: 0,
+			error: null,
+			server_status: null,
+			server_invoice: null,
+			sync_failed: false,
+			superseded: false,
+			replaced_by: null,
+		}
+
+		const failed = { retry_count: 1, error: "Timeout", next_attempt_at: 5000 }
+		const gaveUp = { ...failed, sync_failed: true }
+		const result = (answer) => getQueueUpdateForResult(answer)
+
+		it.each([
+			["a new sale", [], {}],
+			["one failed send", [failed], failed],
+			["running out of retries", [gaveUp], gaveUp],
+			["staying failed on the next failure", [gaveUp, { ...failed, retry_count: 2 }], { ...gaveUp, retry_count: 2 }],
+			["a retry count written outright, not counted up", [{ ...failed, retry_count: 5 }], { ...failed, retry_count: 5 }],
+			["the server taking it after failures", [gaveUp, result({ status: "received" })], {
+				retry_count: 1,
+				next_attempt_at: 5000,
+				server_status: "received",
+			}],
+			["being processed", [result({ status: "processing" })], { server_status: "processing" }],
+			["needing review", [result({ status: "needs_review", message: "No stock" })], {
+				server_status: "needs_review",
+				sync_failed: true,
+				error: "No stock",
+			}],
+			["a review with no message", [result({ status: "needs_review" })], {
+				server_status: "needs_review",
+				sync_failed: true,
+			}],
+			["a conflict, which is a review", [result({ status: "conflict", message: "Dup" })], {
+				server_status: "needs_review",
+				sync_failed: true,
+				error: "Dup",
+			}],
+			["a review that gets fixed", [
+				result({ status: "needs_review", message: "No stock" }),
+				result({ status: "synced", invoice: "SINV-1" }),
+			], { synced: true, server_status: "synced", server_invoice: "SINV-1" }],
+			["a review a manager voids", [
+				result({ status: "needs_review", message: "No stock" }),
+				result({ status: "voided" }),
+			], { synced: true, server_status: "voided" }],
+			["a duplicate the server already had", [result({ status: "duplicate", invoice: "SINV-2" })], {
+				synced: true,
+				server_status: "synced",
+				server_invoice: "SINV-2",
+			}],
+		])("after %s", async (_name, updates, expected) => {
+			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+
+			for (const update of updates) await store.updateQueuedInvoice(id, update)
+
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({ ...fresh, ...expected })
+		})
+
+		it("after being retired by an edit", async () => {
+			const original = await store.saveOfflineInvoice(invoice())
+			const edit = await store.saveOfflineInvoice(invoice(), { supersedesId: original.id })
+
+			expect(shape(await store.getQueuedInvoice(original.offline_id))).toEqual({
+				...fresh,
+				superseded: true,
+				replaced_by: edit.offline_id,
+			})
+		})
+
+		it("after being retired with nothing to point at", async () => {
+			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+
+			await store.supersedeOfflineInvoice(id)
+
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({ ...fresh, superseded: true })
+		})
+
+		it("the same for a record that is not a sale", async () => {
+			const { id, offline_id } = await store.saveQueueEntity(ENTITY_PAYMENT, { invoice_name: "SINV-1" }, ["dep"])
+			const queued = { ...fresh, entity: ENTITY_PAYMENT, depends_on: ["dep"] }
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual(queued)
+
+			await store.updateQueuedInvoice(id, gaveUp)
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({ ...queued, ...gaveUp })
+
+			await store.updateQueuedInvoice(id, result({ status: "needs_review", message: "Over paid" }))
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({
+				...queued,
+				...gaveUp,
+				error: "Over paid",
+				server_status: "needs_review",
+			})
+
+			await store.updateQueuedInvoice(id, result({ status: "synced", invoice: "ACC-PAY-1" }))
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({
+				...queued,
+				...failed,
+				error: null,
+				synced: true,
+				server_status: "synced",
+				server_invoice: "ACC-PAY-1",
+			})
+		})
+	})
+
+	describe("records that are not sales", () => {
+		const customer = () => ({ doctype: "Customer", customer_name: "Sara", offline_id: "pos_offline_customer" })
+
+		it("queues one in the order it was made, with its own id", async () => {
+			const sale = await store.saveOfflineInvoice(invoice())
+			const result = await store.saveQueueEntity(ENTITY_PAYMENT, { invoice_name: "SINV-1", amount: 5 })
+
+			expect(result.success).toBe(true)
+			expect(result.offline_id).toMatch(/^pos_offline_/)
+			expect(result.id).toBeGreaterThan(sale.id)
+
+			const rows = await store.getOfflineInvoices()
+			expect(rows.map((row) => row.offline_id)).toEqual([sale.offline_id, result.offline_id])
+			expect(rows[1].entity).toBe(ENTITY_PAYMENT)
+			expect(rows[1].data).toEqual({ invoice_name: "SINV-1", amount: 5, offline_id: result.offline_id })
+			expect(rows[1].depends_on).toEqual([])
+		})
+
+		it("keeps the id it was given, because a customer's name is that id", async () => {
+			const { offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+			expect(offline_id).toBe("pos_offline_customer")
+		})
+
+		it("counts it as queued", async () => {
+			await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+			expect(await store.getOfflineInvoiceCount()).toBe(1)
+			expect((await store.getCacheStats()).queuedInvoices).toBe(1)
+		})
+
+		it("refuses a second record with the same id", { timeout: 15000 }, async () => {
+			await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+
+			await expect(store.saveQueueEntity(ENTITY_CUSTOMER, customer())).rejects.toThrow()
+
+			expect(await store.getOfflineInvoiceCount()).toBe(1)
+		})
+
+		it("makes a sale to a local customer wait for that customer", async () => {
+			const { offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+
+			const sale = await store.saveOfflineInvoice(invoice({ customer: offline_id }))
+
+			const row = await store.getQueuedInvoice(sale.offline_id)
+			expect(row.entity).toBe("invoice")
+			expect(row.depends_on).toEqual([offline_id])
+		})
+
+		it("makes a return wait for a sale still in the queue, and a customer too", async () => {
+			const sale = await store.saveOfflineInvoice(invoice({ customer: "pos_offline_customer" }))
+
+			const refund = await store.saveOfflineInvoice(
+				invoice({ customer: "pos_offline_customer", is_return: 1, return_against: sale.offline_id }),
+			)
+
+			expect((await store.getQueuedInvoice(refund.offline_id)).depends_on).toEqual([
+				"pos_offline_customer",
+				sale.offline_id,
+			])
+		})
+
+		it("depends on nothing for a customer the server knows", async () => {
+			const { offline_id } = await store.saveOfflineInvoice(invoice())
+			expect((await store.getQueuedInvoice(offline_id)).depends_on).toEqual([])
+		})
+
+		it("shows what still depends on a row", async () => {
+			const { offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+			const sale = await store.saveOfflineInvoice(invoice({ customer: offline_id }))
+
+			const dependents = getDependentRows(await store.getOfflineInvoices(), offline_id)
+
+			expect(dependents.map((row) => row.offline_id)).toEqual([sale.offline_id])
+		})
+
+		it("reads sales and payments apart from the rows it lists", async () => {
+			await store.saveOfflineInvoice(invoice({ coupon_code: "SAVE5" }))
+			await store.saveQueueEntity(ENTITY_PAYMENT, {
+				invoice_name: "SINV-1",
+				payments: [{ mode_of_payment: "Cash", amount: 7 }],
+			})
+
+			const rows = await store.getOfflineInvoices()
+
+			expect(sumQueuedPayments(rows).get("SINV-1")).toBe(7)
+			expect(countQueuedCouponUses(rows, "save5").total).toBe(1)
+		})
+
+		it("holds no stock for a record that is not a sale", async () => {
+			await store.saveQueueEntity(ENTITY_SHIFT_CLOSE, { pos_opening_shift: "SHIFT-1", items: [] })
+			expect(sumQueuedStock(await store.getOfflineInvoices()).size).toBe(0)
+		})
+
+		it("keeps synced rows and leaves retired ones out of every row it holds", async () => {
+			const synced = await store.saveOfflineInvoice(invoice())
+			await store.updateQueuedInvoice(synced.id, getQueueUpdateForResult({ status: "synced", invoice: "S" }))
+			const retired = await store.saveOfflineInvoice(invoice())
+			await store.supersedeOfflineInvoice(retired.id, "X")
+			const pending = await store.saveQueueEntity(ENTITY_PAYMENT, { invoice_name: "S" })
+
+			const rows = await store.getQueueRows()
+
+			expect(rows.map((row) => row.offline_id)).toEqual([synced.offline_id, pending.offline_id])
+			expect(rows[0].synced).toBe(true)
+			expect(rows[0].server_invoice).toBe("S")
+		})
+
+		it("lists a shift's records for its close, leaving the close itself out", async () => {
+			const sale = await store.saveOfflineInvoice(invoice())
+			const payment = await store.saveQueueEntity(ENTITY_PAYMENT, { posa_pos_opening_shift: "SHIFT-1" })
+			await store.saveOfflineInvoice(invoice({ posa_pos_opening_shift: "OTHER" }))
+
+			const manifest = getShiftManifest(await store.getQueueRows(), "SHIFT-1")
+			expect(manifest).toEqual([sale.offline_id, payment.offline_id])
+
+			await store.saveQueueEntity(ENTITY_SHIFT_CLOSE, { pos_opening_shift: "SHIFT-1" }, manifest)
+			const rows = await store.getQueueRows()
+			expect(rows.at(-1).depends_on).toEqual(manifest)
+			expect(getShiftManifest(rows, "SHIFT-1")).toEqual(manifest)
+		})
+
+		it("offers a queued sale for return until something rules it out", async () => {
+			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+			expect(isReturnableQueueRow(await store.getQueuedInvoice(offline_id))).toBe(true)
+
+			await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "needs_review" }))
+
+			expect(isReturnableQueueRow(await store.getQueuedInvoice(offline_id))).toBe(false)
+		})
+
+		it("cleans up a finished record like a finished sale", async () => {
+			const { id, offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+			await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "synced", invoice: "CUST-9" }))
+
+			await store.deleteSyncedInvoices(Date.now() + 1000)
+
+			expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+		})
+
+		it("can be deleted", async () => {
+			const { id, offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, customer())
+
+			await store.deleteOfflineInvoice(id)
+
+			expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+		})
+
+		describe("through utils/offline/sync", () => {
+			it("sends it as what it is, untouched, with what it depends on", async () => {
+				const { syncOfflineInvoices } = await import("@/utils/offline/sync")
+				const { offline_id } = await store.saveQueueEntity(ENTITY_SHIFT_CLOSE, { pos_opening_shift: "S" }, ["dep"])
+				callServer.mockImplementation(async (method) =>
+					method.endsWith("push")
+						? { results: [{ offline_id, status: "received" }] }
+						: [{ offline_id, status: "synced" }],
+				)
+
+				await syncOfflineInvoices()
+
+				const [envelope] = callServer.mock.calls[0][1].items
+				expect(envelope.entity).toBe(ENTITY_SHIFT_CLOSE)
+				expect(envelope.depends_on).toEqual(["dep"])
+				expect(envelope.payload).toEqual({ pos_opening_shift: "S", offline_id })
+			})
+
+			it("announces when it reaches the server, so a close can finish", async () => {
+				const { syncOfflineInvoices } = await import("@/utils/offline/sync")
+				const { offline_id } = await store.saveQueueEntity(ENTITY_SHIFT_CLOSE, { pos_opening_shift: "S" })
+				callServer.mockImplementation(async (method) =>
+					method.endsWith("push")
+						? { results: [{ offline_id, status: "received" }] }
+						: [{ offline_id, status: "synced", invoice: "CLOSE-1" }],
+				)
+				const announced = new Promise((resolve) => {
+					window.addEventListener("offlineEntitySynced", (event) => resolve(event.detail), { once: true })
+				})
+
+				await syncOfflineInvoices()
+
+				const { row, status, name } = await announced
+				expect(row.entity).toBe(ENTITY_SHIFT_CLOSE)
+				expect(row.data.pos_opening_shift).toBe("S")
+				expect(status).toBe("synced")
+				expect(name).toBe("CLOSE-1")
+			})
+		})
+	})
+
+	describe("items that hide without stock", () => {
+		const hidden = { hide_when_unavailable: 1, is_stock_item: 1 }
+
+		const codes = (items) => items.map((row) => row.item_code)
+
+		beforeEach(async () => {
+			await store.cacheItems([
+				item("ALWAYS", { item_name: "A always" }),
+				item("EMPTY", { item_name: "B empty", ...hidden, actual_qty: 0, brand: "Acme" }),
+				item("NO-QTY", { item_name: "C unknown", ...hidden }),
+				item("STOCKED", { item_name: "D stocked", ...hidden, actual_qty: 4, brand: "Acme" }),
+				item("BUNDLE", { item_name: "E bundle", hide_when_unavailable: 1, is_bundle: 1 }),
+				item("SERVICE", { item_name: "F service", hide_when_unavailable: 1 }),
+				item("TEMPLATE", { item_name: "G template", ...hidden, has_variants: 1 }),
+			])
+		})
+
+		it("leaves them out of browsing, groups, brands and counts", async () => {
+			const shown = ["ALWAYS", "STOCKED", "SERVICE", "TEMPLATE"]
+
+			expect(codes(await store.searchCachedItems(""))).toEqual(shown)
+			expect(codes(await store.searchCachedItemsByGroup(["Group 1"]))).toEqual(shown)
+			expect(codes(await store.searchCachedItemsByBrand("Acme"))).toEqual(["STOCKED"])
+			expect(await store.countCachedItemsByGroup(["Group 1"])).toBe(4)
+			expect(await store.countCachedItemsByGroup([])).toBe(4)
+		})
+
+		it("still finds them by search, because a cashier asked for that item", async () => {
+			expect(codes(await store.searchCachedItems("EMPTY"))).toEqual(["EMPTY"])
+		})
+
+		it("shows one again as soon as stock arrives", async () => {
+			await store.updateStockQuantities([{ item_code: "EMPTY", actual_qty: 3 }])
+
+			expect(codes(await store.searchCachedItemsByGroup(["Group 1"], 50, 0))).toContain("EMPTY")
+		})
+
+		it("hides one again when its stock runs out", async () => {
+			await store.updateStockQuantities([{ item_code: "STOCKED", actual_qty: 0 }])
+
+			expect(codes(await store.searchCachedItemsByBrand("Acme"))).toEqual([])
+		})
+	})
+
+	describe("pull pages", () => {
+		const page = (rows = [], deleted = [], extra = {}) => ({
+			rows,
+			deleted,
+			next_cursor: "c1",
+			has_more: false,
+			...extra,
+		})
+
+		it("stores items and takes out what the server deleted, with their prices", async () => {
+			await store.cacheItems([item("OLD", { rate: 5, barcodes: ["111"] })])
+
+			expect(
+				await store.applyPullPage("items", page([item("NEW", { rate: 9, barcodes: ["222"] })], ["OLD"]), "P1"),
+			).toEqual({ success: true })
+
+			expect((await store.getCachedItem("NEW")).item_name).toBe("Item NEW")
+			expect(await store.getCachedItemPrice("Standard", "NEW")).toBe(9)
+			expect(await store.getCachedItem("OLD")).toBeUndefined()
+			expect(await store.getCachedItemPrice("Standard", "OLD")).toBeUndefined()
+			expect(await store.getCachedItemByBarcode("111")).toBeUndefined()
+		})
+
+		it("stores a page of prices the same way", async () => {
+			await store.applyPullPage("item_prices", page([item("A", { rate: 3 })]), "P1")
+			expect(await store.getCachedItemPrice("Standard", "A")).toBe(3)
+		})
+
+		it("keeps batch data through a pulled item", async () => {
+			const { persistItemBatchSerialData } = await import("@/utils/offline/items")
+			await store.cacheItems([item("A")])
+			await persistItemBatchSerialData("A", { batch_no_data: [{ batch_no: "B1" }] })
+
+			await store.applyPullPage("items", page([item("A", { item_name: "Renamed" })]), "P1")
+
+			const cached = await store.getCachedItem("A")
+			expect(cached.item_name).toBe("Renamed")
+			expect(cached.batch_no_data).toEqual([{ batch_no: "B1" }])
+		})
+
+		it("takes a page with nothing in it", async () => {
+			await expect(store.applyPullPage("items", page(), "P1")).resolves.toEqual({ success: true })
+			await expect(store.applyPullPage("customers", page(), "P1")).resolves.toEqual({ success: true })
+		})
+
+		it("stores customers and removes deleted ones", async () => {
+			await store.cacheCustomers([{ name: "OLD", customer_name: "Old" }])
+
+			await store.applyPullPage("customers", page([{ name: "NEW", customer_name: "New" }], ["OLD"]), "P1")
+
+			expect((await store.searchCachedCustomers("")).map((row) => row.name)).toEqual(["NEW"])
+		})
+
+		it("keeps taxes per profile, where the cart reads them", async () => {
+			await store.applyPullPage("taxes", page([{ rate: 15 }]), "P1")
+			expect(await store.getSetting("tax_rules_P1")).toEqual([{ rate: 15 }])
+		})
+
+		it("replaces a profile's payment methods and no other profile's", async () => {
+			await store.cachePaymentMethods([
+				{ mode_of_payment: "Old", pos_profile: "P1" },
+				{ mode_of_payment: "Other", pos_profile: "P2" },
+			])
+
+			await store.applyPullPage("payment_methods", page([{ mode_of_payment: "Card" }]), "P1")
+
+			expect(await store.getCachedPaymentMethods("P1")).toEqual([{ mode_of_payment: "Card", pos_profile: "P1" }])
+			expect(await store.getCachedPaymentMethods("P2")).toHaveLength(1)
+		})
+
+		it("keeps the profile's item groups where the item store reads them", async () => {
+			const rows = [{ pos_profile: { item_groups: ["G1"] }, item_groups_hierarchy: [{ name: "G1" }] }]
+
+			await store.applyPullPage("pos_profile", page(rows), "P1")
+
+			expect(await store.getSetting("pos_profile_data:P1")).toEqual({
+				profileItemGroups: ["G1"],
+				itemGroups: [{ name: "G1" }],
+			})
+		})
+
+		it("replaces a profile's offers", async () => {
+			await store.cacheOffers([{ name: "OLD" }], "P1")
+
+			await store.applyPullPage("offers", page([{ name: "NEW" }]), "P1")
+
+			expect((await store.getCachedOffers("P1")).map((offer) => offer.name)).toEqual(["NEW"])
+		})
+
+		it("refuses what it cannot store, so the cursor is not saved", { timeout: 20000 }, async () => {
+			await expect(store.applyPullPage("offers", page([{ name: "X" }]), "")).rejects.toThrow()
+			await expect(store.applyPullPage("nonsense", page(), "P1")).rejects.toThrow("Unknown pull entity")
+		})
+
+		describe("through the pull engine", () => {
+			const engineStore = () => ({
+				getState: (entity) => store.getSetting(pullStateKey(entity), null),
+				saveState: (entity, state) => store.setSetting(pullStateKey(entity), state),
+				applyPage: (entity, data) => store.applyPullPage(entity, data, "P1"),
+			})
+
+			const serverWith = (pages) => ({
+				getManifest: async () => ({ items: "v1", scopes: { items: "s1" } }),
+				pull: vi.fn(async ({ cursor }) => pages[cursor ?? "start"]),
+			})
+
+			const twoPages = {
+				start: page([item("A")], [], { next_cursor: "c1", has_more: true }),
+				c1: page([item("B")], [], { next_cursor: "c2", has_more: false }),
+			}
+
+			it("walks every page and records where it got to", async () => {
+				const results = await runPull({
+					server: serverWith(twoPages),
+					store: engineStore(),
+					posProfile: "P1",
+					entities: ["items"],
+				})
+
+				expect(results.items).toMatchObject({ status: "updated", pages: 2, rows: 2 })
+				expect(await store.getCachedItem("B")).toBeDefined()
+				expect(await store.getSetting(pullStateKey("items"))).toEqual({
+					posProfile: "P1",
+					scope: "s1",
+					cursor: "c2",
+					version: "v1",
+				})
+			})
+
+			it("asks for nothing when the version has not moved", async () => {
+				const server = serverWith(twoPages)
+				const options = { server, store: engineStore(), posProfile: "P1", entities: ["items"] }
+				await runPull(options)
+				server.pull.mockClear()
+
+				expect((await runPull(options)).items.status).toBe("unchanged")
+				expect(server.pull).not.toHaveBeenCalled()
+			})
+
+			it("resumes a walk that was cut short", async () => {
+				const server = serverWith(twoPages)
+				server.pull.mockImplementationOnce(async () => twoPages.start)
+				server.pull.mockImplementationOnce(async () => {
+					throw new Error("Connection lost")
+				})
+				const options = { server, store: engineStore(), posProfile: "P1", entities: ["items"] }
+
+				expect((await runPull(options)).items.status).toBe("failed")
+				expect((await store.getSetting(pullStateKey("items"))).version).toBeNull()
+
+				await runPull(options)
+
+				expect(server.pull).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "c1" }))
+				expect(await store.getCachedItem("B")).toBeDefined()
+			})
+
+			it("starts over after the cache was cleared", async () => {
+				const server = serverWith(twoPages)
+				const options = { server, store: engineStore(), posProfile: "P1", entities: ["items"] }
+				await runPull(options)
+				await store.clearItemsCache()
+				server.pull.mockClear()
+
+				await runPull(options)
+
+				expect(server.pull.mock.calls[0][0].cursor).toBeNull()
+				expect(await store.getCachedItem("A")).toBeDefined()
+			})
+		})
+	})
+
+	describe("forgetting how far a pull got", () => {
+		const cursors = (entities) =>
+			Promise.all(
+				entities.map((entity) => store.setSetting(pullStateKey(entity), { cursor: "c", version: "v" })),
+			)
+
+		const remaining = async () => {
+			const kept = []
+			for (const entity of PULL_ENTITIES) {
+				if (await store.getSetting(pullStateKey(entity))) kept.push(entity)
+			}
+			return kept
+		}
+
+		beforeEach(() => cursors(PULL_ENTITIES))
+
+		it("resets items and prices when the items are cleared", async () => {
+			await store.clearItemsCache()
+			expect(await remaining()).toEqual(PULL_ENTITIES.filter((entity) => !["items", "item_prices"].includes(entity)))
+		})
+
+		it("resets customers when the customers are cleared", async () => {
+			await store.clearCustomersCache()
+			expect(await remaining()).toEqual(PULL_ENTITIES.filter((entity) => entity !== "customers"))
+		})
+
+		it("resets everything when all cached data is cleared", async () => {
+			await store.clearCachedData()
+			expect(await remaining()).toEqual([])
+		})
+
+		it("resets everything even when settings are kept", async () => {
+			await store.setSetting("keep", 1)
+
+			await store.clearCachedData({ preserveSettings: true })
+
+			expect(await remaining()).toEqual([])
+			expect(await store.getSetting("keep")).toBe(1)
+		})
+
+		it("resets through the cache helpers the app calls too", async () => {
+			const items = await import("@/utils/offline/items")
+
+			expect(await items.clearItemsCache()).toBe(true)
+			expect(await items.clearCustomersCache()).toBe(true)
+
+			expect(await remaining()).toEqual(
+				PULL_ENTITIES.filter((entity) => !["items", "item_prices", "customers"].includes(entity)),
+			)
 		})
 	})
 
@@ -1054,5 +1647,65 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect((await store.startStockSync()).status.enabled).toBe(true)
 			expect((await store.stopStockSync()).status.enabled).toBe(false)
 		})
+
+		it("accepts the server's address and the cashier's grant", async () => {
+			expect(await store.setServerAccess("https://pos.example.com", "grant")).toEqual({ success: true })
+		})
+	})
+})
+
+describe("reaching the server for stock", () => {
+	const stockCall = () => fetch.mock.calls.find(([url]) => String(url).includes("get_stock_quantities"))
+
+	const syncStock = async (store) => {
+		await store.cacheItems([item("A-1")])
+		await store.configureStockSync({ warehouse: "W1", itemCodes: ["A-1"] })
+		await store.triggerStockSync()
+	}
+
+	beforeEach(() => {
+		vi.resetModules()
+		fetchResponses.clear()
+		fetchResponses.set("get_stock_quantities", { message: [{ item_code: "A-1", actual_qty: 1 }] })
+		stubFetch()
+	})
+
+	afterEach(() => {
+		vi.unstubAllGlobals()
+		vi.doUnmock("@/platform/store")
+	})
+
+	it("in the worker, goes to the given server with the grant, which fetch there cannot add", async () => {
+		const store = await openWebStore()
+		await store.setServerAccess("https://pos.example.com", "the-grant")
+		await store.setCSRFToken("the-token")
+
+		await syncStock(store)
+
+		const [url, { headers }] = stockCall()
+		expect(url).toBe("https://pos.example.com/api/method/pos_next.api.items.get_stock_quantities")
+		expect(headers.Authorization).toBe("Bearer the-grant")
+		expect(headers["X-Frappe-CSRF-Token"]).toBe("the-token")
+	})
+
+	it("in the worker on the web, stays on the page's own origin with no grant", async () => {
+		const store = await openWebStore()
+
+		await syncStock(store)
+
+		const [url, { headers }] = stockCall()
+		expect(url).toBe(`${location.origin}/api/method/pos_next.api.items.get_stock_quantities`)
+		expect(headers.Authorization).toBeUndefined()
+	})
+
+	it("on the main thread, leaves both to the fetch bridge", async () => {
+		const store = await sqlImplementation(createNodeExecutor)()
+		await store.setServerAccess("https://pos.example.com", "the-grant")
+
+		await syncStock(store)
+
+		const [url, { headers }] = stockCall()
+		expect(url).toBe("/api/method/pos_next.api.items.get_stock_quantities")
+		expect(headers.Authorization).toBeUndefined()
 	})
 })

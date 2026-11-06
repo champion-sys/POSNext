@@ -4,6 +4,8 @@
  * @module platform/sql/settings
  */
 
+import { placeholders } from "./searchText"
+
 /**
  * @param {import("./outbox").SqlExecutor} sql
  */
@@ -25,6 +27,10 @@ export function createSettings(sql) {
 		async set(key, value) {
 			const { sql: statement, params } = setStatement(key, value)
 			await sql.run(statement, params)
+		},
+
+		deleteStatement(keys) {
+			return { sql: `DELETE FROM kv WHERE key IN (${placeholders(keys)})`, params: keys }
 		},
 
 		async deleteByPrefix(prefix) {

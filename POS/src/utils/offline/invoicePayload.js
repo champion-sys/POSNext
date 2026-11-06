@@ -128,9 +128,11 @@ export function sumQueuedStock(rows, warehouse = null) {
  * decision, otherwise one bad invoice would stop the shift from ever closing.
  * @param {Array} pendingRows - Queue rows, already filtered to pending ones
  * @param {boolean} offline - Whether the device is offline
- * @returns {"allow"|"confirm"|"block"}
+ * @param {boolean} [allowOfflineClose] - Offline, the close joins the queue behind the sales
+ * @returns {"allow"|"confirm"|"block"|"queue"}
  */
-export function getShiftCloseDecision(pendingRows, offline) {
+export function getShiftCloseDecision(pendingRows, offline, allowOfflineClose = false) {
+	if (offline && allowOfflineClose) return "queue"
 	if (pendingRows.length === 0) return "allow"
 	if (offline) return "block"
 	return pendingRows.every((row) => row.sync_failed) ? "confirm" : "block"
@@ -146,7 +148,7 @@ export function buildSyncEnvelope(row, payload) {
 	const payments = payload.payments || []
 	return {
 		offline_id: payload.offline_id,
-		entity: "invoice",
+		entity: row.entity || "invoice",
 		entity_version: 1,
 		seq: row.id,
 		cashier: payload.cashier,
@@ -156,7 +158,7 @@ export function buildSyncEnvelope(row, payload) {
 			grand_total: payload.grand_total,
 			paid: payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0),
 		},
-		depends_on: [],
+		depends_on: row.depends_on || [],
 		payload,
 	}
 }
@@ -211,13 +213,16 @@ export const SYNC_PERIODIC = "Periodic"
 
 /**
  * Whether a checkout should be saved locally and sent afterwards, instead of making
- * the cashier wait for the server. Sales Orders and customer credit need the server
- * at the moment of the sale, so they never go through the queue while online.
- * @param {{mode: string, doctype: string, usesCustomerCredit: boolean}} checkout
+ * the cashier wait for the server. Sales Orders, customer credit and gift cards need
+ * the server at the moment of the sale, so they never go through the queue while online.
+ * A customer still in the queue is the opposite: the server cannot take that sale directly.
+ * @param {{mode: string, doctype: string, usesCustomerCredit: boolean, usesGiftCard: boolean,
+ *   hasLocalCustomer: boolean}} checkout
  * @returns {boolean}
  */
-export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit }) {
-	return mode !== SYNC_REALTIME && supportsOfflineId(doctype) && !usesCustomerCredit
+export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit, usesGiftCard, hasLocalCustomer }) {
+	if (hasLocalCustomer) return true
+	return mode !== SYNC_REALTIME && supportsOfflineId(doctype) && !usesCustomerCredit && !usesGiftCard
 }
 
 /**

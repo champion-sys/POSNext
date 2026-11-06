@@ -11,6 +11,7 @@
  * @module platform/sql/outbox
  */
 
+import { ENTITY_INVOICE } from "@/utils/offline/entities"
 import { placeholders } from "./searchText"
 
 const STOCK_DOCTYPES_EXCLUDED = ["Sales Order"]
@@ -26,6 +27,31 @@ const CLOSED = [...FINISHED, "superseded"]
 
 /** States the server knows nothing about */
 const LOCAL_ONLY = ["pending", "superseded"]
+
+function queueStatements({ offlineId, entity, payload, dependsOn, localNumber, shift, now }) {
+	// The sequence moves inside the batch. Read first, two quick sales would get the same number.
+	return [
+		{
+			sql: `INSERT INTO device_sequence (name, value) VALUES ('outbox', 1)
+				ON CONFLICT(name) DO UPDATE SET value = value + 1`,
+		},
+		{
+			sql: `INSERT INTO outbox (offline_id, seq, entity, entity_version, local_number, payload,
+					depends_on, state, shift, created_at)
+				VALUES (?, (SELECT value FROM device_sequence WHERE name = 'outbox'), ?, 1, ?, ?, ?,
+					'pending', ?, ?)`,
+			params: [
+				offlineId,
+				entity,
+				localNumber ?? null,
+				JSON.stringify(payload),
+				JSON.stringify(dependsOn),
+				shift ?? null,
+				now,
+			],
+		},
+	]
+}
 
 function reservationStatements(offlineId, invoice) {
 	if (STOCK_DOCTYPES_EXCLUDED.includes(invoice.doctype)) return []
@@ -44,7 +70,11 @@ function reservationStatements(offlineId, invoice) {
 	}))
 }
 
-const withPayload = (row) => ({ ...row, payload: JSON.parse(row.payload) })
+const withPayload = (row) => ({
+	...row,
+	payload: JSON.parse(row.payload),
+	depends_on: JSON.parse(row.depends_on || "[]"),
+})
 
 /**
  * An outbox row in the shape the app reads
@@ -55,6 +85,8 @@ export function toQueuedInvoice(row) {
 	return {
 		id: row.seq,
 		offline_id: row.offline_id,
+		entity: row.entity,
+		depends_on: row.depends_on,
 		data: row.payload,
 		timestamp: row.created_at,
 		synced: FINISHED.includes(row.state),
@@ -73,28 +105,39 @@ export function toQueuedInvoice(row) {
  * @param {SqlExecutor} sql
  */
 export function createOutbox(sql) {
+	async function seqOf(offlineId) {
+		const [{ seq }] = await sql.all("SELECT seq FROM outbox WHERE offline_id = ?", [offlineId])
+		return seq
+	}
+
 	return {
 		/**
 		 * Store a sale. The queue row, its receipt, its stock hold and the sequence move
 		 * together, and an edit retires the original in the same transaction.
 		 * @param {{offlineId: string, invoice: Object, receipt?: Object, localNumber?: string,
-		 *   shift?: string, now?: number, supersedes?: string}} sale
+		 *   shift?: string, now?: number, supersedes?: string, dependsOn?: string[]}} sale
 		 * @returns {Promise<number>} The sale's place in the queue
 		 */
-		async enqueueSale({ offlineId, invoice, receipt, localNumber, shift, now = Date.now(), supersedes }) {
-			// The sequence moves inside the batch. Read first, two quick sales would get the same number.
+		async enqueueSale({
+			offlineId,
+			invoice,
+			receipt,
+			localNumber,
+			shift,
+			now = Date.now(),
+			supersedes,
+			dependsOn = [],
+		}) {
 			const statements = [
-				{
-					sql: `INSERT INTO device_sequence (name, value) VALUES ('outbox', 1)
-						ON CONFLICT(name) DO UPDATE SET value = value + 1`,
-				},
-				{
-					sql: `INSERT INTO outbox (offline_id, seq, entity, entity_version, local_number, payload,
-							state, shift, created_at)
-						VALUES (?, (SELECT value FROM device_sequence WHERE name = 'outbox'), 'invoice', 1, ?, ?,
-							'pending', ?, ?)`,
-					params: [offlineId, localNumber ?? null, JSON.stringify(invoice), shift ?? null, now],
-				},
+				...queueStatements({
+					offlineId,
+					entity: ENTITY_INVOICE,
+					payload: invoice,
+					dependsOn,
+					localNumber,
+					shift,
+					now,
+				}),
 				...reservationStatements(offlineId, invoice),
 			]
 
@@ -117,8 +160,19 @@ export function createOutbox(sql) {
 			}
 
 			await sql.batch(statements)
-			const [{ seq }] = await sql.all("SELECT seq FROM outbox WHERE offline_id = ?", [offlineId])
-			return seq
+			return seqOf(offlineId)
+		},
+
+		/**
+		 * Store a record that is not a sale, in the same queue so that its order keeps it
+		 * ahead of the sales that need it. It holds no stock and has no receipt.
+		 * @param {{offlineId: string, entity: string, data: Object, dependsOn?: string[],
+		 *   shift?: string, now?: number}} record
+		 * @returns {Promise<number>} Its place in the queue
+		 */
+		async enqueueEntity({ offlineId, entity, data, dependsOn = [], shift, now = Date.now() }) {
+			await sql.batch(queueStatements({ offlineId, entity, payload: data, dependsOn, shift, now }))
+			return seqOf(offlineId)
 		},
 
 		/** Sales due for sending, oldest first */
@@ -138,6 +192,12 @@ export function createOutbox(sql) {
 				`SELECT * FROM outbox WHERE state NOT IN (${placeholders(CLOSED)}) ORDER BY seq`,
 				CLOSED,
 			)
+			return rows.map(withPayload)
+		},
+
+		/** Every row still on the device, including those that have synced */
+		async listKept() {
+			const rows = await sql.all("SELECT * FROM outbox WHERE state != 'superseded' ORDER BY seq")
 			return rows.map(withPayload)
 		},
 
@@ -164,14 +224,16 @@ export function createOutbox(sql) {
 		 * @param {string} offlineId
 		 * @param {string} message
 		 * @param {number} nextAttemptAt
-		 * @param {boolean} [gaveUp] - Automatic retries are over, a person has to look
+		 * @param {Object} [options]
+		 * @param {boolean} [options.gaveUp] - Automatic retries are over, a person has to look
+		 * @param {number} [options.attempts] - How many there have been, one more when omitted
 		 */
-		async markFailed(offlineId, message, nextAttemptAt, gaveUp = false) {
+		async markFailed(offlineId, message, nextAttemptAt, { gaveUp = false, attempts = null } = {}) {
 			await sql.run(
-				`UPDATE outbox SET attempts = attempts + 1, last_error = ?, next_attempt_at = ?,
+				`UPDATE outbox SET attempts = COALESCE(?, attempts + 1), last_error = ?, next_attempt_at = ?,
 					sync_failed = MAX(sync_failed, ?)
 				WHERE offline_id = ?`,
-				[message ?? null, nextAttemptAt ?? 0, gaveUp ? 1 : 0, offlineId],
+				[attempts, message ?? null, nextAttemptAt ?? 0, gaveUp ? 1 : 0, offlineId],
 			)
 		},
 

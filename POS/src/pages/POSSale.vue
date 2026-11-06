@@ -240,7 +240,11 @@
 					<div class="flex items-center gap-2">
 						<span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
 						<p class="text-sm font-semibold text-red-600">
-							{{ __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName]) }}
+							{{
+								btStore.activePrinter?.type === "network"
+									? __("Wi-Fi printer '{0}' is disconnected.", [btStore.savedPrinterName])
+									: __("Bluetooth printer '{0}' is disconnected.", [btStore.savedPrinterName])
+							}}
 						</p>
 					</div>
 					<div class="flex items-center gap-0 flex-shrink-0">
@@ -1100,11 +1104,13 @@ import { useUserData } from "@/data/user";
 import { parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
-import { getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
+import { canUseBrowserPrint, getPrintRoute, NONE, SILENT, THERMAL } from "@/platform/printing/routes";
+import { usesNativeLink } from "@/platform/printing/transport";
 import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
 import { useSerialNumberStore } from "@/stores/serialNumber";
+import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/entities";
 import {
 	getShiftCloseDecision,
 	isNetworkFailure,
@@ -1254,6 +1260,9 @@ async function reconnectBtPrinter() {
 
 		if (connectedAny) {
 			showSuccess(__("Connected to printers successfully."));
+		} else if (usesNativeLink()) {
+			// Scanning here would overwrite a saved Classic or Wi-Fi printer with a BLE one
+			showError(__("Could not reach the printer. Check that it is on and in range."));
 		} else {
 			// Fallback: Trigger browser devices list selector based on active type
 			const type = btStore.activePrinter?.type || "bluetooth";
@@ -1820,8 +1829,25 @@ watch(
 
 window.addEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
 
+// A customer added offline may still be in the cart when the server settles its name
+function handleEntitySynced({ detail }) {
+	if (detail.row.entity !== ENTITY_CUSTOMER) return;
+
+	const current = cartStore.customer;
+	if ((current?.name || current) !== detail.row.offline_id) return;
+
+	if (detail.name) {
+		cartStore.setCustomer(current?.name ? { ...current, name: detail.name, is_local: 0 } : detail.name);
+	} else {
+		cartStore.setDefaultCustomer();
+	}
+}
+
+window.addEventListener("offlineEntitySynced", handleEntitySynced);
+
 onUnmounted(() => {
 	window.removeEventListener("offlineInvoicesSynced", handleOfflineInvoicesSynced);
+	window.removeEventListener("offlineEntitySynced", handleEntitySynced);
 	window.removeEventListener("resize", () => {
 		uiStore.setWindowWidth(window.innerWidth);
 		updateLayoutBounds();
@@ -2019,9 +2045,13 @@ async function handleShiftOpened() {
 	showSuccess(__("You can now start making sales"));
 }
 
-async function handleShiftClosed() {
+async function handleShiftClosed(closing) {
 	uiStore.showCloseShiftDialog = false;
-	showSuccess(__("Shift closed successfully"));
+	showSuccess(
+		closing?.queued
+			? __("Shift close saved. It completes on the server once every invoice has arrived")
+			: __("Shift closed successfully"),
+	);
 
 	// Check if logout should happen after closing shift
 	if (logoutAfterClose.value) {
@@ -2245,6 +2275,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		cashier: session.user,
 		company: shiftStore.profileCompany,
 		customer: customerValue || shiftStore.profileCustomer,
+		customer_name: cartStore.customer?.customer_name,
 		grand_total: cartStore.grandTotal,
 		total_tax: cartStore.totalTax,
 		total_discount: cartStore.totalDiscount,
@@ -2396,6 +2427,8 @@ async function handlePaymentCompleted(paymentData) {
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
 				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
+				usesGiftCard: cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card",
+				hasLocalCustomer: isLocalName(customerValue),
 			});
 
 		if (queueCheckout) {
@@ -2631,7 +2664,15 @@ async function ensureInvoicesSyncedBeforeClose() {
 
 	await offlineStore.loadPendingInvoices();
 	const pending = offlineStore.pendingInvoicesList;
-	const decision = getShiftCloseDecision(pending, offlineStore.isOffline);
+	const decision = getShiftCloseDecision(
+		pending,
+		offlineStore.isOffline,
+		posSettingsStore.allowOfflineShiftClose,
+	);
+
+	if (decision === "queue") {
+		return true;
+	}
 
 	if (decision === "confirm") {
 		const confirmed = window.confirm(
@@ -2954,6 +2995,12 @@ async function handleEditOfflineInvoice(invoice) {
 			return;
 		}
 
+		await offlineStore.loadPendingInvoices();
+		if (getDependentRows(offlineStore.pendingInvoicesList, invoice.offline_id).length > 0) {
+			showWarning(__("A return or a shift close depends on this invoice, so it cannot be edited"));
+			return;
+		}
+
 		cartStore.clearCart();
 
 		const invoiceData = invoice.data;
@@ -3222,6 +3269,11 @@ async function loadInvoiceHistoryData() {
 		if (result && result.length > 0) {
 			cacheInvoiceHistory(result, shiftStore.profileName);
 		}
+		if (posSettingsStore.allowOfflineReturns) {
+			offlineStore.refreshReturnDocuments(shiftStore.profileName).catch((error) => {
+				log.error("Error keeping invoices for offline returns:", error);
+			});
+		}
 	} catch (error) {
 		log.error("Error loading invoice history:", error);
 
@@ -3299,6 +3351,10 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 				return;
 			} catch (error) {
 				log.error("Thermal print routing failed, falling back to browser/silent:", error);
+				if (!canUseBrowserPrint(PLATFORM)) {
+					showError(error.message || __("Printing failed. Check the printer and try again."));
+					return;
+				}
 				showWarning(__("Thermal printing failed. Attempting browser/silent fallback..."));
 			}
 		}

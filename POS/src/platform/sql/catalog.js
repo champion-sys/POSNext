@@ -29,7 +29,13 @@ function toItem(row) {
 const toJson = (value) => (value === undefined || value === null ? null : JSON.stringify(value))
 
 function visible(showVariantsAsItems) {
-	return `disabled = 0 AND ${showVariantsAsItems ? "has_variants = 0" : "variant_of IS NULL"}`
+	return `disabled = 0 AND (hide_without_stock = 0 OR actual_qty > 0)
+		AND ${showVariantsAsItems ? "has_variants = 0" : "variant_of IS NULL"}`
+}
+
+/** Stored as one flag, because what an item has in stock changes without the item changing */
+function hidesWithoutStock(item) {
+	return item.hide_when_unavailable && (item.is_bundle || (item.is_stock_item && !item.has_variants))
 }
 
 /** @returns {Array<string>} Every barcode an item arrives with, in any of the server's formats */
@@ -53,13 +59,14 @@ function itemStatements(item, now) {
 	const statements = [
 		{
 			sql: `INSERT INTO catalog_item (item_code, item_name, item_group, brand, variant_of, has_variants,
-					disabled, search_code, search_name, search_text, actual_qty, stock_qty, warehouse,
-					batch_no_data, serial_no_data, doc)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					disabled, hide_without_stock, search_code, search_name, search_text, actual_qty, stock_qty,
+					warehouse, batch_no_data, serial_no_data, doc)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(item_code) DO UPDATE SET
 					item_name = excluded.item_name, item_group = excluded.item_group, brand = excluded.brand,
 					variant_of = excluded.variant_of, has_variants = excluded.has_variants,
-					disabled = excluded.disabled, search_code = excluded.search_code,
+					disabled = excluded.disabled, hide_without_stock = excluded.hide_without_stock,
+					search_code = excluded.search_code,
 					search_name = excluded.search_name, search_text = excluded.search_text,
 					actual_qty = excluded.actual_qty, stock_qty = excluded.stock_qty,
 					warehouse = excluded.warehouse,
@@ -74,6 +81,7 @@ function itemStatements(item, now) {
 				item.variant_of || null,
 				item.has_variants ? 1 : 0,
 				item.disabled ? 1 : 0,
+				hidesWithoutStock(item) ? 1 : 0,
 				normalizeSearchText(item.item_code),
 				normalizeSearchText(item.item_name),
 				buildSearchText(item.item_code, item.item_name, item.description),
@@ -311,6 +319,20 @@ export function createCatalog(sql) {
 						serial_no_data = COALESCE(?, serial_no_data) WHERE item_code = ?`,
 					params: [toJson(batch_no_data), toJson(serial_no_data), item_code],
 				})),
+			)
+		},
+
+		/** Remove items by code, with everything that hangs off them */
+		async remove(itemCodes) {
+			if (!itemCodes || itemCodes.length === 0) return
+
+			await sql.batch(
+				chunk(itemCodes).flatMap((page) =>
+					["catalog_item", "item_price", "item_barcode", "stock_base"].map((table) => ({
+						sql: `DELETE FROM ${table} WHERE item_code IN (${placeholders(page)})`,
+						params: page,
+					})),
+				),
 			)
 		},
 

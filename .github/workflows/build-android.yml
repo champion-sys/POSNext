@@ -1,0 +1,97 @@
+name: Build Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/offline-multiplatform
+    paths:
+      - "POS/**"
+
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Only says whether the secrets exist, so dependency install scripts never see them
+  CAN_SIGN: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+  POS_NEXT_VERSION_NAME: 1.16.${{ github.run_number }}
+
+jobs:
+  build:
+    name: Android app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Setup Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install dependencies
+        working-directory: POS
+        run: yarn install --non-interactive
+
+      - name: Build frontend
+        working-directory: POS
+        run: yarn build:android
+
+      - name: Copy the frontend into the Android project
+        working-directory: POS
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: POS/android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: pos-next-android-debug
+          path: POS/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Decode signing key
+        if: env.CAN_SIGN == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Build signed release
+        if: env.CAN_SIGN == 'true'
+        working-directory: POS/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Upload signed release
+        if: env.CAN_SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pos-next-android-release
+          path: |
+            POS/android/app/build/outputs/apk/release/app-release.apk
+            POS/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error

@@ -103,15 +103,17 @@ class POSClosingShift(Document):
         Invoices under review may take days, and the cashier has already been asked
         to accept that, so they only raise a warning.
         """
-        counts = {
-            row.status: row.count
-            for row in frappe.get_all(
-                "Offline Invoice Sync",
-                filters={"shift": self.pos_opening_shift, "status": ["not in", SYNC_FINISHED_STATUSES]},
-                fields=["status", {"COUNT": "name", "as": "count"}],
-                group_by="status",
-            )
-        }
+        counts = {}
+        for row in frappe.get_all(
+            "Offline Invoice Sync",
+            filters={"shift": self.pos_opening_shift, "status": ["not in", SYNC_FINISHED_STATUSES]},
+            fields=["status", "entity", {"COUNT": "name", "as": "count"}],
+            group_by="status, entity",
+        ):
+            # A close queued on a device is this very closing, being processed
+            if row.entity != "shift_close":
+                counts[row.status] = counts.get(row.status, 0) + row.count
+
         in_review = counts.pop("Needs Review", 0)
         in_progress = sum(counts.values())
 

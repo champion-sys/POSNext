@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "autoname": "field:device_id",
+ "creation": "2026-11-06 21:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "device_name",
+  "device_code",
+  "status",
+  "column_break_identity",
+  "device_id",
+  "platform",
+  "app_version",
+  "last_seen",
+  "section_access",
+  "allowed_profiles",
+  "section_sign_in",
+  "cashier",
+  "grant_expires",
+  "column_break_sign_in",
+  "token_expires",
+  "token_hash",
+  "grant_hash"
+ ],
+ "fields": [
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Device Name",
+   "reqd": 1
+  },
+  {
+   "description": "Short code printed in receipt numbers",
+   "fieldname": "device_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Device Code",
+   "no_copy": 1,
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "default": "Active",
+   "description": "Revoked stops the device at once. Invoices it already uploaded stay on the server.",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nRevoked",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_identity",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "device_id",
+   "fieldtype": "Data",
+   "label": "Device ID",
+   "no_copy": 1,
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Platform",
+   "options": "Electron\nAndroid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "label": "App Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Last Seen",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_access",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "fieldname": "allowed_profiles",
+   "fieldtype": "Table",
+   "label": "Allowed POS Profiles",
+   "options": "POS Device Profile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_sign_in",
+   "fieldtype": "Section Break",
+   "label": "Sign-in"
+  },
+  {
+   "fieldname": "cashier",
+   "fieldtype": "Link",
+   "label": "Current Cashier",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "grant_expires",
+   "fieldtype": "Datetime",
+   "label": "Cashier Sign-in Expires",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sign_in",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "token_expires",
+   "fieldtype": "Datetime",
+   "label": "Device Token Expires",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "token_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Device Token Hash",
+   "no_copy": 1,
+   "permlevel": 1,
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "grant_hash",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Cashier Grant Hash",
+   "no_copy": 1,
+   "permlevel": 1,
+   "read_only": 1,
+   "unique": 1
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-06 21:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Device",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "delete": 1,
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "export": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Nexus POS Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "device_name",
+ "track_changes": 1
+}

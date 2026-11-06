@@ -1,3 +1,4 @@
+import { isDeviceKey } from "@/platform/runtime"
 import { localStore } from "@/platform/store"
 import { call } from "@/utils/apiWrapper"
 import { getSetting, setSetting } from "./settings"
@@ -432,7 +433,7 @@ export const clearBrowserCache = () => {
 		const keysToRemove = []
 		for (let i = 0; i < localStorage.length; i++) {
 			const key = localStorage.key(i)
-			if (key?.startsWith('pos_next_') || key?.startsWith('frappe_')) {
+			if ((key?.startsWith('pos_next_') || key?.startsWith('frappe_')) && !isDeviceKey(key)) {
 				keysToRemove.push(key)
 			}
 		}

@@ -4,6 +4,8 @@
  * @module platform/capacitor/sqlExecutor
  */
 
+import { CapacitorSQLite, SQLiteConnection } from "@/platform/capacitor"
+
 const DATABASE = "pos_next"
 const SCHEMA_VERSION = 1
 const ENCRYPTED = false
@@ -62,6 +64,5 @@ export async function connect(sqlite) {
 }
 
 export async function openExecutor() {
-	const { CapacitorSQLite, SQLiteConnection } = await import("./plugin")
 	return createCapacitorExecutor(await connect(new SQLiteConnection(CapacitorSQLite)))
 }

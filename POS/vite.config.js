@@ -233,8 +233,6 @@ export default defineConfig({
 		emptyOutDir: true,
 		target: "es2015",
 		sourcemap: enableSourceMap,
-		// Only the Android build has this plugin
-		rollupOptions: { external: ["@capacitor-community/sqlite"] },
 	},
 	worker: {
 		format: "es",

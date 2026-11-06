@@ -1,6 +1,8 @@
 import { ref, readonly } from "vue"
 import { call } from "@/utils/apiWrapper"
 import { userData } from "@/data/user"
+import { pinRefusalMessage, verifyPin } from "@/platform/auth"
+import { isNative } from "@/platform/runtime"
 import { usePOSCartStore } from "@/stores/posCart"
 import { offlineState } from "@/utils/offline/offlineState"
 
@@ -296,6 +298,12 @@ function unlockSuccess() {
 }
 
 async function verifyOfflinePassword(password) {
+	// The apps keep no password hash, and a PIN sign-in never saw a password
+	if (isNative) {
+		const result = await verifyPin(getCurrentUserId(), password)
+		return result.ok ? { success: true } : { success: false, error: pinRefusalMessage(result) }
+	}
+
 	// Brute-force protection
 	const limit = checkOfflineAttemptLimit()
 	if (!limit.allowed) {

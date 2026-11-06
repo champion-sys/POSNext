@@ -12,10 +12,36 @@ export const ELECTRON = "electron"
 export const ANDROID = "android"
 
 const SERVER_URL_KEY = "pos_next_server_url"
-const DEVICE_TOKEN_KEY = "pos_next_device_token"
 
 export const PLATFORM = import.meta.env.VITE_PLATFORM || WEB
 export const isNative = PLATFORM !== WEB
+
+/**
+ * What clearing caches must leave on a device: what keeps it enrolled, and a shift closed
+ * offline, which would otherwise take sales again until its close reaches the server.
+ */
+const DEVICE_KEYS = [
+	SERVER_URL_KEY,
+	"pos_next_device_token",
+	"pos_next_cashier_grant",
+	"pos_next_cashiers",
+	"pos_next_device_id",
+	"pos_next_closing_shifts",
+]
+
+// Read on every request, which cannot wait for the OS keystore. platform/auth loads and saves them.
+let deviceToken = null
+let cashierGrant = null
+let accessListener = null
+
+/**
+ * @param {string} key - A localStorage key
+ * @param {string} [platform]
+ * @returns {boolean} Whether this key is not a cache. The web has no such keys.
+ */
+export function isDeviceKey(key, platform = PLATFORM) {
+	return platform !== WEB && DEVICE_KEYS.includes(key)
+}
 
 /** @returns {string} The server's origin, empty on the web */
 export function getServerUrl() {
@@ -25,17 +51,41 @@ export function getServerUrl() {
 /** @param {string} url - The server's address, from enrollment */
 export function setServerUrl(url) {
 	localStorage.setItem(SERVER_URL_KEY, String(url).trim().replace(/\/+$/, ""))
+	notifyAccessChange()
 }
 
-/** @returns {string|null} The device token, which replaces cookies outside the browser */
+/** @returns {string|null} Proves this device was enrolled. Sent only to sign a cashier in */
 export function getDeviceToken() {
-	// Moves to the OS keystore with device enrollment in phase 3
-	return isNative ? localStorage.getItem(DEVICE_TOKEN_KEY) : null
+	return deviceToken
 }
 
-/** @param {string} token */
+/** @param {string|null} token */
 export function setDeviceToken(token) {
-	localStorage.setItem(DEVICE_TOKEN_KEY, token)
+	deviceToken = token
+}
+
+/** @returns {string|null} The signed-in cashier's grant, which replaces cookies outside the browser */
+export function getCashierGrant() {
+	return cashierGrant
+}
+
+/** @param {string|null} grant */
+export function setCashierGrant(grant) {
+	cashierGrant = grant
+	notifyAccessChange()
+}
+
+/**
+ * For what reaches the server outside fetch, such as the offline worker.
+ * @param {(access: {serverUrl: string, grant: string|null}) => void} listener
+ */
+export function onAccessChange(listener) {
+	accessListener = listener
+	notifyAccessChange()
+}
+
+function notifyAccessChange() {
+	accessListener?.({ serverUrl: getServerUrl(), grant: cashierGrant })
 }
 
 /**

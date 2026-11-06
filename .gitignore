@@ -71,3 +71,10 @@ missing.txt
 # Desktop app build output
 POS/desktop/renderer/
 POS/desktop/dist/
+
+# Agent worktrees
+.claude/worktrees/
+# Android app build output
+POS/dist-android/
+# The launcher icons are part of the Android project
+!POS/android/app/src/main/res/**/*.png

@@ -177,6 +177,41 @@ describe("outbox", () => {
 		expect(await outbox.nextBatch(10)).toHaveLength(1)
 	})
 
+	it("queues a record that is not a sale in the same order", async () => {
+		await outbox.enqueueSale(sale("a"))
+		const seq = await outbox.enqueueEntity({
+			offlineId: "c",
+			entity: "customer",
+			data: { customer_name: "Sara" },
+		})
+		await outbox.enqueueSale(sale("b", 1, { dependsOn: ["c"] }))
+
+		expect(seq).toBe(2)
+		const rows = await outbox.nextBatch(10)
+		expect(rows.map((row) => [row.offline_id, row.entity])).toEqual([
+			["a", "invoice"],
+			["c", "customer"],
+			["b", "invoice"],
+		])
+		expect(rows[1].payload.customer_name).toBe("Sara")
+		expect(rows[2].depends_on).toEqual(["c"])
+	})
+
+	it("keeps a row's dependencies with it", async () => {
+		await outbox.enqueueEntity({ offlineId: "s", entity: "shift_close", data: {}, dependsOn: ["a", "b"] })
+		expect((await outbox.get("s")).depends_on).toEqual(["a", "b"])
+	})
+
+	it("lists what is kept, apart from what was retired", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.applyResult("a", { state: "synced" })
+		await outbox.enqueueSale(sale("b"))
+		await outbox.enqueueSale(sale("c", 1, { supersedes: "b" }))
+
+		expect((await outbox.listKept()).map((row) => row.offline_id)).toEqual(["a", "c"])
+		expect((await outbox.listQueued()).map((row) => row.offline_id)).toEqual(["c"])
+	})
+
 	it("does not hold stock for a Sales Order", async () => {
 		await outbox.enqueueSale({ offlineId: "o", invoice: { doctype: "Sales Order", items: [{ item_code: "A", qty: 5, warehouse: "W1" }] } })
 		expect(await outbox.availableStock("A", "W1")).toBe(100)

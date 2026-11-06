@@ -5,6 +5,7 @@
  * @module platform/store/sqlStore
  */
 
+import { PULL_ENTITIES, pullStateKey } from "@/core/sync/pullEngine"
 import { createCatalog, extractBarcodes } from "@/platform/sql/catalog"
 import { createCustomers } from "@/platform/sql/customers"
 import { createInvoiceDocuments, createProfileDocuments } from "@/platform/sql/documents"
@@ -17,6 +18,7 @@ import { createSettings } from "@/platform/sql/settings"
 import { createShifts } from "@/platform/sql/shifts"
 import { createTranslations } from "@/platform/sql/translations"
 import { logger } from "@/utils/logger"
+import { getInvoiceDependencies } from "@/utils/offline/entities"
 import { offlineState } from "@/utils/offline/offlineState"
 import { generateOfflineId } from "@/utils/offline/uuid"
 import { createStockSync } from "./stockSync"
@@ -71,9 +73,13 @@ export function createSqlStore(sql) {
 		return { success: true, updated }
 	}
 
+	// Forget how far entities were pulled, so emptied tables are filled again
+	const resetPullState = (entities) => settings.deleteStatement(entities.map(pullStateKey))
+
 	const stockSync = createStockSync({
-		origin: "",
-		getCsrfToken: () => csrfToken,
+		// Relative: the fetch bridge adds the server and the cashier's grant on this thread
+		serverUrl: (path) => path,
+		getHeaders: () => (csrfToken ? { "X-Frappe-CSRF-Token": csrfToken } : {}),
 		isConnected: () => offlineState.serverOnline && !offlineState.manualOffline,
 		updateStock: updateStockQuantities,
 		notify(type, payload) {
@@ -134,10 +140,30 @@ export function createSqlStore(sql) {
 				receipt: invoice,
 				shift: invoice.posa_pos_opening_shift,
 				supersedes,
+				dependsOn: getInvoiceDependencies(invoice),
 			})
 
 			log.info(`Invoice saved to offline queue with offline_id: ${offlineId}`)
 			return { success: true, id, offline_id: offlineId }
+		},
+
+		async saveQueueEntity(entity, data, dependsOn = []) {
+			const offlineId = data.offline_id || generateOfflineId()
+
+			const id = await outbox.enqueueEntity({
+				offlineId,
+				entity,
+				data: { ...data, offline_id: offlineId },
+				dependsOn,
+				shift: data.posa_pos_opening_shift ?? data.pos_opening_shift,
+			})
+
+			log.info(`Queued ${entity} with offline_id: ${offlineId}`)
+			return { success: true, id, offline_id: offlineId }
+		},
+
+		async getQueueRows() {
+			return (await outbox.listKept()).map(toQueuedInvoice)
 		},
 
 		async deleteOfflineInvoice(id) {
@@ -186,7 +212,10 @@ export function createSqlStore(sql) {
 					error: changes.error,
 				})
 			} else {
-				await outbox.markFailed(offlineId, changes.error, changes.next_attempt_at, changes.sync_failed)
+				await outbox.markFailed(offlineId, changes.error, changes.next_attempt_at, {
+					gaveUp: changes.sync_failed,
+					attempts: changes.retry_count,
+				})
 			}
 		},
 
@@ -308,7 +337,11 @@ export function createSqlStore(sql) {
 		updateStockQuantities,
 
 		async clearItemsCache() {
-			await sql.batch([...catalog.clearStatements(), settings.setStatement("items_last_sync", null)])
+			await sql.batch([
+				...catalog.clearStatements(),
+				settings.setStatement("items_last_sync", null),
+				resetPullState(["items", "item_prices"]),
+			])
 			return { success: true }
 		},
 
@@ -352,7 +385,11 @@ export function createSqlStore(sql) {
 		},
 
 		async clearCustomersCache() {
-			await sql.batch([...customers.clearStatements(), settings.setStatement("customers_last_sync", null)])
+			await sql.batch([
+				...customers.clearStatements(),
+				settings.setStatement("customers_last_sync", null),
+				resetPullState(["customers"]),
+			])
 			return { success: true }
 		},
 
@@ -406,6 +443,56 @@ export function createSqlStore(sql) {
 			return { success: true }
 		},
 
+		/**
+		 * Store one page from the pull engine. Throws on failure, so its cursor is not saved.
+		 * Applying a page twice is harmless, which is what makes that safe.
+		 */
+		async applyPullPage(entity, { rows, deleted }, posProfile) {
+			switch (entity) {
+				case "items":
+				case "item_prices":
+					await store.cacheItems(rows)
+					await catalog.remove(deleted)
+					break
+
+				case "customers":
+					await store.cacheCustomers(rows)
+					await store.deleteCustomers(deleted)
+					break
+
+				case "taxes":
+					await settings.set(`tax_rules_${posProfile}`, rows)
+					break
+
+				case "payment_methods":
+					await sql.batch([
+						paymentMethods.deleteStatement(posProfile),
+						...paymentMethods.putStatements(rows.map((method) => ({ ...method, pos_profile: posProfile }))),
+					])
+					break
+
+				case "pos_profile": {
+					const [data] = rows
+					await settings.set(`pos_profile_data:${posProfile}`, {
+						profileItemGroups: data.pos_profile?.item_groups || [],
+						itemGroups: data.item_groups_hierarchy || [],
+					})
+					break
+				}
+
+				case "offers": {
+					const result = await store.cacheOffers(rows, posProfile)
+					if (!result.success) throw new Error("Could not cache offers")
+					break
+				}
+
+				default:
+					throw new Error(`Unknown pull entity: ${entity}`)
+			}
+
+			return { success: true }
+		},
+
 		async isCacheReady() {
 			return (await catalog.count()) > 0
 		},
@@ -436,6 +523,11 @@ export function createSqlStore(sql) {
 
 		setCSRFToken(token) {
 			csrfToken = token
+			return { success: true }
+		},
+
+		// For the web worker's benefit. Here every request goes through the fetch bridge.
+		setServerAccess() {
 			return { success: true }
 		},
 
@@ -494,6 +586,7 @@ export function createSqlStore(sql) {
 					...catalog.clearStatements(),
 					...customers.clearStatements(),
 					salesPersons.deleteStatement(),
+					resetPullState(PULL_ENTITIES),
 					...(preservePaymentMethods ? [] : [paymentMethods.deleteStatement()]),
 					...(preserveInvoices
 						? []

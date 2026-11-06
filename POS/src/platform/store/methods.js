@@ -6,7 +6,10 @@
  * @typedef {Object} QueuedInvoice
  * @property {number} id - Device order, also what deletes and edits refer to
  * @property {string} offline_id - Stable across every retry
- * @property {Object} data - The invoice
+ * @property {string} [entity] - invoice, customer, payment or shift_close. Rows queued
+ *   before the queue had entities have none, and are sales.
+ * @property {Array<string>} [depends_on] - Offline IDs the server must finish first
+ * @property {Object} data - The record
  * @property {number} timestamp - When it was queued
  * @property {boolean} synced
  * @property {number} retry_count
@@ -29,6 +32,8 @@ export const WORKER_METHODS = [
 	"getOfflineInvoiceCount",
 	"getOfflineInvoices",
 	"saveOfflineInvoice",
+	"saveQueueEntity",
+	"getQueueRows",
 	"searchCachedItems",
 	"searchCachedItemsByGroup",
 	"searchCachedItemsByBrand",
@@ -48,11 +53,13 @@ export const WORKER_METHODS = [
 	"supersedeOfflineInvoice",
 	"setManualOffline",
 	"setCSRFToken",
+	"setServerAccess",
 	"setShowVariantsAsItems",
 	"updateStockQuantities",
 	"clearItemsCache",
 	"clearCustomersCache",
 	"removeItemsByGroups",
+	"applyPullPage",
 	"startStockSync",
 	"stopStockSync",
 	"configureStockSync",

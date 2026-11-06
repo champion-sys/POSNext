@@ -62,7 +62,7 @@
 										ref="passwordInputRef"
 										v-model="password"
 										:type="showPassword ? 'text' : 'password'"
-										:placeholder="__('Enter your password')"
+										:placeholder="isNative ? __('Enter your password or PIN') : __('Enter your password')"
 										:disabled="isVerifying"
 										class="block w-full rounded-lg border px-3 py-2.5 pe-10 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 										:class="verifyError ? 'border-red-400 bg-red-50' : 'border-gray-300'"
@@ -134,6 +134,7 @@ import { FeatherIcon } from "frappe-ui"
 import { useSessionLock } from "@/composables/useSessionLock"
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { session } from "@/data/session"
+import { isNative } from "@/platform/runtime"
 import { cleanupUserSession } from "@/utils/sessionCleanup"
 
 const { isLocked, isVerifying, verifyError, lockedUser, unlock } = useSessionLock()

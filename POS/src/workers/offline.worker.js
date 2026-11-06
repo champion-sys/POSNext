@@ -21,8 +21,10 @@
 // chunk loaded on demand here cannot be served from the cache on an offline start.
 import Dexie from 'dexie'
 import { logger } from '../utils/logger'
+import { ENTITY_INVOICE, getInvoiceDependencies } from "../utils/offline/entities"
 import { generateOfflineId } from '../utils/offline/uuid'
 import { createStockSync } from '../platform/store/stockSync'
+import { pullStateKey } from '../core/sync/pullEngine'
 
 const log = logger.create('OfflineWorker')
 
@@ -167,6 +169,11 @@ async function initDB() {
 let serverOnline = true
 let manualOffline = false
 let csrfToken = null // CSRF token passed from main thread
+let serverAccess = { serverUrl: "", grant: null } // Desktop and Android only: fetch is bridged in the main thread, not here
+
+function serverUrl(path) {
+	return `${serverAccess.serverUrl || self.location.origin}${path}`
+}
 
 // Display mode: controlled by POS Settings "Show Variants as Items" (default: off)
 // true = variants shown directly, templates hidden
@@ -324,7 +331,7 @@ async function pingServer() {
 		const controller = new AbortController()
 		const timeoutId = setTimeout(() => controller.abort(), 3000)
 
-		const response = await fetch(`${self.location.origin}/api/method/pos_next.api.ping`, {
+		const response = await fetch(serverUrl("/api/method/pos_next.api.ping"), {
 			method: "GET",
 			signal: controller.signal,
 		})
@@ -416,6 +423,8 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 		await db.transaction("rw", queue, async () => {
 			id = await queue.add({
 				offline_id: offlineId,
+				entity: ENTITY_INVOICE,
+				depends_on: getInvoiceDependencies(invoiceData),
 				data: invoiceData,
 				timestamp: Date.now(),
 				synced: false,
@@ -441,6 +450,42 @@ async function saveOfflineInvoice(invoiceData, options = {}) {
 	} catch (error) {
 		log.error("Error saving offline invoice", error)
 		throw error
+	}
+}
+
+// Queue a record that is not a sale, in the same table so that the queue's order
+// keeps it ahead of the sales that need it
+async function saveQueueEntity({ entity, data, dependsOn = [] }) {
+	try {
+		const db = await initDB()
+		const offlineId = data.offline_id || generateOfflineId()
+
+		const id = await db.table("invoice_queue").add({
+			offline_id: offlineId,
+			entity,
+			depends_on: dependsOn,
+			data: { ...data, offline_id: offlineId },
+			timestamp: Date.now(),
+			synced: false,
+			retry_count: 0,
+		})
+
+		log.info(`Queued ${entity} with offline_id: ${offlineId}`)
+		return { success: true, id, offline_id: offlineId }
+	} catch (error) {
+		log.error(`Error queueing ${entity}`, error)
+		throw error
+	}
+}
+
+// Every row still on the device, including those that have synced
+async function getQueueRows() {
+	try {
+		const db = await initDB()
+		return await db.table("invoice_queue").filter((row) => !row.superseded).toArray()
+	} catch (error) {
+		log.error("Error reading the queue", error)
+		return []
 	}
 }
 
@@ -482,6 +527,9 @@ async function updateLocalStock(items) {
  */
 function shouldShowItem(item) {
 	if (item.disabled) return false
+	if (item.hide_when_unavailable && !(item.actual_qty > 0) && (item.is_bundle || (item.is_stock_item && !item.has_variants))) {
+		return false
+	}
 	if (showVariantsAsItems) return !item.has_variants
 	return !item.variant_of
 }
@@ -995,6 +1043,7 @@ async function clearItemsCache() {
 			await db.table("items").clear()
 			await db.table("item_prices").clear()
 			await db.table("settings").put({ key: "items_last_sync", value: null })
+			await db.table("settings").bulkDelete([pullStateKey("items"), pullStateKey("item_prices")])
 		})
 
 		invalidateCache('items')
@@ -1020,6 +1069,7 @@ async function clearCustomersCache() {
 		await db.transaction('rw', 'customers', 'settings', async () => {
 			await db.table("customers").clear()
 			await db.table("settings").put({ key: "customers_last_sync", value: null })
+			await db.table("settings").delete(pullStateKey("customers"))
 		})
 
 		invalidateCache('customers')
@@ -1460,12 +1510,98 @@ async function updateStockQuantities(stockUpdates) {
 }
 
 // ============================================================================
+// PULL ENGINE STORE
+// ============================================================================
+
+/**
+ * Remove items by code, along with their cached prices
+ * @param {string[]} itemCodes - Item codes to remove
+ */
+async function deleteItems(itemCodes) {
+	if (!itemCodes || itemCodes.length === 0) return
+
+	const db = await initDB()
+	await db.transaction('rw', 'items', 'item_prices', async () => {
+		await db.table("items").bulkDelete(itemCodes)
+		await db.table("item_prices").where("item_code").anyOf(itemCodes).delete()
+	})
+}
+
+/**
+ * Store one page from the pull engine. Throws on failure, so its cursor is not saved.
+ *
+ * @param {Object} payload
+ * @param {string} payload.entity - Entity the page belongs to
+ * @param {{rows: Array, deleted: Array}} payload.page - The page from the server
+ * @param {string} payload.posProfile - POS Profile the page was pulled for
+ */
+async function applyPullPage({ entity, page, posProfile }) {
+	const { rows, deleted } = page
+	const db = await initDB()
+
+	switch (entity) {
+		case "items":
+		case "item_prices":
+			await cacheItemsFromServer(rows)
+			await deleteItems(deleted)
+			invalidateCache('search:')
+			invalidateCache('group:')
+			invalidateCache('brand:')
+			break
+
+		case "customers":
+			await cacheCustomersFromServer(rows)
+			await deleteCustomers(deleted)
+			break
+
+		case "taxes":
+			await db.table("settings").put({ key: `tax_rules_${posProfile}`, value: rows })
+			break
+
+		case "payment_methods":
+			await db.transaction('rw', 'payment_methods', async () => {
+				await db.table("payment_methods").where("pos_profile").equals(posProfile).delete()
+				await db.table("payment_methods").bulkPut(rows.map(method => ({ ...method, pos_profile: posProfile })))
+			})
+			break
+
+		case "pos_profile": {
+			const [data] = rows
+			await db.table("settings").put({
+				key: `pos_profile_data:${posProfile}`,
+				value: {
+					profileItemGroups: data.pos_profile?.item_groups || [],
+					itemGroups: data.item_groups_hierarchy || [],
+				},
+			})
+			break
+		}
+
+		case "offers": {
+			const result = await cacheOffers(rows, posProfile)
+			if (!result.success) {
+				throw new Error(result.error || "Could not cache offers")
+			}
+			break
+		}
+
+		default:
+			throw new Error(`Unknown pull entity: ${entity}`)
+	}
+
+	return { success: true }
+}
+
+// ============================================================================
 // PERIODIC STOCK SYNC - Background stock refresh from server
 // ============================================================================
 
 const stockSync = createStockSync({
-	origin: self.location.origin,
-	getCsrfToken: () => csrfToken,
+	serverUrl,
+	getHeaders: () => ({
+		...(csrfToken ? { "X-Frappe-CSRF-Token": csrfToken } : {}),
+		...(serverAccess.grant ? { Authorization: `Bearer ${serverAccess.grant}` } : {}),
+	}),
 	isConnected: () => serverOnline && !manualOffline,
 	updateStock: updateStockQuantities,
 	notify: (type, payload) => self.postMessage({ type, payload }),
@@ -1481,6 +1617,11 @@ self.onmessage = async (event) => {
 		switch (type) {
 			case "SET_CSRF_TOKEN":
 				csrfToken = payload.token
+				result = { success: true }
+				break
+
+			case "SET_SERVER_ACCESS":
+				serverAccess = payload
 				result = { success: true }
 				break
 
@@ -1502,6 +1643,14 @@ self.onmessage = async (event) => {
 
 			case "SAVE_INVOICE":
 				result = await saveOfflineInvoice(payload.invoiceData, payload.options)
+				break
+
+			case "SAVE_QUEUE_ENTITY":
+				result = await saveQueueEntity(payload)
+				break
+
+			case "GET_QUEUE_ROWS":
+				result = await getQueueRows()
 				break
 
 			case "SEARCH_ITEMS":
@@ -1645,6 +1794,10 @@ self.onmessage = async (event) => {
 
 			case "CLEAR_OFFERS_CACHE":
 				result = await clearOffersCache(payload.posProfile)
+				break
+
+			case "APPLY_PULL_PAGE":
+				result = await applyPullPage(payload)
 				break
 
 			default:

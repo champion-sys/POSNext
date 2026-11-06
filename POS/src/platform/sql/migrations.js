@@ -68,6 +68,7 @@ export const MIGRATIONS = [
 				variant_of TEXT,
 				has_variants INTEGER NOT NULL DEFAULT 0,
 				disabled INTEGER NOT NULL DEFAULT 0,
+				hide_without_stock INTEGER NOT NULL DEFAULT 0,
 				search_code TEXT NOT NULL,
 				search_name TEXT NOT NULL,
 				search_text TEXT NOT NULL,
@@ -79,7 +80,8 @@ export const MIGRATIONS = [
 				doc TEXT NOT NULL
 			)`,
 			// The filters are in the index so a deep page skips rows without reading each doc
-			"CREATE INDEX idx_catalog_item_name ON catalog_item(item_name, disabled, variant_of, has_variants)",
+			`CREATE INDEX idx_catalog_item_name
+				ON catalog_item(item_name, disabled, variant_of, has_variants, hide_without_stock, actual_qty)`,
 			"CREATE INDEX idx_catalog_item_group ON catalog_item(item_group)",
 			"CREATE INDEX idx_catalog_item_brand ON catalog_item(brand)",
 			// Partial, or browsing picks it for variant_of IS NULL and sorts the whole table

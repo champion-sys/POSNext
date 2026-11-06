@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
@@ -45,27 +45,42 @@ describe("what the app calls", () => {
 })
 
 describe("keeping platforms out of shared code", () => {
-	const sharedFiles = import.meta.glob(
-		["/src/{components,pages,stores,composables,services}/**/*.{js,ts,vue}", "/src/utils/**/*.{js,ts}"],
-		{ query: "?raw", import: "default" },
+	const SHARED = ["components", "core", "composables", "pages", "services", "stores", "utils"]
+
+	const sharedFiles = SHARED.flatMap((folder) =>
+		readdirSync(path.join(SRC, folder), { recursive: true })
+			.map((file) => path.join(folder, file))
+			.filter((file) => /\.(js|ts|vue)$/.test(file) && !file.includes("__tests__")),
 	)
 
-	async function findInSharedCode(pattern, except = []) {
-		const offenders = []
-		for (const [file, load] of Object.entries(sharedFiles)) {
-			if (file.includes("__tests__") || except.some((allowed) => file.endsWith(allowed))) continue
-			if (pattern.test(await load())) offenders.push(file)
-		}
-		return offenders
+	function findInSharedCode(pattern, except = []) {
+		return sharedFiles.filter(
+			(file) =>
+				!except.some((allowed) => file.endsWith(allowed)) &&
+				pattern.test(readFileSync(path.join(SRC, file), "utf8")),
+		)
 	}
 
-	it("leaves no Dexie or IndexedDB outside the web implementation", async () => {
+	it("leaves no Dexie or IndexedDB outside the web implementation", () => {
 		const pattern = /from\s+["']dexie["']|\bindexedDB\.open|\bdb\.(table|[a-z_]+)\.|utils\/offline\/db|from\s+["']\.\/db["']/
-		expect(await findInSharedCode(pattern, ["/utils/offline/db.js"])).toEqual([])
+		expect(findInSharedCode(pattern, ["utils/offline/db.js"])).toEqual([])
 	})
 
-	it("leaves no native storage code in shared files", async () => {
-		expect(await findInSharedCode(/electronAPI\.db|capacitor-community|better-sqlite3/i)).toEqual([])
+	it("calls nothing that one of the platforms does not have", () => {
+		const called = new Set(
+			sharedFiles.flatMap((file) =>
+				[...readFileSync(path.join(SRC, file), "utf8").matchAll(/\b(?:offlineWorker|localStore)\.(\w+)/g)].map(
+					([, name]) => name,
+				),
+			),
+		)
+
+		expect(called.size).toBeGreaterThan(30)
+		expect([...called].filter((name) => !STORE_METHODS.includes(name))).toEqual([])
+	})
+
+	it("leaves no native storage code in shared files", () => {
+		expect(findInSharedCode(/electronAPI\.db|capacitor-community|better-sqlite3/i)).toEqual([])
 	})
 })
 

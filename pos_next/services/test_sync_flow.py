@@ -1,0 +1,301 @@
+# Copyright (c) 2026, BrainWise and contributors
+# For license information, please see license.txt
+
+"""Whole journeys through the inbox, on an in-memory stand-in for its table."""
+
+import json
+import unittest
+from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
+
+import frappe
+
+from pos_next.services import sync_inbox
+from pos_next.services.sync_entities import DOCTYPE
+
+LOCAL_CUSTOMER = "pos_offline_customer-1"
+SALE = "pos_offline_sale-1"
+LATE_SALE = "pos_offline_sale-2"
+CLOSE = "pos_offline_close-1"
+PAYMENT = "pos_offline_payment-1"
+
+
+class FakeInbox:
+    """Answers the queries the inbox makes, and stands in for the rest of the database."""
+
+    def __init__(self):
+        self.rows = {}
+
+    @staticmethod
+    def _matches(row, filters):
+        for fieldname, expected in filters.items():
+            value = row.get(fieldname)
+            if isinstance(expected, list):
+                operator, operand = expected
+                if operator == "in" and value not in operand:
+                    return False
+                if operator in ("<", "<=") and (value is None or value > operand):
+                    return False
+            elif value != expected:
+                return False
+        return True
+
+    def _find(self, filters):
+        if isinstance(filters, str):
+            return [self.rows[filters]] if filters in self.rows else []
+        return [row for row in self.rows.values() if self._matches(row, filters)]
+
+    def get_value(self, doctype, filters=None, fieldname="name", as_dict=False, **_kwargs):
+        if doctype != DOCTYPE:
+            return None
+
+        found = self._find(filters)
+        if not found:
+            return None
+        row = found[0]
+
+        if fieldname == "*":
+            return frappe._dict(row)
+        if isinstance(fieldname, str):
+            return row.get(fieldname)
+        return frappe._dict({field: row.get(field) for field in fieldname})
+
+    def get_all(self, doctype, filters=None, fields=None, pluck=None, as_list=False, **_kwargs):
+        rows = self._find(filters or {})
+        if pluck:
+            return [row.get(pluck) for row in rows]
+        if as_list:
+            return [tuple(row.get(field) for field in fields) for row in rows]
+        return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
+
+    def set_value(self, doctype, name, field, value=None, **_kwargs):
+        values = field if isinstance(field, dict) else {field: value}
+        self.rows[name].update(values)
+
+    def exists(self, doctype, name=None):
+        return name
+
+    def commit(self):
+        pass
+
+    def rollback(self, **_kwargs):
+        pass
+
+    def count(self, *_args, **_kwargs):
+        return 0
+
+    def insert(self, values):
+        name = f"row-{len(self.rows) + 1}"
+        self.rows[name] = frappe._dict({"attempts": 0, **values, "name": name})
+        return name
+
+
+class Flow(unittest.TestCase):
+    def setUp(self):
+        self.inbox = FakeInbox()
+        frappe.local.db = self.inbox
+        frappe.local.session = Mock(user="cashier@example.com")
+        self.addCleanup(setattr, frappe.local, "db", None)
+        self.addCleanup(setattr, frappe.local, "session", None)
+
+        for target, replacement in (
+            ("pos_next.services.sync_inbox.frappe.get_doc", self._new_document),
+            ("pos_next.services.sync_inbox.frappe.get_all", self.inbox.get_all),
+            ("pos_next.services.sync_inbox.now_datetime", datetime.now),
+            ("pos_next.services.sync_inbox._", lambda text: text),
+            ("pos_next.services.sync_entities._", lambda text: text),
+            ("pos_next.services.sync_inbox._log_attempt", Mock()),
+            ("pos_next.services.sync_inbox._notify_uploader", Mock()),
+            ("pos_next.services.sync_inbox._notify_managers", Mock()),
+            ("pos_next.services.sync_inbox.enqueue_processing", Mock()),
+            ("pos_next.services.sync_inbox.get_datetime", lambda value: value),
+        ):
+            patcher = patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _new_document(self, values):
+        document = Mock()
+
+        def insert():
+            document.name = self.inbox.insert(values)
+
+        document.insert.side_effect = insert
+        return document
+
+    def _send(self, offline_id, payload, entity="invoice", depends_on=None):
+        item = {
+            "offline_id": offline_id,
+            "entity": entity,
+            "pos_profile": "Main",
+            "cashier": "cashier@example.com",
+            "depends_on": depends_on or [],
+            "payload": payload,
+        }
+        name, conflict = sync_inbox.ingest(item, "cashier@example.com")
+        self.assertFalse(conflict)
+        return name
+
+    def _row(self, name):
+        return self.inbox.rows[name]
+
+    def _age(self, name, hours=2):
+        self._row(name)["received_at"] = datetime.now() - timedelta(hours=hours)
+
+
+class TestNewCustomerJourney(Flow):
+    def _post_customer(self, name):
+        customer = Mock()
+        customer.name = "CUST-0001"
+        with (
+            patch("pos_next.services.sync_entities.frappe.has_permission", return_value=True),
+            patch("pos_next.api.customers.insert_customer", return_value=customer),
+        ):
+            sync_inbox.process(name)
+
+    def test_a_sale_that_arrives_first_still_posts_against_the_real_customer(self):
+        sale = self._send(SALE, {"customer": LOCAL_CUSTOMER, "customer_name": "Sara", "pos_profile": "Main"})
+
+        sync_inbox.process(sale)
+        self.assertEqual(self._row(sale).status, "Blocked")
+
+        customer = self._send(LOCAL_CUSTOMER, {"customer_name": "Sara", "pos_profile": "Main"}, "customer")
+        self._post_customer(customer)
+        self.assertEqual(self._row(customer).status, "Synced")
+        self.assertEqual(self._row(customer).sales_invoice, "CUST-0001")
+
+        sync_inbox.sweep()
+        self.assertEqual(self._row(sale).status, "Received")
+
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
+        ):
+            process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}
+            sync_inbox.process(sale)
+
+        posted = process_invoice.call_args.args[0]
+        self.assertEqual(posted["customer"], "CUST-0001")
+        self.assertNotIn("customer_name", posted)
+
+        row = self._row(sale)
+        self.assertEqual(row.status, "Synced")
+        self.assertEqual(row.customer, "CUST-0001")
+        self.assertEqual(json.loads(row.payload)["customer"], LOCAL_CUSTOMER)
+
+    def test_a_voided_customer_sends_the_sale_to_a_person_instead_of_inventing_one(self):
+        sale = self._send(SALE, {"customer": LOCAL_CUSTOMER, "pos_profile": "Main"})
+        customer = self._send(LOCAL_CUSTOMER, {"customer_name": "Sara", "pos_profile": "Main"}, "customer")
+        self._row(customer)["status"] = "Voided"
+
+        with patch("pos_next.services.invoice_processor.process_invoice") as process_invoice:
+            sync_inbox.process(sale)
+
+        process_invoice.assert_not_called()
+        row = self._row(sale)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_class, "dependency")
+        self.assertTrue(row.payload)
+
+
+class TestPaymentJourney(Flow):
+    payload = {
+        "doctype": "Payment Entry",
+        "invoice_name": "SINV-1",
+        "pos_profile": "Main",
+        "payments": [{"mode_of_payment": "Cash", "amount": 40}],
+    }
+
+    def test_a_resend_never_takes_the_money_twice(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            patch("pos_next.api.partial_payments.post_queued_payments", return_value=["PE-1"]) as post,
+        ):
+            first = self._send(PAYMENT, self.payload, "payment")
+            sync_inbox.process(first)
+
+            again = self._send(PAYMENT, self.payload, "payment")
+            sync_inbox.process(again)
+
+        self.assertEqual(first, again)
+        self.assertEqual(post.call_count, 1)
+        self.assertEqual(self._row(first).sales_invoice, "PE-1")
+
+    def test_a_refused_payment_keeps_its_payload_and_reason(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            patch(
+                "pos_next.api.partial_payments.post_queued_payments",
+                side_effect=frappe.ValidationError("Total payment amount exceeds outstanding amount"),
+            ),
+        ):
+            name = self._send(PAYMENT, self.payload, "payment")
+            sync_inbox.process(name)
+
+        row = self._row(name)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertIn("exceeds outstanding", row.error_message)
+        self.assertEqual(json.loads(row.payload)["invoice_name"], "SINV-1")
+
+
+class TestShiftCloseJourney(Flow):
+    payload = {
+        "doctype": "POS Closing Shift",
+        "pos_opening_shift": "POSA-OS-1",
+        "pos_profile": "Main",
+        "manifest": [SALE, LATE_SALE],
+    }
+
+    def _finish(self, offline_id):
+        name = self._send(offline_id, {"pos_profile": "Main"})
+        self._row(name).update({"status": "Synced", "sales_invoice": "SINV-1"})
+        return name
+
+    def test_finalizes_only_after_a_missing_sale_arrives(self):
+        finished = {"name": "POS-CLOSE-1", "doctype": "POS Closing Shift", "grand_total": 100}
+        handler = sync_inbox._Entity(Mock(return_value=finished), Mock(return_value=None), ())
+
+        with patch.dict(sync_inbox._ENTITIES, {"shift_close": handler}):
+            close = self._send(CLOSE, self.payload, "shift_close", depends_on=[SALE])
+            self._finish(SALE)
+
+            sync_inbox.process(close)
+            self.assertEqual(self._row(close).status, "Blocked")
+
+            self._age(close)
+            sync_inbox.sweep()
+
+            row = self._row(close)
+            self.assertEqual(row.status, sync_inbox.REVIEW)
+            self.assertIn(LATE_SALE, row.error_message)
+            self.assertEqual(row.error_class, "dependency")
+
+            sync_inbox.sweep()
+            self.assertEqual(self._row(close).status, sync_inbox.REVIEW)
+            handler.create.assert_not_called()
+
+            self._finish(LATE_SALE)
+            sync_inbox.sweep()
+            self.assertEqual(self._row(close).status, "Received")
+
+            sync_inbox.process(close)
+
+        handler.create.assert_called_once()
+        self.assertEqual(self._row(close).status, "Synced")
+        self.assertEqual(self._row(close).sales_invoice, "POS-CLOSE-1")
+
+    def test_a_shift_with_nothing_queued_closes_at_once(self):
+        close = self._send(CLOSE, {**self.payload, "manifest": []}, "shift_close")
+
+        finished = {"name": "POS-CLOSE-1", "doctype": "POS Closing Shift"}
+        handler = sync_inbox._Entity(Mock(return_value=finished), Mock(return_value=None), ())
+        with patch.dict(sync_inbox._ENTITIES, {"shift_close": handler}):
+            sync_inbox.process(close)
+
+        self.assertEqual(self._row(close).status, "Synced")
+
+
+if __name__ == "__main__":
+    unittest.main()

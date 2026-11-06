@@ -57,7 +57,11 @@ POS_SETTINGS_FIELDS = [
 	"invoice_type",
 	"sync_mode",
 	"sync_interval_minutes",
-	"realtime_timeout_seconds"
+	"realtime_timeout_seconds",
+	"return_validity_days",
+	"disable_offline_coupons",
+	"allow_offline_returns",
+	"allow_offline_shift_close"
 ]
 
 # Default POS Settings values
@@ -102,6 +106,10 @@ DEFAULT_POS_SETTINGS = {
 	"sync_mode": "Realtime",
 	"sync_interval_minutes": 5,
 	"realtime_timeout_seconds": 8,
+	"return_validity_days": 0,
+	"disable_offline_coupons": 0,
+	"allow_offline_returns": 0,
+	"allow_offline_shift_close": 0,
 	"custom_allow_edit_offline_invoice": 1,
 	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None,
