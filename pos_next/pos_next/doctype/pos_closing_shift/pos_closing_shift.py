@@ -838,9 +838,41 @@ def make_closing_shift_from_opening(opening_shift):
     return result
 
 
+def _assert_may_close_shift(opening_shift):
+    user = frappe.session.user
+    pos_profile = opening_shift.pos_profile
+
+    is_assigned = frappe.db.exists("POS Profile User", {"parent": pos_profile, "user": user})
+    if not is_assigned and not frappe.has_permission("POS Profile", "write", user=user):
+        frappe.throw(_("You do not have access to POS Profile {0}").format(pos_profile), frappe.PermissionError)
+
+    allowed_role = frappe.db.get_value("POS Profile", pos_profile, "role_allowed_to_closing_shift")
+    if allowed_role and allowed_role not in frappe.get_roles(user):
+        frappe.throw(
+            _("You are not allowed to close this shift. Only users with role '{0}' can close it.").format(
+                allowed_role
+            ),
+            frappe.PermissionError,
+        )
+
+
 @frappe.whitelist()
 def submit_closing_shift(closing_shift):
+    """Close a shift for the session user.
+
+    The document comes from the request and is saved without permission checks, so nothing
+    but a closing of a shift this user may close can be allowed through.
+    """
     closing_shift = json.loads(closing_shift)
+    if closing_shift.get("doctype") != "POS Closing Shift":
+        frappe.throw(_("Only a POS Closing Shift can be submitted here"), frappe.PermissionError)
+
+    opening_shift = closing_shift.get("pos_opening_shift")
+    if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
+        frappe.throw(_("Shift {0} does not exist").format(opening_shift))
+
+    _assert_may_close_shift(frappe.get_doc("POS Opening Shift", opening_shift))
+
     closing_shift_doc = frappe.get_doc(closing_shift)
     closing_shift_doc.flags.ignore_permissions = True
     closing_shift_doc.save()
