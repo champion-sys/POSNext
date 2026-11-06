@@ -132,6 +132,7 @@ def get_payment_methods(pos_profile):
 				POSPaymentMethod.default,
 				POSPaymentMethod.allow_in_returns,
 				Coalesce(ModeOfPayment.type, "Cash").as_("type"),
+				Coalesce(ModeOfPayment.is_wallet_payment, 0).as_("is_wallet_payment"),
 				Coalesce(Account.account_type, "").as_("account_type")
 			)
 			.where(POSPaymentMethod.parent == pos_profile)
