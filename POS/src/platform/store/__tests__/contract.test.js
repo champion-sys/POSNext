@@ -1417,6 +1417,36 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			expect((await items.getCachedSerialData("A-1")).map((s) => s.serial_no)).toEqual(["S1", "S2"])
 		})
 
+		describe("through the serial number store, with nothing in memory", () => {
+			let serialStore
+
+			const serialsLeft = async () => (await items.getCachedSerialData("A-1")).map((serial) => serial.serial_no)
+
+			beforeEach(async () => {
+				const { createPinia, setActivePinia } = await import("pinia")
+				const { useSerialNumberStore } = await import("@/stores/serialNumber")
+				setActivePinia(createPinia())
+				serialStore = useSerialNumberStore()
+				serialStore.setWarehouse("W1")
+				await items.persistItemBatchSerialData("A-1", { serial_no_data: [{ serial_no: "S1", warehouse: "W1" }] })
+			})
+
+			it("takes a serial that goes into the cart off the device", async () => {
+				serialStore.consumeSerials("A-1", ["S1"])
+
+				await vi.waitFor(async () => expect(await serialsLeft()).toEqual([]))
+			})
+
+			it("gives back even the last serial when the cart is abandoned", async () => {
+				serialStore.consumeSerials("A-1", ["S1"])
+				await vi.waitFor(async () => expect(await serialsLeft()).toEqual([]))
+
+				serialStore.returnSerials("A-1", "S1")
+
+				await vi.waitFor(async () => expect(await serialsLeft()).toEqual(["S1"]))
+			})
+		})
+
 		it("deducts a sold batch and never goes below zero", async () => {
 			await items.persistItemBatchSerialData("A-1", {
 				batch_no_data: [

@@ -129,18 +129,19 @@ export const useSerialNumberStore = defineStore('serialNumber', () => {
 	 * Remove consumed serials from cache (when added to cart)
 	 */
 	const consumeSerials = (itemCode, serialNumbers) => {
-		const cached = cache.value.get(itemCode)
-		if (!cached) return
-
 		const serialsToRemove = new Set(
 			Array.isArray(serialNumbers)
 				? serialNumbers
 				: serialNumbers.split('\n').map(s => s.trim()).filter(Boolean)
 		)
 
-		cached.serials = cached.serials.filter(
-			s => !serialsToRemove.has(s.serial_no)
-		)
+		// Nothing is in memory after an offline start, the device cache is what counts then
+		const cached = cache.value.get(itemCode)
+		if (cached) {
+			cached.serials = cached.serials.filter(
+				s => !serialsToRemove.has(s.serial_no)
+			)
+		}
 
 		consumeCachedSerials(itemCode, serialNumbers).catch(() => {})
 
@@ -151,27 +152,27 @@ export const useSerialNumberStore = defineStore('serialNumber', () => {
 	 * Return serials back to cache (when removed from cart or quantity decreased)
 	 */
 	const returnSerials = (itemCode, serialNumbers) => {
-		const cached = cache.value.get(itemCode)
-		if (!cached) return
-
 		const serialsToReturn = Array.isArray(serialNumbers)
 			? serialNumbers
 			: serialNumbers.split('\n').map(s => s.trim()).filter(Boolean)
 
-		// Add serials back to cache (avoid duplicates)
-		const existingSerialNos = new Set(cached.serials.map(s => s.serial_no))
+		const cached = cache.value.get(itemCode)
+		if (cached) {
+			// Add serials back to cache (avoid duplicates)
+			const existingSerialNos = new Set(cached.serials.map(s => s.serial_no))
 
-		for (const serialNo of serialsToReturn) {
-			if (!existingSerialNos.has(serialNo)) {
-				cached.serials.push({
-					serial_no: serialNo,
-					warehouse: currentWarehouse.value
-				})
+			for (const serialNo of serialsToReturn) {
+				if (!existingSerialNos.has(serialNo)) {
+					cached.serials.push({
+						serial_no: serialNo,
+						warehouse: currentWarehouse.value
+					})
+				}
 			}
-		}
 
-		// Sort serials by serial_no for consistent ordering
-		cached.serials.sort((a, b) => a.serial_no.localeCompare(b.serial_no, undefined, { numeric: true }))
+			// Sort serials by serial_no for consistent ordering
+			cached.serials.sort((a, b) => a.serial_no.localeCompare(b.serial_no, undefined, { numeric: true }))
+		}
 
 		returnCachedSerials(itemCode, serialNumbers, currentWarehouse.value).catch(() => {})
 

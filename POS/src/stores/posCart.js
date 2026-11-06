@@ -259,12 +259,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		baseUpdateItemQuantity(itemCode, quantity, uom)
 	}
 
-	function clearCart() {
+	function clearCart(options) {
 		// Cancel any pending offer processing
 		debouncedProcessOffers.cancel()
 		offerQueue.cancel()
 
-		clearInvoiceCart()
+		clearInvoiceCart(options)
 		customer.value = null
 		appliedOffers.value = []
 		appliedCoupon.value = null
