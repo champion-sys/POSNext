@@ -5,6 +5,10 @@ const config: CapacitorConfig = {
 	appId: "digital.sanad.posnext",
 	appName: "POS Next",
 	webDir: "dist-android",
+	server: {
+		// Without it Capacitor only logs an old WebView and loads an app that cannot work
+		errorPath: "webview-outdated.html",
+	},
 	android: {
 		// Not 94, which is all the es2022 build target asks for: platform/auth.js calls
 		// AbortSignal.timeout, and without it no device can enroll or sign in

@@ -101,6 +101,13 @@ describe("the minimum WebView", () => {
 		)
 	})
 
+	it("tells the cashier what to do on an older one, in both languages", () => {
+		const page = readFileSync(resolve(POS, "public", config.server.errorPath), "utf8")
+
+		expect(page).toContain("Google Play")
+		expect(page).toContain("يلزم تحديث")
+	})
+
 	it("covers what the es2022 build target may emit", () => {
 		const build = readFileSync(resolve(POS, "vite.config.android.mjs"), "utf8")
 
