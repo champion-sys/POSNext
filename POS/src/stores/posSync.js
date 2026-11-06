@@ -15,6 +15,7 @@
  */
 
 import { useToast } from "@/composables/useToast"
+import { pullChanges } from "@/core/sync/webPull"
 import {
 	cacheCustomersFromServer,
 	cachePaymentMethodsFromServer,
@@ -30,6 +31,7 @@ import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSShiftStore } from "@/stores/posShift"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -41,6 +43,9 @@ const SYNC_TICK_MS = 60 * 1000
 
 /** Wait for the app to settle before the sync on opening */
 const STARTUP_SYNC_DELAY_MS = 5000
+
+/** How often to ask the server what changed */
+const PULL_INTERVAL_MS = 15 * 60 * 1000
 
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
 
@@ -96,6 +101,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (wasOffline && !nowOffline) {
 			log.info('Transition to online detected, auto-syncing pending invoices')
 			await autoSync()
+			pullServerChanges()
 		}
 
 		wasOffline = nowOffline
@@ -200,6 +206,20 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			)
 		} else {
 			await run()
+		}
+	}
+
+	/**
+	 * Bring down what changed on the server
+	 */
+	async function pullServerChanges() {
+		try {
+			const { session } = await import("@/data/session")
+			if (!session.isLoggedIn || isOffline.value) return
+
+			await pullChanges(usePOSShiftStore().profileName)
+		} catch (error) {
+			log.warn('Pull from the server failed', error)
 		}
 	}
 
@@ -472,6 +492,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		} finally {
 			_preloadingProfile = null
 		}
+
+		// Not awaited: the sale page waits for this function, and a first pull can take minutes
+		pullServerChanges()
 	}
 
 	/**
@@ -515,6 +538,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Without a socket, this is how a sale the server is working on gets its result
 		if (isWaitingForServer || Date.now() - lastAutoSyncAt >= intervalMs) autoSync()
 	}, SYNC_TICK_MS)
+	setInterval(pullServerChanges, PULL_INTERVAL_MS)
 
 	// =========================================================================
 	// EXPORTS

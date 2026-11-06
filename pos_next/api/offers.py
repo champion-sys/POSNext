@@ -392,6 +392,29 @@ class OfferBuilder:
 # Main API Functions
 # ============================================================================
 
+def _get_offers(pos_profile: str) -> List[Dict]:
+	"""Offers for the POS profile. Unlike get_offers, a failure raises."""
+	profile = frappe.get_doc("POS Profile", pos_profile)
+
+	# Respect POS Profile's ignore_pricing_rule setting
+	if profile.ignore_pricing_rule:
+		return []
+
+	date = nowdate()
+
+	offers = []
+
+	# Get offers from promotional schemes
+	scheme_offers = _get_promotional_scheme_offers(profile.company, date)
+	offers.extend(scheme_offers)
+
+	# Get standalone pricing rule offers
+	standalone_offers = _get_standalone_pricing_rule_offers(profile.company, date)
+	offers.extend(standalone_offers)
+
+	return [offer.to_dict() for offer in offers]
+
+
 @frappe.whitelist()
 def get_offers(pos_profile: str) -> List[Dict]:
 	"""
@@ -404,25 +427,7 @@ def get_offers(pos_profile: str) -> List[Dict]:
 		List of offer dictionaries
 	"""
 	try:
-		profile = frappe.get_doc("POS Profile", pos_profile)
-
-		# Respect POS Profile's ignore_pricing_rule setting
-		if profile.ignore_pricing_rule:
-			return []
-
-		date = nowdate()
-
-		offers = []
-
-		# Get offers from promotional schemes
-		scheme_offers = _get_promotional_scheme_offers(profile.company, date)
-		offers.extend(scheme_offers)
-
-		# Get standalone pricing rule offers
-		standalone_offers = _get_standalone_pricing_rule_offers(profile.company, date)
-		offers.extend(standalone_offers)
-
-		return [offer.to_dict() for offer in offers]
+		return _get_offers(pos_profile)
 
 	except Exception as e:
 		frappe.log_error(f"Error fetching offers: {str(e)}", "Offers API")

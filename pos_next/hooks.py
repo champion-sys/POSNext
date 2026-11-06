@@ -192,9 +192,11 @@ extend_doctype_class = {
 
 doc_events = {
 	"Item": {
-		"validate": "pos_next.validations.validate_item"
+		"validate": "pos_next.validations.validate_item",
+		"after_rename": "pos_next.api.sync_pull.record_rename"
 	},
 	"Customer": {
+		"after_rename": "pos_next.api.sync_pull.record_rename",
 		"after_insert": [
 			"pos_next.api.customers.auto_assign_loyalty_program",
 			"pos_next.realtime_events.emit_customer_event",

@@ -11,6 +11,7 @@ import { useStockStore } from "./stock"
 import { usePOSSettingsStore } from "./posSettings"
 import { usePOSShiftStore } from "./posShift"
 import { useRealtimePosProfile } from "@/composables/useRealtimePosProfile"
+import { isCatalogWalked, pullStateKey } from "@/core/sync/pullEngine"
 
 const log = logger.create('ItemSearch')
 
@@ -436,6 +437,39 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		allItemsVersion.value += 1
 		registerItems(next, registeredAllItems) // Initializes stock in stock store
 		clearBaseCache()
+	}
+
+	/**
+	 * Show what the pull engine stored, without reloading the list
+	 * @param {Array} rows - Changed item rows
+	 * @param {Array<string>} deleted - Item codes that left this profile
+	 */
+	function applyPulledItems(rows = [], deleted = []) {
+		const shown = rows.filter((row) => itemRegistry.has(row.item_code))
+		for (const row of shown) {
+			itemRegistry.get(row.item_code).forEach((item) => Object.assign(item, row))
+		}
+
+		const gone = new Set(deleted.filter((code) => itemRegistry.has(code)))
+		if (gone.size > 0) {
+			const keep = (item) => !gone.has(item.item_code)
+			replaceAllItems(allItems.value.filter(keep))
+			setSearchResults(searchResults.value.filter(keep))
+		} else if (shown.length > 0) {
+			allItemsVersion.value += 1
+			clearBaseCache()
+		}
+	}
+
+	/**
+	 * Show the item groups the pull engine stored
+	 * @param {string} profile - POS Profile name
+	 */
+	async function reloadProfileFromCache(profile) {
+		const cached = await getSetting(`pos_profile_data:${profile}`, null)
+		if (!cached || profile !== posProfile.value) return
+		profileItemGroups.value = cached.profileItemGroups
+		itemGroups.value = cached.itemGroups
 	}
 
 	function appendAllItems(items) {
@@ -933,7 +967,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 					// START BACKGROUND SYNC for offline support (large catalogs only)
 					// Small catalogs already loaded everything — no sync needed
 					if (!isSmallCatalog) {
-						startBackgroundCacheSync(profile, itemGroupFilters)
+						startBackgroundCacheSync(profile, itemGroupFilters, 0, { force: forceServerFetch })
 					}
 				} else {
 					log.info('No items found for the selected filter groups')
@@ -990,7 +1024,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 				// Start background sync for large catalogs to cache ALL items to IndexedDB
 				// Small catalogs already loaded everything
 				if (!isSmallCatalog) {
-					startBackgroundCacheSync(profile, [], list.length)
+					startBackgroundCacheSync(profile, [], list.length, { force: forceServerFetch })
 				}
 			}
 		} catch (error) {
@@ -1338,8 +1372,10 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 	 * @param {string} profile - POS Profile name
 	 * @param {Array} filterGroups - Item group filters from POS Profile (optional)
 	 * @param {number} initialOffset - Items already loaded before sync started
+	 * @param {Object} [options]
+	 * @param {boolean} [options.force] - Download everything even if the pull engine keeps it current
 	 */
-	async function startBackgroundCacheSync(profile, filterGroups = [], initialOffset = 0) {
+	async function startBackgroundCacheSync(profile, filterGroups = [], initialOffset = 0, { force = false } = {}) {
 		// Cancel any previous sync and start fresh
 		syncGeneration++
 		const myGeneration = syncGeneration
@@ -1348,10 +1384,13 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 			log.info(`Cancelling previous sync, starting new sync (gen=${myGeneration})`)
 		}
 
+		const alreadyPulled = !force && isCatalogWalked(await getSetting(pullStateKey("items"), null), profile)
+		if (myGeneration !== syncGeneration) return
+
 		const hasFilters = filterGroups.length > 0
 
 		log.info(`Starting background sync gen=${myGeneration} ${hasFilters ? `for ${filterGroups.length} groups` : '(all items)'}`)
-		cacheSyncing.value = true
+		cacheSyncing.value = !alreadyPulled
 
 		// Tuning knobs
 		const batchSize = 2000
@@ -1411,7 +1450,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 		// CONTINUOUS SYNC LOOP
 		const syncLoop = async () => {
-			while (myGeneration === syncGeneration) {
+			while (!alreadyPulled && myGeneration === syncGeneration) {
 				try {
 					if (hasFilters && groupsToSync.length > 0) {
 						// ============================================================
@@ -1559,7 +1598,7 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 
 			// Sync complete!
 			const finalStats = await offlineWorker.getCacheStats()
-			const finalCached = initialOffset + uniqueItemsSeen.size
+			const finalCached = alreadyPulled ? finalStats.items : initialOffset + uniqueItemsSeen.size
 			cacheStats.value = {
 				...finalStats,
 				totalServerItems: syncTotalItems,
@@ -2206,6 +2245,8 @@ export const useItemSearchStore = defineStore("itemSearch", () => {
 		loadAllItems,
 		loadMoreItems,
 		fetchPage,
+		applyPulledItems,
+		reloadProfileFromCache,
 		searchItems,
 		loadItemGroups,
 		loadBrands,

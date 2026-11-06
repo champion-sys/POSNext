@@ -1495,6 +1495,140 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 		frappe.throw(_("Error fetching items: {0}").format(str(e)))
 
 
+def _select_item_rows(conditions, params, extra_joins="", limit=None, start=0):
+	"""Run the catalog query. Every path into the device cache shares this row shape."""
+	item_columns = ",\n\t".join([f"i.{col}" for col in ITEM_RESULT_FIELDS])
+	group_by_columns = ", ".join([f"i.{col.split(' as ')[0]}" for col in ITEM_RESULT_FIELDS])
+
+	where_clause = " AND ".join(conditions)
+	paging = "LIMIT %s OFFSET %s" if limit is not None else ""
+	query = f"""
+		SELECT {item_columns},
+			GROUP_CONCAT(DISTINCT ib.barcode) as barcode,
+			GROUP_CONCAT(DISTINCT ib.uom) as barcode_uoms
+		FROM `tabItem` i
+		LEFT JOIN `tabItem Barcode` ib ON ib.parent = i.name
+		{extra_joins}
+		WHERE {where_clause}
+		GROUP BY {group_by_columns}
+		ORDER BY i.item_name ASC
+		{paging}
+	"""
+	all_params = [*params, int(limit), int(start)] if limit is not None else params
+	return frappe.db.sql(query, tuple(all_params), as_dict=1)
+
+
+def _enrich_items_bulk(items, pos_profile_doc, exclude_variants):
+	"""Add prices, stock, UOMs and variant attributes to rows from _select_item_rows."""
+	item_codes = [item["item_code"] for item in items]
+	conversion_map = defaultdict(dict)
+	uom_map = {}
+	uom_prices_map = {}
+
+	# UOM conversions
+	if item_codes:
+		conversions = frappe.get_all(
+			"UOM Conversion Detail",
+			filters={"parent": ["in", item_codes]},
+			fields=["parent", "uom", "conversion_factor"],
+		)
+		for row in conversions:
+			uom_map.setdefault(row.parent, []).append(
+				{"uom": row.uom, "conversion_factor": row.conversion_factor}
+			)
+			if row.uom:
+				conversion_map[row.parent][row.uom] = row.conversion_factor
+
+	# Prices
+	price_list = pos_profile_doc.selling_price_list
+	if price_list and item_codes:
+		ItemPrice = DocType("Item Price")
+		prices = (
+			frappe.qb.from_(ItemPrice)
+			.select(ItemPrice.item_code, ItemPrice.uom, ItemPrice.price_list_rate)
+			.where(ItemPrice.price_list == price_list)
+			.where(ItemPrice.item_code.isin(item_codes))
+			.where(ItemPrice.selling == 1)
+			.run(as_dict=True)
+		)
+		for p in prices:
+			uom_prices_map.setdefault(p.item_code, {})[p.uom] = flt(p.price_list_rate)
+
+	# Stock
+	warehouse = pos_profile_doc.warehouse
+	stock_map = {}
+	if warehouse and item_codes:
+		warehouses = [warehouse]
+		if frappe.db.get_value("Warehouse", warehouse, "is_group"):
+			warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
+
+		Bin = DocType("Bin")
+		stock_data = (
+			frappe.qb.from_(Bin)
+			.select(Bin.item_code, fn.Sum(Bin.actual_qty).as_("qty"))
+			.where(Bin.item_code.isin(item_codes))
+			.where(Bin.warehouse.isin(warehouses))
+			.groupby(Bin.item_code)
+			.run(as_dict=True)
+		)
+		stock_map = {s.item_code: flt(s.qty) for s in stock_data}
+
+	# Bundle availability
+	bundle_availability_map = {}
+	if item_codes and warehouse:
+		bundle_availability_map = _calculate_bundle_availability_bulk(
+			item_codes, warehouse
+		)
+
+	# Variant attributes (only when variants are included)
+	attributes_map = {}
+	if not exclude_variants:
+		variant_codes = [item["item_code"] for item in items if item.get("variant_of")]
+		if variant_codes:
+			attributes = frappe.get_all(
+				"Item Variant Attribute",
+				filters={"parent": ["in", variant_codes]},
+				fields=["parent", "attribute", "attribute_value"],
+			)
+			for attr in attributes:
+				attributes_map.setdefault(attr["parent"], {})[attr["attribute"]] = attr["attribute_value"]
+
+	# Enrich items
+	for item in items:
+		item_code = item["item_code"]
+		stock_uom = item.get("stock_uom")
+
+		# Price: prefer stock_uom, then None/empty UOM (Item Price without UOM)
+		prices = uom_prices_map.get(item_code, {})
+		item["rate"] = flt(prices.get(stock_uom) or prices.get(None) or prices.get("") or 0)
+		item["price_list_rate"] = item["rate"]
+		item["uom"] = stock_uom
+		item["price_uom"] = stock_uom
+		item["conversion_factor"] = 1
+		item["price_list_rate_price_uom"] = item["rate"]
+
+		# Stock: stock items use Bin, bundles use component-based availability
+		item["actual_qty"] = (
+			stock_map.get(item_code, 0)
+			if item.get("is_stock_item")
+			else bundle_availability_map.get(item_code, 0)
+		)
+		item["warehouse"] = warehouse
+
+		# Bundle marker
+		if item_code in bundle_availability_map:
+			item["is_bundle"] = True
+
+		# UOMs
+		all_uoms = uom_map.get(item_code, []) or []
+		item["item_uoms"] = [u for u in all_uoms if u.get("uom") != stock_uom]
+		item["uom_prices"] = prices
+
+		# Variant attributes
+		if item.get("variant_of") and item_code in attributes_map:
+			item["attributes"] = attributes_map[item_code]
+
+
 @frappe.whitelist()
 def get_items_bulk(pos_profile, item_groups=None, start=0, limit=2000, include_variants=0, show_variants_as_items=0):
 	"""
@@ -1540,139 +1674,15 @@ def get_items_bulk(pos_profile, item_groups=None, start=0, limit=2000, include_v
 			conditions.append(f"i.item_group IN ({placeholders})")
 			params.extend(all_groups)
 
-		item_columns = ",\n\t".join([f"i.{col}" for col in ITEM_RESULT_FIELDS])
-		group_by_columns = ", ".join([f"i.{col.split(' as ')[0]}" for col in ITEM_RESULT_FIELDS])
-
-		where_clause = " AND ".join(conditions)
-		query = f"""
-			SELECT {item_columns},
-				GROUP_CONCAT(DISTINCT ib.barcode) as barcode,
-				GROUP_CONCAT(DISTINCT ib.uom) as barcode_uoms
-			FROM `tabItem` i
-			LEFT JOIN `tabItem Barcode` ib ON ib.parent = i.name
-			{extra_joins}
-			WHERE {where_clause}
-			GROUP BY {group_by_columns}
-			ORDER BY i.item_name ASC
-			LIMIT %s OFFSET %s
-		"""
-		all_params = params + [int(limit), int(start)]
-		items = frappe.db.sql(query, tuple(all_params), as_dict=1)
+		items = _select_item_rows(conditions, params, extra_joins, limit=limit, start=start)
 
 		if not items:
 			return []
 
-		# Bulk enrichment (same as get_items)
-		item_codes = [item["item_code"] for item in items]
-		conversion_map = defaultdict(dict)
-		uom_map = {}
-		uom_prices_map = {}
-
-		# UOM conversions
-		if item_codes:
-			conversions = frappe.get_all(
-				"UOM Conversion Detail",
-				filters={"parent": ["in", item_codes]},
-				fields=["parent", "uom", "conversion_factor"],
-			)
-			for row in conversions:
-				uom_map.setdefault(row.parent, []).append(
-					{"uom": row.uom, "conversion_factor": row.conversion_factor}
-				)
-				if row.uom:
-					conversion_map[row.parent][row.uom] = row.conversion_factor
-
-		# Prices
-		price_list = pos_profile_doc.selling_price_list
-		if price_list and item_codes:
-			ItemPrice = DocType("Item Price")
-			prices = (
-				frappe.qb.from_(ItemPrice)
-				.select(ItemPrice.item_code, ItemPrice.uom, ItemPrice.price_list_rate)
-				.where(ItemPrice.price_list == price_list)
-				.where(ItemPrice.item_code.isin(item_codes))
-				.where(ItemPrice.selling == 1)
-				.run(as_dict=True)
-			)
-			for p in prices:
-				uom_prices_map.setdefault(p.item_code, {})[p.uom] = flt(p.price_list_rate)
-
-		# Stock
-		warehouse = pos_profile_doc.warehouse
-		stock_map = {}
-		if warehouse and item_codes:
-			warehouses = [warehouse]
-			if frappe.db.get_value("Warehouse", warehouse, "is_group"):
-				warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
-
-			Bin = DocType("Bin")
-			stock_data = (
-				frappe.qb.from_(Bin)
-				.select(Bin.item_code, fn.Sum(Bin.actual_qty).as_("qty"))
-				.where(Bin.item_code.isin(item_codes))
-				.where(Bin.warehouse.isin(warehouses))
-				.groupby(Bin.item_code)
-				.run(as_dict=True)
-			)
-			stock_map = {s.item_code: flt(s.qty) for s in stock_data}
-
-		# Bundle availability
-		bundle_availability_map = {}
-		if item_codes and warehouse:
-			bundle_availability_map = _calculate_bundle_availability_bulk(
-				item_codes, warehouse
-			)
-
-		# Variant attributes (only when variants are included)
-		attributes_map = {}
-		if not exclude_variants:
-			variant_codes = [item["item_code"] for item in items if item.get("variant_of")]
-			if variant_codes:
-				attributes = frappe.get_all(
-					"Item Variant Attribute",
-					filters={"parent": ["in", variant_codes]},
-					fields=["parent", "attribute", "attribute_value"],
-				)
-				for attr in attributes:
-					attributes_map.setdefault(attr["parent"], {})[attr["attribute"]] = attr["attribute_value"]
-
-		# Enrich items
-		for item in items:
-			item_code = item["item_code"]
-			stock_uom = item.get("stock_uom")
-
-			# Price: prefer stock_uom, then None/empty UOM (Item Price without UOM)
-			prices = uom_prices_map.get(item_code, {})
-			item["rate"] = flt(prices.get(stock_uom) or prices.get(None) or prices.get("") or 0)
-			item["price_list_rate"] = item["rate"]
-			item["uom"] = stock_uom
-			item["price_uom"] = stock_uom
-			item["conversion_factor"] = 1
-			item["price_list_rate_price_uom"] = item["rate"]
-
-			# Stock: stock items use Bin, bundles use component-based availability
-			item["actual_qty"] = (
-				stock_map.get(item_code, 0)
-				if item.get("is_stock_item")
-				else bundle_availability_map.get(item_code, 0)
-			)
-			item["warehouse"] = warehouse
-
-			# Bundle marker
-			if item_code in bundle_availability_map:
-				item["is_bundle"] = True
-
-			# UOMs
-			all_uoms = uom_map.get(item_code, []) or []
-			item["item_uoms"] = [u for u in all_uoms if u.get("uom") != stock_uom]
-			item["uom_prices"] = prices
-
-			# Variant attributes
-			if item.get("variant_of") and item_code in attributes_map:
-				item["attributes"] = attributes_map[item_code]
+		_enrich_items_bulk(items, pos_profile_doc, exclude_variants)
 
 		# Post-filter: hide unavailable bundles
-		if hide_unavailable and bundle_availability_map:
+		if hide_unavailable:
 			items = [
 				item for item in items
 				if not item.get("is_bundle") or item.get("actual_qty", 0) > 0

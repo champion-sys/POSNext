@@ -381,6 +381,7 @@ class OfflineWorkerClient {
 			case "REMOVE_ITEMS_BY_GROUPS":
 			case "CACHE_OFFERS":
 			case "CLEAR_OFFERS_CACHE":
+			case "APPLY_PULL_PAGE":
 				// For write operations, throw error so caller knows to handle differently
 				throw new Error(`Worker unavailable: Cannot perform ${type}`)
 			default:
@@ -506,6 +507,10 @@ class OfflineWorkerClient {
 
 	async removeItemsByGroups(itemGroups) {
 		return this.sendMessage("REMOVE_ITEMS_BY_GROUPS", { itemGroups })
+	}
+
+	async applyPullPage(entity, page, posProfile) {
+		return this.sendMessage("APPLY_PULL_PAGE", { entity, page, posProfile })
 	}
 
 	// ========================================================================

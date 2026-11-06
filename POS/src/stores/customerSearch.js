@@ -286,6 +286,15 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 		}
 	}
 
+	/** Show what the pull engine stored */
+	async function reloadFromCache() {
+		if (!customersLoaded.value) return
+
+		allCustomers.value = (await offlineWorker.searchCachedCustomers("", 0)) || []
+		searchIndex.value.clear()
+		resultCache.value.clear()
+	}
+
 	async function addCustomerToCache(customer) {
 		try {
 			// Add to local array (at the beginning for visibility)
@@ -417,6 +426,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 
 		// Actions
 		loadAllCustomers,
+		reloadFromCache,
 		addCustomerToCache,
 		setSearchTerm,
 		clearSearch,

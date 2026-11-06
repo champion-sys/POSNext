@@ -22,6 +22,7 @@
 import Dexie from 'dexie'
 import { logger } from '../utils/logger'
 import { generateOfflineId } from '../utils/offline/uuid'
+import { pullStateKey } from '../core/sync/pullEngine'
 
 const log = logger.create('OfflineWorker')
 
@@ -490,6 +491,9 @@ async function updateLocalStock(items) {
  */
 function shouldShowItem(item) {
 	if (item.disabled) return false
+	if (item.hide_when_unavailable && !(item.actual_qty > 0) && (item.is_bundle || (item.is_stock_item && !item.has_variants))) {
+		return false
+	}
 	if (showVariantsAsItems) return !item.has_variants
 	return !item.variant_of
 }
@@ -1003,6 +1007,7 @@ async function clearItemsCache() {
 			await db.table("items").clear()
 			await db.table("item_prices").clear()
 			await db.table("settings").put({ key: "items_last_sync", value: null })
+			await db.table("settings").bulkDelete([pullStateKey("items"), pullStateKey("item_prices")])
 		})
 
 		invalidateCache('items')
@@ -1028,6 +1033,7 @@ async function clearCustomersCache() {
 		await db.transaction('rw', 'customers', 'settings', async () => {
 			await db.table("customers").clear()
 			await db.table("settings").put({ key: "customers_last_sync", value: null })
+			await db.table("settings").delete(pullStateKey("customers"))
 		})
 
 		invalidateCache('customers')
@@ -1468,6 +1474,89 @@ async function updateStockQuantities(stockUpdates) {
 }
 
 // ============================================================================
+// PULL ENGINE STORE
+// ============================================================================
+
+/**
+ * Remove items by code, along with their cached prices
+ * @param {string[]} itemCodes - Item codes to remove
+ */
+async function deleteItems(itemCodes) {
+	if (!itemCodes || itemCodes.length === 0) return
+
+	const db = await initDB()
+	await db.transaction('rw', 'items', 'item_prices', async () => {
+		await db.table("items").bulkDelete(itemCodes)
+		await db.table("item_prices").where("item_code").anyOf(itemCodes).delete()
+	})
+}
+
+/**
+ * Store one page from the pull engine. Throws on failure, so its cursor is not saved.
+ *
+ * @param {Object} payload
+ * @param {string} payload.entity - Entity the page belongs to
+ * @param {{rows: Array, deleted: Array}} payload.page - The page from the server
+ * @param {string} payload.posProfile - POS Profile the page was pulled for
+ */
+async function applyPullPage({ entity, page, posProfile }) {
+	const { rows, deleted } = page
+	const db = await initDB()
+
+	switch (entity) {
+		case "items":
+		case "item_prices":
+			await cacheItemsFromServer(rows)
+			await deleteItems(deleted)
+			invalidateCache('search:')
+			invalidateCache('group:')
+			invalidateCache('brand:')
+			break
+
+		case "customers":
+			await cacheCustomersFromServer(rows)
+			await deleteCustomers(deleted)
+			break
+
+		case "taxes":
+			await db.table("settings").put({ key: `tax_rules_${posProfile}`, value: rows })
+			break
+
+		case "payment_methods":
+			await db.transaction('rw', 'payment_methods', async () => {
+				await db.table("payment_methods").where("pos_profile").equals(posProfile).delete()
+				await db.table("payment_methods").bulkPut(rows.map(method => ({ ...method, pos_profile: posProfile })))
+			})
+			break
+
+		case "pos_profile": {
+			const [data] = rows
+			await db.table("settings").put({
+				key: `pos_profile_data:${posProfile}`,
+				value: {
+					profileItemGroups: data.pos_profile?.item_groups || [],
+					itemGroups: data.item_groups_hierarchy || [],
+				},
+			})
+			break
+		}
+
+		case "offers": {
+			const result = await cacheOffers(rows, posProfile)
+			if (!result.success) {
+				throw new Error(result.error || "Could not cache offers")
+			}
+			break
+		}
+
+		default:
+			throw new Error(`Unknown pull entity: ${entity}`)
+	}
+
+	return { success: true }
+}
+
+// ============================================================================
 // PERIODIC STOCK SYNC - Background stock refresh from server
 // ============================================================================
 
@@ -1849,6 +1938,10 @@ self.onmessage = async (event) => {
 
 			case "CLEAR_OFFERS_CACHE":
 				result = await clearOffersCache(payload.posProfile)
+				break
+
+			case "APPLY_PULL_PAGE":
+				result = await applyPullPage(payload)
 				break
 
 			default:
