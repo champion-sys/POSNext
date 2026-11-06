@@ -740,8 +740,51 @@ def update_invoice(data):
     return save_invoice_draft(data)
 
 
-def save_invoice_draft(data, acting_user=None):
-    """Create or update an invoice draft on behalf of acting_user."""
+def _apply_coupon(invoice_doc, coupon_code, queued):
+    """Check an invoice's coupon and note it on the invoice.
+
+    Args:
+        invoice_doc: The invoice
+        coupon_code: Code of a POS Coupon
+        queued: Whether the sale has already happened offline
+
+    Returns:
+        str | None: How a queued sale went over the coupon's limit
+    """
+    from pos_next.pos_next.doctype.pos_coupon.pos_coupon import check_coupon_code
+
+    coupon_result = check_coupon_code(
+        coupon_code,
+        customer=invoice_doc.customer,
+        company=invoice_doc.company,
+        queued_on=invoice_doc.get("posting_date") if queued else None,
+    )
+
+    if not coupon_result or not coupon_result.get("valid"):
+        error_msg = coupon_result.get("msg", "Invalid coupon code") if coupon_result else "Invalid coupon code"
+        frappe.throw(_(error_msg))
+
+    if not queued:
+        # Store coupon code on invoice for tracking
+        invoice_doc.coupon_code = coupon_code
+        return None
+
+    # ERPNext's own field links to its Coupon Code doctype, which would refuse this code
+    # or apply limits of its own. The customer already has the discount either way.
+    invoice_doc.coupon_code = None
+    invoice_doc.pos_coupon_code = coupon_code
+    return coupon_result.get("overrun")
+
+
+def save_invoice_draft(data, acting_user=None, queued=False):
+    """Create or update an invoice draft on behalf of acting_user.
+
+    Args:
+        data: Invoice payload
+        acting_user: The cashier, when it differs from the session user
+        queued: The sale already happened offline. Only the sync queue passes this. It is
+            never read from the payload, so an online checkout cannot claim it.
+    """
     try:
         data = json.loads(data) if isinstance(data, str) else data
 
@@ -1015,23 +1058,11 @@ def save_invoice_draft(data, acting_user=None):
 
         # Validate and track POS Coupon if coupon_code is provided
         coupon_code = data.get("coupon_code")
+        coupon_overrun = None
         if coupon_code:
             # Validate POS Coupon exists and is valid
             if frappe.db.table_exists("POS Coupon"):
-                from pos_next.pos_next.doctype.pos_coupon.pos_coupon import check_coupon_code
-
-                coupon_result = check_coupon_code(
-                    coupon_code,
-                    customer=invoice_doc.customer,
-                    company=invoice_doc.company
-                )
-
-                if not coupon_result or not coupon_result.get("valid"):
-                    error_msg = coupon_result.get("msg", "Invalid coupon code") if coupon_result else "Invalid coupon code"
-                    frappe.throw(_(error_msg))
-
-                # Store coupon code on invoice for tracking
-                invoice_doc.coupon_code = coupon_code
+                coupon_overrun = _apply_coupon(invoice_doc, coupon_code, queued)
 
         # Validate stock availability before saving draft
         # is_stock_item may not be set on unsaved doc items (frontend doesn't send it),
@@ -1059,7 +1090,7 @@ def save_invoice_draft(data, acting_user=None):
         invoice_doc.docstatus = 0
         invoice_doc.save()
 
-        return invoice_doc.as_dict()
+        return {**invoice_doc.as_dict(), "coupon_overrun": coupon_overrun}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Update Invoice Error")
         raise

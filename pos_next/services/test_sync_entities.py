@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import frappe
 
 from pos_next.api import partial_payments
+from pos_next.api import invoices
 from pos_next.api.invoices import save_invoice_draft
 from pos_next.services import sync_entities, sync_inbox
 from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
@@ -470,6 +471,89 @@ class TestFixes(NoSiteTestCase):
 
         self.assertEqual(row.status, "Resolved")
         self.assertEqual(row.sales_invoice, "CUST-0001")
+
+
+class TestQueuedCoupons(NoSiteTestCase):
+    def _apply(self, queued, result):
+        invoice = frappe._dict(customer="Customer A", company="ACME", posting_date="2026-11-05", coupon_code="SAVE10")
+        with patch(
+            "pos_next.pos_next.doctype.pos_coupon.pos_coupon.check_coupon_code", return_value=result
+        ) as self.check:
+            overrun = invoices._apply_coupon(invoice, "SAVE10", queued)
+        return invoice, overrun
+
+    def test_the_online_path_asks_for_no_exception(self):
+        invoice, overrun = self._apply(False, {"valid": True, "overrun": None})
+
+        self.assertIsNone(self.check.call_args.kwargs["queued_on"])
+        self.assertEqual(invoice.coupon_code, "SAVE10")
+        self.assertIsNone(overrun)
+
+    def test_the_online_path_still_refuses(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._apply(False, {"valid": False, "msg": "Fully redeemed"})
+
+    def test_a_queued_sale_is_judged_on_its_own_date(self):
+        self._apply(True, {"valid": True})
+        self.assertEqual(self.check.call_args.kwargs["queued_on"], "2026-11-05")
+
+    def test_a_queued_sale_stays_out_of_erpnexts_coupon_checks(self):
+        invoice, overrun = self._apply(True, {"valid": True, "overrun": "Already used 5 times of 5 allowed"})
+
+        self.assertIsNone(invoice.coupon_code)
+        self.assertEqual(invoice.pos_coupon_code, "SAVE10")
+        self.assertEqual(overrun, "Already used 5 times of 5 allowed")
+
+    def test_a_refusal_other_than_the_limit_still_stops_a_queued_sale(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._apply(True, {"valid": False, "msg": "Disabled"})
+
+    @patch("pos_next.api.invoices.save_invoice_draft")
+    def test_a_client_cannot_claim_to_be_queued_through_update_invoice(self, save_draft):
+        invoices.update_invoice({"queued": 1})
+        save_draft.assert_called_once_with({"queued": 1})
+
+    @patch("pos_next.services.sync_inbox.record_direct_sync")
+    @patch("pos_next.services.sync_inbox.get_duplicate_response", return_value=None)
+    @patch("pos_next.services.invoice_processor.process_invoice", return_value={"name": "SINV-1"})
+    @patch("pos_next.api.invoices._assert_invoice_write_access")
+    def test_a_client_cannot_claim_to_be_queued_through_submit_invoice(
+        self, _access, process_invoice, _duplicate, _record
+    ):
+        invoice = {"doctype": "Sales Invoice", "pos_profile": "Main", "queued": 1, "offline_id": "pos_offline_x"}
+
+        invoices.submit_invoice(invoice=invoice, data={"queued": 1})
+
+        self.assertNotIn("queued", process_invoice.call_args.kwargs)
+
+    @patch("pos_next.api.invoices._assert_invoice_write_access")
+    @patch("pos_next.services.invoice_processor.process_invoice")
+    def test_the_inbox_is_what_says_a_sale_is_queued(self, process_invoice, _access):
+        process_invoice.return_value = {"name": "SINV-1", "grand_total": 10}
+
+        sync_inbox._create_invoice(_row(payload=json.dumps({"pos_profile": "Main"})))
+
+        self.assertTrue(process_invoice.call_args.kwargs["queued"])
+
+    def test_the_overrun_stays_on_the_record(self):
+        result = {"name": "SINV-1", "doctype": "Sales Invoice", "coupon_overrun": "Already used 5 times of 5 allowed"}
+        with patch.object(sync_inbox, "_log_attempt") as log_attempt, patch.object(sync_inbox, "_notify_uploader"):
+            sync_inbox._mark_synced("row-1", result, "synced")
+
+        values = frappe.local.db.set_value.call_args.args[2]
+        self.assertEqual(values["status"], "Synced")
+        self.assertEqual(values["coupon_overrun"], "Already used 5 times of 5 allowed")
+        log_attempt.assert_any_call("row-1", "coupon overrun", message="Already used 5 times of 5 allowed")
+
+    def test_a_manager_can_keep_the_sale_without_the_coupon(self):
+        row = Mock(status=sync_inbox.REVIEW, entity="invoice", payload='{"coupon_code": "SAVE10", "discount_amount": 5}')
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
+            patch.object(sync_inbox, "_log_attempt"),
+        ):
+            sync_inbox.apply_fix("row-1", "remove_coupon", {})
+
+        self.assertEqual(json.loads(row.payload), {"discount_amount": 5})
 
 
 class TestSaveInvoiceDraft(NoSiteTestCase):

@@ -109,6 +109,7 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
             "payload": serialized,
             "original_payload": serialized,
             "payload_hash": payload_hash,
+            "coupon_code": payload.get("coupon_code"),
             "seq": cint(item.get("seq")),
             "client_version": client_version,
             "protocol_version": cint(protocol_version),
@@ -242,7 +243,7 @@ def _create_invoice(row):
 
     data = {"offline_id": row.offline_id}
     result = process_invoice(
-        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier
+        payload, data, doctype, pos_profile, offline_id=row.offline_id, acting_user=row.cashier, queued=True
     )
     _assert_totals_match(row, result, pos_profile)
     return {**result, "doctype": doctype, "customer": payload.get("customer")}
@@ -271,7 +272,8 @@ def _mark_synced(name, result, outcome, started=None):
 
     Args:
         name: Record name
-        result: The document: name, doctype, and optionally grand_total, customer and note
+        result: The document: name, doctype, and optionally grand_total, customer, note
+            and coupon_overrun
         outcome: For the attempt log
         started: When the attempt began
     """
@@ -291,9 +293,13 @@ def _mark_synced(name, result, outcome, started=None):
     }
     if result.get("customer"):
         values["customer"] = result["customer"]
+    if result.get("coupon_overrun"):
+        values["coupon_overrun"] = result["coupon_overrun"]
 
     frappe.db.set_value(DOCTYPE, name, values)
     _log_attempt(name, outcome, message=result.get("note"), started=started)
+    if result.get("coupon_overrun"):
+        _log_attempt(name, "coupon overrun", message=result["coupon_overrun"])
     _notify_uploader(name)
     return frappe.db.get_value(DOCTYPE, name, "*", as_dict=True)
 
@@ -728,6 +734,11 @@ def _items_matching(payload, item_code):
     ]
 
 
+def _fix_remove_coupon(payload, _values):
+    """The sale stays as it was paid. Only the coupon's usage is no longer counted."""
+    payload.pop("coupon_code", None)
+
+
 def _fix_payment_amount(payload, values):
     for row in payload.get("payments") or []:
         if row.get("mode_of_payment") == values["mode_of_payment"]:
@@ -752,6 +763,7 @@ _FIXES = {
         "batch": _fix_batch,
         "payment_mode": _fix_payment_mode,
         "shift": _fix_shift,
+        "remove_coupon": _fix_remove_coupon,
         "accept_total_difference": None,
     },
     ENTITY_CUSTOMER: {

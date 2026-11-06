@@ -149,11 +149,17 @@ import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { ref, watch } from "vue"
 import { useInvoice } from "@/composables/useInvoice"
+import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useToast } from "@/composables/useToast"
+import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSSyncStore } from "@/stores/posSync"
 
 // Get calculateDiscountAmount helper from composable
 const { calculateDiscountAmount } = useInvoice()
 const { showSuccess, showError, showWarning } = useToast()
+const { isOffline } = useOfflineStatus()
+const settingsStore = usePOSSettingsStore()
+const offlineStore = usePOSSyncStore()
 
 const props = defineProps({
 	modelValue: Boolean,
@@ -252,6 +258,10 @@ watch(
 )
 
 async function loadGiftCards() {
+	if (isOffline.value) {
+		giftCards.value = []
+		return
+	}
 	if (!props.customer || !props.company) return
 	try {
 		await giftCardsResource.reload()
@@ -273,6 +283,50 @@ function getCouponBaseAmount(coupon) {
 	return coupon.apply_on === "Grand Total" ? grandTotal : netTotal
 }
 
+function getOfflineCouponMessage(problem) {
+	switch (problem) {
+		case "disabled":
+			return __("This coupon is disabled")
+		case "limit":
+			return __("This coupon has reached its usage limit")
+		case "not_started":
+			return __("This coupon is not yet valid")
+		case "expired":
+			return __("This coupon has expired")
+		case "customer":
+			return __("This coupon is not valid for this customer")
+		case "one_use":
+			return __("This customer has already used this coupon")
+		default:
+			return __("This coupon cannot be checked offline. Gift cards need a connection.")
+	}
+}
+
+/**
+ * Same answer as the server's validate_coupon, from the copy on this device
+ */
+async function validateOffline() {
+	if (!settingsStore.offlineCouponsEnabled) {
+		return { valid: false, message: __("Coupons are turned off while offline") }
+	}
+
+	const { coupon, problem } = await offlineStore.checkCouponOffline(couponCode.value.trim(), {
+		posProfile: props.posProfile,
+		customer: props.customer,
+		company: props.company,
+	})
+	return problem ? { valid: false, message: getOfflineCouponMessage(problem) } : { valid: true, coupon }
+}
+
+async function validateOnline() {
+	await couponResource.reload()
+	// Frappe wraps response in { message: {...} }
+	const result = couponResource.data?.message || couponResource.data
+
+	// Handle if result is the actual response object
+	return typeof result === 'object' && result.valid !== undefined ? result : couponResource.data
+}
+
 async function applyCoupon() {
 	if (!couponCode.value.trim()) {
 		errorMessage.value = __("Please enter a coupon code")
@@ -283,12 +337,7 @@ async function applyCoupon() {
 	errorMessage.value = ""
 
 	try {
-		await couponResource.reload()
-		// Frappe wraps response in { message: {...} }
-		const result = couponResource.data?.message || couponResource.data
-
-		// Handle if result is the actual response object
-		const validationData = typeof result === 'object' && result.valid !== undefined ? result : couponResource.data
+		const validationData = isOffline.value ? await validateOffline() : await validateOnline()
 
 		if (!validationData || !validationData.valid) {
 			errorMessage.value =

@@ -548,6 +548,54 @@ def get_active_coupons(customer: str, company: str) -> List[Dict]:
 
 
 @frappe.whitelist()
+def get_offline_coupons(pos_profile: str) -> List[Dict]:
+	"""Promotional coupons a device may check while offline.
+
+	Gift cards stay online only: each holds value that can only be spent once.
+	"""
+	from pos_next.api.invoices import _assert_invoice_write_access
+
+	_assert_invoice_write_access("Sales Invoice", pos_profile)
+
+	if not frappe.db.table_exists("POS Coupon"):
+		return []
+
+	if frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "disable_offline_coupons"):
+		return []
+
+	coupons = frappe.get_all(
+		"POS Coupon",
+		filters={
+			"company": frappe.db.get_value("POS Profile", pos_profile, "company"),
+			"coupon_type": "Promotional",
+			"disabled": 0,
+		},
+		fields=[
+			"name",
+			"coupon_name",
+			"coupon_code",
+			"coupon_type",
+			"company",
+			"customer",
+			"discount_type",
+			"discount_percentage",
+			"discount_amount",
+			"min_amount",
+			"max_amount",
+			"apply_on",
+			"valid_from",
+			"valid_upto",
+			"maximum_use",
+			"used",
+			"one_use",
+		],
+	)
+
+	today = getdate()
+	return [coupon for coupon in coupons if not coupon.valid_upto or coupon.valid_upto >= today]
+
+
+@frappe.whitelist()
 def validate_coupon(coupon_code: str, customer: str, company: str) -> Dict:
 	"""Validate a coupon code and return its details"""
 	if not frappe.db.table_exists("POS Coupon"):

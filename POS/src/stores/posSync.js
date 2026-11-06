@@ -26,6 +26,7 @@ import {
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
+import { getSetting, setSetting } from "@/utils/offline/db"
 import {
 	ENTITY_CUSTOMER,
 	ENTITY_PAYMENT,
@@ -33,10 +34,12 @@ import {
 	buildCustomerPayload,
 	buildLocalCustomer,
 	buildPaymentPayload,
+	countQueuedCouponUses,
 	exceedsOutstanding,
+	getCachedCouponProblem,
 	getDependentRows,
 } from "@/utils/offline/entities"
-import { SYNC_PERIODIC, sumQueuedStock } from "@/utils/offline/invoicePayload"
+import { SYNC_PERIODIC, formatLocalPosting, sumQueuedStock } from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
@@ -55,6 +58,8 @@ const SYNC_TICK_MS = 60 * 1000
 const STARTUP_SYNC_DELAY_MS = 5000
 
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
+
+const COUPONS_CACHE_PREFIX = "offline_coupons_"
 
 export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
@@ -387,6 +392,24 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * Check a coupon against the last copy from the server and this device's queue
+	 * @param {string} code
+	 * @param {{posProfile: string, customer: string, company: string}} context
+	 * @returns {Promise<{coupon: Object|undefined, problem: string|null}>}
+	 */
+	async function checkCouponOffline(code, { posProfile, customer, company }) {
+		const coupons = (await getSetting(`${COUPONS_CACHE_PREFIX}${posProfile}`)) || []
+		const coupon = coupons.find((row) => row.coupon_code?.toUpperCase() === code.toUpperCase())
+		const problem = getCachedCouponProblem(coupon, {
+			customer,
+			company,
+			today: formatLocalPosting().posting_date,
+			...countQueuedCouponUses(await getPending(), code, customer),
+		})
+		return { coupon, problem }
+	}
+
+	/**
 	 * Load the list of pending invoices for display
 	 */
 	async function loadPendingInvoices() {
@@ -503,6 +526,15 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 				await cacheData([], customersData.customers || [])
 
 				showSuccess(__("Data is ready for offline use"))
+			}
+
+			try {
+				const coupons = await call("pos_next.api.offers.get_offline_coupons", {
+					pos_profile: currentProfile.name,
+				})
+				await setSetting(`${COUPONS_CACHE_PREFIX}${currentProfile.name}`, coupons || [])
+			} catch (error) {
+				log.error('Failed to load coupons', error)
 			}
 
 			// Preload invoice history and unpaid invoices in parallel for faster startup
@@ -622,6 +654,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		saveCustomerOffline,
 		savePaymentOffline,
 		withQueuedPayments,
+		checkCouponOffline,
 		loadPendingInvoices,
 		updatePendingCount,
 		deleteOfflineInvoice,

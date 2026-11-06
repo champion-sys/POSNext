@@ -4,10 +4,12 @@ import {
 	buildCustomerPayload,
 	buildLocalCustomer,
 	buildPaymentPayload,
+	countQueuedCouponUses,
 	ENTITY_CUSTOMER,
 	ENTITY_INVOICE,
 	ENTITY_PAYMENT,
 	exceedsOutstanding,
+	getCachedCouponProblem,
 	getDependentRows,
 	getEntity,
 	getInvoiceDependencies,
@@ -164,6 +166,62 @@ describe("payments", () => {
 	})
 })
 
+describe("cached coupons", () => {
+	const coupon = {
+		coupon_code: "SAVE10",
+		coupon_type: "Promotional",
+		company: "ACME",
+		maximum_use: 5,
+		used: 2,
+	}
+	const context = { customer: "CUST-0001", company: "ACME", today: "2026-11-06" }
+
+	it("accepts a coupon within its limits", () => {
+		expect(getCachedCouponProblem(coupon, context)).toBeNull()
+	})
+
+	it("refuses what the cache does not hold, like a gift card", () => {
+		expect(getCachedCouponProblem(undefined, context)).toBe("not_found")
+	})
+
+	it("refuses a coupon of another company", () => {
+		expect(getCachedCouponProblem({ ...coupon, company: "Other" }, context)).toBe("not_found")
+	})
+
+	it("counts this device's queue against the limit", () => {
+		expect(getCachedCouponProblem(coupon, { ...context, total: 2 })).toBeNull()
+		expect(getCachedCouponProblem(coupon, { ...context, total: 3 })).toBe("limit")
+	})
+
+	it("treats no limit as no limit", () => {
+		expect(getCachedCouponProblem({ ...coupon, maximum_use: 0, used: 900 }, context)).toBeNull()
+	})
+
+	it("checks the dates", () => {
+		expect(getCachedCouponProblem({ ...coupon, valid_from: "2026-11-07" }, context)).toBe("not_started")
+		expect(getCachedCouponProblem({ ...coupon, valid_upto: "2026-11-05" }, context)).toBe("expired")
+		expect(getCachedCouponProblem({ ...coupon, valid_upto: "2026-11-06" }, context)).toBeNull()
+	})
+
+	it("checks who the coupon is for", () => {
+		expect(getCachedCouponProblem({ ...coupon, customer: "CUST-0002" }, context)).toBe("customer")
+	})
+
+	it("stops a customer using a one-use coupon twice on this device", () => {
+		expect(getCachedCouponProblem({ ...coupon, one_use: 1 }, { ...context, forCustomer: 1 })).toBe("one_use")
+	})
+
+	it("counts only sales with that code, in any case", () => {
+		const rows = [
+			{ entity: ENTITY_INVOICE, data: { coupon_code: "save10", customer: "CUST-0001" } },
+			{ data: { coupon_code: "SAVE10", customer: "CUST-0002" } },
+			{ data: { coupon_code: "OTHER", customer: "CUST-0001" } },
+			{ entity: ENTITY_PAYMENT, data: { coupon_code: "SAVE10" } },
+		]
+		expect(countQueuedCouponUses(rows, "SAVE10", "CUST-0001")).toEqual({ total: 2, forCustomer: 1 })
+	})
+})
+
 describe("buildSyncEnvelope", () => {
 	it("sends what a sale depends on", () => {
 		const row = { id: 4, entity: ENTITY_INVOICE, depends_on: [LOCAL_CUSTOMER] }
@@ -175,6 +233,12 @@ describe("buildSyncEnvelope", () => {
 			entity: ENTITY_INVOICE,
 			depends_on: [],
 		})
+	})
+})
+
+describe("shouldQueueCheckout with a gift card", () => {
+	it("goes straight to the server, because it can only be spent once", () => {
+		expect(shouldQueueCheckout({ mode: "After Payment", doctype: "Sales Invoice", usesGiftCard: true })).toBe(false)
 	})
 })
 

@@ -156,6 +156,18 @@ function addReviewActions(frm) {
 		);
 	}
 
+	if (entity === "invoice" && frm.doc.coupon_code) {
+		frm.add_custom_button(
+			__("Keep the Sale Without the Coupon"),
+			() => {
+				frappe.confirm(__("The invoice keeps its discount, but this coupon's usage will not count it."), () =>
+					callSyncAction(frm, "apply_fix", { fix: "remove_coupon" }, __("Saved. Reprocess the record to apply it.")),
+				);
+			},
+			__("Correct"),
+		);
+	}
+
 	frm.add_custom_button(
 		__("Link Existing Document"),
 		() => {
