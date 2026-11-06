@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { derivePinHash } from "../offlinePin"
+import { androidSecretStore } from "../secrets"
 
 const HOUR = 60 * 60 * 1000
 const START = Date.UTC(2026, 10, 6, 12)
@@ -263,6 +264,84 @@ describe("enrollDevice", () => {
 		const id = auth.getDeviceId()
 		await enroll()
 		expect(auth.getDeviceId()).toBe(id)
+	})
+})
+
+// What capacitor-secure-storage-plugin does on a phone without the Keystore key: it makes a
+// new key pair, fails to decrypt what was restored, and reports each item as missing
+function pluginWithNewKey() {
+	const readable = new Map()
+	return {
+		get: async ({ key }) => {
+			if (!readable.has(key)) throw new Error("Item with given key does not exist")
+			return { value: readable.get(key) }
+		},
+		set: async ({ key, value }) => {
+			readable.set(key, value)
+			return { value: true }
+		},
+		remove: async ({ key }) => {
+			if (!readable.delete(key)) throw new Error("Item with given key does not exist")
+			return { value: true }
+		},
+	}
+}
+
+describe("data restored onto another phone", () => {
+	beforeEach(async () => {
+		await enroll()
+		await signIn()
+
+		// localStorage is left as it was: the WebView's files come back with the rest
+		store = androidSecretStore(pluginWithNewKey())
+		await restart()
+	})
+
+	it("needs a new enrollment, though the server address came back", () => {
+		expect(runtime.getServerUrl()).toBe(SERVER)
+		expect(auth.isEnrolled()).toBe(false)
+	})
+
+	it("goes to enrollment even with a cashier's identity restored", () => {
+		const state = { enrolled: auth.isEnrolled(), signedIn: true }
+
+		expect(auth.nativeRedirect("POSSale", state)).toBe(auth.ENROLL_ROUTE)
+	})
+
+	it("offers no offline sign-in", () => {
+		expect(auth.knownCashiers()).toEqual([])
+	})
+
+	it("sends no old grant", () => {
+		expect(runtime.getCashierGrant()).toBeNull()
+	})
+
+	it("can enroll with a new code", async () => {
+		await enroll()
+
+		expect(auth.isEnrolled()).toBe(true)
+	})
+})
+
+describe("a keystore that fails outright", () => {
+	beforeEach(async () => {
+		await enroll()
+
+		const failed = new Error("Keystore was tampered with")
+		store = androidSecretStore({ get: () => Promise.reject(failed) })
+		vi.resetModules()
+		auth = await import("../auth")
+		runtime = await import("../runtime")
+	})
+
+	it("is reported, so it does not pass for a device that was never enrolled", async () => {
+		await expect(auth.loadCredentials(store)).rejects.toThrow("Keystore")
+	})
+
+	it("leaves the app able to start, on the enrollment page", async () => {
+		await auth.loadCredentials(store).catch(() => {})
+
+		expect(auth.isEnrolled()).toBe(false)
 	})
 })
 
