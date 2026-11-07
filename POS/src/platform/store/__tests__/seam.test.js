@@ -97,6 +97,13 @@ describe("when the database fails", () => {
 		expect(await store.getSetting("key", "fallback")).toBe("fallback")
 	})
 
+	it("never pretends a broken queue is an empty one to an export", async () => {
+		const store = failing()
+
+		expect(await store.listUnsyncedInvoices()).toEqual([])
+		await expect(store.listUnconfirmedRows()).rejects.toThrow("cannot open")
+	})
+
 	it("never pretends a sale was saved", async () => {
 		await expect(failing().saveOfflineInvoice({ items: [{}] })).rejects.toThrow("cannot open")
 	})

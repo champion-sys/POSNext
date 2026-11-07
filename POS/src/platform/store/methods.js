@@ -82,6 +82,7 @@ export const DIRECT_METHODS = [
 	"requestPersistentStorage",
 
 	"listUnsyncedInvoices",
+	"listUnconfirmedRows",
 	"getQueuedInvoice",
 	"updateQueuedInvoice",
 	"resendQueuedInvoice",

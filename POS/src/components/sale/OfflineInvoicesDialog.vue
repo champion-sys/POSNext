@@ -36,6 +36,11 @@
 					</Button>
 				</div>
 
+				<!-- Settings needs a role and the server's boot data, which a device cut off lacks -->
+				<div v-if="isOffline && invoices.length > 0" class="p-3 rounded-lg border border-gray-200">
+					<QueueExport />
+				</div>
+
 				<!-- Empty State -->
 				<p v-if="invoices.length === 0" class="py-6 text-center text-gray-600">
 					{{ __('Nothing is waiting on this device') }}
@@ -309,6 +314,7 @@
 
 <script setup>
 import SyncStateBadge from "@/components/sale/SyncStateBadge.vue"
+import QueueExport from "@/components/settings/QueueExport.vue"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
 import { Button, Dialog } from "frappe-ui"
 import { computed, ref } from "vue"

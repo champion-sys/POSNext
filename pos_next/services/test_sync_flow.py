@@ -47,6 +47,8 @@ class FakeInbox:
                 operator, operand = expected
                 if operator == "in" and value not in operand:
                     return False
+                if operator == "!=" and value == operand:
+                    return False
                 if operator == "not in" and value in operand:
                     return False
                 if operator == "like" and operand.strip("%") not in (value or ""):

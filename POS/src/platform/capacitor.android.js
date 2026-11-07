@@ -10,7 +10,9 @@ import { CapacitorSQLite, SQLiteConnection } from "@capacitor-community/sqlite"
 import { App } from "@capacitor/app"
 import { registerPlugin } from "@capacitor/core"
 import { Dialog } from "@capacitor/dialog"
+import { Filesystem } from "@capacitor/filesystem"
+import { Share } from "@capacitor/share"
 
-export { App, BleClient, CapacitorSQLite, Dialog, SQLiteConnection }
+export { App, BleClient, CapacitorSQLite, Dialog, Filesystem, SQLiteConnection, Share }
 export const ClassicPrinter = registerPlugin("ClassicPrinter")
 export const TcpPrinter = registerPlugin("TcpPrinter")

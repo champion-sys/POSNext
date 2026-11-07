@@ -1405,6 +1405,128 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 		})
 	})
 
+	describe("exporting the queue", () => {
+		let exportQueue
+		let syncOfflineInvoices
+		let saveQueueFile
+
+		beforeEach(async () => {
+			saveQueueFile = vi.fn(async () => true)
+			vi.doMock("@/platform/queueFile", () => ({ saveQueueFile }))
+			;({ exportQueue } = await import("@/utils/offline/queueFile"))
+			;({ syncOfflineInvoices } = await import("@/utils/offline/sync"))
+		})
+
+		afterEach(() => vi.doUnmock("@/platform/queueFile"))
+
+		async function exported() {
+			await exportQueue()
+			return JSON.parse(saveQueueFile.mock.calls.at(-1)[1])
+		}
+
+		const idsIn = (file) => file.rows.map((row) => row.offline_id)
+
+		it("holds what is waiting, and what the server took but has not confirmed", async () => {
+			const pending = await store.saveOfflineInvoice(invoice())
+			const received = await store.saveOfflineInvoice(invoice())
+			const review = await store.saveOfflineInvoice(invoice())
+			await store.updateQueuedInvoice(received.id, { server_status: "received" })
+			await store.updateQueuedInvoice(review.id, { server_status: "needs_review", sync_failed: true })
+
+			expect(idsIn(await exported())).toEqual([pending.offline_id, received.offline_id, review.offline_id])
+		})
+
+		it("holds records that are not sales, in queue order", async () => {
+			const customer = await store.saveQueueEntity(ENTITY_CUSTOMER, { customer_name: "A" })
+			const sale = await store.saveOfflineInvoice(invoice({ customer: customer.offline_id }))
+
+			const file = await exported()
+
+			expect(idsIn(file)).toEqual([customer.offline_id, sale.offline_id])
+			expect(file.rows[0].entity).toBe(ENTITY_CUSTOMER)
+			expect(file.rows[1].depends_on).toEqual([customer.offline_id])
+			expect(file.rows[1].seq).toBeGreaterThan(file.rows[0].seq)
+		})
+
+		it("leaves out what the server finished", async () => {
+			const synced = await store.saveOfflineInvoice(invoice())
+			const voided = await store.saveOfflineInvoice(invoice())
+			const waiting = await store.saveOfflineInvoice(invoice())
+			await store.updateQueuedInvoice(synced.id, { synced: true, server_status: "synced" })
+			await store.updateQueuedInvoice(voided.id, { synced: true, server_status: "voided" })
+
+			expect(idsIn(await exported())).toEqual([waiting.offline_id])
+		})
+
+		it("leaves out a sale an edit replaced, and holds the edit", async () => {
+			const original = await store.saveOfflineInvoice(invoice())
+			const edit = await store.saveOfflineInvoice(invoice({ edited_from: original.offline_id }), {
+				supersedesId: original.id,
+			})
+
+			const file = await exported()
+
+			expect(idsIn(file)).toEqual([edit.offline_id])
+			expect(file.rows[0].payload.edited_from).toBe(original.offline_id)
+		})
+
+		it("holds exactly what a push sends, so the server sees one sale", async () => {
+			const sale = await store.saveOfflineInvoice(invoice({ cashier: "a@example.com", pos_profile: "Main" }))
+			const customer = await store.saveQueueEntity(ENTITY_CUSTOMER, { customer_name: "A", pos_profile: "Main" })
+			const file = await exported()
+
+			callServer.mockImplementation(async (method) =>
+				method.endsWith("push")
+					? { results: [sale, customer].map(({ offline_id }) => ({ offline_id, status: "received" })) }
+					: [],
+			)
+			await syncOfflineInvoices()
+
+			const [, params] = callServer.mock.calls.find(([method]) => method.endsWith("push"))
+			expect(file.rows).toEqual(JSON.parse(JSON.stringify(params.items)))
+			expect(file.device_id).toBe(params.device_id)
+			expect(file.protocol_version).toBe(params.protocol_version)
+		})
+
+		it("keeps a void request on its row, so the file cannot post that sale", async () => {
+			const sale = await store.saveOfflineInvoice(invoice())
+			await store.requestVoid(sale.id, "Wrong sale")
+
+			const file = await exported()
+
+			expect(file.rows[0]).toMatchObject({ offline_id: sale.offline_id, void_reason: "Wrong sale" })
+		})
+
+		it("changes nothing on the device", async () => {
+			const sale = await store.saveOfflineInvoice(invoice())
+			await store.updateQueuedInvoice(sale.id, { retry_count: 2, error: "x", next_attempt_at: 5 })
+			const before = await store.getQueueRows()
+
+			await exportQueue()
+
+			expect(await store.getQueueRows()).toEqual(before)
+			expect(await store.getOfflineInvoiceCount()).toBe(1)
+		})
+
+		it("leaves the row to be sent as usual", async () => {
+			const { offline_id } = await store.saveOfflineInvoice(invoice())
+			await exportQueue()
+			callServer.mockImplementation(async (method) =>
+				method.endsWith("push")
+					? { results: [{ offline_id, status: "received" }] }
+					: [{ offline_id, status: "synced", invoice: "SINV-1" }],
+			)
+
+			expect((await syncOfflineInvoices()).success).toBe(1)
+			expect(await store.getOfflineInvoiceCount()).toBe(0)
+		})
+
+		it("writes no file with nothing waiting", async () => {
+			expect(await exportQueue()).toEqual({ count: 0, saved: false })
+			expect(saveQueueFile).not.toHaveBeenCalled()
+		})
+	})
+
 	describe("syncing through utils/offline/sync", () => {
 		let syncOfflineInvoices
 

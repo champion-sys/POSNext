@@ -22,6 +22,12 @@ function listUnsyncedInvoices() {
 	return db.invoice_queue.filter((inv) => !inv.synced && !inv.superseded).toArray()
 }
 
+/**
+ * What an export takes. It has its own name because the queue's other reads answer with an
+ * empty list when they fail, and an empty file would say a broken device had nothing to save.
+ */
+const listUnconfirmedRows = listUnsyncedInvoices
+
 function getQueuedInvoice(offlineId) {
 	return db.invoice_queue.where("offline_id").equals(offlineId).first()
 }
@@ -236,6 +242,7 @@ export const dexieStore = {
 	clearCachedData: (...args) => clearCachedData(...args),
 	requestPersistentStorage,
 	listUnsyncedInvoices,
+	listUnconfirmedRows,
 	getQueuedInvoice,
 	updateQueuedInvoice,
 	resendQueuedInvoice,

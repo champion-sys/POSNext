@@ -25,6 +25,8 @@
 		"@capacitor/app": "8.1.2",
 		"@capacitor/core": "8.6.0",
 		"@capacitor/dialog": "8.0.1",
+		"@capacitor/filesystem": "8.1.5",
+		"@capacitor/share": "8.0.3",
 		"@pinia/testing": "^1.0.3",
 		"@vue/test-utils": "^2.4.6",
 		"browserslist": "^4.28.1",

@@ -29,13 +29,14 @@ const SYNC_CONFIG = {
 	MAX_RETRY_COUNT: 3,
 	CLEANUP_AGE_DAYS: 7,
 	PING_TIMEOUT_MS: 3000,
-	PROTOCOL_VERSION: 1,
 	BATCH_SIZE: 20,
 	STATUS_POLLS: 3,
 	STATUS_POLL_DELAY_MS: 2000,
 	// get_status in pos_next/api/sync.py ignores ids past this many
 	STATUS_ID_LIMIT: 200,
 }
+
+export const SYNC_PROTOCOL_VERSION = 1
 
 const DEVICE_ID_KEY = "pos_next_device_id"
 
@@ -209,7 +210,7 @@ const normalizeInvoiceForSync = (invoiceData, offlineId, queuedAt) => ({
  * A stable id for this browser, until device enrollment replaces it.
  * @returns {string}
  */
-const getDeviceId = () => {
+export const getDeviceId = () => {
 	let deviceId = localStorage.getItem(DEVICE_ID_KEY)
 	if (!deviceId) {
 		deviceId = generateUUID()
@@ -295,25 +296,34 @@ const countEnding = (result, row, status, message) => {
 }
 
 /**
+ * What the server is sent for a queue row. A queue file holds the same, because the server
+ * tells a sale sent twice from a changed one by comparing hashes of this payload.
+ * @param {Object} row - Queue row
+ * @returns {Object} Envelope
+ */
+export const buildPushItem = (row) => {
+	const offlineId = row.offline_id || row.data?.offline_id
+	const payload = getEntity(row) === ENTITY_INVOICE
+		? normalizeInvoiceForSync(row.data, offlineId, row.timestamp)
+		: { ...row.data, offline_id: offlineId }
+	return buildSyncEnvelope(row, payload)
+}
+
+/** @returns {string|null} This build's version */
+export const getAppVersion = () => (typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : null)
+
+/**
  * Hand a batch of sales to the server. Once stored there, a sale's fate is the
  * server's job: this device only follows it.
  * @param {Array} rows - Queue rows
  * @returns {Promise<Map<string, Object>>} Results by offline_id
  */
 const pushBatch = async (rows) => {
-	const items = rows.map((row) => {
-		const offlineId = row.offline_id || row.data?.offline_id
-		const payload = getEntity(row) === ENTITY_INVOICE
-			? normalizeInvoiceForSync(row.data, offlineId, row.timestamp)
-			: { ...row.data, offline_id: offlineId }
-		return buildSyncEnvelope(row, payload)
-	})
-
 	const response = await call("pos_next.api.sync.push", {
-		items,
+		items: rows.map(buildPushItem),
 		device_id: getDeviceId(),
-		client_version: typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : null,
-		protocol_version: SYNC_CONFIG.PROTOCOL_VERSION,
+		client_version: getAppVersion(),
+		protocol_version: SYNC_PROTOCOL_VERSION,
 		device_time: Date.now(),
 	})
 

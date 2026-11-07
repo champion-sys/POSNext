@@ -144,6 +144,11 @@
 						</button>
 					</div>
 				</form>
+
+				<!-- Past the offline limit nobody reaches the POS, so this is the only way out -->
+				<div v-if="canExportQueue" class="mt-6 pt-6 border-t border-gray-200">
+					<QueueExport />
+				</div>
 			</div>
 		</div>
 	</div>
@@ -154,6 +159,7 @@ import { FeatherIcon } from "frappe-ui"
 import { computed, onMounted, reactive, ref } from "vue"
 import { useRouter } from "vue-router"
 import SignInError from "@/components/common/SignInError.vue"
+import QueueExport from "@/components/settings/QueueExport.vue"
 import { session, sessionUser } from "@/data/session"
 import { userData } from "@/data/user"
 import {
@@ -182,6 +188,7 @@ const mode = ref(PASSWORD)
 const loading = ref(false)
 const errorMessage = ref("")
 const showPassword = ref(false)
+const canExportQueue = ref(false)
 const cashiers = ref(knownCashiers())
 const form = reactive({
 	usr: "",
@@ -212,6 +219,7 @@ onMounted(async () => {
 
 function switchMode() {
 	errorMessage.value = ""
+	canExportQueue.value = false
 	mode.value = mode.value === PASSWORD ? PIN : PASSWORD
 }
 
@@ -247,6 +255,7 @@ async function submitPin() {
 	}
 
 	errorMessage.value = pinRefusalMessage(result)
+	canExportQueue.value = result.reason === "expired"
 	if (result.reason === "online") mode.value = PASSWORD
 }
 

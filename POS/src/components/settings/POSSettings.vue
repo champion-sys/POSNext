@@ -86,6 +86,16 @@
 								>
 									{{ __('Sales Management') }}
 								</button>
+								<button
+									@click="activeTab = 'queue'"
+									:class="['px-4 py-2 text-sm font-medium rounded-md transition-all duration-200', activeTab === 'queue' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50']"
+								>
+									{{ __('Offline Queue') }}
+								</button>
+							</div>
+
+							<div v-if="activeTab === 'queue'" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+								<QueueExport />
 							</div>
 
 							<!-- Stock Settings Section - Prominent -->
@@ -615,6 +625,7 @@ import CheckboxField from "@/components/settings/CheckboxField.vue"
 import NumberField from "@/components/settings/NumberField.vue"
 import SelectField from "@/components/settings/SelectField.vue"
 import PrinterManagement from "@/components/settings/PrinterManagement.vue"
+import QueueExport from "@/components/settings/QueueExport.vue"
 import SystemPrinterSettings from "@/components/settings/SystemPrinterSettings.vue"
 import { ELECTRON, PLATFORM } from "@/platform/runtime"
 import { useToast } from "@/composables/useToast"

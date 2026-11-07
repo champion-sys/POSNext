@@ -662,6 +662,32 @@ describe("verifyPin", () => {
 		})
 	})
 
+	it("past the limit, still tells a right PIN from a wrong one", async () => {
+		vi.advanceTimersByTime(73 * HOUR)
+
+		expect((await auth.verifyPin(user, "000000")).reason).toBe("wrong")
+		expect((await auth.verifyPin(user, PIN)).reason).toBe("expired")
+	})
+
+	it("past the limit, still locks out someone guessing", async () => {
+		vi.advanceTimersByTime(73 * HOUR)
+
+		for (let attempt = 0; attempt < 5; attempt++) {
+			await auth.verifyPin(user, "000000")
+		}
+
+		expect((await auth.verifyPin(user, PIN)).reason).toBe("locked")
+	})
+
+	it("past the limit, leaves a clock that was only wrong to be put right", async () => {
+		vi.advanceTimersByTime(100 * HOUR)
+		await auth.verifyPin(user, PIN)
+
+		vi.setSystemTime(START + HOUR)
+
+		expect(await auth.verifyPin(user, PIN)).toEqual({ ok: true })
+	})
+
 	it("uses the limit the server gave", async () => {
 		await signIn(user, { max_offline_hours: 1 })
 
