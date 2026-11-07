@@ -157,7 +157,7 @@ export async function openLocalShift(data) {
 
 /** A queue record ends for its shift whoever is signed in, and its cashier may be away */
 async function findParkedShift(name) {
-	return Object.values(await getParkedShifts()).find((data) => data.pos_opening_shift.name === name)
+	return Object.values(await getParkedShifts()).find((data) => data.pos_opening_shift?.name === name)
 }
 
 /**

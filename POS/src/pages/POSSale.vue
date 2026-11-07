@@ -1718,6 +1718,7 @@ watch(
 		uiStore.showDraftDialog = false;
 		uiStore.showHistoryDialog = false;
 		uiStore.showReturnDialog = false;
+		uiStore.showPaymentDialog = false;
 	}
 );
 

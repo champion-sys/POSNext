@@ -7,7 +7,7 @@ import { flushPromises, shallowMount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { reactive } from "vue"
-import { shiftState } from "@/composables/useShift"
+import { abandonLocalShift, shiftState } from "@/composables/useShift"
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSSyncStore } from "@/stores/posSync"
@@ -240,6 +240,15 @@ describe("POSSale with a shift the server does not know yet", () => {
 
 		expect(cartStore.submitInvoice).toHaveBeenCalledTimes(1)
 		expect(offlineStore.saveInvoiceOffline).not.toHaveBeenCalled()
+	})
+
+	it("closes the payment dialog when a manager voids the shift, so nothing is paid into it", async () => {
+		uiStore.showPaymentDialog = true
+
+		await abandonLocalShift(LOCAL_SHIFT)
+		await flushPromises()
+
+		expect(uiStore.showPaymentDialog).toBe(false)
 	})
 
 	it("offers no payment that needs the server", async () => {
