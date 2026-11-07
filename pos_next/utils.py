@@ -11,6 +11,10 @@ import frappe
 
 from pos_next import __version__ as app_version
 
+#: ERPNext's merge saves each POS Invoice with the session's permissions, and runs a long
+#: one as the session's user. A cashier may not write POS Invoices, and must not need to.
+BOOKS_USER = "Administrator"
+
 _BASE_DIR = Path(__file__).resolve().parent
 _VERSION_FILE = _BASE_DIR / "public" / "pos" / "version.json"
 _MANIFEST_FILE = _BASE_DIR / "public" / "pos" / "manifest.webmanifest"

@@ -8,14 +8,17 @@ its shift closes, and everything that can go wrong sits in ERPNext between the t
 """
 
 import json
+from unittest.mock import patch
 
 import frappe
+from erpnext.accounts.doctype.pos_closing_entry.pos_closing_entry import POSClosingEntry
 from frappe.tests import IntegrationTestCase
-from frappe.utils import flt
+from frappe.utils import add_to_date, flt, now_datetime
 
 from pos_next.api.shifts import insert_opening_shift
 from pos_next.install import CASHIER_ROLE, allow_cashier_to_select_accounts
 from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import build_closing_shift, save_closing_shift
+from pos_next.services import closing_alerts
 from pos_next.services.invoice_processor import process_invoice
 
 PROFILE = "Books Test"
@@ -224,3 +227,51 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
 
         with self.assertRaises(frappe.ValidationError):
             entry.validate_pos_invoices()
+
+    def _closed_entry(self):
+        shift = self._open_shift()
+        self._sell(LINA, shift)
+        return frappe.get_doc("POS Closing Entry", self._entry_of(self._close(shift)))
+
+    def test_a_failed_entry_tells_the_managers_at_once(self):
+        entry = self._closed_entry()
+
+        with patch.object(closing_alerts, "notify") as notify:
+            entry.set_status(update=True, status="Failed")
+
+        notify.assert_called_once_with(entry.name, PROFILE)
+
+    def test_a_failed_entry_is_raised_again_every_hour(self):
+        entry = self._closed_entry()
+        entry.db_set("status", "Failed")
+
+        with patch.object(closing_alerts, "notify") as notify:
+            closing_alerts.remind_about_closings()
+
+        notify.assert_any_call(entry.name, PROFILE)
+
+    def test_only_a_stuck_entry_counts_as_lost_in_the_queue(self):
+        entry = self._closed_entry()
+        entry.db_set("status", "Queued")
+
+        with patch.object(closing_alerts, "notify") as notify:
+            closing_alerts.remind_about_closings()
+        self.assertNotIn(entry.name, [call.args[0] for call in notify.call_args_list])
+
+        frappe.db.set_value(
+            "POS Closing Entry", entry.name, "modified", add_to_date(now_datetime(), hours=-2), update_modified=False
+        )
+        with patch.object(closing_alerts, "notify") as notify:
+            closing_alerts.remind_about_closings()
+        notify.assert_any_call(entry.name, PROFILE)
+
+    def test_retry_has_the_access_the_first_attempt_had(self):
+        entry = self._closed_entry()
+        seen = []
+
+        frappe.set_user(LINA)
+        with patch.object(POSClosingEntry, "retry", lambda _self: seen.append(frappe.session.user)):
+            entry.retry()
+
+        self.assertEqual(seen, ["Administrator"])
+        self.assertEqual(frappe.session.user, LINA)

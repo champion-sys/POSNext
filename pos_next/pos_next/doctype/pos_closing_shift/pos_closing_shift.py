@@ -12,11 +12,22 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
-from pos_next.utils import session_of
+from pos_next.utils import BOOKS_USER, session_of
 
-#: ERPNext's merge saves each POS Invoice with the session's permissions, and runs a long
-#: one as the session's user. A cashier may not write POS Invoices, and must not need to.
-BOOKS_USER = "Administrator"
+
+def submit_keeping_the_cause(entry):
+    """Submit a closing entry, and let a failed merge say why it failed.
+
+    ERPNext rolls the entry back and then tries to mark it Failed, which raises because the
+    entry is gone. That second error says nothing, and is all the cashier would see.
+    """
+    try:
+        entry.submit()
+    except frappe.LinkValidationError as error:
+        if error.__context__:
+            frappe.clear_messages()
+            raise error.__context__
+        raise
 
 
 def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
@@ -243,7 +254,7 @@ class POSClosingShift(Document):
             })
 
         pce.insert(ignore_permissions=True)
-        pce.submit()
+        submit_keeping_the_cause(pce)
         self.db_set("pos_closing_entry", pce.name)
 
     def create_journal_entry(self):
