@@ -7,3 +7,4 @@
 pos_next.patches.v1_7_0.reinstall_workspace
 pos_next.patches.v2_0_0.migrate_offline_invoice_sync_statuses
 pos_next.patches.v2_0_0.add_sync_pull_indexes
+pos_next.patches.v2_0_0.add_stock_pull_index
