@@ -470,7 +470,7 @@ class TestPaymentEntries(NoSiteTestCase):
 
 class TestFixes(NoSiteTestCase):
     def _apply(self, entity, fix, values, payload="{}", **fields):
-        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload, **fields)
+        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload, depends_on="", **fields)
         with (
             patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
             patch.object(sync_inbox, "_log_attempt"),

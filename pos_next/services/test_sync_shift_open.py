@@ -500,6 +500,76 @@ class TestTheManagersLink(ShiftFlow):
             sync_inbox.link_existing_invoice(name, "POSA-OS-OPEN", "POS Opening Shift", "By hand")
 
 
+class TestAFixReplacesWhatTheRecordWaitedFor(ShiftFlow):
+    """A shift or a customer that never reached the server, so a person chose another."""
+
+    def _stuck(self, payload, **kwargs):
+        name = self._send(SALE, payload, **kwargs)
+        self._post(name)
+        self._age(name)
+        sync_inbox.sweep()
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        return name
+
+    def _reprocess(self, name):
+        with patch("pos_next.services.invoice_processor.process_invoice") as self.process_invoice:
+            self.process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}
+            sync_inbox.reprocess(name)
+            sync_inbox.sweep()
+
+    def test_change_shift_rescues_a_sale_whose_opening_never_came(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck(SALE_PAYLOAD)
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+        self._reprocess(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+        self.assertEqual(self.process_invoice.call_args.args[0]["posa_pos_opening_shift"], "POSA-OS-OPEN")
+
+    def test_change_customer_rescues_a_sale_whose_customer_never_came(self):
+        name = self._stuck({"pos_profile": "Main", "customer": test_sync_flow.LOCAL_CUSTOMER})
+
+        sync_inbox.apply_fix(name, "customer", {"customer": "Walk-in"})
+        self._reprocess(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+        self.assertEqual(self.process_invoice.call_args.args[0]["customer"], "Walk-in")
+
+    def test_it_keeps_waiting_for_what_the_fix_did_not_replace(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck({**SALE_PAYLOAD, "customer": test_sync_flow.LOCAL_CUSTOMER})
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, test_sync_flow.LOCAL_CUSTOMER)
+
+    def test_a_declared_dependency_that_is_not_in_the_payload_stays(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck(SALE_PAYLOAD, depends_on=[PAYMENT])
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, PAYMENT)
+
+    def test_a_fix_that_replaces_nothing_it_waited_for_changes_nothing(self):
+        name = self._stuck(SALE_PAYLOAD)
+
+        sync_inbox.apply_fix(name, "customer", {"customer": "Walk-in"})
+
+        self.assertEqual(self._row(name).depends_on, LOCAL_SHIFT)
+
+    def test_a_payment_can_be_moved_off_a_shift_that_never_came(self):
+        self._add_shift("POSA-OS-OPEN")
+        payload = {"invoice_name": "SINV-1", "pos_profile": "Main", "posa_pos_opening_shift": LOCAL_SHIFT}
+        name = self._send(PAYMENT, payload, "payment")
+        self._row(name).update({"status": sync_inbox.REVIEW})
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, "")
+
+
 class TestOpenShiftHandler(test_sync_entities.NoSiteTestCase):
     def _settings(self, allowed=1, invoice_type="Sales Invoice"):
         frappe.local.db.get_value.return_value = frappe._dict(

@@ -59,6 +59,11 @@ def load_payload(row):
     return payload
 
 
+def get_local_names(payload):
+    """What a payload names that only exists on the device."""
+    return list(filter(is_local_name, map(payload.get, LOCAL_NAME_FIELDS)))
+
+
 def get_dependencies(payload, declared=None):
     """Records this one needs, including those the payload itself refers to.
 
@@ -72,8 +77,7 @@ def get_dependencies(payload, declared=None):
     Returns:
         list[str]: Offline IDs, without repeats
     """
-    implied = [payload.get(fieldname) for fieldname in LOCAL_NAME_FIELDS]
-    candidates = [*(declared or []), *(payload.get("manifest") or []), *filter(is_local_name, implied)]
+    candidates = [*(declared or []), *(payload.get("manifest") or []), *get_local_names(payload)]
     return list(dict.fromkeys(value for value in candidates if isinstance(value, str) and value))
 
 

@@ -958,8 +958,12 @@ def apply_fix(name, fix, values):
         row.set(fix, 1)
     else:
         payload = sync_entities.load_payload(row)
+        named = sync_entities.get_local_names(payload)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        replaced = set(named) - set(sync_entities.get_local_names(payload))
+        if replaced:
+            _forget_dependencies(row, replaced)
         # The date is now a person's, so the clock it came from no longer matters
         if fix == "posting_date":
             row.accept_device_date = 1
@@ -970,6 +974,12 @@ def apply_fix(name, fix, values):
     row.save(ignore_permissions=True)
     _log_attempt(name, f"fix: {fix}", message=frappe.as_json(values))
     return row
+
+
+def _forget_dependencies(row, replaced):
+    """Stop waiting for what a fix replaced. It may never arrive, which is why it was fixed."""
+    lines = [line for line in (row.depends_on or "").splitlines() if line.strip() not in replaced]
+    row.depends_on = "\n".join(lines)
 
 
 def _fix_posting_date(payload, values):
