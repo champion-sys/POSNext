@@ -15,6 +15,12 @@ from pos_next.pos_next.doctype.pos_settings.pos_settings import POSSettings
 CASHIER = ["POSNext Cashier"]
 MANAGER = ["Nexus POS Manager"]
 
+SERVER_FIELDS = {
+    "sync_alert_recipients": "boss@example.com",
+    "sync_payload_retention_days": 90,
+    "sync_alert_last_sent_at": "2026-11-07 10:00:00",
+}
+
 
 def _raise(message, exc=frappe.ValidationError, **_kwargs):
     raise exc(message)
@@ -98,12 +104,6 @@ class TestValues(unittest.TestCase):
 class TestThePos(unittest.TestCase):
     """The POS screen loads every field it is given and sends them all back on save."""
 
-    SERVER_FIELDS = {
-        "sync_alert_recipients": "boss@example.com",
-        "sync_payload_retention_days": 90,
-        "sync_alert_last_sent_at": "2026-11-07 10:00:00",
-    }
-
     def setUp(self):
         self.addCleanup(setattr, frappe.local, "session", getattr(frappe.local, "session", None))
         self.addCleanup(setattr, frappe.local, "db", getattr(frappe.local, "db", None))
@@ -111,20 +111,20 @@ class TestThePos(unittest.TestCase):
         frappe.local.db = MagicMock()
 
     def test_it_is_not_given_them(self):
-        stored = frappe._dict({"pos_profile": "Main", "sync_mode": "Realtime", **self.SERVER_FIELDS})
+        stored = frappe._dict({"pos_profile": "Main", "sync_mode": "Realtime", **SERVER_FIELDS})
         frappe.local.db.get_value.return_value = stored
 
         settings = pos_settings.get_pos_settings("Main")
 
         self.assertEqual(settings.sync_mode, "Realtime")
-        self.assertFalse(set(self.SERVER_FIELDS) & set(settings))
+        self.assertFalse(set(SERVER_FIELDS) & set(settings))
 
     def test_a_save_from_the_pos_cannot_write_them(self):
         doc = MagicMock()
-        doc.as_dict.return_value = frappe._dict(sync_mode="Periodic", **self.SERVER_FIELDS)
+        doc.as_dict.return_value = frappe._dict(sync_mode="Periodic", **SERVER_FIELDS)
 
         with patch("frappe.get_doc", return_value=doc):
-            answer = pos_settings.update_pos_settings("Main", json.dumps({"sync_mode": "Periodic", **self.SERVER_FIELDS}))
+            answer = pos_settings.update_pos_settings("Main", json.dumps({"sync_mode": "Periodic", **SERVER_FIELDS}))
 
         doc.update.assert_called_once_with({"sync_mode": "Periodic"})
-        self.assertFalse(set(self.SERVER_FIELDS) & set(answer))
+        self.assertFalse(set(SERVER_FIELDS) & set(answer))

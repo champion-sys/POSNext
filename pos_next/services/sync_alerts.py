@@ -151,12 +151,11 @@ def _render(pos_profile, summary):
 
     oldest = ""
     if summary.oldest:
-        link = get_url_to_form(DOCTYPE, summary.oldest.name)
-        oldest = "<p>{0} <a href=\"{1}\">{2}</a>, {3}</p>".format(
-            _("Oldest record:"),
-            escape_html(link),
-            escape_html(summary.oldest.offline_id),
-            format_datetime(summary.oldest.creation),
+        link = escape_html(get_url_to_form(DOCTYPE, summary.oldest.name))
+        record = escape_html(summary.oldest.offline_id)
+        oldest = (
+            f'<p>{_("Oldest record:")} <a href="{link}">{record}</a>, '
+            f"{format_datetime(summary.oldest.creation)}</p>"
         )
 
     return f"""<div dir="auto">

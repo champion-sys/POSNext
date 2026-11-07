@@ -123,7 +123,7 @@ class FakeTable:
 
     def bulk_insert(self, doctype, fields, values):
         for value in values:
-            self.lines.append(dict(zip(fields, value)))
+            self.lines.append(dict(zip(fields, value, strict=True)))
 
     def commit(self):
         self.commits += 1
