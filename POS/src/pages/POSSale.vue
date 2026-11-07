@@ -1413,6 +1413,7 @@ const profileWarehouses = computed(() => {
 });
 
 const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
+const usesGiftCard = () => cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card";
 // The server cannot take a sale of a shift it does not know yet, connection or not
 const mustQueue = computed(() => offlineStore.isOffline || isLocalName(shiftStore.currentShift?.name));
 const canCloseShift = computed(() => {
@@ -2410,6 +2411,13 @@ async function handlePaymentCompleted(paymentData) {
 			return;
 		}
 
+		// Applied while the server could still confirm it, and only the server can
+		if (mustQueue.value && usesGiftCard()) {
+			showWarning(__("Gift cards need the server. Remove it from the sale to finish without one"));
+			uiStore.showPaymentDialog = false;
+			return;
+		}
+
 		cartStore.payments = [];
 		if (paymentData.payments && Array.isArray(paymentData.payments)) {
 			paymentData.payments.forEach((p) => {
@@ -2450,7 +2458,7 @@ async function handlePaymentCompleted(paymentData) {
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
 				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
-				usesGiftCard: cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card",
+				usesGiftCard: usesGiftCard(),
 				hasLocalCustomer: isLocalName(customerValue),
 			});
 
