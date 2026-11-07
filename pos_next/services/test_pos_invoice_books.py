@@ -25,6 +25,7 @@ PROFILE = "Books Test"
 ITEM = "BOOKS-TEST-ITEM"
 LINA = "books-lina@example.com"
 SARA = "books-sara@example.com"
+MANAGER = "books-manager@example.com"
 RATE = 100
 VALUATION = 60
 
@@ -274,6 +275,28 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         with patch.object(closing_alerts, "notify") as notify:
             closing_alerts.remind_about_closings()
         notify.assert_any_call(entry.name, PROFILE)
+
+    def test_a_system_manager_can_undo_a_closed_shift(self):
+        if not frappe.db.exists("User", MANAGER):
+            user = frappe.get_doc({"doctype": "User", "email": MANAGER, "first_name": "books", "send_welcome_email": 0})
+            user.flags.ignore_password_policy = True
+            user.insert(ignore_permissions=True)
+            user.add_roles("System Manager")
+
+        shift = self._open_shift()
+        invoice = self._sell(LINA, shift)
+        closing = frappe.get_doc("POS Closing Shift", self._close(shift))
+        merged = frappe.db.get_value("POS Invoice", invoice, "consolidated_invoice")
+
+        frappe.set_user(MANAGER)
+        self.assertFalse(frappe.has_permission("POS Invoice", "write"))
+        closing.reload()
+        closing.cancel()
+
+        self.assertEqual(frappe.db.get_value("POS Opening Shift", shift, "status"), "Open")
+        self.assertEqual(frappe.db.get_value("Sales Invoice", merged, "docstatus"), 2)
+        self.assertFalse(frappe.db.get_value("POS Invoice", invoice, "consolidated_invoice"))
+        self.assertEqual(frappe.db.get_value("POS Closing Entry", closing.pos_closing_entry, "docstatus"), 2)
 
     def test_retry_has_the_access_the_first_attempt_had(self):
         entry = self._closed_entry()

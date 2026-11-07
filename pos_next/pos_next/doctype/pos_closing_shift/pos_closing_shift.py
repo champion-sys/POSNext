@@ -373,14 +373,16 @@ class POSClosingShift(Document):
                 opening_entry.pos_closing_shift = ""
                 opening_entry.set_status()
                 opening_entry.save()
-        # remove links from invoices so they can be cancelled
-        self._clear_closing_entry_invoices()
+        # Undoing the books takes the access that made them
+        with session_of(BOOKS_USER):
+            # remove links from invoices so they can be cancelled
+            self._clear_closing_entry_invoices()
 
-        if getattr(self, "pos_closing_entry", None):
-            if frappe.db.exists("POS Closing Entry", self.pos_closing_entry):
-                pce_doc = frappe.get_doc("POS Closing Entry", self.pos_closing_entry)
-                if pce_doc.docstatus == 1:
-                    pce_doc.cancel()
+            if getattr(self, "pos_closing_entry", None):
+                if frappe.db.exists("POS Closing Entry", self.pos_closing_entry):
+                    pce_doc = frappe.get_doc("POS Closing Entry", self.pos_closing_entry)
+                    if pce_doc.docstatus == 1:
+                        pce_doc.cancel()
 
     def _set_closing_entry_invoices(self):
         """Set `pos_closing_entry` on linked invoices."""
