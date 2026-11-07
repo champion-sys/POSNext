@@ -8,9 +8,10 @@ Starting pieces for the Windows app, planned in phase 3 of
 | `electron/printing/printer.js` | Silent printing through a hidden window | BrainWise `feature/electron-desktop`, without its receipt template |
 | `electron/printing/ipc.js` | Printer IPC, for the app's own page only | New |
 | `electron/security.js` | The Content-Security-Policy, and what the windows may navigate to or open | New |
-| `electron/db/` | SQLite in a utility process, reached by the window over three allow-listed IPC calls | Written here |
+| `electron/db/` | Encrypted SQLite in a utility process, reached by the window over allow-listed IPC calls | Written here |
 | `electron/updater.js` | Downloads updates in the background and installs them on quit | New |
-| `electron/secrets.js` | The device token and cashier sign-in, encrypted with `safeStorage` | New |
+| `electron/secrets.js` | The device token, cashier sign-in and database key, encrypted with `safeStorage` | New |
+| `scripts/check-database-engine.js` | Runs the database encryption inside Electron's Node, on the machine that builds | New |
 | `package.json` | Windows installer settings | Same branch, with the Express server dependencies removed |
 | `vite.config.electron.mjs` | Frontend build for the desktop app | Same branch, adapted to this folder |
 
@@ -25,6 +26,16 @@ cd POS && yarn install
 cd desktop && npm install
 $env:POS_NEXT_UPDATE_URL = "https://updates.example.com/pos-next/"
 npm run dist:win
+```
+
+`better-sqlite3-multiple-ciphers` stays pinned to 12.11.1. Version 13 needs a newer Node than Electron 33 has, and crashes it on load.
+
+The encryption tests run on the real cipher build, so they need it built for Node. Without it they are skipped, except in CI. This does not disturb a normal install:
+
+```
+cd POS/desktop
+npm install --omit=dev --ignore-scripts --no-package-lock
+npm rebuild better-sqlite3-multiple-ciphers
 ```
 
 `POS_NEXT_UPDATE_URL` is the folder the app checks for updates. It is built into the installer, so it must point at a server you control. Upload the installer, its `.blockmap` and `latest.yml` from `dist/` to that folder to publish an update.

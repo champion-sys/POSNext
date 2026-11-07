@@ -9,6 +9,8 @@ const { createSecretStore, isAppFrame } = createRequire(import.meta.url)(
 
 const MISSING = new Error("Item with given key does not exist")
 
+globalThis.__ = (text) => text
+
 describe("androidSecretStore", () => {
 	it("reads a value", async () => {
 		const plugin = { get: vi.fn().mockResolvedValue({ value: "abc" }) }
@@ -34,11 +36,56 @@ describe("androidSecretStore", () => {
 	})
 
 	it("writes a value", async () => {
-		const plugin = { set: vi.fn().mockResolvedValue({ value: true }) }
+		const plugin = {
+			get: vi.fn().mockResolvedValue({ value: "abc" }),
+			set: vi.fn().mockResolvedValue({ value: true }),
+		}
 
 		await androidSecretStore(plugin).set("key", "abc")
 
 		expect(plugin.set).toHaveBeenCalledWith({ key: "key", value: "abc" })
+	})
+
+	it("keeps an empty value, as enrolling does to test the store", async () => {
+		const plugin = {
+			get: vi.fn().mockResolvedValue({ value: "" }),
+			set: vi.fn().mockResolvedValue({ value: true }),
+		}
+
+		await expect(androidSecretStore(plugin).set("key", "")).resolves.toBeUndefined()
+	})
+
+	it("fails when the plugin reports success and stored nothing", async () => {
+		const plugin = {
+			get: vi.fn().mockRejectedValue(MISSING),
+			set: vi.fn().mockResolvedValue({ value: true }),
+		}
+
+		await expect(androidSecretStore(plugin).set("key", "abc")).rejects.toThrow(
+			"cannot store secrets safely",
+		)
+	})
+
+	it("fails when the old value is still there", async () => {
+		const plugin = {
+			get: vi.fn().mockResolvedValue({ value: "old" }),
+			set: vi.fn().mockResolvedValue({ value: true }),
+		}
+
+		await expect(androidSecretStore(plugin).set("key", "new")).rejects.toThrow(
+			"cannot store secrets safely",
+		)
+	})
+
+	it("reports a read back the Keystore refuses", async () => {
+		const plugin = {
+			get: vi.fn().mockRejectedValue(new Error("Keystore was tampered with")),
+			set: vi.fn().mockResolvedValue({ value: true }),
+		}
+
+		await expect(androidSecretStore(plugin).set("key", "abc")).rejects.toThrow(
+			"Keystore",
+		)
 	})
 
 	it("removing a missing key is not a failure", async () => {

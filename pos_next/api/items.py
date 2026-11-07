@@ -1877,6 +1877,13 @@ def get_brands(pos_profile):
 		frappe.throw(_("Error fetching brands: {0}").format(str(e)))
 
 
+def _expand_warehouse(warehouse):
+	"""A group warehouse holds its stock in the warehouses under it."""
+	if frappe.db.get_value("Warehouse", warehouse, "is_group"):
+		return frappe.db.get_descendants("Warehouse", warehouse) or [warehouse]
+	return [warehouse]
+
+
 @frappe.whitelist()
 def get_stock_quantities(item_codes, warehouse):
 	"""
@@ -1917,15 +1924,7 @@ def get_stock_quantities(item_codes, warehouse):
 		if not normalized_codes:
 			return []
 
-		# Support group warehouses by expanding to leaf warehouses
-		warehouses = [warehouse]
-		if frappe.db.get_value("Warehouse", warehouse, "is_group"):
-			child_warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
-			# Fallback to original warehouse if no children are returned
-			warehouses = child_warehouses or [warehouse]
-
-		if not warehouses:
-			return []
+		warehouses = _expand_warehouse(warehouse)
 
 		# Batch query for stock quantities across all relevant warehouses using Query Builder
 		Bin = DocType("Bin")

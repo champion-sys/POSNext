@@ -95,6 +95,14 @@ function describe(error) {
 			return __(
 				"Could not clear the previous server's data from this device. Try again.",
 			)
+		case "queue_unreadable":
+			return __(
+				"Could not check this device for unsent sales, so it was not moved. Try again.",
+			)
+		case "secret_store":
+			return __(
+				"This device could not save its enrollment in secure storage. Try again.",
+			)
 		default:
 			return error.message || __("Could not enroll this device.")
 	}

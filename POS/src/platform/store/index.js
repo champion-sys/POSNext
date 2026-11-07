@@ -33,6 +33,15 @@ export const localStore = Object.fromEntries(
 	STORE_METHODS.map((name) => [name, async (...args) => (await getStore())[name](...args)]),
 )
 
+/**
+ * The desktop and Android apps only: the web has no key to lose.
+ * @returns {Promise<{locked: string|null, encrypted: boolean}>}
+ */
+export async function checkNativeDatabase() {
+	const { checkDatabase } = await loadImplementation()
+	return checkDatabase()
+}
+
 // The web worker and the database have always started with the page
 if (typeof window !== "undefined") {
 	getStore().catch((error) => log.error("Failed to open local storage", error))

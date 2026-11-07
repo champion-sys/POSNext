@@ -16,6 +16,9 @@
  *    - Manual refresh / warehouse change → calls refresh() with all items
  *    - Clears reservations + fetches fresh stock (50-200ms)
  *
+ * 3. Pull (desktop and Android, which have no socket):
+ *    - Every minute the pull engine asks what moved in the warehouse → calls applyPulled()
+ *
  * Everything else is just Pinia reactivity doing its job.
  */
 
@@ -111,6 +114,12 @@ export const useStockStore = defineStore('stock', () => {
 		})
 	)
 
+	// Apply what the pull engine stored. The cache has every row already, so one for another
+	// warehouse or for an item nothing has loaded shows when it is next read from there
+	const applyPulled = (rows) => update(
+		rows?.filter(row => row.warehouse === warehouse.value && server.value.has(row.item_code))
+	)
+
 	// Refresh stock from server (direct API call)
 	// Called after invoice submission, manual refresh, or warehouse change
 	// Snapshots reservations before fetching to prevent UI flicker
@@ -199,6 +208,7 @@ export const useStockStore = defineStore('stock', () => {
 		init,
 		reserve,
 		update,
+		applyPulled,
 		refresh,
 		setWarehouse: (targetWarehouse) => warehouse.value = targetWarehouse,
 		setQueued: (totals) => { queued.value = totals },

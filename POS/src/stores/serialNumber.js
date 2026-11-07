@@ -15,6 +15,7 @@ import {
 	consumeCachedSerials,
 	persistItemBatchSerialData,
 	returnCachedSerials,
+	withoutQueuedSerials,
 } from '@/utils/offline/items'
 import { logger } from '@/utils/logger'
 
@@ -102,7 +103,7 @@ export const useSerialNumberStore = defineStore('serialNumber', () => {
 				limit_page_length: 500,
 			})
 
-			const serials = response || []
+			const serials = await withoutQueuedSerials(itemCode, response || [])
 
 			// Update cache
 			cache.value.set(itemCode, {

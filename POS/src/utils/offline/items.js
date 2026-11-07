@@ -1,4 +1,5 @@
 import { localStore } from "@/platform/store";
+import { ENTITY_INVOICE, getEntity } from "./entities";
 import { getSetting } from "./settings";
 
 // Cache items on the device
@@ -77,7 +78,7 @@ export const getCachedSerialData = async (itemCode) => {
 		if (!itemCode) return [];
 
 		const item = await localStore.getCachedItem(itemCode);
-		return item?.serial_no_data || [];
+		return await withoutQueuedSerials(itemCode, item?.serial_no_data || []);
 	} catch (error) {
 		console.error("Error getting cached serial data:", error);
 		return [];
@@ -93,6 +94,39 @@ export function parseSerialNumbers(serialNumbers) {
 				.map((s) => s.trim())
 				.filter(Boolean);
 }
+
+/** Holds the same sales as sumQueuedStock. A return gives its serial back. */
+function getQueuedSerials(rows, itemCode) {
+	const held = new Set();
+	for (const { data, void_reason } of rows) {
+		if (data?.doctype === "Sales Order" || data?.is_return || void_reason) continue;
+		for (const item of data?.items || []) {
+			if (item.item_code !== itemCode) continue;
+			for (const serial of parseSerialNumbers(item.serial_no)) held.add(serial);
+		}
+	}
+	return held;
+}
+
+/**
+ * Take off serials a queued sale has sold. The server lists them as available until that
+ * sale reaches it. A queue that cannot be read must not stop the sale in front of the
+ * cashier, and the server still refuses a serial sold twice.
+ * @param {string} itemCode
+ * @param {Array<{serial_no: string}>} serials
+ * @returns {Promise<Array<{serial_no: string}>>}
+ */
+export const withoutQueuedSerials = async (itemCode, serials) => {
+	if (serials.length === 0) return serials;
+
+	try {
+		const held = getQueuedSerials(await localStore.getOfflineInvoices(), itemCode);
+		return serials.filter((serial) => !held.has(serial.serial_no));
+	} catch (error) {
+		console.error("Error reading serials held by the queue:", error);
+		return serials;
+	}
+};
 
 // Persist batch/serial data for a single cached item (partial updates supported)
 export const persistItemBatchSerialData = async (itemCode, data) => {
@@ -193,6 +227,45 @@ export const deductCachedBatchQty = async (itemCode, batchNo, qty) => {
 		});
 	} catch (error) {
 		console.error("Error deducting cached batch qty:", error);
+	}
+};
+
+// Give a batch quantity back to the offline cache (e.g. its sale was voided)
+export const returnCachedBatchQty = async (itemCode, batchNo, qty) => {
+	await deductCachedBatchQty(itemCode, batchNo, -qty);
+};
+
+const getSoldQty = (item) => (item.qty || item.quantity || 0) * (item.conversion_factor || 1);
+
+/** What checkout took off the cache for a sale. A return took nothing. */
+const getSoldBatchItems = (row) =>
+	getEntity(row) === ENTITY_INVOICE && !row.data?.is_return ? row.data?.items || [] : [];
+
+/**
+ * A sale with a void waiting holds nothing, so its batches and serials can be sold again.
+ * @param {Object} row - Queue row
+ * @returns {Promise<string[]>} The items that had serials
+ */
+export const releaseSoldBatchesAndSerials = async (row) => {
+	const serialItems = [];
+	for (const item of getSoldBatchItems(row)) {
+		if (item.batch_no) await returnCachedBatchQty(item.item_code, item.batch_no, getSoldQty(item));
+		if (item.serial_no) {
+			await returnCachedSerials(item.item_code, item.serial_no, item.warehouse);
+			serialItems.push(item.item_code);
+		}
+	}
+	return serialItems;
+};
+
+/**
+ * The void did not happen, so the sale takes its batches and serials again.
+ * @param {Object} row - Queue row
+ */
+export const retakeSoldBatchesAndSerials = async (row) => {
+	for (const item of getSoldBatchItems(row)) {
+		if (item.batch_no) await deductCachedBatchQty(item.item_code, item.batch_no, getSoldQty(item));
+		if (item.serial_no) await consumeCachedSerials(item.item_code, item.serial_no);
 	}
 };
 

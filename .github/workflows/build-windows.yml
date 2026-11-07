@@ -51,6 +51,13 @@ jobs:
         working-directory: POS/desktop
         run: npm install --no-audit --no-fund
 
+      # A module built for the wrong Electron looks fine here and only fails on a shop's machine
+      - name: Check database encryption inside Electron
+        working-directory: POS/desktop
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: node_modules/electron/dist/electron.exe scripts/check-database-engine.js
+
       - name: Number this build
         working-directory: POS/desktop
         run: npm version "0.1.$GITHUB_RUN_NUMBER" --no-git-tag-version

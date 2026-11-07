@@ -10,9 +10,10 @@
  */
 
 import { createPinia } from "pinia"
-import { createApp } from "vue"
+import { createApp, watch } from "vue"
 
 import App from "./App.vue"
+import { useToast } from "./composables/useToast"
 import { session, sessionUser } from "./data/session"
 import { userResource } from "./data/user"
 import router from "./router"
@@ -31,10 +32,12 @@ import {
 } from "./platform/auth"
 import { installHttpBridge } from "./platform/http"
 import { installAppLifecycle } from "./platform/lifecycle"
+import { rememberLockedPageText } from "./platform/lockedPageText"
 import { getCashierGrant, isNative, onAccessChange } from "./platform/runtime"
+import { checkNativeDatabase } from "./platform/store"
 import { logger } from "./utils/logger"
 import { offlineWorker } from "./utils/offline/workerClient"
-import translationPlugin from "./utils/translation"
+import translationPlugin, { __, translationVersion } from "./utils/translation"
 import { initSocket } from "./socket"
 
 import {
@@ -89,6 +92,12 @@ async function prepareDeviceAccess() {
 	setInterval(async () => {
 		if (session.isLoggedIn && (await cashierMustSignIn())) sendCashierToSignIn()
 	}, SIGN_IN_CHECK_MS)
+}
+
+/** Nothing else starts: a till with no data must not look like a till with no sales. */
+async function showDatabaseLock(reason) {
+	const { default: DatabaseLocked } = await import("./pages/DatabaseLocked.vue")
+	createApp(DatabaseLocked, { reason }).use(translationPlugin).mount("#app")
 }
 
 // =============================================================================
@@ -158,6 +167,9 @@ async function syncCSRFTokenToWorker() {
 // =============================================================================
 
 async function initializeApp() {
+	const database = isNative ? await checkNativeDatabase() : null
+	if (database?.locked) return showDatabaseLock(database.locked)
+
 	const app = createApp(App)
 	const pinia = createPinia()
 
@@ -284,11 +296,19 @@ async function initializeApp() {
 	app.mount("#app")
 	installAppLifecycle()
 
+	if (isNative) {
+		watch(translationVersion, rememberLockedPageText, { immediate: true })
+		if (database.encrypted === false) {
+			useToast().showWarning(
+				__("The data on this device is not encrypted yet. Tell your manager if this message keeps coming back."),
+			)
+		}
+		return
+	}
+
 	// -------------------------------------------------------------------------
 	// Scheduled CSRF Token Refresh (every 30 minutes)
 	// -------------------------------------------------------------------------
-
-	if (isNative) return
 
 	setInterval(
 		async () => {

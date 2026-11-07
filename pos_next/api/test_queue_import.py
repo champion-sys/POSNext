@@ -5,10 +5,11 @@
 
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 import frappe
 from werkzeug.test import EnvironBuilder
@@ -446,28 +447,42 @@ class TestASaleEditedAfterTheExport(ImportFlow):
         self.assertIn(LATE_SALE, result["problems"][0]["message"])
         self.assertEqual([row.offline_id for row in self.inbox.rows.values()], [LATE_SALE])
 
-    def test_the_stored_form_of_an_edit_is_what_is_searched_for(self):
-        self.assertIn(
-            queue_import._HOLDS_AN_EDIT.strip("%"), frappe.as_json({"edited_from": SALE, "customer": "A"})
-        )
+    def test_it_counts_once_retention_has_erased_the_edit(self):
+        self.edit()
+        self.stored(LATE_SALE).update(status="Synced", sales_invoice="SINV-EDIT", payload=None, original_payload=None)
 
-    def test_a_sale_that_is_not_an_edit_is_not_loaded(self):
-        self.assertNotIn(queue_import._HOLDS_AN_EDIT.strip("%"), frappe.as_json({"edited_from": None}))
+        self.assertEqual(self.counts(self.import_rows(self.item())), (0, 0, 1, 0))
 
-    def test_a_voided_edit_lets_the_original_through(self):
+    def test_an_edit_that_lands_during_the_import_is_seen(self):
+        real = sync_api.store_item
+        rows = [self.item("pos_offline_first", seq=1), self.item(seq=2)]
+
+        def store(item, *args):
+            if item["offline_id"] == SALE:
+                self.edit()
+            return real(item, *args)
+
+        with patch.object(sync_api, "store_item", side_effect=store):
+            result = self.import_rows(*rows)
+
+        self.assertEqual(self.counts(result), (1, 0, 1, 0))
+
+    def test_an_edit_in_the_same_file_ahead_of_its_original_still_wins(self):
+        edit = self.item(LATE_SALE, seq=1)
+        edit["payload"]["edited_from"] = SALE
+
+        result = self.import_rows(edit, self.item(seq=2))
+
+        self.assertEqual(self.counts(result), (1, 0, 1, 0))
+
+    def test_a_voided_edit_does_not_bring_the_original_back(self):
         self.edit(status="Voided")
-        self.assertEqual(self.import_rows(self.item())["stored"], 1)
+        self.assertEqual(self.counts(self.import_rows(self.item())), (0, 0, 1, 0))
 
     def test_an_edit_of_something_else_changes_nothing(self):
         edit = self.item(LATE_SALE)
         edit["payload"]["edited_from"] = "pos_offline_other"
         self.push(edit)
-
-        self.assertEqual(self.import_rows(self.item())["stored"], 1)
-
-    def test_a_record_with_a_broken_payload_does_not_stop_the_import(self):
-        self.edit()
-        self.stored(LATE_SALE)["payload"] = '"edited_from": "not json'
 
         self.assertEqual(self.import_rows(self.item())["stored"], 1)
 
@@ -488,10 +503,89 @@ class TestASaleEditedAfterTheExport(ImportFlow):
         self.assertEqual(self.counts(self.import_rows(self.item())), (0, 1, 0, 0))
 
 
+class TestRecordsFromBeforeTheColumn(ImportFlow):
+    def run_patch(self, *rows):
+        from pos_next.patches.v2_0_0 import fill_offline_sync_edited_from
+
+        with patch.object(frappe, "get_all", return_value=[frappe._dict(row) for row in rows]):
+            fill_offline_sync_edited_from.execute()
+
+    def test_an_edit_gets_its_link_from_the_payload(self):
+        self.import_rows(self.item(LATE_SALE))
+        row = self.stored(LATE_SALE)
+
+        self.run_patch({"name": row.name, "offline_id": LATE_SALE, "payload": frappe.as_json({"edited_from": SALE})})
+
+        self.assertEqual(row.edited_from, SALE)
+
+    def test_a_payload_a_manager_broke_stops_nothing(self):
+        self.run_patch({"name": "row-1", "offline_id": LATE_SALE, "payload": '"edited_from": "not json'})
+
+    def test_the_search_finds_the_form_a_payload_is_stored_in(self):
+        from pos_next.patches.v2_0_0 import fill_offline_sync_edited_from
+
+        needle = fill_offline_sync_edited_from.HOLDS_AN_EDIT.strip("%")
+        self.assertIn(needle, frappe.as_json({"edited_from": SALE, "customer": "A"}))
+        self.assertNotIn(needle, frappe.as_json({"edited_from": None}))
+
+
 class TestTheDevicesClock(ImportFlow):
     def test_a_row_cannot_claim_how_far_off_it_was(self):
         self.import_rows(self.item(clock_skew_seconds=999999))
         self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_row_cannot_claim_it_was_measured(self):
+        self.import_rows(self.item(clock_skew_seconds=0, clock_not_measured=0))
+        self.assertEqual(self.stored().clock_not_measured, 1)
+
+    def test_a_row_with_no_reading_is_told_apart_from_a_clock_that_agrees(self):
+        self.import_rows(self.item())
+        self.assertEqual((self.stored().clock_skew_seconds, self.stored().clock_not_measured), (0, 1))
+
+    @staticmethod
+    def _iso(seconds_from_now):
+        moment = datetime.fromtimestamp(time.time() + seconds_from_now, UTC)
+        return moment.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    def test_a_row_past_the_limit_ahead_of_the_server_is_held_as_a_wrong_clock(self):
+        self.import_rows(self.item(created_at_device=self._iso(3 * 86400)))
+
+        self.process_all(sync_inbox._create_invoice)
+
+        row = self.stored()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "ClockSkewError")
+        self.assertEqual(row.clock_not_measured, 1)
+        self.assertGreater(row.clock_skew_seconds, 2 * 86400)
+        self.assertIn("ahead of the server", row.error_message)
+
+    def test_a_row_just_inside_the_limit_is_not_held(self):
+        self.import_rows(self.item(created_at_device=self._iso(11 * 3600)))
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_row_from_the_past_is_flagged_and_not_held(self):
+        self.import_rows(self.item(created_at_device=self._iso(-30 * 86400)))
+
+        row = self.stored()
+        self.assertEqual((row.status, row.clock_skew_seconds, row.clock_not_measured), ("Received", 0, 1))
+
+    def test_a_time_zone_does_not_put_a_correct_clock_ahead(self):
+        now = datetime.now(UTC).astimezone(timezone(timedelta(hours=14)))
+
+        self.import_rows(self.item(created_at_device=now.isoformat()))
+
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_time_with_no_zone_is_read_in_the_servers(self):
+        with patch("pos_next.services.sync_inbox.get_system_timezone", return_value="Pacific/Kiritimati"):
+            now = datetime.now(ZoneInfo("Pacific/Kiritimati")).replace(tzinfo=None)
+            self.import_rows(self.item(created_at_device=now.isoformat()))
+
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_time_that_cannot_be_read_stores_the_row_unjudged(self):
+        self.import_rows(self.item(created_at_device="not a time"))
+        self.assertEqual((self.stored().clock_skew_seconds, self.stored().clock_not_measured), (0, 1))
 
     def test_a_push_still_measures_it(self):
         frappe.local.session.user = CASHIER
@@ -555,14 +649,34 @@ class TestARowACashierAskedToVoid(ImportFlow):
         self.assertEqual(self.stored().error_code, sync_void.VOID_AFTER_POSTED)
         self.assertEqual(self.counts(result), (0, 1, 0, 0))
 
-    def test_where_voiding_is_off_it_is_refused_and_not_posted(self):
+    def test_where_voiding_is_off_it_is_stored_as_a_sale(self):
         with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
             result = self.import_rows(self.void())
         self.process_all(self.create)
 
-        self.create.assert_not_called()
+        self.create.assert_called_once()
+        self.assertEqual(self.stored().status, "Synced")
+        self.assertFalse(self.stored().resolution_note)
+        self.assertEqual(self.counts(result), (1, 0, 0, 0))
+        self.assertEqual(result["problems"], [])
+        sync_inbox.enqueue_processing.assert_called_once_with("Main")
+
+    def test_where_voiding_is_off_a_record_still_waiting_is_left_to_post(self):
+        self.import_rows(self.item())
+
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.import_rows(self.void())
+        self.process_all(self.create)
+
+        self.create.assert_called_once()
+        self.assertEqual(self.counts(result), (0, 1, 0, 0))
+
+    def test_where_voiding_is_off_a_shift_record_stays_refused(self):
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.import_rows(self.item(entity="shift_close", void_reason="Wrong shift"))
+
         self.assertEqual(self.counts(result), (0, 0, 0, 1))
-        self.assertIn("turned off", result["problems"][0]["message"])
+        self.assertFalse(self.inbox.rows)
 
     def test_the_device_asking_again_changes_nothing(self):
         self.import_rows(self.void())

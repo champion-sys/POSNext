@@ -76,6 +76,28 @@ function requestVoid(id, reason) {
 	})
 }
 
+/**
+ * Give a record back to the queue after the server refused to void it. It holds stock again
+ * because that is read from the row.
+ * @param {number} id
+ * @returns {Promise<{success: boolean}>} Whether a void was waiting
+ */
+function cancelVoid(id) {
+	return db.transaction("rw", db.invoice_queue, async () => {
+		const row = await db.invoice_queue.get(id)
+		if (!row?.void_reason || row.synced) return { success: false }
+
+		await db.invoice_queue.update(id, {
+			void_reason: null,
+			retry_count: 0,
+			next_attempt_at: 0,
+			error: null,
+			sync_failed: false,
+		})
+		return { success: true }
+	})
+}
+
 function deleteSyncedInvoices(cutoff) {
 	return db.invoice_queue.filter((inv) => inv.synced && inv.timestamp < cutoff).delete()
 }
@@ -247,6 +269,7 @@ export const dexieStore = {
 	updateQueuedInvoice,
 	resendQueuedInvoice,
 	requestVoid,
+	cancelVoid,
 	deleteSyncedInvoices,
 	getCachedItem,
 	getCachedItemByBarcode,

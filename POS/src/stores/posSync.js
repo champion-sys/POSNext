@@ -22,7 +22,10 @@ import {
 	openLocalShift,
 } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
+import { STOCK_ENTITIES } from "@/core/sync/pullEngine"
 import { pullChanges } from "@/core/sync/webPull"
+import { isPastOfflineSaleLimit } from "@/platform/auth"
+import { isNative } from "@/platform/runtime"
 import {
 	cacheCustomersFromServer,
 	cachePaymentMethodsFromServer,
@@ -32,6 +35,8 @@ import {
 	cacheUnpaidInvoices,
 	cacheUnpaidSummary,
 	announceRecordEnded,
+	isHeldFromSync,
+	releaseSoldBatchesAndSerials,
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
@@ -61,6 +66,7 @@ import {
 	subtractQueuedReturns,
 } from "@/utils/offline/entities"
 import {
+	REFUSED_VOIDS_KEY,
 	SALE_STANDS,
 	SYNC_PERIODIC,
 	formatLocalPosting,
@@ -73,6 +79,7 @@ import { offlineWorker } from "@/utils/offline/workerClient"
 import { isWaitingToSend, needsAttention } from "@/utils/syncQueue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
+import { useSerialNumberStore } from "@/stores/serialNumber"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -87,6 +94,9 @@ const STARTUP_SYNC_DELAY_MS = 5000
 
 /** How often to ask the server what changed */
 const PULL_INTERVAL_MS = 15 * 60 * 1000
+
+/** How often the apps, which have no socket, ask whether stock moved */
+const STOCK_PULL_INTERVAL_MS = 60 * 1000
 
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
 const LAST_SYNC_KEY = "pos_next_last_invoice_sync"
@@ -117,6 +127,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/** When a sale last reached the server from this device */
 	const lastSyncedAt = ref(Number(localStorage.getItem(LAST_SYNC_KEY)) || null)
+
+	/** Voids the server refused that no cashier has acknowledged yet */
+	const refusedVoids = ref([])
 
 	let isListeningForResults = false
 	let lastAutoSyncAt = Date.now()
@@ -167,7 +180,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	const queuedCount = computed(() => pendingInvoicesList.value.filter(isWaitingToSend).length)
 
 	/** Invoices that will not clear until a person looks at them */
-	const reviewCount = computed(() => pendingInvoicesList.value.filter(needsAttention).length)
+	const reviewCount = computed(
+		() => pendingInvoicesList.value.filter(needsAttention).length + refusedVoids.value.length,
+	)
 
 	// =========================================================================
 	// INTERNAL HELPERS
@@ -194,6 +209,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		const rows = await getPending()
 		pendingInvoicesList.value = rows
 		stockStore.setQueued(sumQueuedStock(rows, stockStore.warehouse))
+		refusedVoids.value = (await getSetting(REFUSED_VOIDS_KEY)) || []
 	}
 
 	function markSynced() {
@@ -272,13 +288,14 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/**
 	 * Bring down what changed on the server
+	 * @param {string[]} [only] - Pull just these instead of everything
 	 */
-	async function pullServerChanges() {
+	async function pullServerChanges(only) {
 		try {
 			const { session } = await import("@/data/session")
 			if (!session.isLoggedIn || isOffline.value) return
 
-			await pullChanges(usePOSShiftStore().profileName)
+			await pullChanges(usePOSShiftStore().profileName, only)
 		} catch (error) {
 			log.warn('Pull from the server failed', error)
 		}
@@ -311,6 +328,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			if (result.voided > 0) showSuccess(__("{0} record(s) voided", [result.voided]))
 			if (result.saleStands > 0) {
 				showWarning(__("{0} record(s) were already on the server, so they were not voided", [result.saleStands]))
+			}
+			if (result.voidsRefused > 0) {
+				showWarning(__("Voiding is turned off, so {0} record(s) were not voided. They stand and will be sent as usual", [result.voidsRefused]))
 			}
 
 			// The server's numbers now include these sales
@@ -360,6 +380,16 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
 
 	/**
+	 * Refuse a return or payment this device may no longer take offline, as a sale is
+	 * refused. Only without a connection: work in a shift opened offline queues online too.
+	 * @param {string} message - What was not saved
+	 */
+	function assertWithinOfflineLimit(message) {
+		if (!isOffline.value || !isPastOfflineSaleLimit()) return
+		throw Object.assign(new Error(message), { title: __("Offline limit reached") })
+	}
+
+	/**
 	 * Save an invoice offline for later sync
 	 * @param {Object} invoiceData - Invoice data to save
 	 * @param {Object} [options]
@@ -381,6 +411,18 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			log.error('Failed to save invoice offline', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Queue a return. The dialog stays open on a refusal, so nothing typed is lost.
+	 * @param {Object} invoiceData - Return invoice
+	 * @returns {Promise<{offline_id: string}>}
+	 */
+	async function saveReturnOffline(invoiceData) {
+		assertWithinOfflineLimit(
+			__("This device has been offline too long, so this return was not saved. Connect to the server and sign in with your password to finish it."),
+		)
+		return saveInvoiceOffline(invoiceData)
 	}
 
 	/**
@@ -428,6 +470,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @returns {Promise<{id: number, offline_id: string}>}
 	 */
 	async function savePaymentOffline(invoice, payments) {
+		assertWithinOfflineLimit(
+			__("This device has been offline too long, so this payment was not saved. Connect to the server and sign in with your password to finish it."),
+		)
+
 		if (exceedsOutstanding(invoice, payments)) {
 			throw new Error(__("Total payment amount exceeds the outstanding amount of {0}", [invoice.name]))
 		}
@@ -510,7 +556,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			return_validity_days: settingsStore.settings.return_validity_days,
 		}
 		const queued = rows
-			.filter(isReturnableQueueRow)
+			.filter((row) => isReturnableQueueRow(row, isHeldFromSync))
 			.map((row) => buildReturnDocFromQueue(row, rules))
 			.filter((doc) => !keptNames.has(doc.return_against))
 
@@ -527,6 +573,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		const { session } = await import("@/data/session")
 		const shift = closing.pos_opening_shift
 		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), shift, closing.opening_offline_id)
+		// The close would wait for a sale that checkout is about to replace
+		if (manifest.some((offlineId) => isHeldFromSync(offlineId))) {
+			throw new Error(__("Finish or clear the queued invoice you are editing first"))
+		}
 		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
 
 		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, [...[shift].filter(isLocalName), ...manifest])
@@ -561,9 +611,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/**
 	 * The server finished with a shift opened on this device.
-	 * @param {{row: Object, status: string, name: string}} detail - From offlineEntitySynced
+	 * @param {{row: Object, status: string, name: string, shiftUser: string}} detail - From
+	 *   offlineEntitySynced
 	 */
-	async function settleLocalShift({ row, status, name }) {
+	async function settleLocalShift({ row, status, name, shiftUser }) {
 		if (status === "voided") {
 			if (await abandonLocalShift(row.offline_id)) {
 				showWarning(__("A manager voided the shift opened on this device. Open a new shift to keep selling."))
@@ -571,7 +622,15 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			return
 		}
 
-		// A manager may have linked it to a colleague's shift, and only the server can say
+		// Linked to a colleague's shift, it ends here whoever is signed in. Taking the name
+		// would leave a shift to sell into, and to close, that is not this cashier's.
+		if (shiftUser && shiftUser !== row.data?.cashier) {
+			if (await abandonLocalShift(row.offline_id)) {
+				showWarning(__("A manager linked this shift to a colleague's shift, so it has ended on this device. Open a new shift to keep selling."))
+			}
+			return
+		}
+
 		if (await adoptServerShift(row.offline_id, name)) {
 			usePOSShiftStore().checkOpeningShift.fetch().catch((error) => {
 				log.warn("Could not read the shift back from the server", error)
@@ -617,6 +676,13 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			// No new sale may come to need a customer that is on its way out
 			if (row && getEntity(row) === ENTITY_CUSTOMER) announceRecordEnded(row, "voided")
 
+			// Asked twice, the first request already gave them back
+			if (row && !row.void_reason) {
+				const serialStore = useSerialNumberStore()
+				const serialItems = await releaseSoldBatchesAndSerials(row)
+				serialItems.forEach((itemCode) => serialStore.clearCache(itemCode))
+			}
+
 			await updatePendingCount()
 			showSuccess(__("Void requested. It stays in the queue until the server answers"))
 
@@ -644,6 +710,16 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			getQueueUpdateForResult({ status: "synced", invoice: row.server_invoice }),
 		)
 		await updatePendingCount()
+	}
+
+	/**
+	 * The cashier has seen that a void was refused. The record itself carries on in the queue.
+	 * @param {string} offlineId
+	 */
+	async function acknowledgeRefusedVoid(offlineId) {
+		const remaining = ((await getSetting(REFUSED_VOIDS_KEY)) || []).filter((note) => note.offline_id !== offlineId)
+		await setSetting(REFUSED_VOIDS_KEY, remaining)
+		refusedVoids.value = remaining
 	}
 
 	/**
@@ -860,6 +936,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (isWaitingForServer || Date.now() - lastAutoSyncAt >= intervalMs) autoSync()
 	}, SYNC_TICK_MS)
 	setInterval(pullServerChanges, PULL_INTERVAL_MS)
+	if (isNative) {
+		// Out of step with the full pull, which gives up when it finds another one running
+		setTimeout(() => {
+			setInterval(() => pullServerChanges(STOCK_ENTITIES), STOCK_PULL_INTERVAL_MS)
+		}, STOCK_PULL_INTERVAL_MS / 2)
+	}
 
 	// =========================================================================
 	// EXPORTS
@@ -872,6 +954,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		isSyncing,
 		pendingInvoicesList,
 		lastSyncedAt,
+		refusedVoids,
 
 		// Computed
 		hasPendingInvoices,
@@ -881,6 +964,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Actions
 		saveInvoiceOffline,
 		saveCustomerOffline,
+		saveReturnOffline,
 		savePaymentOffline,
 		withQueuedPayments,
 		saveShiftCloseOffline,
@@ -892,6 +976,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		updatePendingCount,
 		requestVoid,
 		acknowledgeSaleStands,
+		acknowledgeRefusedVoid,
 		autoSync,
 		syncAllPending,
 		preloadDataForOffline,

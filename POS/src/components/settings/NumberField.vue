@@ -10,8 +10,9 @@
 			:min="min"
 			:max="max"
 			:step="step"
+			:disabled="disabled"
 			@input="$emit('update:modelValue', parseFloat($event.target.value) || 0)"
-			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white"
+			class="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-transparent bg-white disabled:cursor-not-allowed disabled:opacity-50"
 		/>
 		<p v-if="description" class="text-xs text-gray-500 mt-0.5 leading-tight">
 			{{ description }}
@@ -46,6 +47,10 @@ const props = defineProps({
 	step: {
 		type: Number,
 		default: 1,
+	},
+	disabled: {
+		type: Boolean,
+		default: false,
 	},
 })
 

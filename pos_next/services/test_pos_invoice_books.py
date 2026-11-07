@@ -16,7 +16,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_to_date, flt, now_datetime
 
 from pos_next.api.shifts import insert_opening_shift
-from pos_next.install import CASHIER_ROLE, grant_cashier_lookups
+from pos_next.install import CASHIER_ROLE, ensure_cashier_permissions
 from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import build_closing_shift, save_closing_shift
 from pos_next.services import closing_alerts
 from pos_next.services.invoice_processor import process_invoice
@@ -56,7 +56,7 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         cls.cash = cls._cash_mode()
         _cashier(LINA)
         _cashier(SARA)
-        grant_cashier_lookups()
+        ensure_cashier_permissions()
         cls._item()
         cls._profile()
 

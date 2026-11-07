@@ -1215,8 +1215,8 @@ function endOfflineEdit() {
 }
 
 // A draft of an edit would become a second sale, and sign-out clears drafts while the
-// original would already be gone
-function refuseDraftDuringEdit() {
+// original would already be gone. A close would wait for an original that never arrives.
+function refuseDuringOfflineEdit() {
 	if (!editingOfflineContext) return false;
 	showWarning(__("Finish or clear the queued invoice you are editing first"));
 	return true;
@@ -1413,6 +1413,7 @@ const profileWarehouses = computed(() => {
 });
 
 const canAccessShiftActions = computed(() => shiftStore.hasOpenShift);
+const usesGiftCard = () => cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card";
 // The server cannot take a sale of a shift it does not know yet, connection or not
 const mustQueue = computed(() => offlineStore.isOffline || isLocalName(shiftStore.currentShift?.name));
 const canCloseShift = computed(() => {
@@ -1717,6 +1718,7 @@ watch(
 		uiStore.showDraftDialog = false;
 		uiStore.showHistoryDialog = false;
 		uiStore.showReturnDialog = false;
+		uiStore.showPaymentDialog = false;
 	}
 );
 
@@ -2410,6 +2412,13 @@ async function handlePaymentCompleted(paymentData) {
 			return;
 		}
 
+		// Applied while the server could still confirm it, and only the server can
+		if (mustQueue.value && usesGiftCard()) {
+			showWarning(__("Gift cards need the server. Remove it from the sale to finish without one"));
+			uiStore.showPaymentDialog = false;
+			return;
+		}
+
 		cartStore.payments = [];
 		if (paymentData.payments && Array.isArray(paymentData.payments)) {
 			paymentData.payments.forEach((p) => {
@@ -2450,7 +2459,7 @@ async function handlePaymentCompleted(paymentData) {
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
 				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
-				usesGiftCard: cartStore.appliedCoupon?.coupon?.coupon_type === "Gift Card",
+				usesGiftCard: usesGiftCard(),
 				hasLocalCustomer: isLocalName(customerValue),
 			});
 
@@ -2726,6 +2735,7 @@ async function handleCloseShift() {
 		showError(__("You do not have the required role to close this shift."));
 		return;
 	}
+	if (refuseDuringOfflineEdit()) return;
 	if (!(await ensureInvoicesSyncedBeforeClose())) {
 		return;
 	}
@@ -2778,6 +2788,7 @@ async function confirmLogout() {
 
 async function logoutWithCloseShift() {
 	uiStore.showLogoutDialog = false;
+	if (refuseDuringOfflineEdit()) return;
 	if (!(await ensureInvoicesSyncedBeforeClose())) {
 		return;
 	}
@@ -2788,7 +2799,7 @@ async function logoutWithCloseShift() {
 }
 
 async function handleSaveDraft() {
-	if (refuseDraftDuringEdit()) return;
+	if (refuseDuringOfflineEdit()) return;
 
 	const savedDraft = await draftsStore.saveDraftInvoice(
 		cartStore.invoiceItems,
@@ -2805,7 +2816,7 @@ async function handleSaveDraft() {
 }
 
 async function handleLoadDraft(draft) {
-	if (refuseDraftDuringEdit()) return;
+	if (refuseDuringOfflineEdit()) return;
 
 	try {
 		// If current cart has items, save it as draft before loading new one

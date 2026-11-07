@@ -6,14 +6,19 @@ import re
 import sqlite3
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import frappe
 from frappe.database.utils import EmptyQueryValues
 
+import pos_next
+from pos_next import install
 from pos_next.api import sync_pull
+from pos_next.api.items import _expand_warehouse
 from pos_next.api.pos_profile import get_pos_profile_data, get_taxes
 from pos_next.api.sync_pull import _decode_cursor, get_manifest, pull, record_rename
+from pos_next.patches.v2_0_0 import add_stock_pull_index
 
 NOW = datetime(2026, 11, 6, 12, 0, 0)
 LONG_AGO = "2026-01-01 10:00:00.000000"
@@ -28,6 +33,11 @@ CREATE TABLE `tabItem` (
 );
 CREATE TABLE `tabItem Barcode` (parent TEXT, barcode TEXT, uom TEXT);
 CREATE TABLE `tabItem Price` (name TEXT PRIMARY KEY, item_code TEXT, price_list TEXT, modified TEXT);
+CREATE TABLE `tabBin` (
+    name TEXT PRIMARY KEY COLLATE NOCASE, item_code TEXT, warehouse TEXT, actual_qty REAL, modified TEXT
+);
+CREATE TABLE `tabProduct Bundle` (name TEXT PRIMARY KEY, new_item_code TEXT);
+CREATE TABLE `tabProduct Bundle Item` (name TEXT PRIMARY KEY, parent TEXT, item_code TEXT);
 CREATE TABLE `tabCustomer` (
     name TEXT PRIMARY KEY, customer_name TEXT, mobile_no TEXT, email_id TEXT,
     disabled INT DEFAULT 0, customer_group TEXT, modified TEXT
@@ -126,6 +136,7 @@ class NoSiteTestCase(unittest.TestCase):
             item_groups=[frappe._dict(item_group="Food")],
         )
         self.groups = {"Food": ["Food", "Snacks"], "Drinks": ["Drinks"]}
+        self.warehouses = {}
 
         for target, replacement in (
             ("frappe.throw", _raise),
@@ -136,6 +147,8 @@ class NoSiteTestCase(unittest.TestCase):
             ("frappe.get_all", _get_all),
             ("frappe.get_cached_doc", lambda *_args: self.profile),
             ("pos_next.api.sync_pull._enrich_items_bulk", _enrich),
+            ("pos_next.api.sync_pull._expand_warehouse", lambda name: self.warehouses.get(name, [name])),
+            ("pos_next.api.sync_pull.get_stock_quantities", self.read_stock),
             ("pos_next.api.sync_pull._get_allowed_profile_brands", lambda _name: []),
             ("pos_next.api.items._get_allowed_profile_brands", lambda _name: []),
             ("pos_next.api.sync_pull._get_item_group_with_descendants", lambda group: self.groups[group]),
@@ -155,6 +168,28 @@ class NoSiteTestCase(unittest.TestCase):
 
     def add_item(self, name, modified=LONG_AGO, **values):
         self.db.insert("Item", name=name, item_name=name, modified=modified, **values)
+
+    def add_bin(self, item_code, warehouse="Stores", qty=1, modified=LONG_AGO):
+        self.db.insert(
+            "Bin",
+            name=f"{item_code}-{warehouse}",
+            item_code=item_code,
+            warehouse=warehouse,
+            actual_qty=qty,
+            modified=modified,
+        )
+
+    def read_stock(self, codes, warehouse):
+        """Stands in for get_stock_quantities, which the real run covers on MariaDB."""
+        rows = []
+        for code in codes:
+            names = self.warehouses.get(warehouse, [warehouse])
+            total = self.db.connection.execute(
+                f"SELECT SUM(actual_qty) FROM `tabBin` WHERE item_code = ? AND warehouse IN ({', '.join('?' * len(names))})",
+                (code, *names),
+            ).fetchone()[0]
+            rows.append({"item_code": code, "warehouse": warehouse, "actual_qty": total or 0})
+        return rows
 
     def add_tombstone(self, doctype, deleted_name, creation=LONG_AGO, data=None):
         self.db.insert(
@@ -466,6 +501,13 @@ class TestCommitLag(NoSiteTestCase):
 
         self.assertEqual(pull("items", "Main", cursor)["rows"], [])
 
+    def test_an_older_row_with_a_later_name_is_not_read_again(self):
+        self.add_item("Z", modified="2026-01-01 10:00:00.000000")
+        self.add_item("A", modified="2026-01-02 10:00:00.000000")
+        _, cursor = self.walk("items")
+
+        self.assertEqual(pull("items", "Main", cursor)["rows"], [])
+
     def test_unfinished_walk_never_steps_back(self):
         fresh = str(NOW - timedelta(minutes=1))
         for code in "ABC":
@@ -553,6 +595,216 @@ class TestItemPrices(NoSiteTestCase):
         page = pull("item_prices", "Main", cursor)
 
         self.assertEqual((page["rows"], page["deleted"]), ([], []))
+
+
+class TestStock(NoSiteTestCase):
+    def quantities(self, page):
+        return {row["item_code"]: row["actual_qty"] for row in page["rows"]}
+
+    def test_a_first_walk_reads_the_warehouse(self):
+        self.add_bin("A", qty=5)
+        self.add_bin("B", qty=0)
+
+        page = pull("stock", "Main")
+
+        self.assertEqual(self.quantities(page), {"A": 5, "B": 0})
+        self.assertEqual({row["warehouse"] for row in page["rows"]}, {"Stores"})
+        self.assertEqual(page["deleted"], [])
+
+    def test_only_what_moved_comes_back(self):
+        self.add_bin("A", qty=5)
+        self.add_bin("B", qty=7)
+        cursor = pull("stock", "Main")["next_cursor"]
+
+        self.db.update("Bin", "A-Stores", actual_qty=4, modified="2026-02-01 10:00:00.000000")
+
+        self.assertEqual(self.quantities(pull("stock", "Main", cursor)), {"A": 4})
+
+    def test_nothing_moved_returns_nothing(self):
+        self.add_bin("A")
+        cursor = pull("stock", "Main")["next_cursor"]
+
+        self.assertEqual(pull("stock", "Main", cursor)["rows"], [])
+
+    def test_another_warehouse_is_left_out(self):
+        self.add_bin("A", warehouse="Stores")
+        self.add_bin("B", warehouse="Elsewhere")
+
+        self.assertEqual(self.quantities(pull("stock", "Main")), {"A": 1})
+
+    def test_rows_sharing_a_stamp_survive_page_boundaries(self):
+        for code in "ABCDE":
+            self.add_bin(code)
+
+        page = pull("stock", "Main", limit=2)
+        seen = self.quantities(page)
+        while page["has_more"]:
+            page = pull("stock", "Main", page["next_cursor"], limit=2)
+            seen.update(self.quantities(page))
+
+        self.assertEqual(sorted(seen), list("ABCDE"))
+
+    def test_a_late_commit_behind_the_cursor_is_read_next_time(self):
+        self.add_bin("A", modified=str(NOW - timedelta(minutes=1)))
+        cursor = pull("stock", "Main")["next_cursor"]
+
+        self.add_bin("LATE", modified=str(NOW - timedelta(minutes=2)))
+
+        self.assertIn("LATE", self.quantities(pull("stock", "Main", cursor)))
+
+    def test_a_group_warehouse_adds_up_the_warehouses_under_it(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+        self.add_bin("A", warehouse="Stores", qty=2)
+        self.add_bin("A", warehouse="Annex", qty=3)
+        self.add_bin("B", warehouse="Annex", qty=1)
+
+        page = pull("stock", "Main")
+
+        self.assertEqual(self.quantities(page), {"A": 5, "B": 1})
+        self.assertEqual({row["warehouse"] for row in page["rows"]}, {"All Stores"})
+
+    def test_a_group_walk_pages_in_order_across_its_warehouses(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+        self.add_bin("A", warehouse="Stores", modified="2026-02-01 10:00:00.000000")
+        self.add_bin("B", warehouse="Annex", modified="2026-02-01 10:00:01.000000")
+        self.add_bin("C", warehouse="Stores", modified="2026-02-01 10:00:02.000000")
+
+        pages = []
+        cursor = None
+        while True:
+            page = pull("stock", "Main", cursor, limit=1)
+            pages.append(sorted(self.quantities(page)))
+            cursor = page["next_cursor"]
+            if not page["has_more"]:
+                break
+
+        self.assertEqual(pages, [["A"], ["B"], ["C"]])
+
+    def test_a_group_page_filled_exactly_is_the_last_one(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+        self.add_bin("A", warehouse="Stores")
+        self.add_bin("B", warehouse="Annex")
+
+        self.assertFalse(pull("stock", "Main", limit=2)["has_more"])
+
+    def test_names_of_both_cases_sharing_a_stamp_survive_a_group_walk(self):
+        # MariaDB compares names without case, and NOCASE on this table does the same
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+        self.add_bin("aaa", warehouse="Stores")
+        self.add_bin("BBB", warehouse="Annex")
+        self.add_bin("ccc", warehouse="Stores")
+
+        page = pull("stock", "Main", limit=1)
+        seen = self.quantities(page)
+        while page["has_more"]:
+            page = pull("stock", "Main", page["next_cursor"], limit=1)
+            seen.update(self.quantities(page))
+
+        self.assertEqual(sorted(seen), ["BBB", "aaa", "ccc"])
+
+    def test_a_group_reads_each_warehouse_on_its_own(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+
+        with patch.object(self.db, "sql", wraps=self.db.sql) as sql:
+            pull("stock", "Main")
+
+        walks = [call.args[0] for call in sql.call_args_list if "FROM `tabBin`" in call.args[0]]
+        self.assertEqual(len(walks), 2)
+        self.assertFalse([query for query in walks if " IN (" in query])
+
+    def test_a_component_moving_brings_its_bundle(self):
+        self.add_bin("PART", qty=4)
+        self.db.insert("Product Bundle", name="KIT", new_item_code="KIT-ITEM")
+        self.db.insert("Product Bundle Item", name="1", parent="KIT", item_code="PART")
+
+        self.assertEqual(sorted(self.quantities(pull("stock", "Main"))), ["KIT-ITEM", "PART"])
+
+    def test_a_profile_without_a_warehouse_has_no_stock(self):
+        self.profile.warehouse = None
+        self.add_bin("A")
+
+        # Not looked up at all: there is no warehouse to ask about
+        with patch("pos_next.api.sync_pull._expand_warehouse") as expand:
+            self.assertEqual(pull("stock", "Main")["rows"], [])
+            self.assertIsInstance(get_manifest("Main")["stock"], str)
+
+        expand.assert_not_called()
+
+    def test_reads_no_tombstones(self):
+        self.add_bin("A")
+        self.db.connection.execute("DROP TABLE `tabDeleted Document`")
+
+        self.assertEqual(self.quantities(pull("stock", "Main")), {"A": 1})
+
+    def test_a_finished_walk_steps_back_from_fresh_rows(self):
+        self.add_bin("A", modified=str(NOW - timedelta(minutes=1)))
+
+        page = pull("stock", "Main")
+
+        self.assertEqual(json.loads(page["next_cursor"])["modified"], str(NOW - sync_pull.COMMIT_LAG))
+
+    def test_an_unfinished_walk_never_steps_back(self):
+        fresh = str(NOW - timedelta(minutes=1))
+        for code in "AB":
+            self.add_bin(code, modified=fresh)
+
+        self.assertEqual(json.loads(pull("stock", "Main", limit=1)["next_cursor"])["modified"], fresh)
+
+    def test_rejects_a_malformed_cursor(self):
+        with self.assertRaises(frappe.ValidationError):
+            pull("stock", "Main", "not json")
+
+
+class TestExpandWarehouse(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        self.db.get_value = Mock(return_value=1)
+        self.db.get_descendants = Mock(return_value=["Stores", "Annex"])
+
+    def test_a_group_is_what_is_under_it(self):
+        self.assertEqual(_expand_warehouse("All"), ["Stores", "Annex"])
+
+    def test_a_group_with_nothing_under_it_is_itself(self):
+        self.db.get_descendants.return_value = []
+
+        self.assertEqual(_expand_warehouse("All"), ["All"])
+
+    def test_a_plain_warehouse_is_itself(self):
+        self.db.get_value.return_value = 0
+
+        self.assertEqual(_expand_warehouse("Stores"), ["Stores"])
+        self.db.get_descendants.assert_not_called()
+
+
+class TestStockIndex(NoSiteTestCase):
+    def test_covers_the_warehouse_then_the_cursor(self):
+        self.db.add_index = Mock()
+
+        add_stock_pull_index.execute()
+
+        self.db.add_index.assert_called_once_with(
+            "Bin", ["warehouse", "modified", "name"], index_name="pos_sync_stock"
+        )
+
+    def test_runs_on_migrate(self):
+        patches = Path(pos_next.__file__).with_name("patches.txt").read_text()
+
+        self.assertIn("pos_next.patches.v2_0_0.add_stock_pull_index", patches)
+
+    def test_a_new_site_gets_it_without_a_migrate(self):
+        self.db.add_index = Mock()
+        self.db.commit = Mock()
+
+        with patch("frappe.clear_cache"):
+            install.after_install()
+
+        self.db.add_index.assert_any_call("Bin", ["warehouse", "modified", "name"], index_name="pos_sync_stock")
+        self.db.add_index.assert_any_call("Item", ["modified", "name"], index_name="pos_sync_cursor")
 
 
 class TestCustomers(NoSiteTestCase):
@@ -797,6 +1049,146 @@ class TestManifest(NoSiteTestCase):
         page = pull("items", "Main")
 
         self.assertIn("LEFT", page["deleted"])
+
+
+class TestStockManifest(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        self.add_item("A")
+        self.add_bin("A", modified=LONG_AGO)
+
+    def moved(self, change):
+        before = get_manifest("Main")
+        change()
+        after = get_manifest("Main")
+        return {
+            entity for entity in sync_pull._WALKED.keys() | sync_pull._WHOLE_SETS.keys()
+            if before[entity] != after[entity]
+        }
+
+    def at(self, moment):
+        for target, value in (("now_datetime", moment), ("now", str(moment))):
+            patcher = patch(f"pos_next.api.sync_pull.{target}", lambda value=value: value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_a_quiet_warehouse_moves_nothing(self):
+        self.assertEqual(self.moved(lambda: None), set())
+
+    def test_a_moved_bin_moves_stock_alone(self):
+        change = lambda: self.db.update("Bin", "A-Stores", modified="2026-02-01 10:00:00.000000")
+
+        self.assertEqual(self.moved(change), {"stock"})
+
+    def test_a_new_bin_moves_stock(self):
+        self.assertEqual(self.moved(lambda: self.add_bin("B", modified="2026-02-01 10:00:00.000000")), {"stock"})
+
+    def test_another_warehouse_moves_nothing(self):
+        self.assertEqual(
+            self.moved(lambda: self.add_bin("B", warehouse="Elsewhere", modified="2026-02-01 10:00:00.000000")),
+            set(),
+        )
+
+    def test_a_warehouse_under_the_group_moves_stock(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores", "Annex"]
+
+        self.assertEqual(
+            self.moved(lambda: self.add_bin("B", warehouse="Annex", modified="2026-02-01 10:00:00.000000")),
+            {"stock"},
+        )
+
+    def test_a_warehouse_with_no_stock_answers(self):
+        self.profile.warehouse = "Empty"
+
+        self.assertEqual(self.moved(lambda: None), set())
+
+    def test_changing_the_warehouse_restarts_the_walk(self):
+        before = get_manifest("Main")["scopes"]["stock"]
+        self.profile.warehouse = "Shop"
+
+        self.assertNotEqual(get_manifest("Main")["scopes"]["stock"], before)
+
+    def test_a_price_list_change_leaves_the_stock_walk_alone(self):
+        before = get_manifest("Main")["scopes"]["stock"]
+        self.profile.selling_price_list = "Wholesale"
+
+        self.assertEqual(get_manifest("Main")["scopes"]["stock"], before)
+
+    def test_a_new_warehouse_under_the_group_restarts_the_walk(self):
+        self.profile.warehouse = "All Stores"
+        self.warehouses["All Stores"] = ["Stores"]
+        before = get_manifest("Main")["scopes"]["stock"]
+
+        self.warehouses["All Stores"].append("Annex")
+
+        self.assertNotEqual(get_manifest("Main")["scopes"]["stock"], before)
+
+    def test_keeps_moving_while_a_commit_can_still_land(self):
+        self.db.update("Bin", "A-Stores", modified=str(NOW - timedelta(minutes=1)))
+
+        self.at(NOW)
+        first = get_manifest("Main")["stock"]
+        self.at(NOW + timedelta(minutes=1))
+
+        self.assertNotEqual(get_manifest("Main")["stock"], first)
+
+    def test_settles_once_no_commit_can_land(self):
+        self.db.update("Bin", "A-Stores", modified=str(NOW - timedelta(minutes=1)))
+
+        self.at(NOW + sync_pull.COMMIT_LAG)
+        first = get_manifest("Main")["stock"]
+        self.at(NOW + sync_pull.COMMIT_LAG + timedelta(minutes=1))
+
+        self.assertEqual(get_manifest("Main")["stock"], first)
+
+    def test_a_late_commit_reaches_a_device_with_nothing_else_moving(self):
+        # What the apps do each minute: walk only when the version moved
+        self.db.update("Bin", "A-Stores", modified=str(NOW - timedelta(seconds=2)), actual_qty=9)
+        version = get_manifest("Main")["stock"]
+        cursor = pull("stock", "Main")["next_cursor"]
+
+        # A sale stamped before that one commits only now, and leaves the newest stamp where it was
+        self.add_bin("LATE", qty=3, modified=str(NOW - timedelta(seconds=3)))
+
+        rows = []
+        for minute in range(1, 8):
+            self.at(NOW + timedelta(minutes=minute))
+            current = get_manifest("Main")["stock"]
+            if current != version:
+                version = current
+                page = pull("stock", "Main", cursor)
+                cursor = page["next_cursor"]
+                rows += page["rows"]
+
+        self.assertIn("LATE", {row["item_code"] for row in rows})
+
+    def test_stock_alone_is_the_whole_answer(self):
+        manifest = get_manifest("Main", stock_only=1)
+
+        self.assertEqual(manifest["stock"], get_manifest("Main")["stock"])
+        self.assertEqual(manifest["scopes"]["stock"], get_manifest("Main")["scopes"]["stock"])
+        self.assertEqual(set(manifest), {"server_time", "scopes", "stock"})
+        self.assertEqual(set(manifest["scopes"]), {"stock"})
+
+    def test_stock_alone_reads_only_bin(self):
+        with patch.object(self.db, "sql", wraps=self.db.sql) as sql:
+            get_manifest("Main", stock_only="1")
+
+        self.assertEqual(len(sql.call_args_list), 1)
+        self.assertIn("`tabBin`", sql.call_args_list[0].args[0])
+
+    def test_stock_alone_never_counts_rows(self):
+        with patch.object(self.db, "sql", wraps=self.db.sql) as sql:
+            get_manifest("Main", stock_only=1)
+
+        self.assertNotIn("COUNT", sql.call_args_list[0].args[0])
+
+    def test_stock_alone_is_still_checked(self):
+        self.db.exists.return_value = None
+
+        with self.assertRaises(frappe.PermissionError):
+            get_manifest("Main", stock_only=1)
 
 
 class TestRename(NoSiteTestCase):

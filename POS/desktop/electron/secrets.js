@@ -1,5 +1,6 @@
 const fs = require("node:fs")
 const path = require("node:path")
+const { DATABASE_KEY } = require("./db/encryption")
 
 const APP_FRAME = "app://pos/"
 const SECRETS_FILE = "secrets.json"
@@ -56,28 +57,45 @@ function isAppFrame(event) {
 	return Boolean(event.senderFrame?.url?.startsWith(APP_FRAME))
 }
 
-function registerSecretHandlers() {
-	const { app, ipcMain, safeStorage } = require("electron")
+let deviceSecrets = null
 
-	let store = null
-	const openStore = () => {
-		store ??= createSecretStore({
-			filePath: path.join(app.getPath("userData"), SECRETS_FILE),
-			cipher: safeStorage,
-			// On Linux without a keyring, Electron "encrypts" with a fixed password
-			isSecure: () =>
-				safeStorage.isEncryptionAvailable() &&
-				safeStorage.getSelectedStorageBackend?.() !== "basic_text",
-		})
-		return store
-	}
+function openDeviceSecrets() {
+	const { app, safeStorage } = require("electron")
+
+	deviceSecrets ??= createSecretStore({
+		filePath: path.join(app.getPath("userData"), SECRETS_FILE),
+		cipher: safeStorage,
+		// On Linux without a keyring, Electron "encrypts" with a fixed password
+		isSecure: () =>
+			safeStorage.isEncryptionAvailable() &&
+			safeStorage.getSelectedStorageBackend?.() !== "basic_text",
+	})
+	return deviceSecrets
+}
+
+/**
+ * The database key lives here too, and it is the one secret no page may ask for. An
+ * array would cross IPC and still read that entry, so only a plain string gets through.
+ */
+function isAllowed(event, key) {
+	return isAppFrame(event) && typeof key === "string" && key !== DATABASE_KEY
+}
+
+function registerSecretHandlers() {
+	const { ipcMain } = require("electron")
 
 	for (const method of ["get", "set", "remove"]) {
 		ipcMain.handle(`secrets:${method}`, (event, ...args) => {
-			if (!isAppFrame(event)) throw new Error("Not allowed")
-			return openStore()[method](...args)
+			if (!isAllowed(event, args[0])) throw new Error("Not allowed")
+			return openDeviceSecrets()[method](...args)
 		})
 	}
 }
 
-module.exports = { createSecretStore, isAppFrame, registerSecretHandlers }
+module.exports = {
+	createSecretStore,
+	isAllowed,
+	isAppFrame,
+	openDeviceSecrets,
+	registerSecretHandlers,
+}

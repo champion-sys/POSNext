@@ -16,6 +16,7 @@ from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 from pos_next.services.sync_classifier import (
     DependencyError,
     LinkedShiftCloseError,
+    NotShiftHolderError,
     OfflineShiftNotAllowedError,
     ShiftOutdatedError,
     SyncContractError,
@@ -39,6 +40,9 @@ LOCAL_NAME_PREFIX = "pos_offline_"
 #: Payload fields that may hold such a name
 LOCAL_NAME_FIELDS = ("customer", "return_against", "posa_pos_opening_shift", "pos_opening_shift")
 
+#: A close stopped by one of these can never finish on the shift it names
+CLOSE_REFUSALS = (LinkedShiftCloseError.__name__, NotShiftHolderError.__name__)
+
 
 def is_local_name(value):
     return isinstance(value, str) and value.startswith(LOCAL_NAME_PREFIX)
@@ -59,6 +63,11 @@ def load_payload(row):
     return payload
 
 
+def get_local_names(payload):
+    """What a payload names that only exists on the device."""
+    return list(filter(is_local_name, map(payload.get, LOCAL_NAME_FIELDS)))
+
+
 def get_dependencies(payload, declared=None):
     """Records this one needs, including those the payload itself refers to.
 
@@ -72,8 +81,7 @@ def get_dependencies(payload, declared=None):
     Returns:
         list[str]: Offline IDs, without repeats
     """
-    implied = [payload.get(fieldname) for fieldname in LOCAL_NAME_FIELDS]
-    candidates = [*(declared or []), *(payload.get("manifest") or []), *filter(is_local_name, implied)]
+    candidates = [*(declared or []), *(payload.get("manifest") or []), *get_local_names(payload)]
     return list(dict.fromkeys(value for value in candidates if isinstance(value, str) and value))
 
 
@@ -103,6 +111,47 @@ def get_server_shift(payload):
     if is_local_name(shift):
         return frappe.db.get_value(DOCTYPE, {"offline_id": shift}, "sales_invoice")
     return shift
+
+
+def get_record_shift(entity, payload, cashier):
+    """The shift a record belongs on. A close joins only the shift it counted."""
+    shift = get_server_shift(payload)
+    if shift and entity == ENTITY_SHIFT_CLOSE and not _counted(shift, payload.get("pos_opening_shift"), cashier):
+        return None
+    return shift
+
+
+def _counted(shift, counted_shift, cashier):
+    opening = frappe.db.get_value("POS Opening Shift", shift, ["name", "offline_id", "user"], as_dict=True)
+    return bool(opening) and not _get_close_refusal(opening, counted_shift, cashier)
+
+
+def _get_close_refusal(opening, counted_shift, cashier):
+    """Why a close must not finish on a shift, if it must not.
+
+    The count covers one device's drawer, and the shift may still be in use by its holder.
+    A device that a link renamed to the shift names it like its holder would, so only the
+    holder tells them apart.
+
+    Args:
+        opening: The shift, with name, offline_id and user
+        counted_shift: The shift as the close names it
+        cashier: Who made the close
+
+    Returns:
+        Exception | None
+    """
+    if is_local_name(counted_shift) and opening.offline_id != counted_shift:
+        return LinkedShiftCloseError(
+            _("This close counted a shift that was linked to {0}, so it cannot close {0}").format(opening.name)
+        )
+    if opening.user != cashier:
+        return NotShiftHolderError(
+            _("This close came from {0} and shift {1} belongs to {2}, so it cannot close that shift").format(
+                cashier, opening.name, opening.user
+            )
+        )
+    return None
 
 
 def _get_return_row_positions(doctype, invoice):
@@ -153,17 +202,16 @@ def align_return(payload):
 
 
 def has_pending_close(opening_shift):
-    """Whether a shift was closed on a device and the server is still finishing it."""
-    return bool(
-        frappe.db.exists(
-            DOCTYPE,
-            {
-                "entity": ENTITY_SHIFT_CLOSE,
-                "shift": opening_shift,
-                "status": ["not in", FINAL_STATES],
-            },
-        )
+    """Whether a shift was closed on a device and the server is still finishing it.
+
+    A close that can never finish on it does not count: the shift stays with its holder.
+    """
+    closes = frappe.get_all(
+        DOCTYPE,
+        filters={"entity": ENTITY_SHIFT_CLOSE, "shift": opening_shift, "status": ["not in", FINAL_STATES]},
+        pluck="error_code",
     )
+    return any(code not in CLOSE_REFUSALS for code in closes)
 
 
 def _assert_target_access(row, pos_profile):
@@ -230,6 +278,9 @@ def create_payment(row):
     """
     from pos_next.api.partial_payments import post_queued_payments
     from pos_next.api.utilities import get_wallet_payment_modes
+    from pos_next.services.sync_inbox import _assert_device_clock
+
+    _assert_device_clock(row)
 
     payload = load_payload(row)
     resolve_local_names(payload)
@@ -298,15 +349,18 @@ def _attach_waiting_records(local_name, shift):
     """Put the records that named a shift by its device name on the shift it became.
 
     They were stored with no shift, and a closing and has_pending_close find them through
-    it. Only those: a manager may have moved one elsewhere already.
+    it. Only those: a manager may have moved one elsewhere already. A close joins only the
+    shift it counted, which a shift the record was linked to is not.
     """
     waiting = frappe.get_all(
         DOCTYPE,
         filters={"depends_on": ["like", f"%{local_name}%"], "shift": ["is", "not set"]},
-        pluck="name",
+        fields=["name", "cashier", "entity"],
     )
-    for name in waiting:
-        frappe.db.set_value(DOCTYPE, name, "shift", shift)
+    for row in waiting:
+        if row.entity == ENTITY_SHIFT_CLOSE and not _counted(shift, local_name, row.cashier):
+            continue
+        frappe.db.set_value(DOCTYPE, row.name, "shift", shift)
 
 
 def open_shift(row):
@@ -381,11 +435,9 @@ def close_shift(row):
         raise SyncContractError(_("Shift {0} does not exist").format(opening_shift))
 
     opening = frappe.get_doc("POS Opening Shift", opening_shift)
-    # The count covers this device's drawer only, and the linked shift may still be in use
-    if is_local_name(counted_shift) and opening.offline_id != counted_shift:
-        raise LinkedShiftCloseError(
-            _("This close counted a shift that was linked to {0}, so it cannot close {0}").format(opening_shift)
-        )
+    refusal = _get_close_refusal(opening, counted_shift, row.cashier)
+    if refusal:
+        raise refusal
 
     _assert_target_access(row, opening.pos_profile)
     assert_may_close_shift(opening, row.cashier)

@@ -158,6 +158,8 @@ class POSClosingShift(Document):
         opening_entry.pos_closing_shift = self.name
         opening_entry.set_status()
         self.delete_draft_invoices()
+        # Whoever may close a shift has passed by now, and may not be able to write this record
+        opening_entry.flags.ignore_permissions = True
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
@@ -372,6 +374,7 @@ class POSClosingShift(Document):
             if opening_entry.pos_closing_shift == self.name:
                 opening_entry.pos_closing_shift = ""
                 opening_entry.set_status()
+                opening_entry.flags.ignore_permissions = True
                 opening_entry.save()
         # Undoing the books takes the access that made them
         with session_of(BOOKS_USER):

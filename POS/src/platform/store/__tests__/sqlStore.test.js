@@ -27,6 +27,35 @@ describe("the SQLite store", () => {
 		outbox = createOutbox(sql)
 	})
 
+	describe("a pulled stock page", () => {
+		const page = (rows) => ({ rows, deleted: [], next_cursor: "c1", has_more: false })
+
+		beforeEach(async () => {
+			await store.cacheItems([item("A", "Item", { warehouse: "W1", actual_qty: 100 })])
+		})
+
+		it("updates the cached quantity", async () => {
+			await store.applyPullPage("stock", page([{ item_code: "A", warehouse: "W1", actual_qty: 40, stock_qty: 40 }]), "P1")
+
+			const [cached] = await store.searchCachedItems("Item", 10)
+			expect(cached).toMatchObject({ actual_qty: 40, stock_qty: 40 })
+		})
+
+		it("leaves the stock held by queued sales", async () => {
+			await store.saveOfflineInvoice(invoice())
+
+			await store.applyPullPage("stock", page([{ item_code: "A", warehouse: "W1", actual_qty: 40, stock_qty: 40 }]), "P1")
+
+			expect(await outbox.availableStock("A", "W1")).toBe(16)
+		})
+
+		it("skips an item that is not cached", async () => {
+			await store.applyPullPage("stock", page([{ item_code: "NOPE", warehouse: "W1", actual_qty: 1 }]), "P1")
+
+			expect(await store.searchCachedItems("NOPE", 10)).toEqual([])
+		})
+	})
+
 	describe("a sale", () => {
 		beforeEach(async () => {
 			await store.cacheItems([item("A", "Item", { warehouse: "W1", actual_qty: 100 })])

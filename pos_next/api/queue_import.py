@@ -7,13 +7,11 @@ A manager uploads the file the device exported. Each row then takes the road a p
 so nothing about the file decides more than a push could, and the file is never kept.
 """
 
-import json
-
 import frappe
 from frappe import _
 
 from pos_next.api import sync
-from pos_next.services import queue_file
+from pos_next.services import queue_file, sync_void
 from pos_next.services.sync_entities import DOCTYPE
 
 #: How many refused rows the reply names. The counts cover all of them.
@@ -24,48 +22,22 @@ STATUS_CONFLICT = "conflict"
 #: Which count each refusal goes to. Any other answer took the row, as a void request does.
 REFUSALS = {STATUS_CONFLICT: "conflicts", "rejected": "rejected"}
 
-#: Sales that are not edits hold a null here, and a full payload scan must not load them
-_HOLDS_AN_EDIT = '%"edited_from": "%'
 
+def _store_row(item, queue, uploader):
+    """Store a row, as a sale if it asks for a void its POS Profile does not allow.
 
-def _edited_from(payload):
-    # A manager can paste a payload into a record, and one bad record must not stop an import
-    try:
-        original = json.loads(payload).get("edited_from")
-    except (ValueError, AttributeError):
-        return None
-    return original if isinstance(original, str) else None
-
-
-def _get_held_edits():
-    """Which sales the server already holds a later edit of.
-
-    A file is a snapshot. A sale edited after it was exported is retired on the device, which
-    sends the edit instead, so a file imported later would bring the original back beside it.
-    Only the edit names the original, inside its payload.
-
-    Returns:
-        dict[str, str]: The offline_id of each edit, by the offline_id it replaced
+    A device told so sends the record again without the request. A file never hears the
+    answer, and the paid sale would have no other way to the server.
     """
-    rows = frappe.get_all(
-        DOCTYPE,
-        filters={"payload": ["like", _HOLDS_AN_EDIT], "status": ["!=", "Voided"]},
-        fields=["offline_id", "payload"],
-    )
-    return {_edited_from(row.payload): row.offline_id for row in rows}
+    name, answer = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
+    if not answer or answer["status"] != sync_void.VOID_REFUSED:
+        return name, answer
+
+    sale = {key: value for key, value in item.items() if key != "void_reason"}
+    return sync.store_item(sale, uploader, queue.device_id, queue.app_version, queue.protocol_version)
 
 
-def _replaced_by_edit(offline_id, edit):
-    return {
-        "offline_id": offline_id,
-        "status": STATUS_CONFLICT,
-        "message": _(
-            "This sale was edited after the file was exported. The server already holds the edit, {0}."
-        ).format(edit),
-    }
-
-
-def _import_row(item, queue, uploader, edits):
+def _import_row(item, queue, uploader):
     """Store one row of a file.
 
     Returns:
@@ -73,13 +45,9 @@ def _import_row(item, queue, uploader, edits):
             and whether the server already held it
     """
     offline_id = item.get("offline_id") if isinstance(item, dict) else None
-    is_named = isinstance(offline_id, str)
 
-    known = is_named and bool(frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}))
-    if is_named and not known and offline_id in edits:
-        return None, _replaced_by_edit(offline_id, edits[offline_id]), False
-
-    name, answer = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
+    known = isinstance(offline_id, str) and bool(frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}))
+    name, answer = _store_row(item, queue, uploader)
     return name, answer, known
 
 
@@ -99,14 +67,13 @@ def import_queue_file():
 
     queue = queue_file.read_queue_file(upload.stream.read(queue_file.MAX_FILE_BYTES + 1))
     uploader = frappe.session.user
-    edits = _get_held_edits()
 
     names = []
     problems = []
     counts = {"stored": 0, "already_known": 0, "conflicts": 0, "rejected": 0}
 
     for item in queue.rows:
-        name, answer, known = _import_row(item, queue, uploader, edits)
+        name, answer, known = _import_row(item, queue, uploader)
         refusal = REFUSALS.get(answer["status"]) if answer else None
         if refusal:
             counts[refusal] += 1

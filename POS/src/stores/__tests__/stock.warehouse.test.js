@@ -19,6 +19,53 @@ const sale = (warehouse, qty) => ({
 	},
 })
 
+describe("stock brought by the pull", () => {
+	let stock
+
+	const pulled = (qty, extra = {}) => ({ item_code: "SKU", warehouse: "Main", actual_qty: qty, ...extra })
+
+	beforeEach(async () => {
+		setActivePinia(createPinia())
+		mocks.getOfflineInvoices.mockReset().mockResolvedValue([sale("Main", 2)])
+
+		stock = useStockStore()
+		stock.init([{ item_code: "SKU", actual_qty: 10 }])
+		stock.setWarehouse("Main")
+		await flushPromises()
+	})
+
+	it("replaces what the server said, and sales still queued keep holding stock", () => {
+		stock.applyPulled([pulled(7)])
+
+		expect(stock.getStockInfo("SKU")).toMatchObject({ server: 7, queued: 2, display: 5 })
+	})
+
+	it("leaves the cart's reservations in place", () => {
+		stock.reserve([{ item_code: "SKU", quantity: 3 }])
+
+		stock.applyPulled([pulled(7)])
+
+		expect(stock.getStockInfo("SKU")).toMatchObject({ server: 7, reserved: 3, display: 2 })
+	})
+
+	it("ignores a row of a warehouse this till is not selling from", () => {
+		stock.applyPulled([pulled(99, { warehouse: "Annex" })])
+
+		expect(stock.getStockInfo("SKU").server).toBe(10)
+	})
+
+	it("does not start tracking items nothing has loaded", () => {
+		stock.applyPulled([pulled(4, { item_code: "OTHER" })])
+
+		expect(stock.server.has("OTHER")).toBe(false)
+	})
+
+	it("copes with an empty page", () => {
+		expect(() => stock.applyPulled([])).not.toThrow()
+		expect(() => stock.applyPulled(undefined)).not.toThrow()
+	})
+})
+
 describe("stock held by queued sales", () => {
 	let stock
 

@@ -22,7 +22,7 @@
  * @property {boolean} [superseded]
  * @property {string|null} [replaced_by]
  * @property {string|null} [void_reason] - Set when a cashier asked to void it. The record
- *   stays until the server answers, and holds no stock meanwhile.
+ *   stays until the server answers, and holds no stock meanwhile. A refusal clears it.
  *
  * @module platform/store/methods
  */
@@ -87,6 +87,7 @@ export const DIRECT_METHODS = [
 	"updateQueuedInvoice",
 	"resendQueuedInvoice",
 	"requestVoid",
+	"cancelVoid",
 	"deleteSyncedInvoices",
 
 	"getCachedItem",

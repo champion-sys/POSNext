@@ -5,8 +5,9 @@
 				:id="fieldId"
 				type="checkbox"
 				:checked="modelValue"
+				:disabled="disabled"
 				@change="$emit('update:modelValue', $event.target.checked ? 1 : 0)"
-				class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-1 cursor-pointer"
+				class="w-4 h-4 text-blue-600 bg-white border-gray-300 rounded focus:ring-blue-500 focus:ring-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
 			/>
 		</div>
 		<div class="flex-1 min-w-0">
@@ -35,6 +36,10 @@ const props = defineProps({
 	description: {
 		type: String,
 		default: "",
+	},
+	disabled: {
+		type: Boolean,
+		default: false,
 	},
 })
 

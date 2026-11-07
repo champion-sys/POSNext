@@ -470,6 +470,44 @@ describe("editing a queued sale on the sale screen", () => {
 			expect(page.stores.drafts.loadDraft).not.toHaveBeenCalled()
 			expect(cart.invoiceItems.map((row) => row.item_code)).toEqual(["COFFEE"])
 		})
+
+		describe("closing the shift", () => {
+			const warning = "Finish or clear the queued invoice you are editing first"
+
+			beforeEach(() => {
+				page.stores.shift.hasOpenShift = true
+				page.stores.ui.showCloseShiftDialog = false
+			})
+
+			it("is refused, because the close would wait for a sale that gets replaced", async () => {
+				await editQueuedSale()
+
+				await wrapper.vm.handleCloseShift()
+
+				expect(page.toast.warning).toHaveBeenCalledWith(warning)
+				expect(page.stores.ui.showCloseShiftDialog).toBe(false)
+			})
+
+			it("is refused on the way out too", async () => {
+				await editQueuedSale()
+
+				await wrapper.vm.logoutWithCloseShift()
+
+				expect(page.toast.warning).toHaveBeenCalledWith(warning)
+				expect(page.stores.ui.showCloseShiftDialog).toBe(false)
+			})
+
+			it("works again once the edit is over", async () => {
+				await editQueuedSale()
+				cart.clearCart()
+				await nextTick()
+				await flushPromises()
+
+				await wrapper.vm.handleCloseShift()
+
+				expect(page.stores.ui.showCloseShiftDialog).toBe(true)
+			})
+		})
 	})
 
 	describe("drafts of an ordinary sale", () => {

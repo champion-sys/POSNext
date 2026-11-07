@@ -13,36 +13,35 @@ This module handles post-fixture tasks like setting defaults and clearing cache.
 import frappe
 import logging
 
-from frappe.permissions import add_permission, update_permission_property
+from pos_next.patches.v2_0_0 import add_stock_pull_index, add_sync_pull_indexes
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
+#: What ERPNext reads while it fills in an invoice and what the POS screens list, beyond what
+#: the role's fixtures give it. Without these a cashier with only this role cannot sell at all.
 CASHIER_ROLE = "POSNext Cashier"
-
-#: Select lets a cashier pick an account without being able to read the chart of accounts
-CASHIER_LOOKUPS = {"Account": "select", "Customer Group": "read", "Sales Person": "read"}
+CASHIER_PERMISSIONS = {"Account": "select", "Address": "read", "Customer Group": "read", "Sales Person": "read"}
 
 
-def grant_cashier_lookups():
-	"""Give the cashier role the masters the POS looks up, so it needs no ERPNext role beside it.
+def ensure_cashier_permissions():
+	"""Give the cashier role what selling needs, on any site.
 
-	Every save of an invoice looks up the receivable account with the session's access, and
-	the POS lists customer groups and sales persons. add_permission first copies a doctype's
-	standard rules, because Custom DocPerm rows replace them. It runs here rather than in a
-	patch, so a site that adds the app later gets it too.
+	Not in the fixtures: the first Custom DocPerm of a doctype replaces all its standard
+	permissions. add_permission copies those first, so every other role keeps its access.
+	A new rule also starts with read on, which would open the chart of accounts to a cashier
+	who only needs to pick from it.
 	"""
-	if not frappe.db.exists("Role", CASHIER_ROLE):
-		return
+	from frappe.permissions import add_permission, update_permission_property
 
-	for doctype, ptype in CASHIER_LOOKUPS.items():
-		rule = {"parent": doctype, "role": CASHIER_ROLE, "permlevel": 0, "if_owner": 0}
-		if frappe.db.exists("Custom DocPerm", rule):
-			continue
-
-		add_permission(doctype, CASHIER_ROLE, ptype=ptype)
-		if ptype != "read":
-			update_permission_property(doctype, CASHIER_ROLE, 0, "read", 0)
+	for doctype, permission in CASHIER_PERMISSIONS.items():
+		if not frappe.db.exists(
+			"Custom DocPerm", {"parent": doctype, "role": CASHIER_ROLE, "permlevel": 0, "if_owner": 0}
+		):
+			add_permission(doctype, CASHIER_ROLE, ptype=permission)
+			if permission != "read":
+				update_permission_property(doctype, CASHIER_ROLE, 0, "read", 0)
+			frappe.clear_cache(doctype=doctype)
 
 
 def after_install():
@@ -52,7 +51,10 @@ def after_install():
 
 		# Setup default print format for POS Profiles
 		# setup_default_print_format()
-		grant_cashier_lookups()
+
+		# Installing an app marks its patches as done without running them
+		add_sync_pull_indexes.execute()
+		add_stock_pull_index.execute()
 
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
@@ -74,7 +76,12 @@ def after_migrate():
 	try:
 		# Setup default print format
 		# setup_default_print_format(quiet=True)
-		grant_cashier_lookups()
+
+		ensure_cashier_permissions()
+
+		# A site installed before these ran at install has them marked done without having them
+		add_sync_pull_indexes.execute()
+		add_stock_pull_index.execute()
 
 		# Clear cache
 		frappe.clear_cache()

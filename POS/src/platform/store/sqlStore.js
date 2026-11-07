@@ -202,6 +202,11 @@ export function createSqlStore(sql) {
 			return { success: Boolean(offlineId) && (await outbox.requestVoid(offlineId, reason)) }
 		},
 
+		async cancelVoid(id) {
+			const offlineId = await offlineIdOf(id)
+			return { success: Boolean(offlineId) && (await outbox.cancelVoid(offlineId)) }
+		},
+
 		markOfflineInvoicePrinted(offlineId) {
 			if (!offlineId) return { success: false }
 
@@ -482,6 +487,10 @@ export function createSqlStore(sql) {
 				case "item_prices":
 					await store.cacheItems(rows)
 					await catalog.remove(deleted)
+					break
+
+				case "stock":
+					await updateStockQuantities(rows)
 					break
 
 				case "customers":

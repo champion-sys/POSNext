@@ -157,7 +157,9 @@ import { usePOSSyncStore } from "@/stores/posSync"
 // Get calculateDiscountAmount helper from composable
 const { calculateDiscountAmount } = useInvoice()
 const { showSuccess, showError, showWarning } = useToast()
-const { isOffline } = useOfflineStatus()
+// With a shift the server does not know yet the sale goes through the queue even online,
+// so a card checked now would not be spent until later, and could pass again meanwhile
+const { isOffline, mustQueue } = useOfflineStatus()
 const settingsStore = usePOSSettingsStore()
 const offlineStore = usePOSSyncStore()
 
@@ -258,7 +260,7 @@ watch(
 )
 
 async function loadGiftCards() {
-	if (isOffline.value) {
+	if (mustQueue.value) {
 		giftCards.value = []
 		return
 	}
@@ -298,7 +300,9 @@ function getOfflineCouponMessage(problem) {
 		case "one_use":
 			return __("This customer has already used this coupon")
 		default:
-			return __("This coupon cannot be checked offline. Gift cards need a connection.")
+			return isOffline.value
+				? __("This coupon cannot be checked offline. Gift cards need a connection.")
+				: __("Gift cards need the server, and it does not know this shift yet.")
 	}
 }
 
@@ -337,7 +341,7 @@ async function applyCoupon() {
 	errorMessage.value = ""
 
 	try {
-		const validationData = isOffline.value ? await validateOffline() : await validateOnline()
+		const validationData = mustQueue.value ? await validateOffline() : await validateOnline()
 
 		if (!validationData || !validationData.valid) {
 			errorMessage.value =

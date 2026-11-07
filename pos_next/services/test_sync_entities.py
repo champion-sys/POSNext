@@ -15,7 +15,7 @@ from pos_next.api.invoices import save_invoice_draft
 from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox
 from pos_next.services.invoice_processor import process_invoice
-from pos_next.services.sync_classifier import DependencyError, SyncContractError, classify
+from pos_next.services.sync_classifier import ClockSkewError, DependencyError, SyncContractError, classify
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
 LOCAL_INVOICE = "pos_offline_invoice-1"
@@ -284,7 +284,7 @@ class TestCreatePayment(NoSiteTestCase):
         }
     )
 
-    def _create(self, payload=None, wallet_modes=()):
+    def _create(self, payload=None, wallet_modes=(), **row):
         with (
             patch("pos_next.api.invoices._assert_invoice_write_access") as self.access,
             patch("pos_next.api.partial_payments.post_queued_payments") as self.post,
@@ -292,7 +292,7 @@ class TestCreatePayment(NoSiteTestCase):
         ):
             self.post.return_value = ["PE-1", "PE-2"]
             frappe.local.db.get_value.return_value = "Main"
-            return sync_entities.create_payment(_row(entity="payment", payload=payload or self.payload))
+            return sync_entities.create_payment(_row(entity="payment", payload=payload or self.payload, **row))
 
     def test_posts_on_the_day_and_in_the_shift_the_money_was_taken(self):
         result = self._create()
@@ -330,6 +330,20 @@ class TestCreatePayment(NoSiteTestCase):
     def _refuse_uploader(_doctype, pos_profile, user):
         if user == "uploader@example.com":
             raise frappe.PermissionError(pos_profile)
+
+    def test_a_clock_too_far_off_stops_the_payment_before_it_posts(self):
+        row = _row(entity="payment", payload='{"invoice_name": "SINV-1"}', clock_skew_seconds=31536000)
+
+        with (
+            patch("pos_next.api.partial_payments.post_queued_payments") as post,
+            self.assertRaises(ClockSkewError),
+        ):
+            sync_entities.create_payment(row)
+        post.assert_not_called()
+
+    def test_a_managers_acceptance_lets_the_payment_through(self):
+        self._create(clock_skew_seconds=31536000, accept_device_date=1)
+        self.post.assert_called_once()
 
     def test_a_wallet_cannot_be_spent_offline(self):
         with self.assertRaises(frappe.ValidationError):
@@ -456,7 +470,7 @@ class TestPaymentEntries(NoSiteTestCase):
 
 class TestFixes(NoSiteTestCase):
     def _apply(self, entity, fix, values, payload="{}", **fields):
-        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload, **fields)
+        row = Mock(status=sync_inbox.REVIEW, entity=entity, payload=payload, depends_on="", **fields)
         with (
             patch("pos_next.services.sync_inbox.frappe.get_doc", return_value=row),
             patch.object(sync_inbox, "_log_attempt"),
@@ -995,7 +1009,7 @@ class TestCloseShift(NoSiteTestCase):
     }
 
     def _close(self, row=None, assert_may_close=None):
-        opening = Mock(pos_profile="Main")
+        opening = Mock(pos_profile="Main", user="cashier@example.com")
         opening.as_dict.return_value = {"name": "POSA-OS-1"}
         frappe.local.db.exists.return_value = True
         closing_module = "pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift"
@@ -1066,7 +1080,10 @@ class TestCloseShift(NoSiteTestCase):
 
     def test_the_shift_is_found_through_its_own_field(self):
         item = {"offline_id": "x", "entity": "shift_close", "payload": {"pos_opening_shift": "POSA-OS-1"}}
-        frappe.local.db.get_value.return_value = None
+        shift = frappe._dict(name="POSA-OS-1", offline_id=None, user="cashier@example.com")
+        frappe.local.db.get_value.side_effect = lambda doctype, *_args, **_kwargs: (
+            shift if doctype == "POS Opening Shift" else None
+        )
         frappe.local.db.exists.side_effect = lambda doctype, name: name
         document = Mock()
 
@@ -1080,11 +1097,10 @@ class TestCloseShift(NoSiteTestCase):
 
 class TestPendingClose(NoSiteTestCase):
     def test_looks_for_an_unfinished_close(self):
-        frappe.local.db.exists.return_value = "row-1"
+        with patch("pos_next.services.sync_entities.frappe.get_all", return_value=[None]) as get_all:
+            self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
 
-        self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
-
-        filters = frappe.local.db.exists.call_args.args[1]
+        filters = get_all.call_args.kwargs["filters"]
         self.assertEqual(filters["entity"], "shift_close")
         self.assertEqual(filters["status"], ["not in", sync_entities.FINAL_STATES])
 

@@ -90,6 +90,26 @@ describe("DeviceEnroll", () => {
 		)
 	})
 
+	it("says so when it could not tell whether sales are waiting", async () => {
+		mocks.enrollDevice.mockRejectedValue(
+			Object.assign(new Error("database closed"), { code: "queue_unreadable" }),
+		)
+
+		expect((await submit()).text()).toContain(
+			"Could not check this device for unsent sales",
+		)
+	})
+
+	it("says so when secure storage did not keep the enrollment", async () => {
+		mocks.enrollDevice.mockRejectedValue(
+			Object.assign(new Error("Secure storage did not keep it"), { code: "secret_store" }),
+		)
+
+		expect((await submit()).text()).toContain(
+			"could not save its enrollment in secure storage",
+		)
+	})
+
 	it("starts over after moving, so nothing from the old server stays in memory", async () => {
 		mocks.enrollDevice.mockImplementation(async () => {
 			mocks.serverUrl.current = NEW

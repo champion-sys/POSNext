@@ -49,23 +49,78 @@ class Void(Upload):
         ]
 
 
-class TestNothingStored(Void):
-    def test_a_device_cannot_void_where_the_profile_turned_it_off(self):
+class TestVoidingIsTurnedOff(Void):
+    def refused(self, *items):
         with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
-            result = self.ask()
+            return self.ask(*items)
 
-        self.assertEqual(result[SALE]["status"], "rejected")
+    def test_the_void_ends_with_a_stable_status_and_nothing_stored(self):
+        result = self.refused()
+
+        self.assertEqual(result[SALE]["status"], "void_refused")
         self.assertFalse(self.inbox.rows)
 
+    def test_it_says_which_profile_refused(self):
+        self.assertIn("Main", self.refused()[SALE]["message"])
+
+    def test_asking_again_gives_the_same_answer(self):
+        self.assertEqual(self.refused(), self.refused())
+        self.assertFalse(self.inbox.rows)
+
+    def test_the_record_then_goes_up_as_a_sale(self):
+        self.refused()
+
+        result = self.push(self.item(SALE, cashier="lina@example.com"))
+
+        self.assertEqual(result[SALE]["status"], "received")
+        self.assertEqual(self.stored().status, "Received")
+
     def test_a_record_of_a_profile_that_turned_it_off_is_left_alone(self):
+        self.inbox.assigned["Other"].add("lina@example.com")
         row = self.stored_with("Needs Review")
         allowed = Mock(side_effect=lambda profile: profile == "Other")
 
         with patch("pos_next.services.sync_void._is_voiding_allowed", allowed):
             result = self.ask(self.request(pos_profile="Other"))
 
-        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertEqual(result[SALE]["status"], "void_refused")
+        self.assertIn("Main", result[SALE]["message"])
         self.assertEqual(self._row(row.name).status, "Needs Review")
+
+    def test_a_record_already_posted_is_left_alone_with_no_flag_for_a_manager(self):
+        row = self.stored_with("Synced", sales_invoice="SINV-1")
+
+        result = self.refused()
+
+        self.assertEqual(result[SALE]["status"], "void_refused")
+        self.assertFalse(row.error_code)
+        sync_inbox._notify_managers.assert_not_called()
+
+    def test_a_shift_record_stays_refused_since_the_app_does_not_offer_it(self):
+        for entity in ("shift_close", "shift_open"):
+            result = self.refused(self.request(entity=entity))
+
+            self.assertEqual(result[SALE]["status"], "rejected", entity)
+            self.assertEqual(self.inbox.rows, {}, entity)
+
+    def test_a_stored_shift_record_stays_refused_whatever_the_envelope_calls_it(self):
+        row = self.stored_with("Blocked", entity="shift_close")
+
+        result = self.refused(self.request(entity="invoice"))
+
+        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertEqual(row.status, "Blocked")
+
+    def test_someone_without_the_stored_profile_hears_nothing_about_its_setting(self):
+        self.stored_with("Received", pos_profile="Other")
+
+        result = self.refused()
+
+        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertNotIn("turned off", result[SALE]["message"])
+
+
+class TestNothingStored(Void):
 
     def test_the_record_is_kept_voided_with_its_reason_and_payload(self):
         result = self.ask(self.request(payload={"pos_profile": "Main", "grand_total": 25}))
