@@ -402,8 +402,9 @@ async function getOfflineInvoices() {
 	}
 }
 
-// Once the server holds a sale, the server decides how it ends
-const canSupersede = (row) => Boolean(row) && !row.synced && !row.server_status && !row.superseded
+// Once the server holds a sale, the server decides how it ends. The same goes for a void.
+const canSupersede = (row) =>
+	Boolean(row) && !row.synced && !row.server_status && !row.superseded && !row.void_reason
 
 // Save invoice to offline queue
 async function saveOfflineInvoice(invoiceData, options = {}) {

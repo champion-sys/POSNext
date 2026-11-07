@@ -543,7 +543,7 @@ const { hideExpectedAmount, isLoaded } = storeToRefs(posSettingsStore)
 
 const shiftStore = usePOSShiftStore()
 const offlineStore = usePOSSyncStore()
-const { isOffline } = useOfflineStatus()
+const { mustQueue: isOffline } = useOfflineStatus()
 
 const canCloseOffline = computed(() => isOffline.value && posSettingsStore.allowOfflineShiftClose)
 // Set when the draft is made, because the connection can return while it is open

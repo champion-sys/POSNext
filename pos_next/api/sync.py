@@ -4,6 +4,7 @@
 """Invoice sync API: the device pushes sales here and asks how they ended."""
 
 import json
+import time
 
 import frappe
 from frappe import _
@@ -11,7 +12,7 @@ from frappe.utils import cint
 
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
-from pos_next.services import sync_inbox
+from pos_next.services import sync_inbox, sync_reconciliation, sync_void
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -45,11 +46,22 @@ def _assert_pos_user():
     frappe.throw(_("You are not assigned to a POS Profile"), frappe.PermissionError)
 
 
-def _assert_may_upload(item):
-    """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
-    pos_profile = sync_inbox.get_item_profile(item)
+def _assert_profile_access(pos_profile):
     assert_device_allows_profile(pos_profile)
     _assert_invoice_write_access("Sales Invoice", pos_profile)
+
+
+def _assert_may_upload(item):
+    """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
+    _assert_profile_access(sync_inbox.get_item_profile(item))
+
+
+def _clock_skew(device_time):
+    """Seconds the device's clock is from the server's. Both are epoch based, so a device
+    in another time zone is not off."""
+    if not cint(device_time):
+        return 0
+    return cint(cint(device_time) / 1000 - time.time())
 
 
 def _rejected(item, message):
@@ -115,8 +127,11 @@ def _describe(row):
     return response
 
 
-def store_item(item, uploader, device_id, client_version, protocol_version):
-    """Check one item and store it. Whatever goes wrong stays with this item.
+def store_item(item, uploader, device_id, client_version, protocol_version, clock_skew=0):
+    """Check one item and store it, or settle its void. Whatever goes wrong stays with this item.
+
+    Args:
+        clock_skew: Seconds the sender's clock is off. Always ours, never what the item says
 
     Returns:
         tuple[str | None, dict | None]: The record's name, or what to tell the sender instead
@@ -129,6 +144,12 @@ def store_item(item, uploader, device_id, client_version, protocol_version):
         # Not frappe.database.savepoint: ingest commits, and releasing one then raises
         frappe.db.savepoint(ITEM_SAVEPOINT)
         _assert_may_upload(item)
+        item["clock_skew_seconds"] = clock_skew
+        if item.get("void_reason"):
+            row = sync_void.request_void(
+                item, uploader, _assert_profile_access, device_id, client_version, protocol_version
+            )
+            return None, sync_void.describe_void(row)
         name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
     except Exception as exc:
         return None, _rejected(item, _discard_item(exc))
@@ -150,17 +171,18 @@ def enqueue_stored(names):
 
 
 @frappe.whitelist(methods=["POST"])
-def push(items=None, device_id=None, client_version=None, protocol_version=PROTOCOL_VERSION, wait_for_result=0):
+def push(items=None, device_id=None, client_version=None, protocol_version=PROTOCOL_VERSION, wait_for_result=0, device_time=None):
     """Store a batch of queued sales.
 
     Each item is committed on its own, so one bad invoice cannot lose the others.
 
     Args:
-        items: Envelopes, as a list or JSON
+        items: Envelopes, as a list or JSON. One with void_reason asks to void its record
         device_id: The browser's own id. A device with a grant is known without it
         client_version: App version
         protocol_version: Envelope version
         wait_for_result: Process inside this request, for a cashier who is waiting
+        device_time: The device's clock as it sent this, in milliseconds since the epoch
 
     Returns:
         dict: server_time and one result per item
@@ -172,15 +194,16 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
         frappe.throw(_("A batch cannot have more than {0} invoices").format(MAX_BATCH_SIZE))
 
     wait = cint(wait_for_result)
+    clock_skew = _clock_skew(device_time)
     uploader = frappe.session.user
     device_id = _recorded_device(device_id)
     results = []
     stored = []
 
     for item in items:
-        name, refusal = store_item(item, uploader, device_id, client_version, protocol_version)
-        if refusal:
-            results.append(refusal)
+        name, answer = store_item(item, uploader, device_id, client_version, protocol_version, clock_skew)
+        if answer:
+            results.append(answer)
         else:
             stored.append(name)
 
@@ -265,6 +288,14 @@ def void(name, note):
 
 
 @frappe.whitelist()
+def get_shift_reconciliation(name):
+    """Which invoices of a shift closed offline reached the server."""
+    _assert_manager()
+    frappe.has_permission("Offline Invoice Sync", "read", doc=name, throw=True)
+    return sync_reconciliation.get_shift_reconciliation(name)
+
+
+@frappe.whitelist()
 def get_center_summary():
     """Counts and failure groups for the sync center page."""
     _assert_manager()
@@ -290,4 +321,10 @@ def get_center_summary():
         limit=100,
     )
     coupon_overruns = frappe.db.count("Offline Invoice Sync", {"coupon_overrun": ["is", "set"]})
-    return {"counts": counts, "groups": groups, "coupon_overruns": coupon_overruns}
+    refused_voids = frappe.db.count("Offline Invoice Sync", {"error_code": sync_void.VOID_AFTER_POSTED})
+    return {
+        "counts": counts,
+        "groups": groups,
+        "coupon_overruns": coupon_overruns,
+        "refused_voids": refused_voids,
+    }

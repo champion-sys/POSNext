@@ -274,6 +274,19 @@ describe("POSSale at the offline limit", () => {
 		})
 	})
 
+	it("keeps the cart and tells the cashier when the device has no room left", async () => {
+		offlineStore.isOffline = true
+		offlineStore.saveInvoiceOffline = vi.fn(async () => {
+			throw new DOMException("The quota has been exceeded", "QuotaExceededError")
+		})
+
+		await checkout()
+
+		expect(cartStore.clearCart).not.toHaveBeenCalled()
+		expect(uiStore.showErrorDialog).toBe(true)
+		expect(uiStore.errorDialogTitle).toBe("Device storage is full")
+	})
+
 	it("reopens the payment dialog from Try Again", async () => {
 		uiStore.showPaymentDialog = false
 		uiStore.showError("Error", "It failed", "", "payment")

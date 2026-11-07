@@ -14,7 +14,13 @@
  * @module stores/posSync
  */
 
-import { clearShiftClosing, markShiftClosing } from "@/composables/useShift"
+import {
+	abandonLocalShift,
+	adoptServerShift,
+	clearShiftClosing,
+	markShiftClosing,
+	openLocalShift,
+} from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import { pullChanges } from "@/core/sync/webPull"
 import {
@@ -25,6 +31,7 @@ import {
 	cacheInvoiceHistory,
 	cacheUnpaidInvoices,
 	cacheUnpaidSummary,
+	announceRecordEnded,
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
@@ -33,21 +40,33 @@ import {
 	ENTITY_CUSTOMER,
 	ENTITY_PAYMENT,
 	ENTITY_SHIFT_CLOSE,
+	ENTITY_SHIFT_OPEN,
 	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
+	buildLocalShift,
 	buildPaymentPayload,
 	buildReturnDocFromQueue,
 	buildShiftClosePayload,
+	buildShiftOpenPayload,
 	countQueuedCouponUses,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
+	getEntity,
 	getShiftManifest,
+	getUnfinishedCloses,
+	isLocalName,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 } from "@/utils/offline/entities"
-import { SYNC_PERIODIC, formatLocalPosting, sumQueuedStock } from "@/utils/offline/invoicePayload"
+import {
+	SALE_STANDS,
+	SYNC_PERIODIC,
+	formatLocalPosting,
+	getQueueUpdateForResult,
+	sumQueuedStock,
+} from "@/utils/offline/invoicePayload"
 import { offlineState } from "@/utils/offline/offlineState"
 import { generateOfflineId } from "@/utils/offline/uuid"
 import { offlineWorker } from "@/utils/offline/workerClient"
@@ -277,7 +296,11 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		isSyncing.value = true
 		try {
 			const stockStore = useStockStore()
-			const soldCodes = Array.from(stockStore.queued.keys())
+			// A void the server refuses leaves a sale that holds nothing here any more
+			const voidCodes = pendingInvoicesList.value
+				.filter((row) => row.void_reason)
+				.flatMap((row) => row.data?.items?.map((item) => item.item_code) || [])
+			const soldCodes = [...stockStore.queued.keys(), ...voidCodes]
 			const result = await syncOfflineInvoices(options)
 			isWaitingForServer = result.waiting > 0
 			await updatePendingCount()
@@ -285,8 +308,13 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			// A sale the server took has left the device, even if it is still working on it
 			if (result.success > 0 || result.delivered > 0) markSynced()
 
+			if (result.voided > 0) showSuccess(__("{0} record(s) voided", [result.voided]))
+			if (result.saleStands > 0) {
+				showWarning(__("{0} record(s) were already on the server, so they were not voided", [result.saleStands]))
+			}
+
 			// The server's numbers now include these sales
-			if (result.success > 0 && soldCodes.length > 0) {
+			if ((result.success > 0 || result.saleStands > 0) && soldCodes.length > 0) {
 				stockStore.refresh(soldCodes, stockStore.warehouse).catch((error) => {
 					log.warn('Stock refresh after sync failed', error)
 				})
@@ -305,20 +333,6 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 */
 	async function getPending() {
 		return await offlineWorker.getOfflineInvoices()
-	}
-
-	/**
-	 * Delete a pending invoice by ID
-	 * @param {string} id - Invoice ID to delete
-	 */
-	async function deletePending(id) {
-		const rows = await getPending()
-		const row = rows.find((candidate) => candidate.id === id)
-		if (row && getDependentRows(rows, row.offline_id).length > 0) {
-			throw new Error(__("Other queued records depend on this one, so it cannot be deleted"))
-		}
-		await offlineWorker.deleteOfflineInvoice(id)
-		await updatePendingCount()
 	}
 
 	/**
@@ -420,15 +434,17 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		const { session } = await import("@/data/session")
 		const shiftStore = usePOSShiftStore()
+		const shift = shiftStore.currentShift?.name
 		return saveQueueEntity(
 			ENTITY_PAYMENT,
 			buildPaymentPayload({
 				invoice,
 				payments,
 				posProfile: shiftStore.profileName,
-				shift: shiftStore.currentShift?.name,
+				shift,
 				cashier: session.user,
 			}),
+			[shift].filter(isLocalName),
 		)
 	}
 
@@ -509,12 +525,58 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 */
 	async function saveShiftCloseOffline(closing) {
 		const { session } = await import("@/data/session")
-		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), closing.pos_opening_shift)
+		const shift = closing.pos_opening_shift
+		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), shift, closing.opening_offline_id)
 		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
 
-		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, manifest)
-		markShiftClosing(closing.pos_opening_shift)
+		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, [...[shift].filter(isLocalName), ...manifest])
+		markShiftClosing(shift)
 		return result
+	}
+
+	/**
+	 * Open a shift with no server to ask. It sells under a local name, the way a customer
+	 * added offline does, and everything in it depends on this record.
+	 * @param {{pos_profile: Object, company: Object}} cached - From getCachedShiftProfiles
+	 * @param {Array} balanceDetails - The dialog's opening amounts
+	 */
+	async function saveShiftOpenOffline(cached, balanceDetails) {
+		if (usePOSShiftStore().hasOpenShift) {
+			throw new Error(__("A shift is already open on this device"))
+		}
+
+		const { session } = await import("@/data/session")
+		const payload = buildShiftOpenPayload({
+			offlineId: generateOfflineId(),
+			posProfile: cached.pos_profile.name,
+			company: cached.pos_profile.company,
+			cashier: session.user,
+			balanceDetails,
+		})
+
+		const closes = getUnfinishedCloses(await offlineWorker.getQueueRows())
+		await saveQueueEntity(ENTITY_SHIFT_OPEN, payload, closes)
+		await openLocalShift(buildLocalShift(payload, cached))
+	}
+
+	/**
+	 * The server finished with a shift opened on this device.
+	 * @param {{row: Object, status: string, name: string}} detail - From offlineEntitySynced
+	 */
+	async function settleLocalShift({ row, status, name }) {
+		if (status === "voided") {
+			if (await abandonLocalShift(row.offline_id)) {
+				showWarning(__("A manager voided the shift opened on this device. Open a new shift to keep selling."))
+			}
+			return
+		}
+
+		// A manager may have linked it to a colleague's shift, and only the server can say
+		if (await adoptServerShift(row.offline_id, name)) {
+			usePOSShiftStore().checkOpeningShift.fetch().catch((error) => {
+				log.warn("Could not read the shift back from the server", error)
+			})
+		}
 	}
 
 	/**
@@ -530,19 +592,58 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
-	 * Delete an offline invoice by ID with user feedback
-	 * @param {string} invoiceId - Invoice ID to delete
+	 * Ask the server to void a queued record. A receipt may be with the customer and the
+	 * server may already hold it, so it stays here, holding nothing, until the server answers.
+	 * @param {number} id - Queue row
+	 * @param {string} reason - Why, which the server keeps
 	 */
-	async function deleteOfflineInvoice(invoiceId) {
+	async function requestVoid(id, reason) {
 		try {
-			await deletePending(invoiceId)
-			await loadPendingInvoices()
-			showSuccess(__("Removed from the queue"))
+			const why = reason?.trim()
+			if (!why) throw new Error(__("A reason is required"))
+
+			const rows = await getPending()
+			const row = rows.find((candidate) => candidate.id === id)
+			if (row && [ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN].includes(getEntity(row))) {
+				throw new Error(__("A shift cannot be voided"))
+			}
+			if (row && getDependentRows(rows, row.offline_id).length > 0) {
+				throw new Error(__("Other queued records depend on this one, so it cannot be voided"))
+			}
+
+			const { success } = await offlineWorker.requestVoid(id, why)
+			if (!success) throw new Error(__("This record can no longer be voided. It may already have finished"))
+
+			// No new sale may come to need a customer that is on its way out
+			if (row && getEntity(row) === ENTITY_CUSTOMER) announceRecordEnded(row, "voided")
+
+			await updatePendingCount()
+			showSuccess(__("Void requested. It stays in the queue until the server answers"))
+
+			if (usePOSSettingsStore().syncMode !== SYNC_PERIODIC) {
+				autoSync().catch((error) => log.error("Sync after a void request failed", error))
+			}
 		} catch (error) {
-			log.error('Failed to delete offline invoice', error)
-			showError(error.message || __("Could not remove it from the queue"))
+			log.error("Failed to request a void", error)
+			showError(error.message || __("Could not request the void"))
 			throw error
 		}
+	}
+
+	/**
+	 * The cashier has seen that a void came too late, so the record can leave the queue
+	 * like any other that reached the server
+	 * @param {number} id - Queue row
+	 */
+	async function acknowledgeSaleStands(id) {
+		const row = (await getPending()).find((candidate) => candidate.id === id)
+		if (row?.server_status !== SALE_STANDS) return
+
+		await offlineWorker.updateQueuedInvoice(
+			id,
+			getQueueUpdateForResult({ status: "synced", invoice: row.server_invoice }),
+		)
+		await updatePendingCount()
 	}
 
 	/**
@@ -742,6 +843,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (detail.row.entity === ENTITY_SHIFT_CLOSE) {
 			clearShiftClosing(detail.row.data.pos_opening_shift)
 		}
+		if (detail.row.entity === ENTITY_SHIFT_OPEN) {
+			settleLocalShift(detail).catch((error) => log.error("Failed to settle the local shift", error))
+		}
 	})
 
 	// Initialize pending count on store creation
@@ -780,12 +884,14 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		savePaymentOffline,
 		withQueuedPayments,
 		saveShiftCloseOffline,
+		saveShiftOpenOffline,
 		checkCouponOffline,
 		refreshReturnDocuments,
 		getOfflineReturnDocuments,
 		loadPendingInvoices,
 		updatePendingCount,
-		deleteOfflineInvoice,
+		requestVoid,
+		acknowledgeSaleStands,
 		autoSync,
 		syncAllPending,
 		preloadDataForOffline,

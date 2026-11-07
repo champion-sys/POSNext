@@ -6,7 +6,6 @@
 import json
 import unittest
 from datetime import datetime, timedelta
-from fnmatch import fnmatchcase
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -15,7 +14,7 @@ from rq.timeouts import JobTimeoutException
 
 from pos_next.api import sync as sync_api
 from pos_next.pos_next.doctype.offline_invoice_sync import offline_invoice_sync
-from pos_next.services import sync_inbox
+from pos_next.services import sync_classifier, sync_inbox
 from pos_next.services.sync_entities import DOCTYPE
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
@@ -50,7 +49,11 @@ class FakeInbox:
                     return False
                 if operator == "!=" and value == operand:
                     return False
-                if operator == "like" and not fnmatchcase(value or "", operand.replace("%", "*")):
+                if operator == "not in" and value in operand:
+                    return False
+                if operator == "like" and operand.strip("%") not in (value or ""):
+                    return False
+                if operator == "is" and operand == "not set" and value:
                     return False
                 if operator in ("<", "<=") and (value is None or value > operand):
                     return False
@@ -138,8 +141,10 @@ class FakeInbox:
 
 
 class Flow(unittest.TestCase):
+    inbox_class = FakeInbox
+
     def setUp(self):
-        self.inbox = FakeInbox()
+        self.inbox = self.inbox_class()
         frappe.local.db = self.inbox
         frappe.local.session = Mock(user="cashier@example.com")
         frappe.local.form_dict = frappe._dict()
@@ -581,6 +586,33 @@ class TestSweepWritesOnlyWhatItRead(Flow):
         sync_inbox.sweep()
 
         self.assertEqual(self._row(name).status, "Resolved")
+
+
+class TestDeviceClock(Flow):
+    HOUR = 3600
+
+    def _clock(self, seconds, accepted=0):
+        return frappe._dict(clock_skew_seconds=seconds, accept_device_date=accepted)
+
+    def test_a_clock_that_only_drifts_stops_nothing(self):
+        sync_inbox._assert_device_clock(self._clock(11 * self.HOUR))
+
+    def test_a_clock_half_a_day_ahead_is_held(self):
+        with self.assertRaises(sync_classifier.ClockSkewError):
+            sync_inbox._assert_device_clock(self._clock(12 * self.HOUR))
+
+    def test_a_clock_half_a_day_behind_is_held(self):
+        with self.assertRaises(sync_classifier.ClockSkewError):
+            sync_inbox._assert_device_clock(self._clock(-12 * self.HOUR))
+
+    def test_a_managers_acceptance_lets_it_through(self):
+        sync_inbox._assert_device_clock(self._clock(48 * self.HOUR, accepted=1))
+
+    def test_it_goes_to_a_person_not_to_a_retry(self):
+        result = sync_classifier.classify(sync_classifier.ClockSkewError("Off"))
+
+        self.assertEqual(result.error_class, sync_classifier.BUSINESS)
+        self.assertEqual(result.error_code, "ClockSkewError")
 
 
 class TestJobTimeout(Flow):

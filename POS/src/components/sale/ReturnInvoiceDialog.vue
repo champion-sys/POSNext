@@ -784,7 +784,7 @@ import { Button, Dialog, FeatherIcon, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
-const { isOffline } = useOfflineStatus()
+const { mustQueue: isOffline } = useOfflineStatus()
 const settingsStore = usePOSSettingsStore()
 const offlineStore = usePOSSyncStore()
 

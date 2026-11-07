@@ -1,4 +1,5 @@
-import { onMounted, onUnmounted, ref } from "vue"
+import { computed, onMounted, onUnmounted, ref } from "vue"
+import { hasLocalShift } from "@/composables/useShift"
 import { offlineState } from "@/utils/offline/offlineState"
 
 export function useOfflineStatus() {
@@ -18,5 +19,9 @@ export function useOfflineStatus() {
 		}
 	})
 
-	return { isOffline }
+	// The server does not know a shift opened offline, so work done in it waits in the queue
+	// behind that shift, even with a connection
+	const mustQueue = computed(() => isOffline.value || hasLocalShift.value)
+
+	return { isOffline, mustQueue }
 }

@@ -90,6 +90,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		disable_offline_coupons: 0,
 		allow_offline_returns: 0,
 		allow_offline_shift_close: 0,
+		allow_offline_shift_open: 0,
 	})
 
 	const isLoading = ref(false)
@@ -359,6 +360,17 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		return true
 	}
 
+	/**
+	 * With no shift open no settings are loaded, so this reads what the server last sent for
+	 * that POS Profile. A copy saved before this setting existed counts as no.
+	 * @param {string} posProfile
+	 * @returns {boolean}
+	 */
+	function allowsOfflineShiftOpen(posProfile) {
+		const saved = JSON.parse(localStorage.getItem(`${SETTINGS_CACHE_PREFIX}${posProfile}`) || "{}")
+		return Boolean(saved.allow_offline_shift_open) && !saved.custom_disable_offline_mode
+	}
+
 	// Actions
 	async function loadSettings(posProfile) {
 		if (!posProfile) {
@@ -616,6 +628,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		loadSettings,
 		reloadSettings,
 		resetSettings,
+		allowsOfflineShiftOpen,
 		validateDiscount,
 		isNegativeStockAllowed,
 		shouldEnforceStockValidation,

@@ -21,6 +21,9 @@ MAX_PROBLEMS = 100
 
 STATUS_CONFLICT = "conflict"
 
+#: Which count each refusal goes to. Any other answer took the row, as a void request does.
+REFUSALS = {STATUS_CONFLICT: "conflicts", "rejected": "rejected"}
+
 #: Sales that are not edits hold a null here, and a full payload scan must not load them
 _HOLDS_AN_EDIT = '%"edited_from": "%'
 
@@ -66,8 +69,8 @@ def _import_row(item, queue, uploader, edits):
     """Store one row of a file.
 
     Returns:
-        tuple[str | None, dict | None, bool]: The record's name, or why it was refused, and
-            whether the server already held it
+        tuple[str | None, dict | None, bool]: The record's name, or the answer to give instead,
+            and whether the server already held it
     """
     offline_id = item.get("offline_id") if isinstance(item, dict) else None
     is_named = isinstance(offline_id, str)
@@ -76,8 +79,8 @@ def _import_row(item, queue, uploader, edits):
     if is_named and not known and offline_id in edits:
         return None, _replaced_by_edit(offline_id, edits[offline_id]), False
 
-    name, refusal = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
-    return name, refusal, known
+    name, answer = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
+    return name, answer, known
 
 
 @frappe.whitelist(methods=["POST"])
@@ -103,14 +106,16 @@ def import_queue_file():
     counts = {"stored": 0, "already_known": 0, "conflicts": 0, "rejected": 0}
 
     for item in queue.rows:
-        name, refusal, known = _import_row(item, queue, uploader, edits)
+        name, answer, known = _import_row(item, queue, uploader, edits)
+        refusal = REFUSALS.get(answer["status"]) if answer else None
         if refusal:
-            counts["conflicts" if refusal["status"] == STATUS_CONFLICT else "rejected"] += 1
-            problems.append(refusal)
+            counts[refusal] += 1
+            problems.append(answer)
             continue
 
         counts["already_known" if known else "stored"] += 1
-        names.append(name)
+        if name:
+            names.append(name)
 
     sync.enqueue_stored(names)
 

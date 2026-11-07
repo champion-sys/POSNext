@@ -8,6 +8,7 @@ import {
 	getRetryDelayMs,
 	getSaleSignature,
 	getShiftCloseDecision,
+	isVoidPending,
 	isNetworkFailure,
 	shouldQueueCheckout,
 	sumQueuedStock,
@@ -198,6 +199,34 @@ describe("sumQueuedStock", () => {
 	})
 })
 
+describe("a void request", () => {
+	const items = [{ item_code: "A", qty: 2 }]
+
+	it("holds no stock while it waits", () => {
+		expect(sumQueuedStock([{ void_reason: "Wrong sale", data: { items } }]).size).toBe(0)
+	})
+
+	it("holds no stock once the server has refused it either", () => {
+		const stands = { void_reason: "Wrong sale", server_status: "sale_stands", data: { items } }
+		expect(sumQueuedStock([stands]).size).toBe(0)
+	})
+
+	it("is pending until the server answers", () => {
+		expect(isVoidPending({ void_reason: "Wrong sale" })).toBe(true)
+		expect(isVoidPending({ void_reason: "Wrong sale", server_status: "received" })).toBe(true)
+	})
+
+	it("is over when the server answers", () => {
+		expect(isVoidPending({ void_reason: "Wrong sale", server_status: "sale_stands" })).toBe(false)
+		expect(isVoidPending({ void_reason: "Wrong sale", synced: true })).toBe(false)
+	})
+
+	it("is nothing on a record no one asked to void", () => {
+		expect(isVoidPending({})).toBe(false)
+		expect(isVoidPending(undefined)).toBe(false)
+	})
+})
+
 describe("getShiftCloseDecision", () => {
 	it("allows closing with an empty queue", () => {
 		expect(getShiftCloseDecision([], true)).toBe("allow")
@@ -215,6 +244,15 @@ describe("getShiftCloseDecision", () => {
 	it("asks for a decision when only failed invoices remain", () => {
 		expect(getShiftCloseDecision([{ sync_failed: true }], false)).toBe("confirm")
 	})
+
+	it("waits for a void the server has not answered, which may still turn out to be a sale", () => {
+		expect(getShiftCloseDecision([{ void_reason: "Wrong sale" }], false)).toBe("block")
+	})
+
+	it("waits for a cashier to see that a void came too late, because the money may have moved", () => {
+		const stands = { void_reason: "Wrong sale", server_status: "sale_stands" }
+		expect(getShiftCloseDecision([stands], false)).toBe("block")
+	})
 })
 
 describe("buildSyncEnvelope", () => {
@@ -225,6 +263,17 @@ describe("buildSyncEnvelope", () => {
 		grand_total: 115,
 		payments: [{ amount: 100 }, { amount: "15" }],
 	}
+
+	it("carries a void request's reason with the record it is about", () => {
+		const envelope = buildSyncEnvelope({ id: 7, void_reason: "Wrong sale" }, payload)
+
+		expect(envelope.void_reason).toBe("Wrong sale")
+		expect(envelope.payload).toBe(payload)
+	})
+
+	it("leaves the field out of any other record, because the server reads it as a request", () => {
+		expect(buildSyncEnvelope({ id: 7, void_reason: null }, payload)).not.toHaveProperty("void_reason")
+	})
 
 	it("carries what the server needs to store the sale", () => {
 		const soldAt = Date.UTC(2026, 10, 1, 15, 4, 12)
@@ -266,6 +315,19 @@ describe("getQueueUpdateForResult", () => {
 			error: "Stock",
 		})
 		expect(getQueueUpdateForResult({ status: "conflict" }).sync_failed).toBe(true)
+	})
+
+	it("keeps a sale whose void came too late in sight, with its number", () => {
+		expect(getQueueUpdateForResult({ status: "sale_stands", invoice: "SINV-1" })).toEqual({
+			server_status: "sale_stands",
+			server_invoice: "SINV-1",
+			sync_failed: false,
+			error: null,
+		})
+	})
+
+	it("leaves the row alone for a void the server has not settled", () => {
+		expect(getQueueUpdateForResult({ status: "void_pending" })).toBeNull()
 	})
 
 	it("leaves the row alone for a status it does not know", () => {

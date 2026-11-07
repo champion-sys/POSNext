@@ -150,6 +150,7 @@ class TestBlocking(NoSiteTestCase):
 class TestStuckRows(NoSiteTestCase):
     def _flag(self, received_at, statuses):
         row = _row(status="Blocked", depends_on=LOCAL_CUSTOMER, received_at=received_at)
+        frappe.local.db.get_value.return_value = "Blocked"
         with (
             patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses),
             patch.object(sync_inbox, "_handle_failure") as handle_failure,
@@ -462,6 +463,11 @@ class TestFixes(NoSiteTestCase):
         ):
             sync_inbox.apply_fix("row-1", fix, values)
         return row
+
+    def test_a_corrected_date_no_longer_depends_on_the_device_clock(self):
+        row = self._apply("invoice", "posting_date", {"posting_date": "2026-11-01"})
+
+        self.assertEqual(row.accept_device_date, 1)
 
     def test_a_customer_gets_a_valid_group(self):
         row = self._apply("customer", "customer_group", {"customer_group": "Retail"})
@@ -913,6 +919,7 @@ class TestShiftCloseWaiting(NoSiteTestCase):
             return sync_inbox._is_blocked(row)
 
     def _flag(self, row, statuses):
+        frappe.local.db.get_value.return_value = "Blocked"
         with (
             patch("pos_next.services.sync_inbox.frappe.get_all", return_value=statuses),
             patch.object(sync_inbox, "_handle_failure") as handle_failure,

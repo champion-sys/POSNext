@@ -20,9 +20,10 @@ from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 from rq.timeouts import JobTimeoutException
 
-from pos_next.services import sync_classifier, sync_entities
+from pos_next.services import sync_classifier, sync_entities, sync_retention
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
+    ClockSkewError,
     EditConflictError,
     ShiftClosedError,
     TotalMismatchError,
@@ -34,6 +35,7 @@ from pos_next.services.sync_entities import (
     ENTITY_INVOICE,
     ENTITY_PAYMENT,
     ENTITY_SHIFT_CLOSE,
+    ENTITY_SHIFT_OPEN,
     FINAL_STATES,
 )
 
@@ -55,6 +57,8 @@ QUEUE_JOB_MARGIN_SECONDS = 120
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
 
 DEFAULT_TOTAL_TOLERANCE = 0.05
+#: Past this a clock is wrong, not drifting: half a day can move a sale to another date.
+MAX_CLOCK_SKEW_SECONDS = 12 * 60 * 60
 
 _NO_ERROR = {
     "error_class": None,
@@ -92,6 +96,14 @@ def validate_envelope(item):
         return _("The record and its payload name different POS Profiles")
     if (item.get("entity") or ENTITY_INVOICE) not in sync_entities.ENTITIES:
         return "Unknown entity"
+    # Read as a plain push, a blank reason would post the record the device wants gone
+    reason = item.get("void_reason")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        return "A void needs a reason"
+
+    # It moves a record's sales to someone else's shift, so only a manager's fix may set it
+    if item["payload"].get("linked_shift"):
+        return "A device cannot link a shift"
     return None
 
 
@@ -129,9 +141,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "invoice_doctype": payload.get("doctype") or "Sales Invoice",
         "pos_profile": _link_or_none("POS Profile", pos_profile),
         "customer": _link_or_none("Customer", payload.get("customer")),
-        "shift": _link_or_none(
-            "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
-        ),
+        "shift": _link_or_none("POS Opening Shift", sync_entities.get_server_shift(payload)),
         "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
         "uploaded_by": uploaded_by,
         "device_id": device_id,
@@ -144,6 +154,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "payload_hash": compute_payload_hash(payload),
         "coupon_code": payload.get("coupon_code"),
         "seq": cint(item.get("seq")),
+        "clock_skew_seconds": cint(item.get("clock_skew_seconds")),
         "client_version": client_version,
         "protocol_version": cint(protocol_version),
         "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
@@ -204,9 +215,13 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
     offline_id = item["offline_id"]
 
     existing = frappe.db.get_value(
-        DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash", "payload"], as_dict=True
+        DOCTYPE,
+        {"offline_id": offline_id},
+        ["name", "payload_hash", "payload", "original_payload"],
+        as_dict=True,
     )
-    if existing and not existing.payload:
+    # A cleared record is finished, not waiting for its payload, and its hash still answers
+    if existing and not existing.payload and not sync_retention.is_cleared(existing):
         fields = _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
         return existing.name, not _adopt_payload(existing.name, fields)
     if existing:
@@ -404,8 +419,22 @@ def _assert_shift_open(row, payload, doctype):
         )
 
 
+def _assert_device_clock(row):
+    """A wrong clock puts a sale on the wrong day, and nothing later would show it."""
+    if abs(cint(row.clock_skew_seconds)) < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
+        return
+
+    raise ClockSkewError(
+        _("The device clock was {0} hour(s) away from the server when this was sent").format(
+            flt(abs(cint(row.clock_skew_seconds)) / 3600, 1)
+        )
+    )
+
+
 def _create_invoice(row):
     from pos_next.services.invoice_processor import process_invoice
+
+    _assert_device_clock(row)
 
     payload = sync_entities.load_payload(row)
     sync_entities.resolve_local_names(payload)
@@ -597,6 +626,8 @@ _ENTITIES = {
     ENTITY_SHIFT_CLOSE: _Entity(
         sync_entities.close_shift, sync_entities.find_shift_close, ("POS Closing Shift",)
     ),
+    # Nothing to link to from the general action: only the link_shift fix checks the shift is open
+    ENTITY_SHIFT_OPEN: _Entity(sync_entities.open_shift, sync_entities.find_shift_open, ()),
 }
 
 
@@ -716,7 +747,9 @@ def _flag_if_stuck(row):
     else:
         return
 
-    _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
+    # A device can void a waiting record at any moment, and that must not turn back into a review
+    if frappe.db.get_value(DOCTYPE, row.name, "status", for_update=True) == "Blocked":
+        _handle_failure(row.name, cint(row.attempts) + 1, WaitingForDependencyError(message), None, None)
 
 
 def _requeue(name, expected, **conditions):
@@ -795,6 +828,7 @@ def remind_about_reviews():
 
 def _review_row(name):
     row = frappe.get_doc(DOCTYPE, name)
+    sync_retention.assert_not_cleared(row)
     if row.status != REVIEW:
         frappe.throw(_("Only an invoice that needs review can be changed"))
     return row
@@ -891,6 +925,9 @@ def apply_fix(name, fix, values):
         payload = sync_entities.load_payload(row)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        # The date is now a person's, so the clock it came from no longer matters
+        if fix == "posting_date":
+            row.accept_device_date = 1
         if fix == "shift":
             _move_to_shift(row, values["shift"])
 
@@ -936,6 +973,11 @@ def _fix_payment_mode(payload, values):
 
 def _fix_shift(payload, values):
     payload["posa_pos_opening_shift"] = values["shift"]
+
+
+def _fix_link_shift(payload, values):
+    sync_entities.assert_can_take_sales(values["shift"], payload.get("pos_profile"))
+    payload["linked_shift"] = values["shift"]
 
 
 def _move_to_shift(row, shift):
@@ -987,6 +1029,7 @@ _FIXES = {
         "shift": _fix_shift,
         "remove_coupon": _fix_remove_coupon,
         "accept_total_difference": None,
+        "accept_device_date": None,
     },
     ENTITY_CUSTOMER: {
         "customer_group": _fix_customer_group,
@@ -1000,5 +1043,8 @@ _FIXES = {
     },
     ENTITY_SHIFT_CLOSE: {
         "accept_unfinished": None,
+    },
+    ENTITY_SHIFT_OPEN: {
+        "link_shift": _fix_link_shift,
     },
 }

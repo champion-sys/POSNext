@@ -6,8 +6,8 @@
  * @typedef {Object} QueuedInvoice
  * @property {number} id - Device order, also what deletes and edits refer to
  * @property {string} offline_id - Stable across every retry
- * @property {string} [entity] - invoice, customer, payment or shift_close. Rows queued
- *   before the queue had entities have none, and are sales.
+ * @property {string} [entity] - invoice, customer, payment, shift_close or shift_open. Rows
+ *   queued before the queue had entities have none, and are sales.
  * @property {Array<string>} [depends_on] - Offline IDs the server must finish first
  * @property {Object} data - The record
  * @property {number} timestamp - When it was queued
@@ -15,12 +15,14 @@
  * @property {number} retry_count
  * @property {number} [next_attempt_at]
  * @property {string|null} [error]
- * @property {string} [server_status] - received, processing, needs_review, synced or voided.
- *   Missing until the server holds the sale.
+ * @property {string} [server_status] - received, processing, needs_review, synced, voided or
+ *   sale_stands, when a void came too late. Missing until the server holds the sale.
  * @property {string|null} [server_invoice]
  * @property {boolean} [sync_failed]
  * @property {boolean} [superseded]
  * @property {string|null} [replaced_by]
+ * @property {string|null} [void_reason] - Set when a cashier asked to void it. The record
+ *   stays until the server answers, and holds no stock meanwhile.
  *
  * @module platform/store/methods
  */
@@ -84,6 +86,7 @@ export const DIRECT_METHODS = [
 	"getQueuedInvoice",
 	"updateQueuedInvoice",
 	"resendQueuedInvoice",
+	"requestVoid",
 	"deleteSyncedInvoices",
 
 	"getCachedItem",

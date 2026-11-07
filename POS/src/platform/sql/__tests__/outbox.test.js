@@ -90,6 +90,18 @@ describe("migrate", () => {
 		expect(row.sync_failed).toBe(0)
 	})
 
+	it("carries a queued sale through the void column, with nothing to void", async () => {
+		const sql = createExecutor()
+		await migrate(sql, MIGRATIONS.slice(0, 2))
+		await createOutbox(sql).enqueueSale(sale("a"))
+
+		await migrate(sql)
+
+		const [row] = await createOutbox(sql).listQueued()
+		expect(row.offline_id).toBe("a")
+		expect(row.void_reason).toBeNull()
+	})
+
 	// Devices upgrade through these while holding unsynced sales. Add a migration instead.
 	it("never rewrites a shipped migration", () => {
 		const hash = createHash("sha256").update(JSON.stringify(MIGRATIONS[0])).digest("hex")
@@ -114,6 +126,25 @@ describe("outbox", () => {
 		expect((await outbox.nextBatch(10))[0].payload.items[0].item_code).toBe("A")
 		expect(await sql.all("SELECT offline_id FROM receipt")).toEqual([{ offline_id: "a" }])
 		expect(await outbox.availableStock("A", "W1")).toBe(76)
+	})
+
+	it("gives up a sale's stock in the same step as the void request, and nothing else", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.enqueueSale(sale("b"))
+		expect(await outbox.availableStock("A", "W1")).toBe(52)
+
+		expect(await outbox.requestVoid("a", "Wrong sale")).toBe(true)
+
+		expect(await outbox.availableStock("A", "W1")).toBe(76)
+		expect(await sql.all("SELECT offline_id FROM receipt ORDER BY offline_id")).toHaveLength(2)
+		expect(await outbox.countQueued()).toBe(2)
+	})
+
+	it("refuses a void of a sale that has finished", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.applyResult("a", { state: "synced", serverName: "SINV-1" })
+
+		expect(await outbox.requestVoid("a", "Too late")).toBe(false)
 	})
 
 	it("stores nothing when any part of the sale fails", async () => {

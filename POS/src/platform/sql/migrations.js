@@ -156,6 +156,10 @@ export const MIGRATIONS = [
 			)`,
 		],
 	},
+	{
+		version: 3,
+		statements: ["ALTER TABLE outbox ADD COLUMN void_reason TEXT"],
+	},
 ]
 
 /**

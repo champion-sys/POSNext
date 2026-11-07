@@ -15,6 +15,9 @@ OTHER_DEVICE = "device-another-one"
 BROWSER = "browser-own-uuid"
 
 
+DAY_MS = 86_400_000
+
+
 class NoSiteTestCase(unittest.TestCase):
     """Runs push on the real inbox code, with the database and document replaced."""
 
@@ -110,3 +113,40 @@ class TestBrowserWithoutGrant(NoSiteTestCase):
         result = self._push(device_id=OTHER_DEVICE)
         self.assertIsNone(self._recorded_device())
         self.assertEqual(result["results"][0]["status"], "received")
+
+
+class TestDeviceClock(NoSiteTestCase):
+    def setUp(self):
+        super().setUp()
+        patcher = patch("pos_next.api.sync.time.time", return_value=1_000_000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_clock_that_agrees_is_not_off(self):
+        self.assertEqual(sync._clock_skew(1_000_000_000), 0)
+
+    def test_a_clock_a_day_ahead(self):
+        self.assertEqual(sync._clock_skew(1_000_000_000 + DAY_MS), 86400)
+
+    def test_a_clock_a_day_behind(self):
+        self.assertEqual(sync._clock_skew(1_000_000_000 - DAY_MS), -86400)
+
+    def test_an_app_that_does_not_send_its_clock_is_not_judged(self):
+        self.assertEqual(sync._clock_skew(None), 0)
+
+    def test_the_difference_is_stored_with_the_record(self):
+        self._push(device_time=1_000_000_000 + DAY_MS)
+
+        self.assertEqual(self.stored[0]["clock_skew_seconds"], 86400)
+
+    def test_a_device_cannot_declare_its_own_difference(self):
+        item = {
+            "offline_id": "sale-1",
+            "pos_profile": "Main",
+            "clock_skew_seconds": 0,
+            "payload": {"customer": "Walk-in"},
+        }
+
+        sync.push(items=[item], device_time=1_000_000_000 + DAY_MS)
+
+        self.assertEqual(self.stored[0]["clock_skew_seconds"], 86400)

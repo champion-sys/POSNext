@@ -3,7 +3,23 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import cint, flt
+from frappe.utils import cint, cstr, flt, validate_email_address
+
+from pos_next.services.sync_alerts import split_recipients
+
+#: One sends mail outside the company and the other erases records for good, so a cashier,
+#: who can write these settings from the POS, must not reach them
+MANAGER_ONLY_FIELDS = ("sync_alert_recipients", "sync_payload_retention_days")
+
+#: Kept up to date by the hourly job, never by a form
+ALERT_STATE_FIELD = "sync_alert_last_sent_at"
+
+
+def _for_the_pos(settings):
+	"""Drop what the POS has no use for. Its settings screen sends back all it was given."""
+	for fieldname in (*MANAGER_ONLY_FIELDS, ALERT_STATE_FIELD):
+		settings.pop(fieldname, None)
+	return settings
 
 
 class POSSettings(Document):
@@ -45,6 +61,28 @@ class POSSettings(Document):
 						open_shift, self.pos_profile
 					)
 				)
+
+		self.validate_sync_housekeeping()
+
+	def validate_sync_housekeeping(self):
+		"""Hold the fields that reach past the POS to the people responsible for them."""
+		from pos_next.api.sync import MANAGER_ROLES
+
+		before = self.get_doc_before_save()
+		self.set(ALERT_STATE_FIELD, before.get(ALERT_STATE_FIELD) if before else None)
+
+		changed = (
+			cstr(self.sync_alert_recipients) != cstr(before.get("sync_alert_recipients") if before else None)
+			or cint(self.sync_payload_retention_days) != cint(before.get("sync_payload_retention_days") if before else 0)
+		)
+		if changed and not set(MANAGER_ROLES) & set(frappe.get_roles()):
+			frappe.throw(
+				frappe._("Only a POS manager can change the sync alert recipients or the payload retention."),
+				frappe.PermissionError,
+			)
+
+		for email in split_recipients(self.sync_alert_recipients):
+			validate_email_address(email, throw=True)
 
 	# def on_update(self):
 	# 	"""Sync allow_negative_stock with Stock Settings"""
@@ -135,7 +173,7 @@ def get_pos_settings(pos_profile):
 		frappe.db.get_single_value("Stock Settings", "allow_negative_stock") or 0
 	)
 
-	return settings
+	return _for_the_pos(settings)
 
 
 def create_default_settings(pos_profile):
@@ -156,6 +194,7 @@ def update_pos_settings(pos_profile, settings):
 
 	if isinstance(settings, str):
 		settings = json.loads(settings)
+	settings = _for_the_pos(settings)
 
 	# Check if user has access to this POS Profile
 	has_access = frappe.db.exists(
@@ -179,4 +218,4 @@ def update_pos_settings(pos_profile, settings):
 		doc.update(settings)
 		doc.insert()
 
-	return doc.as_dict()
+	return _for_the_pos(doc.as_dict())

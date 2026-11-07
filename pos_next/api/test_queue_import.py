@@ -4,6 +4,7 @@
 """Through the real import, push and inbox, with only the database faked."""
 
 import json
+import time
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -14,7 +15,8 @@ from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request
 
 from pos_next.api import queue_import
-from pos_next.services import sync_inbox
+from pos_next.api import sync as sync_api
+from pos_next.services import sync_inbox, sync_void
 from pos_next.services.test_sync_flow import LATE_SALE, SALE, Upload
 
 MANAGER = "manager@example.com"
@@ -484,6 +486,98 @@ class TestASaleEditedAfterTheExport(ImportFlow):
         self.edit()
 
         self.assertEqual(self.counts(self.import_rows(self.item())), (0, 1, 0, 0))
+
+
+class TestTheDevicesClock(ImportFlow):
+    def test_a_row_cannot_claim_how_far_off_it_was(self):
+        self.import_rows(self.item(clock_skew_seconds=999999))
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_push_still_measures_it(self):
+        frappe.local.session.user = CASHIER
+        ahead = (time.time() + 86400) * 1000
+
+        sync_api.push([self.item()], device_time=ahead)
+
+        self.assertGreater(self.stored().clock_skew_seconds, 80000)
+
+
+class TestARowACashierAskedToVoid(ImportFlow):
+    """Exporting keeps a void request on its row, and a push settles it instead of posting."""
+
+    def setUp(self):
+        super().setUp()
+        self.create = Mock(return_value=INVOICE)
+        for target, replacement in (
+            ("pos_next.services.sync_void._", lambda text: text),
+            ("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=True)),
+            ("pos_next.services.sync_void.now_datetime", Mock(return_value="2026-11-06 12:00:00")),
+        ):
+            patcher = patch(target, replacement)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def void(self):
+        return self.item(void_reason="Wrong sale")
+
+    def test_it_never_posts(self):
+        result = self.import_rows(self.void())
+        self.process_all(self.create)
+
+        self.create.assert_not_called()
+        self.assertEqual(self.stored().status, "Voided")
+        self.assertEqual(self.stored().resolution_note, "Wrong sale")
+        self.assertEqual(self.counts(result), (1, 0, 0, 0))
+
+    def test_no_job_is_started_for_it(self):
+        self.import_rows(self.void())
+        sync_inbox.enqueue_processing.assert_not_called()
+
+    def test_it_stays_on_record_under_the_manager(self):
+        self.import_rows(self.void())
+        self.assertEqual(self.stored().uploaded_by, MANAGER)
+
+    def test_a_record_still_waiting_is_voided_and_known(self):
+        self.import_rows(self.item())
+
+        result = self.import_rows(self.void())
+
+        self.assertEqual(self.stored().status, "Voided")
+        self.assertEqual(self.counts(result), (0, 1, 0, 0))
+
+    def test_a_sale_already_posted_stands_for_a_person(self):
+        self.import_rows(self.item())
+        self.process_all(self.create)
+
+        result = self.import_rows(self.void())
+
+        self.assertEqual(self.stored().status, "Synced")
+        self.assertEqual(self.stored().error_code, sync_void.VOID_AFTER_POSTED)
+        self.assertEqual(self.counts(result), (0, 1, 0, 0))
+
+    def test_where_voiding_is_off_it_is_refused_and_not_posted(self):
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.import_rows(self.void())
+        self.process_all(self.create)
+
+        self.create.assert_not_called()
+        self.assertEqual(self.counts(result), (0, 0, 0, 1))
+        self.assertIn("turned off", result["problems"][0]["message"])
+
+    def test_the_device_asking_again_changes_nothing(self):
+        self.import_rows(self.void())
+        frappe.local.session.user = CASHIER
+
+        answer = self.push(self.void())[SALE]
+
+        self.assertEqual(answer["status"], "voided")
+        self.assertEqual(len(self.inbox.rows), 1)
+
+    def test_a_good_row_beside_it_still_lands(self):
+        result = self.import_rows(self.void(), self.item(LATE_SALE))
+
+        self.assertEqual(self.counts(result), (2, 0, 0, 0))
+        sync_inbox.enqueue_processing.assert_called_once_with("Main")
 
 
 class TestAFileTheAppWrote(ImportFlow):

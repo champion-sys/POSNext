@@ -11,6 +11,22 @@ const LINK_DOCTYPES = {
 	shift_close: ["POS Closing Shift"],
 };
 
+const SHIFT_CONFLICT_GUIDE = __(
+	"Another shift is open and stands in the way of this one. Close that shift and press Reprocess, or use Link to Open Shift under Fix Record so the sales of this record go to it.",
+);
+
+const SHIFT_OUTDATED_GUIDE = __(
+	"This shift opened on an earlier day, and ERPNext only takes POS Invoices under an opening from today. Open a shift for today, then use Link to Open Shift under Fix Record.",
+);
+
+const OFFLINE_SHIFT_GUIDE = __(
+	"POS Settings no longer allows opening a shift offline. Turn the setting on and press Reprocess, or use Link to Open Shift under Fix Record.",
+);
+
+const LINKED_CLOSE_GUIDE = __(
+	"This close counted the shift of the device only, and that shift was linked to another open shift. Close the open shift from the POS and add this count to it, then void this record.",
+);
+
 const REVIEW_GUIDE = {
 	stock: __("There was not enough stock. Receive the stock and press Reprocess, or use Fix Record to change the warehouse."),
 	business: __("A rule on the server refused this record. Use Fix Record to correct it, then press Reprocess."),
@@ -23,6 +39,13 @@ const REVIEW_GUIDE = {
 const TOTAL_MISMATCH_GUIDE = __(
 	"The server's total differs from what the customer paid. Use Accept Total Difference under Fix Record, or correct the invoice, then press Reprocess.",
 );
+
+const CLOCK_SKEW_GUIDE = __(
+	"The clock of this device was wrong, so the date of this sale may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
+);
+
+// Below the server's limit a clock only drifts, which is worth a look but stops nothing
+const CLOCK_DRIFT_SECONDS = 300;
 
 const SHIFT_CLOSED_GUIDE = __(
 	"Its shift is already closed, so this POS Invoice would never reach the books. Use Change Shift under Fix Record to move it to an open shift, then press Reprocess.",
@@ -38,6 +61,12 @@ const CASHIER_GUIDE = __(
 
 const SHIFT_CLOSE_GUIDE = __(
 	"Some invoices of this shift have not finished. Finish them and press Reprocess, or use Close Without Unfinished Invoices under Fix Record.",
+);
+
+const VOID_AFTER_POSTED = "VoidAfterPosted";
+
+const VOID_AFTER_POSTED_GUIDE = __(
+	"A cashier asked to void this, but it had already reached the server, so nothing was changed and it stands. The cashier has been told. If it should not stand, reverse it yourself, with a return for a sale, and check whether money or a receipt changed hands.",
 );
 
 const SAVED_MESSAGE = __("Saved. Reprocess the record to apply it.");
@@ -143,6 +172,21 @@ const SYNC_FIXES = {
 				options: "POS Opening Shift",
 				label: __("Open Shift"),
 				description: __("Use when the original shift is already closed."),
+				reqd: 1,
+			},
+		],
+	},
+	link_shift: {
+		label: __("Link to Open Shift"),
+		entities: ["shift_open"],
+		fields: [
+			{
+				fieldname: "shift",
+				fieldtype: "Link",
+				options: "POS Opening Shift",
+				label: __("Open Shift"),
+				description: __("Use a shift open on this POS Profile. The sales of this record go to it."),
+				get_query: () => ({ filters: { status: "Open" } }),
 				reqd: 1,
 			},
 		],
@@ -260,6 +304,17 @@ function addReviewActions(frm) {
 
 	if (entity === "invoice") {
 		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+
+		if (frm.doc.error_code === "ClockSkewError") {
+			frm.add_custom_button(
+				__("Accept Device Date"),
+				() =>
+					frappe.confirm(__("Post this invoice with the date from the device?"), () =>
+						callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
+					),
+				fix_group,
+			);
+		}
 	}
 
 	if (entity === "shift_close") {
@@ -287,36 +342,38 @@ function addReviewActions(frm) {
 		);
 	}
 
-	frm.add_custom_button(
-		__("Link Existing Document"),
-		() => {
-			frappe.prompt(
-				[
-					{
-						fieldname: "doctype",
-						fieldtype: "Select",
-						options: linkDoctypes.join("\n"),
-						label: __("Type"),
-						default: linkDoctypes[0],
-						reqd: 1,
-					},
-					{
-						fieldname: "invoice_name",
-						fieldtype: "Dynamic Link",
-						options: "doctype",
-						label: __("Document"),
-						description: __("Use when it was already entered by hand."),
-						reqd: 1,
-					},
-					{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
-				],
-				(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
-				__("Link Existing Document"),
-				__("Link"),
-			);
-		},
-		close_group,
-	);
+	if (linkDoctypes) {
+		frm.add_custom_button(
+			__("Link Existing Document"),
+			() => {
+				frappe.prompt(
+					[
+						{
+							fieldname: "doctype",
+							fieldtype: "Select",
+							options: linkDoctypes.join("\n"),
+							label: __("Type"),
+							default: linkDoctypes[0],
+							reqd: 1,
+						},
+						{
+							fieldname: "invoice_name",
+							fieldtype: "Dynamic Link",
+							options: "doctype",
+							label: __("Document"),
+							description: __("Use when it was already entered by hand."),
+							reqd: 1,
+						},
+						{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
+					],
+					(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
+					__("Link Existing Document"),
+					__("Link"),
+				);
+			},
+			close_group,
+		);
+	}
 
 	frm.add_custom_button(
 		__("Void"),
@@ -341,17 +398,23 @@ function addReviewActions(frm) {
 function getReviewGuide(frm, canReview) {
 	const { entity, error_code, error_class } = frm.doc;
 	if (!canReview) return __("A POS manager needs to review this record.");
+	if (error_code === VOID_AFTER_POSTED) return VOID_AFTER_POSTED_GUIDE;
 	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
+	if (error_code === "ClockSkewError") return CLOCK_SKEW_GUIDE;
 	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
 	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
 	if (error_code === "CashierUnavailableError") return CASHIER_GUIDE;
+	if (error_code === "ShiftConflictError") return SHIFT_CONFLICT_GUIDE;
+	if (error_code === "ShiftOutdatedError") return SHIFT_OUTDATED_GUIDE;
+	if (error_code === "OfflineShiftNotAllowedError") return OFFLINE_SHIFT_GUIDE;
+	if (error_code === "LinkedShiftCloseError") return LINKED_CLOSE_GUIDE;
 	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
 	return REVIEW_GUIDE[error_class] || "";
 }
 
 function showError(frm, inReview, canReview) {
 	const color = inReview ? "red" : "orange";
-	const guide = inReview ? getReviewGuide(frm, canReview) : "";
+	const guide = inReview || frm.doc.error_code === VOID_AFTER_POSTED ? getReviewGuide(frm, canReview) : "";
 
 	frm.dashboard.set_headline(
 		`<div dir="auto">${frappe.utils.escape_html(frm.doc.error_message)}</div>
@@ -366,6 +429,16 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		const canReview = frappe.user.has_role(["Nexus POS Manager", "System Manager"]);
 
 		frm.set_df_property("payload", "read_only", inReview ? 0 : 1);
+
+		const clockSkew = Math.abs(frm.doc.clock_skew_seconds || 0);
+		if (clockSkew >= CLOCK_DRIFT_SECONDS) {
+			frm.set_intro(
+				__("The clock of this device was {0} minute(s) away from the server when it sent this.", [
+					Math.round(clockSkew / 60),
+				]),
+				"orange",
+			);
+		}
 		frm.disable_form_if_needed?.();
 
 		if (frm.doc.error_code === "NegativeStockError" || frm.doc.error_class === "stock") {
@@ -379,5 +452,87 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		if (frm.doc.error_message) {
 			showError(frm, inReview, canReview);
 		}
+
+		if (frm.doc.entity === "shift_close") {
+			loadReconciliation(frm);
+		}
 	},
 });
+
+/** Worst first, so a long list opens on what needs attention */
+const RECONCILIATION_STATES = {
+	missing: { label: __("Never Arrived"), color: "red" },
+	review: { label: __("Needs Review"), color: "red" },
+	processing: { label: __("Being Processed"), color: "orange" },
+	voided: { label: __("Voided"), color: "gray" },
+	finished: { label: __("Finished"), color: "green" },
+};
+
+function reconciliationLink(doctype, name) {
+	return doctype && name ? frappe.utils.get_form_link(doctype, name, true) : "-";
+}
+
+function renderReconciliationRow(row) {
+	const { label, color } = RECONCILIATION_STATES[row.state];
+
+	return `<tr>
+		<td dir="auto">${frappe.utils.escape_html(row.offline_id || "-")}</td>
+		<td><span class="indicator-pill ${color}">${frappe.utils.escape_html(row.status ? __(row.status) : label)}</span></td>
+		<td>${reconciliationLink("Offline Invoice Sync", row.record)}</td>
+		<td>${reconciliationLink(row.invoice_doctype, row.invoice)}</td>
+	</tr>`;
+}
+
+function renderReconciliationTable(title, rows) {
+	const order = Object.keys(RECONCILIATION_STATES);
+	const sorted = [...rows].sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state));
+
+	return `<h6 class="mt-3">${title}</h6>
+		<div style="max-height: 360px; overflow: auto;">
+			<table class="table table-bordered table-sm mb-0">
+				<thead>
+					<tr>
+						<th>${__("Offline ID")}</th>
+						<th>${__("Status")}</th>
+						<th>${__("Record")}</th>
+						<th>${__("Invoice")}</th>
+					</tr>
+				</thead>
+				<tbody>${sorted.map(renderReconciliationRow).join("")}</tbody>
+			</table>
+		</div>`;
+}
+
+function renderReconciliation({ counts, entries, extras }) {
+	if (!entries.length && !extras.length) {
+		return `<p class="text-muted">${__("This shift close does not list any invoices.")}</p>`;
+	}
+
+	const pills = Object.entries(RECONCILIATION_STATES)
+		.filter(([state]) => counts[state])
+		.map(([state, { label, color }]) => `<span class="indicator-pill ${color} mr-2">${label}: ${counts[state]}</span>`);
+
+	return `<p class="mb-2">${__("{0} listed by the device, {1} more on the server.", [counts.manifest, counts.extra])}</p>
+		<div>${pills.join("")}</div>
+		${entries.length ? renderReconciliationTable(__("Listed By The Device"), entries) : ""}
+		${extras.length ? renderReconciliationTable(__("On The Server, Not Listed By The Device"), extras) : ""}`;
+}
+
+async function loadReconciliation(frm) {
+	const { name } = frm.doc;
+	const { $wrapper } = frm.get_field("reconciliation_html");
+	$wrapper.html(`<p class="text-muted">${__("Loading...")}</p>`);
+
+	try {
+		const { message } = await frappe.call({ method: `${SYNC_API}.get_shift_reconciliation`, args: { name } });
+		if (frm.doc.name === name) {
+			$wrapper.html(renderReconciliation(message));
+		}
+	} catch {
+		if (frm.doc.name === name) {
+			const retry = $(`<button class="btn btn-default btn-xs">${__("Try Again")}</button>`);
+			retry.on("click", () => loadReconciliation(frm));
+			$wrapper.html(`<p class="text-muted">${__("Could not load the reconciliation.")}</p>`).append(retry);
+		}
+	}
+}
