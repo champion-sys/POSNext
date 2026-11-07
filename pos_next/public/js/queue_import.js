@@ -1,13 +1,13 @@
 // Copyright (c) 2026, BrainWise and contributors
 // For license information, please see license.txt
 
-frappe.provide("pos_next");
+frappe.provide("frappe.pos_next");
 
 const QUEUE_IMPORT_URL = "/api/method/pos_next.api.queue_import.import_queue_file";
 const REQUEST_TOO_LARGE = 413;
 
 /** Sends a queue file exported from a device to the server. Nothing in the file is safe to print raw. */
-pos_next.QueueImport = class QueueImport {
+frappe.pos_next.QueueImport = class QueueImport {
 	/** @param {() => void} onFinished - Runs after every attempt, because a failed one can store rows */
 	constructor(onFinished) {
 		this.onFinished = onFinished;

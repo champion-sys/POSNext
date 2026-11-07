@@ -15,16 +15,16 @@ const translate = (text, values = []) =>
 	values.reduce((result, value, index) => result.replace(`{${index}}`, value), text)
 
 function loadScript() {
-	const namespace = {}
 	const frappe = {
+		pos_next: {},
 		provide: vi.fn(),
 		csrf_token: "token-1",
 		dom: { freeze: vi.fn(), unfreeze: vi.fn() },
 		msgprint: vi.fn(),
 		utils: { escape_html: escapeHtml },
 	}
-	new Function("frappe", "pos_next", "__", "cint", SCRIPT)(frappe, namespace, translate, Number)
-	return { QueueImport: namespace.QueueImport, frappe }
+	new Function("frappe", "__", "cint", SCRIPT)(frappe, translate, Number)
+	return { QueueImport: frappe.pos_next.QueueImport, frappe }
 }
 
 const FILE = new File(["{}"], "queue.json", { type: "application/json" })

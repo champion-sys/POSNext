@@ -17,7 +17,7 @@ from frappe.utils import cint
 
 FORMAT_VERSION = 1
 
-#: About 2,000 sales. Each row commits on its own, so a bigger file would outlast the request.
+#: Each row commits on its own inside the request, so a much larger file would outlast it
 MAX_FILE_BYTES = 10 * 1024 * 1024
 
 #: What a Data field holds
