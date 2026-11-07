@@ -17,6 +17,7 @@ export {
 	pingServer,
 	getOfflineInvoices,
 	syncOfflineInvoices,
+	announceRecordEnded,
 	cacheInvoiceHistory,
 	getCachedInvoiceHistory,
 	clearInvoiceHistoryCache,

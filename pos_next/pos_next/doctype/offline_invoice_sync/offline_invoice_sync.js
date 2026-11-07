@@ -40,6 +40,12 @@ const SHIFT_CLOSE_GUIDE = __(
 	"Some invoices of this shift have not finished. Finish them and press Reprocess, or use Close Without Unfinished Invoices under Fix Record.",
 );
 
+const VOID_AFTER_POSTED = "VoidAfterPosted";
+
+const VOID_AFTER_POSTED_GUIDE = __(
+	"A cashier asked to void this, but it had already reached the server, so nothing was changed and it stands. The cashier has been told. If it should not stand, reverse it yourself, with a return for a sale, and check whether money or a receipt changed hands.",
+);
+
 const SAVED_MESSAGE = __("Saved. Reprocess the record to apply it.");
 
 const SYNC_FIXES = {
@@ -341,6 +347,7 @@ function addReviewActions(frm) {
 function getReviewGuide(frm, canReview) {
 	const { entity, error_code, error_class } = frm.doc;
 	if (!canReview) return __("A POS manager needs to review this record.");
+	if (error_code === VOID_AFTER_POSTED) return VOID_AFTER_POSTED_GUIDE;
 	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
 	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
 	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
@@ -351,7 +358,7 @@ function getReviewGuide(frm, canReview) {
 
 function showError(frm, inReview, canReview) {
 	const color = inReview ? "red" : "orange";
-	const guide = inReview ? getReviewGuide(frm, canReview) : "";
+	const guide = inReview || frm.doc.error_code === VOID_AFTER_POSTED ? getReviewGuide(frm, canReview) : "";
 
 	frm.dashboard.set_headline(
 		`<div dir="auto">${frappe.utils.escape_html(frm.doc.error_message)}</div>

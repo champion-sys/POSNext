@@ -13,6 +13,9 @@ const GATEWAY_STATUSES = [502, 503, 504]
 // frappe.is_whitelisted names the method in bold. The words around it are translated.
 const GUEST_REFUSAL = /<strong>pos_next\.api\.[\w.]+<\/strong>/
 
+/** A void the server refused: the record was already there, and a cashier has to read that */
+export const SALE_STANDS = "sale_stands"
+
 const pad = (value) => String(value).padStart(2, "0")
 
 /**
@@ -120,6 +123,16 @@ export function classifySyncError(error) {
 }
 
 /**
+ * Whether a queued record is waiting for the server to void it. It counts for nothing
+ * meanwhile, and only the server's answer ends the wait.
+ * @param {Object} row - Queue row
+ * @returns {boolean}
+ */
+export function isVoidPending(row) {
+	return Boolean(row?.void_reason) && !row.synced && row.server_status !== SALE_STANDS
+}
+
+/**
  * Stock held by queued sales, in stock units, per item. Derived from the queue
  * itself, so it survives a restart and clears as invoices leave the queue.
  * @param {Array} rows - Queue rows, already filtered to pending ones
@@ -129,7 +142,8 @@ export function classifySyncError(error) {
 export function sumQueuedStock(rows, warehouse = null) {
 	const totals = new Map()
 	for (const row of rows) {
-		if (row.data?.doctype === "Sales Order") continue
+		// Whether the void lands or not, it holds nothing here: the server's stock has the rest
+		if (row.data?.doctype === "Sales Order" || row.void_reason) continue
 		for (const item of row.data?.items || []) {
 			if (!item.item_code) continue
 			if (warehouse && item.warehouse && item.warehouse !== warehouse) continue
@@ -179,6 +193,7 @@ export function buildSyncEnvelope(row, payload) {
 		},
 		depends_on: row.depends_on || [],
 		payload,
+		...(row.void_reason ? { void_reason: row.void_reason } : {}),
 	}
 }
 
@@ -200,6 +215,8 @@ export function getQueueUpdateForResult(result) {
 			}
 		case "voided":
 			return { synced: true, server_status: "voided", sync_failed: false, error: null }
+		case SALE_STANDS:
+			return { server_status: SALE_STANDS, server_invoice: result.invoice || null, sync_failed: false, error: null }
 		case "received":
 		case "processing":
 			return { server_status: result.status, sync_failed: false, error: null }

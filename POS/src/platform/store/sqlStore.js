@@ -188,6 +188,11 @@ export function createSqlStore(sql) {
 			return { success: true }
 		},
 
+		async requestVoid(id, reason) {
+			const offlineId = await offlineIdOf(id)
+			return { success: Boolean(offlineId) && (await outbox.requestVoid(offlineId, reason)) }
+		},
+
 		markOfflineInvoicePrinted(offlineId) {
 			if (!offlineId) return { success: false }
 

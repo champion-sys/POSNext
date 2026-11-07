@@ -45,6 +45,31 @@ async function resendQueuedInvoice(id) {
 	})
 }
 
+/**
+ * Ask for a record to be voided. It stays until the server answers, and stops holding
+ * stock because that is read from the row. A first request's reason stands.
+ * @param {number} id
+ * @param {string} reason
+ * @returns {Promise<{success: boolean}>}
+ */
+function requestVoid(id, reason) {
+	return db.transaction("rw", db.invoice_queue, async () => {
+		const row = await db.invoice_queue.get(id)
+		if (!row || row.synced || row.superseded) return { success: false }
+
+		if (!row.void_reason) {
+			await db.invoice_queue.update(id, {
+				void_reason: reason,
+				retry_count: 0,
+				next_attempt_at: 0,
+				error: null,
+				sync_failed: false,
+			})
+		}
+		return { success: true }
+	})
+}
+
 function deleteSyncedInvoices(cutoff) {
 	return db.invoice_queue.filter((inv) => inv.synced && inv.timestamp < cutoff).delete()
 }
@@ -214,6 +239,7 @@ export const dexieStore = {
 	getQueuedInvoice,
 	updateQueuedInvoice,
 	resendQueuedInvoice,
+	requestVoid,
 	deleteSyncedInvoices,
 	getCachedItem,
 	getCachedItemByBarcode,

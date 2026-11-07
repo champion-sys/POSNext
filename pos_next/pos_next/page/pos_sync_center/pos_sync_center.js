@@ -82,6 +82,9 @@ class SyncCenter {
 		this.body.on("click", "[data-overruns]", () => {
 			frappe.set_route("List", "Offline Invoice Sync", { coupon_overrun: ["is", "set"] });
 		});
+		this.body.on("click", "[data-refused-voids]", () => {
+			frappe.set_route("List", "Offline Invoice Sync", { error_code: "VoidAfterPosted" });
+		});
 		this.body.on("click", "[data-reprocess]", (event) => {
 			this.reprocessGroup(event.currentTarget.dataset.reprocess);
 		});
@@ -118,13 +121,15 @@ class SyncCenter {
 		`);
 	}
 
-	render({ counts, groups, coupon_overruns }) {
+	render({ counts, groups, coupon_overruns, refused_voids }) {
 		const byStatus = Object.fromEntries(counts.map((row) => [row.status, row.count]));
 
 		this.body.html(`
 			${this.renderHeadline(cint(byStatus[REVIEW_STATUS]))}
 			<div class="sync-center-groups">
-				${STATUS_GROUPS.map((group) => this.renderStatusGroup(group, byStatus, coupon_overruns)).join("")}
+				${STATUS_GROUPS.map((group) =>
+					this.renderStatusGroup(group, byStatus, coupon_overruns, refused_voids),
+				).join("")}
 			</div>
 			<div class="sync-center-card">
 				<h5 class="sync-center-title">${__("Failures to review, grouped by cause")}</h5>
@@ -157,12 +162,13 @@ class SyncCenter {
 			</button>`;
 	}
 
-	renderStatusGroup({ title, statuses, with_overruns }, byStatus, coupon_overruns) {
+	renderStatusGroup({ title, statuses, with_overruns }, byStatus, coupon_overruns, refused_voids) {
 		const tiles = statuses.map(([status, color]) =>
 			this.renderTile(`data-status="${status}"`, __(status), color, cint(byStatus[status])),
 		);
 		if (with_overruns) {
 			tiles.push(this.renderTile('data-overruns="1"', __("Coupon Overruns"), "orange", cint(coupon_overruns)));
+			tiles.push(this.renderTile("data-refused-voids", __("Refused Voids"), "orange", cint(refused_voids)));
 		}
 
 		return `

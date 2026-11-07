@@ -181,6 +181,34 @@ describe("payments", () => {
 	})
 })
 
+describe("records waiting to be voided", () => {
+	it("do not count as payments on their way", () => {
+		const rows = [
+			{ entity: ENTITY_PAYMENT, void_reason: "Wrong sale", data: { invoice_name: "SINV-1", payments: [{ amount: 5 }] } },
+			{ entity: ENTITY_PAYMENT, data: { invoice_name: "SINV-1", payments: [{ amount: 2 }] } },
+		]
+		expect(sumQueuedPayments(rows).get("SINV-1")).toBe(2)
+	})
+
+	it("do not count as uses of a coupon", () => {
+		const rows = [
+			{ void_reason: "Wrong sale", data: { coupon_code: "SAVE", customer: "C" } },
+			{ data: { coupon_code: "SAVE", customer: "C" } },
+		]
+		expect(countQueuedCouponUses(rows, "SAVE", "C")).toEqual({ total: 1, forCustomer: 1 })
+	})
+
+	it("stay in a shift's list, so its close waits to hear how they ended", () => {
+		const rows = [{ offline_id: "a", void_reason: "Wrong sale", data: { posa_pos_opening_shift: "S" } }]
+		expect(getShiftManifest(rows, "S")).toEqual(["a"])
+	})
+
+	it("still count as what depends on a record, until the server has answered", () => {
+		const rows = [{ offline_id: "a", void_reason: "Wrong sale", depends_on: ["customer"] }]
+		expect(getDependentRows(rows, "customer")).toHaveLength(1)
+	})
+})
+
 describe("cached coupons", () => {
 	const coupon = {
 		coupon_code: "SAVE10",
@@ -357,9 +385,47 @@ describe("isReturnableQueueRow", () => {
 		expect(isReturnableQueueRow({ ...sale, sync_failed: true })).toBe(false)
 		expect(isReturnableQueueRow({ ...sale, superseded: true })).toBe(false)
 		expect(isReturnableQueueRow({ ...sale, server_status: "voided" })).toBe(false)
+		expect(isReturnableQueueRow({ ...sale, void_reason: "Wrong sale" })).toBe(false)
 		expect(isReturnableQueueRow({ data: { is_return: 1 } })).toBe(false)
 		expect(isReturnableQueueRow({ data: { doctype: "Sales Order" } })).toBe(false)
 		expect(isReturnableQueueRow({ entity: ENTITY_CUSTOMER, data: {} })).toBe(false)
+	})
+})
+
+describe("isReturnableQueueRow after a void came too late", () => {
+	it("accepts the sale, because it stands", () => {
+		const stands = {
+			offline_id: LOCAL_INVOICE,
+			void_reason: "Wrong sale",
+			server_status: "sale_stands",
+			data: { doctype: "Sales Invoice" },
+		}
+		expect(isReturnableQueueRow(stands)).toBe(true)
+	})
+})
+
+describe("subtractQueuedReturns with a void request", () => {
+	const doc = {
+		return_against: "SINV-1",
+		items: [{ item_code: "A", original_idx: 1, remaining_qty: 2, already_returned: 0 }],
+	}
+	const queuedReturn = (extra) => ({
+		data: {
+			is_return: 1,
+			return_against: "SINV-1",
+			items: [{ item_code: "A", original_idx: 1, qty: -2 }],
+		},
+		...extra,
+	})
+
+	it("does not count a return that is waiting to be voided", () => {
+		const [item] = subtractQueuedReturns(doc, [queuedReturn({ void_reason: "Wrong sale" })]).items
+		expect(item.remaining_qty).toBe(2)
+	})
+
+	it("counts one the server refused to void", () => {
+		const row = queuedReturn({ void_reason: "Wrong sale", server_status: "sale_stands" })
+		expect(subtractQueuedReturns(doc, [row]).items[0].remaining_qty).toBe(0)
 	})
 })
 

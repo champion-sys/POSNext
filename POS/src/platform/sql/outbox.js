@@ -24,7 +24,7 @@ function supersedeStatements(offlineId, replacedBy) {
 	return [
 		{
 			sql: `UPDATE outbox SET state = 'superseded', superseded_by = ?
-				WHERE offline_id = ? AND state = 'pending'`,
+				WHERE offline_id = ? AND state = 'pending' AND void_reason IS NULL`,
 			params: [replacedBy, offlineId],
 		},
 		{
@@ -117,6 +117,7 @@ export function toQueuedInvoice(row) {
 		sync_failed: Boolean(row.sync_failed),
 		superseded: row.state === "superseded",
 		replaced_by: row.superseded_by,
+		void_reason: row.void_reason,
 	}
 }
 
@@ -256,6 +257,27 @@ export function createOutbox(sql) {
 		/** Retire a replaced sale */
 		async supersede(offlineId, replacedBy = null) {
 			await sql.batch(supersedeStatements(offlineId, replacedBy))
+		},
+
+		/**
+		 * Ask for a record to be voided. It stays until the server answers, but its stock
+		 * hold ends in the same transaction. A first request's reason stands.
+		 * @param {string} offlineId
+		 * @param {string} reason
+		 * @returns {Promise<boolean>} Whether the record is waiting to be voided
+		 */
+		async requestVoid(offlineId, reason) {
+			await sql.batch([
+				{
+					sql: `UPDATE outbox SET void_reason = ?, attempts = 0, next_attempt_at = 0, last_error = NULL,
+							sync_failed = 0
+						WHERE offline_id = ? AND void_reason IS NULL AND state NOT IN (${placeholders(CLOSED)})`,
+					params: [reason, offlineId, ...CLOSED],
+				},
+				{ sql: "DELETE FROM stock_reservation WHERE offline_id = ?", params: [offlineId] },
+			])
+			const [row] = await sql.all("SELECT void_reason FROM outbox WHERE offline_id = ?", [offlineId])
+			return Boolean(row?.void_reason)
 		},
 
 		/** Delete a sale with everything that hangs off it */

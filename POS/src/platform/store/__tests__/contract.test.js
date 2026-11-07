@@ -400,6 +400,7 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			sync_failed: Boolean(row.sync_failed),
 			superseded: Boolean(row.superseded),
 			replaced_by: row.replaced_by ?? null,
+			void_reason: row.void_reason ?? null,
 		})
 
 		const fresh = {
@@ -414,6 +415,7 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			sync_failed: false,
 			superseded: false,
 			replaced_by: null,
+			void_reason: null,
 		}
 
 		const failed = { retry_count: 1, error: "Timeout", next_attempt_at: 5000 }
@@ -459,12 +461,24 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				server_status: "synced",
 				server_invoice: "SINV-2",
 			}],
+			["a void that came too late", [result({ status: "sale_stands", invoice: "SINV-3" })], {
+				server_status: "sale_stands",
+				server_invoice: "SINV-3",
+			}],
 		])("after %s", async (_name, updates, expected) => {
 			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
 
 			for (const update of updates) await store.updateQueuedInvoice(id, update)
 
 			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({ ...fresh, ...expected })
+		})
+
+		it("after a void request", async () => {
+			const { id, offline_id } = await store.saveOfflineInvoice(invoice())
+
+			await store.requestVoid(id, "Wrong sale")
+
+			expect(shape(await store.getQueuedInvoice(offline_id))).toEqual({ ...fresh, void_reason: "Wrong sale" })
 		})
 
 		it("after being retired by an edit", async () => {
@@ -699,6 +713,427 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect(row.data.pos_opening_shift).toBe("S")
 				expect(status).toBe("synced")
 				expect(name).toBe("CLOSE-1")
+			})
+		})
+	})
+
+	describe("a void request", () => {
+		const REASON = "The customer changed their mind"
+
+		const sale = (extra) => store.saveOfflineInvoice(invoice(extra))
+		const pushes = () => callServer.mock.calls.filter(([method]) => method.endsWith("push"))
+		const statusChecks = () => callServer.mock.calls.filter(([method]) => method.endsWith("get_status"))
+
+		const answers = (results, statuses = []) =>
+			callServer.mockImplementation(async (method) => (method.endsWith("push") ? { results } : statuses))
+
+		async function askToVoid(extra) {
+			const queued = await sale(extra)
+			await store.requestVoid(queued.id, REASON)
+			return queued
+		}
+
+		describe("on the device", () => {
+			it("keeps the row in the queue with its reason", async () => {
+				const { id, offline_id } = await sale()
+
+				expect(await store.requestVoid(id, REASON)).toEqual({ success: true })
+
+				expect(await store.getOfflineInvoiceCount()).toBe(1)
+				const [row] = await store.getOfflineInvoices()
+				expect(row.offline_id).toBe(offline_id)
+				expect(row.void_reason).toBe(REASON)
+				expect(row.synced).toBe(false)
+				expect(row.server_status ?? null).toBeNull()
+				expect((await store.getQueuedInvoice(offline_id)).void_reason).toBe(REASON)
+			})
+
+			it("stops the row holding stock", async () => {
+				const kept = await sale()
+				await askToVoid()
+
+				const rows = await store.getOfflineInvoices()
+				expect(rows.map((row) => row.offline_id)).toContain(kept.offline_id)
+				expect(rows).toHaveLength(2)
+				expect(sumQueuedStock(rows).get("A")).toBe(24)
+			})
+
+			it("keeps the first reason when asked twice", async () => {
+				const { id, offline_id } = await askToVoid()
+
+				expect(await store.requestVoid(id, "Another reason")).toEqual({ success: true })
+
+				expect((await store.getQueuedInvoice(offline_id)).void_reason).toBe(REASON)
+			})
+
+			it("starts over on a row that had been failing, so it goes on the next sync", async () => {
+				const { id, offline_id } = await sale()
+				await store.updateQueuedInvoice(id, {
+					retry_count: 3,
+					error: "Timeout",
+					next_attempt_at: Date.now() + 60000,
+					sync_failed: true,
+				})
+
+				await store.requestVoid(id, REASON)
+
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.retry_count).toBe(0)
+				expect(row.next_attempt_at ?? 0).toBe(0)
+				expect(row.error ?? null).toBeNull()
+				expect(Boolean(row.sync_failed)).toBe(false)
+			})
+
+			it("refuses a row that is gone", async () => {
+				expect(await store.requestVoid(9999, REASON)).toEqual({ success: false })
+			})
+
+			it("refuses a row that has finished", async () => {
+				const { id, offline_id } = await sale()
+				await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "synced", invoice: "SINV-1" }))
+
+				expect(await store.requestVoid(id, REASON)).toEqual({ success: false })
+
+				expect((await store.getQueuedInvoice(offline_id)).void_reason ?? null).toBeNull()
+			})
+
+			it("refuses a row an edit replaced", async () => {
+				const original = await sale()
+				await store.saveOfflineInvoice(invoice(), { supersedesId: original.id })
+
+				expect(await store.requestVoid(original.id, REASON)).toEqual({ success: false })
+			})
+
+			it("is not retired by an edit, which would hide the void", async () => {
+				const original = await askToVoid()
+
+				await store.saveOfflineInvoice(invoice(), { supersedesId: original.id })
+
+				const kept = await store.getQueuedInvoice(original.offline_id)
+				expect(kept.superseded).toBeFalsy()
+				expect(kept.void_reason).toBe(REASON)
+			})
+
+			it("is not retired by an online checkout", async () => {
+				const { id, offline_id } = await askToVoid()
+
+				await store.supersedeOfflineInvoice(id, "SINV-9")
+
+				expect((await store.getQueuedInvoice(offline_id)).superseded).toBeFalsy()
+			})
+
+			it("is no longer offered for return", async () => {
+				const { offline_id } = await askToVoid()
+				expect(isReturnableQueueRow(await store.getQueuedInvoice(offline_id))).toBe(false)
+			})
+
+			it("no longer counts a queued payment or a coupon", async () => {
+				const payment = await store.saveQueueEntity(ENTITY_PAYMENT, {
+					invoice_name: "SINV-1",
+					payments: [{ amount: 5 }],
+				})
+				await store.requestVoid(payment.id, REASON)
+				await askToVoid({ coupon_code: "SAVE5" })
+
+				const rows = await store.getOfflineInvoices()
+				expect(sumQueuedPayments(rows).get("SINV-1")).toBeUndefined()
+				expect(countQueuedCouponUses(rows, "SAVE5", "CUST-1").total).toBe(0)
+			})
+
+			it("stays in the shift's list, so a close waits for how it ends", async () => {
+				const { offline_id } = await askToVoid()
+				expect(getShiftManifest(await store.getQueueRows(), "SHIFT-1")).toEqual([offline_id])
+			})
+
+			it("leaves a row the server holds to the server's answer", async () => {
+				const { id, offline_id } = await sale()
+				await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "received" }))
+
+				await store.requestVoid(id, REASON)
+
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.server_status).toBe("received")
+				expect(row.void_reason).toBe(REASON)
+			})
+		})
+
+		describe("through utils/offline/sync", () => {
+			let syncOfflineInvoices
+
+			beforeEach(async () => {
+				;({ syncOfflineInvoices } = await import("@/utils/offline/sync"))
+			})
+
+			it("reaches the server with its reason and the record it is about", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "voided" }])
+
+				await syncOfflineInvoices()
+
+				const [envelope] = pushes()[0][1].items
+				expect(envelope.offline_id).toBe(offline_id)
+				expect(envelope.void_reason).toBe(REASON)
+				expect(envelope.payload.customer).toBe("CUST-1")
+			})
+
+			it("sends a record that was not voided with no such field", async () => {
+				const { offline_id } = await sale()
+				answers([{ offline_id, status: "synced", invoice: "SINV-1" }])
+
+				await syncOfflineInvoices()
+
+				expect(pushes()[0][1].items[0]).not.toHaveProperty("void_reason")
+			})
+
+			it("does the same for a record that is not a sale", async () => {
+				const { id, offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, { customer_name: "Sara" })
+				await store.requestVoid(id, REASON)
+				answers([{ offline_id, status: "voided" }])
+
+				await syncOfflineInvoices()
+
+				const [envelope] = pushes()[0][1].items
+				expect(envelope.entity).toBe(ENTITY_CUSTOMER)
+				expect(envelope.void_reason).toBe(REASON)
+				expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+			})
+
+			it("waits while offline, and goes when the connection returns", async () => {
+				const { offlineState } = await import("@/utils/offline/offlineState")
+				const { offline_id } = await askToVoid()
+
+				offlineState.setManualOffline(true)
+				await syncOfflineInvoices()
+
+				expect(callServer).not.toHaveBeenCalled()
+				expect((await store.getQueuedInvoice(offline_id)).void_reason).toBe(REASON)
+
+				offlineState.setManualOffline(false)
+				answers([{ offline_id, status: "voided" }])
+				await syncOfflineInvoices()
+
+				expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+			})
+
+			it("drops the row and its receipt once the server voided it", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "voided" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.voided).toBe(1)
+				expect(result.success).toBe(0)
+				expect(result.delivered).toBe(1)
+				expect(await store.getOfflineInvoiceCount()).toBe(0)
+				expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+				expect(await store.getReceipt(offline_id)).toBeFalsy()
+			})
+
+			it("announces a voided record with no server name, so what stood for it goes", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "voided" }])
+				const announced = new Promise((resolve) => {
+					window.addEventListener("offlineEntitySynced", (event) => resolve(event.detail), { once: true })
+				})
+
+				await syncOfflineInvoices()
+
+				const { row, status, name } = await announced
+				expect(row.offline_id).toBe(offline_id)
+				expect(status).toBe("voided")
+				expect(name).toBeUndefined()
+			})
+
+			it("keeps asking while a job is working on the record", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "void_pending" }])
+
+				const first = await syncOfflineInvoices()
+
+				expect(first.waiting).toBe(1)
+				expect(first.voided).toBe(0)
+				expect((await store.getQueuedInvoice(offline_id)).void_reason).toBe(REASON)
+
+				answers([{ offline_id, status: "voided" }])
+				await syncOfflineInvoices()
+
+				expect(pushes()).toHaveLength(2)
+				expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+			})
+
+			it("reports a wait next to a sale the server is still working on", async () => {
+				const waiting = await sale()
+				const { offline_id } = await askToVoid()
+				answers(
+					[
+						{ offline_id: waiting.offline_id, status: "received" },
+						{ offline_id, status: "void_pending" },
+					],
+					[{ offline_id: waiting.offline_id, status: "processing" }],
+				)
+
+				vi.useFakeTimers({ toFake: ["setTimeout"] })
+				let result
+				const syncing = syncOfflineInvoices().then((answer) => {
+					result = answer
+				})
+				while (!result) await vi.advanceTimersByTimeAsync(2000)
+				await syncing
+				vi.useRealTimers()
+
+				expect(result.waiting).toBe(2)
+			})
+
+			it("does not take any other answer as an ending", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "received" }])
+
+				await syncOfflineInvoices()
+
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.void_reason).toBe(REASON)
+				expect(row.server_status ?? null).toBeNull()
+			})
+
+			it("stays and backs off when the server refuses the request", async () => {
+				const { offline_id } = await askToVoid()
+				answers([{ offline_id, status: "rejected", message: "No access" }])
+
+				const result = await syncOfflineInvoices()
+
+				expect(result.failed).toBe(1)
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.void_reason).toBe(REASON)
+				expect(row.error).toBe("No access")
+				expect(row.next_attempt_at).toBeGreaterThan(Date.now())
+			})
+
+			it("survives a request that never got an answer", async () => {
+				const { offline_id } = await askToVoid()
+				callServer.mockRejectedValue(Object.assign(new TypeError("Failed to fetch")))
+
+				await syncOfflineInvoices()
+
+				expect((await store.getQueuedInvoice(offline_id)).void_reason).toBe(REASON)
+				expect(await store.getOfflineInvoiceCount()).toBe(1)
+			})
+
+			describe("for a sale the server already holds", () => {
+				const standing = (offline_id) => ({ offline_id, status: "sale_stands", invoice: "SINV-1" })
+
+				it("keeps the row in sight until the cashier has seen it", async () => {
+					const { offline_id } = await askToVoid()
+					answers([standing(offline_id)])
+
+					const result = await syncOfflineInvoices()
+
+					expect(result.saleStands).toBe(1)
+					expect(result.voided).toBe(0)
+					const [row] = await store.getOfflineInvoices()
+					expect(row.server_status).toBe("sale_stands")
+					expect(row.server_invoice).toBe("SINV-1")
+					expect(row.void_reason).toBe(REASON)
+				})
+
+				it("does not ask again", async () => {
+					const { offline_id } = await askToVoid()
+					answers([standing(offline_id)])
+
+					await syncOfflineInvoices()
+					await syncOfflineInvoices()
+
+					expect(pushes()).toHaveLength(1)
+				})
+
+				it("does not let a status check clear it before the cashier has seen it", async () => {
+					const { offline_id } = await askToVoid()
+					answers([standing(offline_id)], [{ offline_id, status: "synced", invoice: "SINV-1" }])
+
+					await syncOfflineInvoices()
+					await syncOfflineInvoices()
+
+					expect(statusChecks()).toHaveLength(0)
+					expect((await store.getQueuedInvoice(offline_id)).server_status).toBe("sale_stands")
+				})
+
+				it("holds no stock once it stands: the server's figures include it", async () => {
+					const { offline_id } = await askToVoid()
+					answers([standing(offline_id)])
+
+					await syncOfflineInvoices()
+
+					expect(sumQueuedStock(await store.getOfflineInvoices()).size).toBe(0)
+				})
+
+				it("can be returned, because that is how it is undone now", async () => {
+					const { offline_id } = await askToVoid()
+					answers([standing(offline_id)])
+
+					await syncOfflineInvoices()
+
+					expect(isReturnableQueueRow(await store.getQueuedInvoice(offline_id))).toBe(true)
+				})
+
+				it("leaves the queue like a synced sale once the cashier has seen it", async () => {
+					const { id, offline_id } = await askToVoid()
+					answers([standing(offline_id)])
+					await syncOfflineInvoices()
+
+					await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "synced", invoice: "SINV-1" }))
+
+					expect(await store.getOfflineInvoiceCount()).toBe(0)
+					const row = await store.getQueuedInvoice(offline_id)
+					expect(row.synced).toBe(true)
+					expect(row.server_invoice).toBe("SINV-1")
+					expect(getShiftManifest(await store.getQueueRows(), "SHIFT-1")).toEqual([offline_id])
+				})
+
+				it("announces the server's name, so a local customer gets it", async () => {
+					const { id, offline_id } = await store.saveQueueEntity(ENTITY_CUSTOMER, { customer_name: "Sara" })
+					await store.requestVoid(id, REASON)
+					answers([{ offline_id, status: "sale_stands", invoice: "CUST-1" }])
+					const announced = new Promise((resolve) => {
+						window.addEventListener("offlineEntitySynced", (event) => resolve(event.detail), { once: true })
+					})
+
+					await syncOfflineInvoices()
+
+					expect((await announced).name).toBe("CUST-1")
+				})
+			})
+
+			it("asks about a row the server holds, instead of following it", async () => {
+				const { id, offline_id } = await sale()
+				await store.updateQueuedInvoice(id, getQueueUpdateForResult({ status: "received" }))
+				await store.requestVoid(id, REASON)
+				answers([{ offline_id, status: "voided" }], [{ offline_id, status: "processing" }])
+
+				await syncOfflineInvoices()
+
+				expect(pushes()[0][1].items[0].void_reason).toBe(REASON)
+				expect(statusChecks()).toHaveLength(0)
+				expect(await store.getQueuedInvoice(offline_id)).toBeUndefined()
+			})
+
+			it("has the last word over a sale's answer that was already on its way", async () => {
+				const { id, offline_id } = await sale()
+				callServer.mockImplementation(async () => {
+					await store.requestVoid(id, REASON)
+					return { results: [{ offline_id, status: "synced", invoice: "SINV-1" }] }
+				})
+
+				const first = await syncOfflineInvoices()
+
+				expect(first.success).toBe(0)
+				const row = await store.getQueuedInvoice(offline_id)
+				expect(row.synced).toBe(false)
+				expect(row.void_reason).toBe(REASON)
+
+				answers([{ offline_id, status: "sale_stands", invoice: "SINV-1" }])
+				await syncOfflineInvoices()
+
+				expect(pushes().at(-1)[1].items[0].void_reason).toBe(REASON)
+				expect((await store.getQueuedInvoice(offline_id)).server_status).toBe("sale_stands")
 			})
 		})
 	})

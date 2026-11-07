@@ -5,13 +5,15 @@
  * @module utils/syncQueue
  */
 
-import { formatLocalPosting } from "@/utils/offline/invoicePayload"
+import { SALE_STANDS, formatLocalPosting, isVoidPending } from "@/utils/offline/invoicePayload"
 
 export const QUEUE_WAITING = "waiting"
 export const QUEUE_SENDING = "sending"
 export const QUEUE_RECEIVED = "received"
 export const QUEUE_REVIEW = "needs_review"
 export const QUEUE_FAILED = "failed"
+export const QUEUE_VOIDING = "voiding"
+export const QUEUE_SALE_STANDS = "sale_stands"
 
 /**
  * @param {Object} row - Queue row
@@ -19,6 +21,8 @@ export const QUEUE_FAILED = "failed"
  * @returns {string} One of the QUEUE_ states
  */
 export function getQueueRowState(row, isSyncing = false) {
+	if (row.server_status === SALE_STANDS) return QUEUE_SALE_STANDS
+	if (isVoidPending(row)) return QUEUE_VOIDING
 	if (row.server_status === "needs_review") return QUEUE_REVIEW
 	if (row.server_status) return QUEUE_RECEIVED
 	if (row.sync_failed) return QUEUE_FAILED
@@ -33,17 +37,24 @@ export function getQueueRowState(row, isSyncing = false) {
  */
 export function needsAttention(row) {
 	const state = getQueueRowState(row)
-	return state === QUEUE_REVIEW || state === QUEUE_FAILED
+	return (
+		state === QUEUE_REVIEW ||
+		state === QUEUE_FAILED ||
+		state === QUEUE_SALE_STANDS ||
+		(state === QUEUE_VOIDING && Boolean(row.sync_failed))
+	)
 }
 
 /**
  * Whether this invoice exists only on this device. Once the server holds a
- * sale, it is the server's job, so such a sale no longer counts.
+ * sale, it is the server's job, so such a sale no longer counts. A void still has to
+ * reach the server, whatever the server holds.
  * @param {Object} row - Queue row
  * @returns {boolean}
  */
 export function isWaitingToSend(row) {
-	return getQueueRowState(row) === QUEUE_WAITING
+	const state = getQueueRowState(row)
+	return state === QUEUE_WAITING || (state === QUEUE_VOIDING && !row.sync_failed)
 }
 
 /**
