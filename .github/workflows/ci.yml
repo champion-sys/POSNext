@@ -138,6 +138,13 @@ jobs:
         working-directory: POS
         run: yarn install
 
+      # The encryption tests run on the real cipher build, and fail here without it
+      - name: Install the desktop database engine
+        working-directory: POS/desktop
+        run: |
+          npm install --omit=dev --ignore-scripts --no-package-lock --no-audit --no-fund
+          npm rebuild better-sqlite3-multiple-ciphers
+
       - name: Run Tests
         working-directory: POS
         run: yarn test:run

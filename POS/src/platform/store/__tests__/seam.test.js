@@ -3,7 +3,8 @@ import path from "node:path"
 import { describe, expect, it, vi } from "vitest"
 import { migrate } from "@/platform/sql/migrations"
 import { STORE_METHODS, WORKER_METHODS } from "../methods"
-import { createNativeStore } from "../native"
+import { DatabaseLockedError, LOCK } from "../databaseLock"
+import { checkDatabase, createNativeStore } from "../native"
 import { createSqlStore } from "../sqlStore"
 import { createNodeExecutor } from "./sqliteHarness"
 
@@ -130,5 +131,40 @@ describe("when the database fails", () => {
 		await Promise.all([store.isCacheReady(), store.getOfflineInvoiceCount(), store.getSetting("key")])
 
 		expect(open).toHaveBeenCalledTimes(1)
+	})
+})
+
+describe("when the database is locked", () => {
+	const locked = () => Promise.reject(new DatabaseLockedError(LOCK.KEY_MISSING))
+
+	it.each([
+		["the queue", "getOfflineInvoiceCount", []],
+		["the catalog", "searchCachedItems", ["x"]],
+		["a setting", "getSetting", ["key", "fallback"]],
+		["the cache", "isCacheReady", []],
+	])("does not answer %s as if it were empty", async (_, method, args) => {
+		await expect(createNativeStore(locked)[method](...args)).rejects.toMatchObject({
+			reason: LOCK.KEY_MISSING,
+		})
+	})
+
+	it("names the reason to the app's start", async () => {
+		expect(await checkDatabase(locked)).toEqual({ locked: LOCK.KEY_MISSING, encrypted: false })
+	})
+
+	it("does not stop the app for a database that opened", async () => {
+		expect(await checkDatabase(async () => ({ encrypted: true }))).toEqual({ locked: null, encrypted: true })
+	})
+
+	it("says when a database opened plain", async () => {
+		expect(await checkDatabase(async () => ({ encrypted: false }))).toEqual({ locked: null, encrypted: false })
+	})
+
+	it("leaves any other failure to degrade as it always has", async () => {
+		const failing = async () => {
+			throw new Error("cannot open")
+		}
+
+		expect(await checkDatabase(failing)).toEqual({ locked: null, encrypted: false })
 	})
 })

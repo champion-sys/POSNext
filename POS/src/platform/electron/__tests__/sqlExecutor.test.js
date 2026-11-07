@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { createRequire } from "node:module"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElectronExecutor, openExecutor } from "../sqlExecutor"
 
 const require = createRequire(import.meta.url)
@@ -19,14 +19,35 @@ describe("the renderer's executor", () => {
 		expect(database.run).toHaveBeenCalledWith("DELETE FROM kv", [])
 	})
 
-	it("uses what the preload exposes", () => {
-		const database = { all: vi.fn(async () => []) }
-		vi.stubGlobal("window", { electronAPI: { db: database } })
+	describe("opening", () => {
+		const database = (state) => ({ open: vi.fn(async () => state), all: vi.fn(async () => []) })
 
-		openExecutor().all("SELECT 1")
+		afterEach(() => vi.unstubAllGlobals())
 
-		expect(database.all).toHaveBeenCalled()
-		vi.unstubAllGlobals()
+		it("uses what the preload exposes", async () => {
+			const db = database({ encrypted: true })
+			vi.stubGlobal("window", { electronAPI: { db } })
+
+			const sql = await openExecutor()
+			await sql.all("SELECT 1")
+
+			expect(db.all).toHaveBeenCalled()
+		})
+
+		it("says whether the file is encrypted", async () => {
+			vi.stubGlobal("window", { electronAPI: { db: database({ encrypted: false }) } })
+
+			expect((await openExecutor()).encrypted).toBe(false)
+		})
+
+		it("fails with the reason when the database is locked", async () => {
+			vi.stubGlobal("window", { electronAPI: { db: database({ locked: "key-missing" }) } })
+
+			await expect(openExecutor()).rejects.toMatchObject({
+				name: "DatabaseLockedError",
+				reason: "key-missing",
+			})
+		})
 	})
 })
 
