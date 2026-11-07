@@ -44,6 +44,17 @@ def _get_post_change_gl_entries_setting():
 	)
 	return cint(result[0][0]) if result else 0
 
+def get_payment_party(mode_of_payment):
+	"""The party of a payment's ledger row.
+
+	snd_accounting adds this Party Type and relaxes ERPNext's rule against a party on a Cash
+	account. Without that app ERPNext refuses the row, and no POS sale could post.
+	"""
+	if frappe.db.exists("Party Type", "Mode of Payment"):
+		return {"party_type": "Mode of Payment", "party": mode_of_payment}
+	return {}
+
+
 class CustomSalesInvoice(SalesInvoice):
 	"""
 	Custom Sales Invoice class that handles wallet payments correctly.
@@ -211,8 +222,7 @@ class CustomSalesInvoice(SalesInvoice):
 						self.get_gl_dict(
 							{
 								"account": payment_mode.account,
-								"party_type": "Mode of Payment",
-								"party": payment_mode.mode_of_payment,
+								**get_payment_party(payment_mode.mode_of_payment),
 								"against": self.customer,
 								"debit": payment_mode.base_amount,
 								"debit_in_account_currency": payment_mode.base_amount
