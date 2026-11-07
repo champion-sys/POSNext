@@ -555,14 +555,34 @@ class TestARowACashierAskedToVoid(ImportFlow):
         self.assertEqual(self.stored().error_code, sync_void.VOID_AFTER_POSTED)
         self.assertEqual(self.counts(result), (0, 1, 0, 0))
 
-    def test_where_voiding_is_off_it_is_refused_and_not_posted(self):
+    def test_where_voiding_is_off_it_is_stored_as_a_sale(self):
         with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
             result = self.import_rows(self.void())
         self.process_all(self.create)
 
-        self.create.assert_not_called()
+        self.create.assert_called_once()
+        self.assertEqual(self.stored().status, "Synced")
+        self.assertFalse(self.stored().resolution_note)
+        self.assertEqual(self.counts(result), (1, 0, 0, 0))
+        self.assertEqual(result["problems"], [])
+        sync_inbox.enqueue_processing.assert_called_once_with("Main")
+
+    def test_where_voiding_is_off_a_record_still_waiting_is_left_to_post(self):
+        self.import_rows(self.item())
+
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.import_rows(self.void())
+        self.process_all(self.create)
+
+        self.create.assert_called_once()
+        self.assertEqual(self.counts(result), (0, 1, 0, 0))
+
+    def test_where_voiding_is_off_a_shift_record_stays_refused(self):
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.import_rows(self.item(entity="shift_close", void_reason="Wrong shift"))
+
         self.assertEqual(self.counts(result), (0, 0, 0, 1))
-        self.assertIn("turned off", result["problems"][0]["message"])
+        self.assertFalse(self.inbox.rows)
 
     def test_the_device_asking_again_changes_nothing(self):
         self.import_rows(self.void())

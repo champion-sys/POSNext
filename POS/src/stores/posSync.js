@@ -62,6 +62,7 @@ import {
 	subtractQueuedReturns,
 } from "@/utils/offline/entities"
 import {
+	REFUSED_VOIDS_KEY,
 	SALE_STANDS,
 	SYNC_PERIODIC,
 	formatLocalPosting,
@@ -119,6 +120,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	/** When a sale last reached the server from this device */
 	const lastSyncedAt = ref(Number(localStorage.getItem(LAST_SYNC_KEY)) || null)
 
+	/** Voids the server refused that no cashier has acknowledged yet */
+	const refusedVoids = ref([])
+
 	let isListeningForResults = false
 	let lastAutoSyncAt = Date.now()
 	let isWaitingForServer = false
@@ -168,7 +172,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	const queuedCount = computed(() => pendingInvoicesList.value.filter(isWaitingToSend).length)
 
 	/** Invoices that will not clear until a person looks at them */
-	const reviewCount = computed(() => pendingInvoicesList.value.filter(needsAttention).length)
+	const reviewCount = computed(
+		() => pendingInvoicesList.value.filter(needsAttention).length + refusedVoids.value.length,
+	)
 
 	// =========================================================================
 	// INTERNAL HELPERS
@@ -195,6 +201,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		const rows = await getPending()
 		pendingInvoicesList.value = rows
 		stockStore.setQueued(sumQueuedStock(rows, stockStore.warehouse))
+		refusedVoids.value = (await getSetting(REFUSED_VOIDS_KEY)) || []
 	}
 
 	function markSynced() {
@@ -312,6 +319,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			if (result.voided > 0) showSuccess(__("{0} record(s) voided", [result.voided]))
 			if (result.saleStands > 0) {
 				showWarning(__("{0} record(s) were already on the server, so they were not voided", [result.saleStands]))
+			}
+			if (result.voidsRefused > 0) {
+				showWarning(__("Voiding is turned off, so {0} record(s) were not voided. They stand and will be sent as usual", [result.voidsRefused]))
 			}
 
 			// The server's numbers now include these sales
@@ -652,6 +662,16 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	}
 
 	/**
+	 * The cashier has seen that a void was refused. The record itself carries on in the queue.
+	 * @param {string} offlineId
+	 */
+	async function acknowledgeRefusedVoid(offlineId) {
+		const remaining = ((await getSetting(REFUSED_VOIDS_KEY)) || []).filter((note) => note.offline_id !== offlineId)
+		await setSetting(REFUSED_VOIDS_KEY, remaining)
+		refusedVoids.value = remaining
+	}
+
+	/**
 	 * Sync all pending invoices with user feedback
 	 * @returns {Object} Sync result with success/failed counts
 	 */
@@ -877,6 +897,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		isSyncing,
 		pendingInvoicesList,
 		lastSyncedAt,
+		refusedVoids,
 
 		// Computed
 		hasPendingInvoices,
@@ -897,6 +918,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		updatePendingCount,
 		requestVoid,
 		acknowledgeSaleStands,
+		acknowledgeRefusedVoid,
 		autoSync,
 		syncAllPending,
 		preloadDataForOffline,

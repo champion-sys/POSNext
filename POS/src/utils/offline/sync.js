@@ -4,14 +4,16 @@ import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
 import { offlineState } from "./offlineState"
 import {
+	REFUSED_VOIDS_KEY,
 	SALE_STANDS,
+	VOID_REFUSED,
 	buildSyncEnvelope,
 	classifySyncError,
 	getQueueUpdateForResult,
 	getRetryDelayMs,
 	withOfflinePosting,
 } from "./invoicePayload"
-import { ENTITY_INVOICE, getEntity } from "./entities"
+import { ENTITY_CUSTOMER, ENTITY_INVOICE, buildLocalCustomer, getEntity } from "./entities"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
 import { generateUUID } from "./uuid"
 
@@ -259,6 +261,30 @@ const applyResult = async (row, result) => {
 }
 
 /**
+ * Keep a refused void for the cashier, once per record however often it is refused
+ * @param {Object} row - Queue row
+ */
+const noteRefusedVoid = async (row) => {
+	const notes = (await localStore.getSetting(REFUSED_VOIDS_KEY)) || []
+	if (notes.some((note) => note.offline_id === row.offline_id)) return
+
+	const { offline_id, entity, data, void_reason, timestamp } = row
+	await localStore.setSetting(REFUSED_VOIDS_KEY, [...notes, { offline_id, entity, data, void_reason, timestamp }])
+}
+
+/**
+ * The void is over and the record stands, so it goes back to the queue. What it undid
+ * comes first: if this is cut short, the row still asks and the same answer comes back.
+ * @param {Object} row - Queue row
+ */
+const endRefusedVoid = async (row) => {
+	await noteRefusedVoid(row)
+	if (getEntity(row) === ENTITY_CUSTOMER) await localStore.cacheCustomers([buildLocalCustomer(row.data)])
+	await localStore.cancelVoid(row.id)
+	window.dispatchEvent(new CustomEvent("offlineVoidRefused", { detail: { row } }))
+}
+
+/**
  * Settle a void request with the server's answer. Any other answer leaves it waiting,
  * so the next sync asks again.
  * @param {Object} row - Queue row
@@ -276,6 +302,9 @@ const applyVoidAnswer = async (row, answer, result) => {
 		announceRecordEnded(row, SALE_STANDS, answer.invoice)
 		result.saleStands++
 		result.delivered++
+	} else if (answer.status === VOID_REFUSED) {
+		await endRefusedVoid(row)
+		result.voidsRefused++
 	} else {
 		result.voidsWaiting++
 	}
@@ -421,6 +450,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 			delivered: 0,
 			voided: 0,
 			saleStands: 0,
+			voidsRefused: 0,
 			voidsWaiting: 0,
 			errors: [],
 		}
@@ -492,7 +522,8 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 			await sleep(SYNC_CONFIG.STATUS_POLL_DELAY_MS)
 		}
 
-		result.waiting += result.voidsWaiting
+		// A refused void is a sale to send now, and this run has already passed it
+		result.waiting += result.voidsWaiting + result.voidsRefused
 
 		// Let the POS replace local batch and serial figures with server values
 		if (result.success > 0 && typeof window !== "undefined") {

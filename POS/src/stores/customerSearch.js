@@ -1,6 +1,6 @@
 import { call } from "@/utils/apiWrapper"
 import { isOffline } from "@/utils/offline"
-import { ENTITY_CUSTOMER } from "@/utils/offline/entities"
+import { ENTITY_CUSTOMER, buildLocalCustomer } from "@/utils/offline/entities"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
 import { useRealtimeCustomers } from "@/composables/useRealtimeCustomers"
@@ -340,6 +340,11 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 				log.error("Error replacing a local customer:", error)
 			})
 		}
+	})
+
+	// It left this list the moment its void was asked for
+	window.addEventListener("offlineVoidRefused", ({ detail }) => {
+		if (detail.row.entity === ENTITY_CUSTOMER) addCustomerToCache(buildLocalCustomer(detail.row.data))
 	})
 
 	// Real-time Push Integration

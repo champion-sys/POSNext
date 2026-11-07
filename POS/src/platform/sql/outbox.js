@@ -280,6 +280,32 @@ export function createOutbox(sql) {
 			return Boolean(row?.void_reason)
 		},
 
+		/**
+		 * Give a record back to the queue after the server refused to void it. Its stock
+		 * hold returns in the same transaction.
+		 * @param {string} offlineId
+		 * @returns {Promise<boolean>} Whether a void was waiting
+		 */
+		async cancelVoid(offlineId) {
+			const [row] = await sql.all(
+				`SELECT payload FROM outbox
+				WHERE offline_id = ? AND void_reason IS NOT NULL AND state NOT IN (${placeholders(CLOSED)})`,
+				[offlineId, ...CLOSED],
+			)
+			if (!row) return false
+
+			await sql.batch([
+				{
+					sql: `UPDATE outbox SET void_reason = NULL, attempts = 0, next_attempt_at = 0, last_error = NULL,
+							sync_failed = 0
+						WHERE offline_id = ?`,
+					params: [offlineId],
+				},
+				...reservationStatements(offlineId, JSON.parse(row.payload)),
+			])
+			return true
+		},
+
 		/** Delete a sale with everything that hangs off it */
 		async remove(offlineId) {
 			await sql.batch(

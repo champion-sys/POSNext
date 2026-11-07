@@ -5,7 +5,8 @@
 
 The receipt may already be with the customer, and a push may have landed while its answer
 was lost, so a void is never only local. The device keeps the record until the server
-answers here, and the server keeps a record of the request whatever the answer is.
+answers here, and the server keeps a record of the request. Where the POS Profile does not
+allow voids it stores nothing: the void ends there, and the record goes up as usual.
 """
 
 import frappe
@@ -18,6 +19,10 @@ from pos_next.services.sync_entities import DOCTYPE, ENTITY_SHIFT_CLOSE, ENTITY_
 #: Marks a record that stands although its device asked to void it. A stable identifier:
 #: the sync center, offline_invoice_sync.js and the device rely on it.
 VOID_AFTER_POSTED = "VoidAfterPosted"
+
+#: What a device hears where its POS Profile does not allow voids. A stable identifier: the
+#: device gives the record back to the queue on it, and an import stores it as a sale.
+VOID_REFUSED = "void_refused"
 
 POSTED_STATES = ("Synced", "Resolved")
 
@@ -44,23 +49,33 @@ def _is_voiding_allowed(pos_profile):
     return frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "allow_delete_offline_invoice")
 
 
-def _assert_voiding_allowed(pos_profile):
-    """A push need not come from the app, so its setting cannot be left to the app."""
-    if not _is_voiding_allowed(pos_profile):
-        frappe.throw(
-            _("Voiding queued records is turned off for POS Profile {0}").format(pos_profile),
-            frappe.PermissionError,
-        )
+def _stored_record(offline_id):
+    return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}, ["name", "entity", "pos_profile"], as_dict=True)
 
 
-def _assert_may_void(name, assert_access):
-    """Hold the request to the record itself, which may not be what the envelope claims."""
-    stored = frappe.db.get_value(DOCTYPE, name, ["entity", "pos_profile"], as_dict=True)
-    if stored.entity in (ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN):
+def _get_refusing_profile(item, stored, assert_access):
+    """Hold the request to the record itself, which may not be what the envelope claims.
+
+    Args:
+        item: The record's envelope
+        stored: The record from _stored_record, if the server holds it
+        assert_access: Raises unless they may work with the POS Profile it is given
+
+    Returns:
+        str | None: The POS Profile that does not allow this void. A push need not come from
+            the app, so the setting cannot be left to the app.
+    """
+    if (stored.entity if stored else item.get("entity")) in (ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN):
         frappe.throw(_("A shift cannot be voided from a device"), frappe.PermissionError)
-    if stored.pos_profile:
-        assert_access(stored.pos_profile)
-        _assert_voiding_allowed(stored.pos_profile)
+
+    stored_profile = stored.pos_profile if stored else None
+    if stored_profile:
+        assert_access(stored_profile)
+
+    for pos_profile in (sync_inbox.get_item_profile(item), stored_profile):
+        if pos_profile and not _is_voiding_allowed(pos_profile):
+            return pos_profile
+    return None
 
 
 def _flag_for_manager(row, reason, document):
@@ -122,15 +137,24 @@ def request_void(item, uploaded_by, assert_access, device_id=None, client_versio
         protocol_version: Envelope version
 
     Returns:
-        frappe._dict: The record, for describe_void
+        frappe._dict: The record, or a refusal that stands for it, for describe_void
     """
-    _assert_voiding_allowed(sync_inbox.get_item_profile(item))
-
     reason = item["void_reason"].strip()
     fields = sync_inbox._envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
 
-    name = frappe.db.get_value(DOCTYPE, {"offline_id": item["offline_id"]}) or _insert_unprocessed(item, fields)
-    _assert_may_void(name, assert_access)
+    stored = _stored_record(item["offline_id"])
+    refusing_profile = _get_refusing_profile(item, stored, assert_access)
+
+    if not refusing_profile and not stored:
+        _insert_unprocessed(item, fields)
+        # It may have lost to another request, and then the record is not what this one claims
+        stored = _stored_record(item["offline_id"])
+        refusing_profile = _get_refusing_profile(item, stored, assert_access)
+
+    if refusing_profile:
+        return frappe._dict(offline_id=item["offline_id"], refused_by=refusing_profile)
+
+    name = stored.name
 
     # A plain read can answer from this transaction's snapshot, and a job may have moved on
     row = sync_inbox._lock(name)
@@ -145,7 +169,15 @@ def request_void(item, uploaded_by, assert_access, device_id=None, client_versio
 
 
 def describe_void(row):
-    """What the device hears. Anything but voided or sale_stands means ask again next sync."""
+    """What the device hears. Anything but voided, sale_stands or void_refused means ask
+    again next sync."""
+    if row.get("refused_by"):
+        return {
+            "offline_id": row.offline_id,
+            "status": VOID_REFUSED,
+            "message": _("Voiding queued records is turned off for POS Profile {0}").format(row.refused_by),
+        }
+
     response = {"offline_id": row.offline_id, "server_status": row.status}
     if row.error_code == VOID_AFTER_POSTED:
         response.update(status="sale_stands", error_code=row.error_code, message=row.error_message)

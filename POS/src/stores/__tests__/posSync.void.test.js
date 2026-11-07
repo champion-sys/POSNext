@@ -10,6 +10,7 @@ const worker = vi.hoisted(() => ({
 	updateQueuedInvoice: vi.fn(),
 	deleteOfflineInvoice: vi.fn(),
 }))
+const kept = vi.hoisted(() => ({ settings: new Map() }))
 const syncOfflineInvoices = vi.hoisted(() => vi.fn())
 const announceRecordEnded = vi.hoisted(() => vi.fn())
 const toast = vi.hoisted(() => ({ showSuccess: vi.fn(), showError: vi.fn(), showWarning: vi.fn() }))
@@ -30,7 +31,10 @@ vi.mock("@/utils/offline/offlineState", () => ({
 	},
 }))
 vi.mock("@/utils/offline/workerClient", () => ({ offlineWorker: worker }))
-vi.mock("@/utils/offline/settings", () => ({ getSetting: vi.fn(), setSetting: vi.fn() }))
+vi.mock("@/utils/offline/settings", () => ({
+	getSetting: vi.fn(async (key) => kept.settings.get(key)),
+	setSetting: vi.fn(async (key, value) => kept.settings.set(key, value)),
+}))
 vi.mock("@/utils/apiWrapper", () => ({ call: vi.fn() }))
 vi.mock("@/core/sync/webPull", () => ({ pullChanges: vi.fn() }))
 vi.mock("@/composables/useShift", () => ({ clearShiftClosing: vi.fn(), markShiftClosing: vi.fn() }))
@@ -223,6 +227,49 @@ describe("what the cashier hears from a sync", () => {
 		await store.syncAllPending()
 
 		expect(store.lastSyncedAt).toEqual(expect.any(Number))
+	})
+
+	it("says plainly that a void was refused and that the sale stands", async () => {
+		syncOfflineInvoices.mockResolvedValue(outcome({ voidsRefused: 1, waiting: 1 }))
+
+		await store.syncAllPending()
+
+		expect(toast.showWarning).toHaveBeenCalledWith(expect.stringContaining("They stand"))
+	})
+})
+
+describe("after a void was refused", () => {
+	const NOTE = { offline_id: "pos_offline_1", entity: "invoice", void_reason: REASON, data: {} }
+	let store
+
+	beforeEach(async () => {
+		vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] })
+		vi.stubGlobal("__", (text) => text)
+		vi.clearAllMocks()
+		kept.settings = new Map([["refused_voids", [NOTE, { ...NOTE, offline_id: "pos_offline_2" }]]])
+		queue.rows = []
+		setActivePinia(createPinia())
+		store = usePOSSyncStore()
+		await store.updatePendingCount()
+	})
+
+	afterEach(() => {
+		kept.settings = new Map()
+		vi.useRealTimers()
+		vi.unstubAllGlobals()
+	})
+
+	it("needs a person to look, though nothing is left in the queue", () => {
+		expect(store.refusedVoids).toHaveLength(2)
+		expect(store.reviewCount).toBe(2)
+	})
+
+	it("lets go of what the cashier has seen, and only that", async () => {
+		await store.acknowledgeRefusedVoid("pos_offline_1")
+
+		expect(store.refusedVoids.map((note) => note.offline_id)).toEqual(["pos_offline_2"])
+		expect(kept.settings.get("refused_voids").map((note) => note.offline_id)).toEqual(["pos_offline_2"])
+		expect(store.reviewCount).toBe(1)
 	})
 })
 

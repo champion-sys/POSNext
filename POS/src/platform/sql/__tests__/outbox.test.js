@@ -140,6 +140,27 @@ describe("outbox", () => {
 		expect(await outbox.countQueued()).toBe(2)
 	})
 
+	it("takes the stock back in the same step when a void is refused", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.requestVoid("a", "Wrong sale")
+
+		expect(await outbox.cancelVoid("a")).toBe(true)
+
+		expect(await outbox.availableStock("A", "W1")).toBe(76)
+		expect((await outbox.get("a")).void_reason).toBeNull()
+		expect((await outbox.nextBatch(10)).map((row) => row.offline_id)).toEqual(["a"])
+	})
+
+	it("takes it back once, however often it is told", async () => {
+		await outbox.enqueueSale(sale("a"))
+		await outbox.requestVoid("a", "Wrong sale")
+
+		await outbox.cancelVoid("a")
+		expect(await outbox.cancelVoid("a")).toBe(false)
+
+		expect(await outbox.availableStock("A", "W1")).toBe(76)
+	})
+
 	it("refuses a void of a sale that has finished", async () => {
 		await outbox.enqueueSale(sale("a"))
 		await outbox.applyResult("a", { state: "synced", serverName: "SINV-1" })

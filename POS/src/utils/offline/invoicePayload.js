@@ -16,6 +16,15 @@ const GUEST_REFUSAL = /<strong>pos_next\.api\.[\w.]+<\/strong>/
 /** A void the server refused: the record was already there, and a cashier has to read that */
 export const SALE_STANDS = "sale_stands"
 
+/** A void its POS Profile does not allow. It ends there, and the record goes up as usual. */
+export const VOID_REFUSED = "void_refused"
+
+/**
+ * Refused voids a person has not seen yet, in the store's settings. A record leaves the queue
+ * once it reaches the server, which can be before anyone has looked.
+ */
+export const REFUSED_VOIDS_KEY = "refused_voids"
+
 const pad = (value) => String(value).padStart(2, "0")
 
 /**
