@@ -18,6 +18,7 @@ const device = vi.hoisted(() => {
 		settings: new Map(),
 		shift: null,
 		methods: [],
+		rows: [],
 		save: null,
 	}
 })
@@ -42,7 +43,10 @@ vi.mock("frappe-ui", async () => {
 				data: null,
 				loading: false,
 				error: null,
-				fetch: vi.fn(async () => null),
+				fetch: vi.fn(async () => {
+					if (options.url.endsWith("check_opening_shift")) server.check?.()
+					return null
+				}),
 				submit: vi.fn(async () => null),
 				reset: vi.fn(),
 			})
@@ -68,6 +72,7 @@ vi.mock("@/platform/store", () => ({
 			device.shift = null
 		},
 		getCachedPaymentMethods: async () => device.methods,
+		getQueueRows: async () => device.rows,
 	},
 }))
 vi.mock("@/utils/offline/workerClient", async () => ({
@@ -126,6 +131,7 @@ describe("the shift opening dialog, offline", () => {
 		device.pastLimit = false
 		device.settings.clear()
 		device.shift = null
+		device.rows = []
 		device.methods = [
 			{ mode_of_payment: "Cash", is_wallet_payment: 0 },
 			{ mode_of_payment: "Wallet", is_wallet_payment: 1 },
@@ -136,6 +142,7 @@ describe("the shift opening dialog, offline", () => {
 
 	afterEach(() => {
 		wrapper?.unmount()
+		server.check = null
 		document.cookie = "user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT"
 	})
 
@@ -319,6 +326,149 @@ describe("the shift opening dialog, offline", () => {
 		await open()
 
 		expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+	})
+
+	describe("online, with this cashier's last shift still on its way", () => {
+		const OPENING = {
+			offline_id: "pos_offline_old",
+			entity: "shift_open",
+			synced: false,
+			data: { cashier: CASHIER },
+		}
+		const CLOSING = {
+			offline_id: "pos_offline_close",
+			entity: "shift_close",
+			synced: false,
+			data: { cashier: CASHIER, pos_opening_shift: "pos_offline_old" },
+		}
+
+		const opensOnTheServer = () =>
+			server.resources.get("pos_next.api.shifts.create_opening_shift").submit.mock.calls.length > 0
+
+		beforeEach(() => {
+			offlineState.isOffline = false
+			device.rows = [OPENING, CLOSING]
+			allowOffline()
+			keepProfiles(MAIN)
+		})
+
+		it("opens the next one through the queue, not on the server", async () => {
+			await goToAmounts()
+			await wrapper.find("input").setValue("250")
+
+			await button(wrapper, "Open Shift").trigger("click")
+			await flushPromises()
+
+			expect(device.save).toHaveBeenCalledTimes(1)
+			expect(opensOnTheServer()).toBe(false)
+			expect(wrapper.emitted("shift-opened")).toHaveLength(1)
+		})
+
+		it("says why it opens here, and does not call the cashier offline", async () => {
+			await open()
+
+			expect(wrapper.text()).toContain("still on its way to the server")
+			expect(wrapper.text()).not.toContain("You are offline")
+			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).not.toHaveBeenCalled()
+		})
+
+		it("refuses and says why where opening that way is not allowed", async () => {
+			allowOffline("Main", 0)
+
+			await open()
+
+			expect(wrapper.text()).toContain("cannot open a shift until it arrives")
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).not.toHaveBeenCalled()
+		})
+
+		it("refuses and says why with no profile kept here", async () => {
+			device.settings.clear()
+
+			await open()
+
+			expect(wrapper.text()).toContain("cannot open a shift until it arrives")
+		})
+
+		it("refuses a second shift behind one with no close, which would stay open and strand it", async () => {
+			device.rows = [OPENING]
+
+			await open()
+
+			expect(wrapper.text()).toContain("so another cannot open yet")
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+		})
+
+		it("refuses that offline too", async () => {
+			offlineState.isOffline = true
+			device.rows = [OPENING]
+
+			await open()
+
+			expect(wrapper.text()).toContain("so another cannot open yet")
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+		})
+
+		it("offers the shift the server reports, instead of opening a second", async () => {
+			server.check = () => {
+				shiftState.value = {
+					pos_opening_shift: { name: "POSA-OS-1" },
+					pos_profile: { name: "Main" },
+					isOpen: true,
+				}
+			}
+
+			await open()
+
+			expect(wrapper.text()).toContain("Existing Shift Found")
+		})
+
+		it("carries on from what it has when the server does not answer", async () => {
+			server.check = () => {
+				throw new Error("Failed to fetch")
+			}
+
+			await open()
+
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
+		})
+
+		it("takes the queue after a shift closed in this dialog", async () => {
+			device.rows = []
+			await open()
+			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).toHaveBeenCalledTimes(1)
+
+			device.rows = [OPENING, CLOSING]
+			await wrapper.vm.handleExistingShiftClosed()
+			await flushPromises()
+
+			expect(wrapper.text()).toContain("still on its way to the server")
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
+		})
+
+		it("stays with the server when the record is a colleague's, who only holds the slot", async () => {
+			device.rows = [{ ...CLOSING, data: { ...CLOSING.data, cashier: "b@example.com" } }]
+
+			await open()
+
+			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).toHaveBeenCalled()
+		})
+
+		it("stays with the server once the records have finished", async () => {
+			device.rows = [{ ...OPENING, synced: true }, { ...CLOSING, synced: true }]
+
+			await open()
+
+			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).toHaveBeenCalled()
+		})
+
+		it("is not held back by a colleague's shift in the slot, which moves aside", async () => {
+			device.shift = { pos_opening_shift: { name: "pos_offline_colleague", user: "b@example.com" } }
+
+			await open()
+
+			expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
+		})
 	})
 
 	it("uses the server when it is online", async () => {

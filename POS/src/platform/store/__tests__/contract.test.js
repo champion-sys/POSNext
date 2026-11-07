@@ -3175,6 +3175,25 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				})
 			})
 
+			it("counts as unfinished with no close to wait behind", async () => {
+				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [], unclosed: [local] })
+			})
+
+			it("leaves its close for the next shift to wait behind, while it is on its way", async () => {
+				const close = await syncStore.saveShiftCloseOffline({
+					pos_opening_shift: local,
+					opening_offline_id: local,
+					pos_profile: "Main",
+					company: "Acme",
+					payment_reconciliation: [],
+				})
+
+				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [close.offline_id], unclosed: [] })
+
+				signInAs(OTHER_CASHIER)
+				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [], unclosed: [] })
+			})
+
 			it("makes the next shift wait for the close before it", async () => {
 				const close = await syncStore.saveShiftCloseOffline({
 					pos_opening_shift: local,

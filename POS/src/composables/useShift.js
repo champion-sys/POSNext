@@ -2,7 +2,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref } from "vue"
 import { readIdentity } from "@/platform/identity"
 import { localStore } from "@/platform/store"
-import { PARKED_SHIFTS_KEY, isLocalName } from "@/utils/offline/entities"
+import { PARKED_SHIFTS_KEY, getUnfinishedShiftRecords, isLocalName } from "@/utils/offline/entities"
 
 export const shiftState = ref({
 	pos_opening_shift: null,
@@ -133,6 +133,11 @@ export async function getCachedShiftProfiles() {
 function keepShift(data) {
 	takeSlot(data).catch((error) => console.error("Error caching shift data:", error))
 	rememberShiftProfile(data).catch((error) => console.error("Error keeping the POS Profile:", error))
+}
+
+/** @returns {Promise<{closes: string[], unclosed: string[]}>} This cashier's, on this device */
+export async function getOwnShiftRecords() {
+	return getUnfinishedShiftRecords(await localStore.getQueueRows(), readIdentity().userId)
 }
 
 /** @returns {Promise<boolean>} Whether another cashier's shift holds the one slot on this device */

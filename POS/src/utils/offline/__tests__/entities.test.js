@@ -13,6 +13,7 @@ import {
 	ENTITY_INVOICE,
 	ENTITY_PAYMENT,
 	ENTITY_SHIFT_CLOSE,
+	ENTITY_SHIFT_OPEN,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
@@ -21,6 +22,7 @@ import {
 	getShiftManifest,
 	hasOnlineOnlyPayment,
 	isLocalName,
+	getUnfinishedShiftRecords,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 	sumQueuedPayments,
@@ -371,6 +373,49 @@ describe("subtractQueuedReturns", () => {
 		const [first, second] = subtractQueuedReturns(queued, [row]).items
 		expect(first.remaining_qty).toBe(2)
 		expect(second.remaining_qty).toBe(0)
+	})
+})
+
+describe("getUnfinishedShiftRecords", () => {
+	const CASHIER = "a@example.com"
+	const opening = (extra) => ({
+		offline_id: "pos_offline_old",
+		entity: ENTITY_SHIFT_OPEN,
+		data: { cashier: CASHIER },
+		...extra,
+	})
+	const closing = (extra) => ({
+		offline_id: "pos_offline_close",
+		entity: ENTITY_SHIFT_CLOSE,
+		data: { cashier: CASHIER, pos_opening_shift: "pos_offline_old" },
+		...extra,
+	})
+
+	it("lets a shift with a close wait behind that close", () => {
+		expect(getUnfinishedShiftRecords([opening(), closing()], CASHIER)).toEqual({
+			closes: ["pos_offline_close"],
+			unclosed: [],
+		})
+	})
+
+	it("names a shift with no close, which nothing can wait behind", () => {
+		expect(getUnfinishedShiftRecords([opening()], CASHIER).unclosed).toEqual(["pos_offline_old"])
+	})
+
+	it("counts the close of a shift the server already opened", () => {
+		const server = closing({ data: { cashier: CASHIER, pos_opening_shift: "POSA-OS-1" } })
+		expect(getUnfinishedShiftRecords([server], CASHIER).closes).toEqual(["pos_offline_close"])
+	})
+
+	it("leaves out what has finished, been replaced, or is a colleague's", () => {
+		const rows = [
+			opening({ synced: true }),
+			closing({ superseded: true }),
+			opening({ data: { cashier: "b@example.com" } }),
+			{ offline_id: "pos_offline_sale", data: { cashier: CASHIER } },
+		]
+
+		expect(getUnfinishedShiftRecords(rows, CASHIER)).toEqual({ closes: [], unclosed: [] })
 	})
 })
 
