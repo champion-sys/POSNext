@@ -26,6 +26,7 @@ from pos_next.services.sync_classifier import (
     CashierUnavailableError,
     ClockSkewError,
     EditConflictError,
+    ReplacedByEditError,
     ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
@@ -146,6 +147,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
         "uploaded_by": uploaded_by,
         "device_id": device_id,
+        "edited_from": _get_edited_from(item),
         "client_created_at": _parse_datetime(item.get("created_at_device")),
         "received_at": now_datetime(),
         "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
@@ -218,15 +220,20 @@ def _holds_sale(offline_id):
     return bool(status and status != "Voided") or bool(find_invoice_by_offline_id(offline_id))
 
 
+def _get_edited_from(item):
+    """The sale a record replaced. An edit that kept the original's id is the original."""
+    original = item["payload"].get("edited_from")
+    return original if original and isinstance(original, str) and original != item["offline_id"] else None
+
+
 def _get_edit_conflict(item):
     """Spot an edit of a sale that already reached the server.
 
     A device offers an edit while it thinks the sale is unsent. If the push landed and only
-    its response was lost, the edit arrives under a new offline_id and both would post. An
-    edit that kept the original's id is the original, which the device replaced.
+    its response was lost, the edit arrives under a new offline_id and both would post.
     """
-    original = item["payload"].get("edited_from")
-    if isinstance(original, str) and original != item["offline_id"] and _holds_sale(original):
+    original = _get_edited_from(item)
+    if original and _holds_sale(original):
         return EditConflictError(
             _("This edits sale {0}, which the server already holds. A manager must decide which one stands.").format(
                 original
@@ -235,12 +242,36 @@ def _get_edit_conflict(item):
     return None
 
 
+def _get_replacing_edit(offline_id):
+    """The edit that replaced a sale, finished long ago or not.
+
+    A voided edit counts. The device retired the sale when it was edited, so a cashier who
+    voids the edit believes the sale is gone, and a copy from before must not bring it back.
+    """
+    return frappe.db.get_value(DOCTYPE, {"edited_from": offline_id}, "offline_id")
+
+
+def _hold_edit_conflict(name, item):
+    """Keep a record from posting beside the sale it replaced, or was replaced by."""
+    edit = _get_replacing_edit(item["offline_id"])
+    conflict = _get_edit_conflict(item) or (
+        EditConflictError(_("Edit {0} replaced this sale. A manager must decide which one stands.").format(edit))
+        if edit
+        else None
+    )
+    if conflict and frappe.db.get_value(DOCTYPE, name, "status", for_update=True) == "Received":
+        _handle_failure(name, 1, conflict, None, None)
+
+
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
     """Store one record and commit, before anything can fail on its contents.
 
     Returns:
         tuple[str, bool]: The record name, and whether this payload conflicts with
             a different one already stored under the same offline_id
+
+    Raises:
+        ReplacedByEditError: When this is a sale the server holds an edit of
     """
     offline_id = item["offline_id"]
 
@@ -260,6 +291,10 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         conflict = bool(existing.payload_hash) and existing.payload_hash != payload_hash
         return existing.name, conflict
 
+    edit = _get_replacing_edit(offline_id)
+    if edit:
+        raise ReplacedByEditError(_("Edit {0} replaced this sale, so it was not stored.").format(edit))
+
     doc = frappe.get_doc(
         {
             "doctype": DOCTYPE,
@@ -278,11 +313,13 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}), False
 
     # In this transaction, so no worker can see the row before it is held back
-    edit_conflict = _get_edit_conflict(item)
-    if edit_conflict:
-        _handle_failure(doc.name, 1, edit_conflict, None, None)
-
+    _hold_edit_conflict(doc.name, item)
     frappe.db.commit()  # nosemgrep: the sale must survive anything that happens next
+
+    # A sale and its edit stored at the same moment cannot see each other until both commit.
+    # Whichever commits last sees the other here.
+    _hold_edit_conflict(doc.name, item)
+    frappe.db.commit()  # nosemgrep: release the row lock, and keep the hold
     return doc.name, False
 
 

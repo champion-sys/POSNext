@@ -20,6 +20,7 @@
   "cashier",
   "uploaded_by",
   "device_id",
+  "edited_from",
   "column_break_source",
   "client_created_at",
   "received_at",
@@ -178,6 +179,14 @@
    "fieldtype": "Data",
    "label": "Device",
    "read_only": 1
+  },
+  {
+   "fieldname": "edited_from",
+   "fieldtype": "Data",
+   "label": "Edited From",
+   "read_only": 1,
+   "search_index": 1,
+   "description": "The offline ID of the sale this record replaced. It stays when the payload is erased."
   },
   {
    "fieldname": "column_break_source",

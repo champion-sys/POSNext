@@ -13,6 +13,7 @@ from frappe.utils import cint
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
 from pos_next.services import sync_inbox, sync_reconciliation, sync_void
+from pos_next.services.sync_classifier import ReplacedByEditError
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -152,6 +153,8 @@ def store_item(item, uploader, device_id, client_version, protocol_version, cloc
             )
             return None, sync_void.describe_void(row)
         name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
+    except ReplacedByEditError as exc:
+        return None, {"offline_id": item["offline_id"], "status": "conflict", "message": str(exc)}
     except Exception as exc:
         return None, _rejected(item, _discard_item(exc))
 

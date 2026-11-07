@@ -15,6 +15,7 @@ from rq.timeouts import JobTimeoutException
 from pos_next.api import sync as sync_api
 from pos_next.pos_next.doctype.offline_invoice_sync import offline_invoice_sync
 from pos_next.services import sync_classifier, sync_inbox
+from pos_next.services.sync_classifier import ReplacedByEditError
 from pos_next.services.sync_entities import DOCTYPE
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
@@ -461,6 +462,85 @@ class TestEditOfASaleOnTheServer(Flow):
     def test_a_sale_that_is_not_an_edit_goes_ahead(self):
         name = self._send(LATE_SALE, {"pos_profile": "Main", "edited_from": None})
         self.assertEqual(self._row(name).status, "Received")
+
+    def test_it_keeps_the_link_in_a_column_that_outlives_the_payload(self):
+        self.assertEqual(self._row(self._edit()).edited_from, SALE)
+
+    def test_an_edit_that_kept_its_id_links_to_nothing(self):
+        name = self._send(SALE, {"pos_profile": "Main", "edited_from": SALE})
+        self.assertIsNone(self._row(name).edited_from)
+
+    def test_a_link_that_is_not_a_name_links_to_nothing(self):
+        name = self._send(SALE, {"pos_profile": "Main", "edited_from": ["pos_offline_sale-9"]})
+        self.assertIsNone(self._row(name).edited_from)
+
+    def test_the_original_arriving_after_its_edit_is_refused_and_not_stored(self):
+        edit = self._edit()
+
+        with self.assertRaises(ReplacedByEditError) as refused:
+            self._send(SALE, {"pos_profile": "Main"})
+
+        self.assertIn(LATE_SALE, str(refused.exception))
+        self.assertEqual(list(self.inbox.rows), [edit])
+
+    def test_whatever_became_of_the_edit_the_original_stays_out(self):
+        for status in ("Received", "Needs Review", "Synced", "Resolved", "Voided"):
+            self.inbox.rows.clear()
+            self._row(self._edit())["status"] = status
+
+            with self.assertRaises(ReplacedByEditError):
+                self._send(SALE, {"pos_profile": "Main"})
+
+    def test_a_resend_of_an_original_already_held_is_still_the_same_record(self):
+        original = self._send(SALE, {"pos_profile": "Main"})
+        self._edit()
+
+        self.assertEqual(self._send(SALE, {"pos_profile": "Main"}), original)
+
+    def _arrives_with(self, other, offline_id, payload):
+        """Store a record while another request stores `other`, unseen until this one commits."""
+        real = self.inbox.commit
+        arrived = []
+
+        def commit():
+            real()
+            if not arrived:
+                arrived.append(other())
+
+        with patch.object(self.inbox, "commit", side_effect=commit):
+            name = self._send(offline_id, payload)
+        return name, arrived[0]
+
+    def _insert_unseen(self, offline_id, payload):
+        return lambda: self.inbox.insert(
+            {"offline_id": offline_id, "status": "Received", "edited_from": payload.get("edited_from")}
+        )
+
+    def test_a_sale_and_its_edit_stored_at_once_cannot_both_post(self):
+        name, _edit = self._arrives_with(
+            self._insert_unseen(LATE_SALE, {"edited_from": SALE}), SALE, {"pos_profile": "Main"}
+        )
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "EditConflictError")
+        self.assertIn(LATE_SALE, self._row(name).error_message)
+
+    def test_an_edit_and_its_sale_stored_at_once_cannot_both_post(self):
+        name, _sale = self._arrives_with(
+            self._insert_unseen(SALE, {}), LATE_SALE, {"pos_profile": "Main", "edited_from": SALE}
+        )
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "EditConflictError")
+
+    def test_a_record_a_worker_already_took_is_left_to_it(self):
+        def take():
+            self._row("row-1")["status"] = "Processing"
+            return self.inbox.insert({"offline_id": LATE_SALE, "status": "Received", "edited_from": SALE})
+
+        name, _edit = self._arrives_with(take, SALE, {"pos_profile": "Main"})
+
+        self.assertEqual(self._row(name).status, "Processing")
 
     def test_a_resend_of_the_edit_stays_where_it_is(self):
         self._send(SALE, {"pos_profile": "Main"})

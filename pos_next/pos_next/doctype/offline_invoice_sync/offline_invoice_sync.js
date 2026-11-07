@@ -52,7 +52,7 @@ const SHIFT_CLOSED_GUIDE = __(
 );
 
 const EDIT_CONFLICT_GUIDE = __(
-	"The device edited a sale the server had already received, so both would post. To keep the original, void this record. To keep this edit, cancel the original invoice or void its record first, then press Reprocess.",
+	"The server holds a sale and the edit that replaced it, and both would post. Void the record that should not stand, or cancel its invoice if it already posted. Then press Reprocess on the one that stays.",
 );
 
 const CASHIER_GUIDE = __(

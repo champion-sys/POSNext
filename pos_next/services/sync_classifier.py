@@ -66,6 +66,10 @@ class EditConflictError(frappe.ValidationError):
     """An edit of a sale the server already holds. Both would post, so a person has to choose."""
 
 
+class ReplacedByEditError(frappe.ValidationError):
+    """A copy of a sale the cashier already replaced. It is refused, so nothing stores it."""
+
+
 class ShiftClosedError(frappe.ValidationError):
     """A POS Invoice reaches the books through its shift's closing, which has already run."""
 

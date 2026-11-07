@@ -7,6 +7,7 @@ These run on stand-ins for the database, so they prove the logic and nothing abo
 or ERPNext. docs/offline-multiplatform/03-sync-engine.md lists what a real site must show.
 """
 
+import inspect
 import json
 import unittest
 from datetime import datetime
@@ -799,6 +800,24 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(field["unique"], 1)
         self.assertEqual(field["no_copy"], 1)
         self.assertIn("offline_id", doctype["field_order"])
+
+    def _inbox_field(self, fieldname):
+        doctype = self._fields(("pos_next", "doctype", "offline_invoice_sync", "offline_invoice_sync.json"))
+        self.assertIn(fieldname, doctype["field_order"])
+        return next(field for field in doctype["fields"] if field["fieldname"] == fieldname)
+
+    def test_the_link_from_an_edit_is_indexed_so_both_sides_can_look_it_up(self):
+        field = self._inbox_field("edited_from")
+        self.assertEqual(field["fieldtype"], "Data")
+        self.assertEqual(field["search_index"], 1)
+
+    def test_retention_erases_the_payload_and_not_the_link(self):
+        from pos_next.services import sync_retention
+
+        self.assertNotIn("edited_from", json.dumps(inspect.getsource(sync_retention)))
+
+    def test_no_reading_has_a_field_of_its_own_because_the_int_column_cannot_hold_null(self):
+        self.assertEqual(self._inbox_field("clock_not_measured")["fieldtype"], "Check")
 
     def test_the_setting_is_off_unless_someone_turns_it_on(self):
         doctype = self._fields(("pos_next", "doctype", "pos_settings", "pos_settings.json"))
