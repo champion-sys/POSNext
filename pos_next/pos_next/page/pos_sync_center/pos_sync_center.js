@@ -69,6 +69,11 @@ class SyncCenter {
 		page.set_secondary_action(__("All Records"), () =>
 			frappe.set_route("List", "Offline Invoice Sync"),
 		);
+		frappe.require("/assets/pos_next/js/queue_import.js", () => {
+			page.add_inner_button(__("Import Queue File"), () => {
+				new pos_next.QueueImport(() => this.load()).pick();
+			});
+		});
 		this.body.on("click", "[data-status]", (event) => {
 			frappe.set_route("List", "Offline Invoice Sync", { status: event.currentTarget.dataset.status });
 		});

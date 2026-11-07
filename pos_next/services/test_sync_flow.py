@@ -6,6 +6,7 @@
 import json
 import unittest
 from datetime import datetime, timedelta
+from fnmatch import fnmatchcase
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -46,6 +47,10 @@ class FakeInbox:
             if isinstance(expected, list):
                 operator, operand = expected
                 if operator == "in" and value not in operand:
+                    return False
+                if operator == "!=" and value == operand:
+                    return False
+                if operator == "like" and not fnmatchcase(value or "", operand.replace("%", "*")):
                     return False
                 if operator in ("<", "<=") and (value is None or value > operand):
                     return False

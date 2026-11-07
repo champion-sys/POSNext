@@ -115,6 +115,40 @@ def _describe(row):
     return response
 
 
+def store_item(item, uploader, device_id, client_version, protocol_version):
+    """Check one item and store it. Whatever goes wrong stays with this item.
+
+    Returns:
+        tuple[str | None, dict | None]: The record's name, or what to tell the sender instead
+    """
+    problem = sync_inbox.validate_envelope(item)
+    if problem:
+        return None, _rejected(item, problem)
+
+    try:
+        # Not frappe.database.savepoint: ingest commits, and releasing one then raises
+        frappe.db.savepoint(ITEM_SAVEPOINT)
+        _assert_may_upload(item)
+        name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
+    except Exception as exc:
+        return None, _rejected(item, _discard_item(exc))
+
+    if conflict:
+        return None, {
+            "offline_id": item["offline_id"],
+            "status": "conflict",
+            "message": "A different invoice was already stored under this offline_id",
+        }
+
+    return name, None
+
+
+def enqueue_stored(names):
+    """Hand stored records to the queue jobs of their POS Profiles."""
+    for pos_profile in {frappe.db.get_value("Offline Invoice Sync", name, "pos_profile") for name in names}:
+        sync_inbox.enqueue_processing(pos_profile)
+
+
 @frappe.whitelist(methods=["POST"])
 def push(items=None, device_id=None, client_version=None, protocol_version=PROTOCOL_VERSION, wait_for_result=0):
     """Store a batch of queued sales.
@@ -144,31 +178,11 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
     stored = []
 
     for item in items:
-        problem = sync_inbox.validate_envelope(item)
-        if problem:
-            results.append(_rejected(item, problem))
-            continue
-
-        try:
-            # Not frappe.database.savepoint: ingest commits, and releasing one then raises
-            frappe.db.savepoint(ITEM_SAVEPOINT)
-            _assert_may_upload(item)
-            name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
-        except Exception as exc:
-            results.append(_rejected(item, _discard_item(exc)))
-            continue
-
-        if conflict:
-            results.append(
-                {
-                    "offline_id": item["offline_id"],
-                    "status": "conflict",
-                    "message": "A different invoice was already stored under this offline_id",
-                }
-            )
-            continue
-
-        stored.append(name)
+        name, refusal = store_item(item, uploader, device_id, client_version, protocol_version)
+        if refusal:
+            results.append(refusal)
+        else:
+            stored.append(name)
 
     for name in stored:
         if wait:
@@ -176,11 +190,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
         results.append(_describe(frappe.db.get_value("Offline Invoice Sync", name, "*", as_dict=True)))
 
     if not wait:
-        profiles = {
-            frappe.db.get_value("Offline Invoice Sync", name, "pos_profile") for name in stored
-        }
-        for pos_profile in profiles:
-            sync_inbox.enqueue_processing(pos_profile)
+        enqueue_stored(stored)
 
     return {"server_time": frappe.utils.now(), "results": results}
 

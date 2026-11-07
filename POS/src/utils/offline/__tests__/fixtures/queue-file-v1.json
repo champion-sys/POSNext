@@ -1,0 +1,99 @@
+{
+ "format_version": 1,
+ "device_id": "0294017d-77a0-4cb1-89d8-82ee5271911a",
+ "app_version": "1.16.0",
+ "server": "https://old.example.com",
+ "exported_at": "2026-11-07T10:00:00.000Z",
+ "protocol_version": 1,
+ "rows": [
+  {
+   "offline_id": "pos_offline_customer-1",
+   "entity": "customer",
+   "entity_version": 1,
+   "seq": 11,
+   "cashier": "lina@example.com",
+   "pos_profile": "Main",
+   "created_at_device": "2026-11-06T09:30:00.000Z",
+   "client_totals": {
+    "paid": 0
+   },
+   "depends_on": [],
+   "payload": {
+    "doctype": "Customer",
+    "customer_name": "عميل جديد",
+    "pos_profile": "Main",
+    "cashier": "lina@example.com",
+    "offline_id": "pos_offline_customer-1"
+   }
+  },
+  {
+   "offline_id": "pos_offline_sale-1",
+   "entity": "invoice",
+   "entity_version": 1,
+   "seq": 12,
+   "cashier": "lina@example.com",
+   "pos_profile": "Main",
+   "created_at_device": "2026-11-06T09:30:00.000Z",
+   "client_totals": {
+    "grand_total": 25,
+    "paid": 25
+   },
+   "depends_on": [
+    "pos_offline_customer-1"
+   ],
+   "payload": {
+    "doctype": "Sales Invoice",
+    "pos_profile": "Main",
+    "customer": "pos_offline_customer-1",
+    "cashier": "lina@example.com",
+    "grand_total": 25,
+    "set_posting_time": 1,
+    "posting_date": "2026-11-06",
+    "posting_time": "12:30:00",
+    "edited_from": null,
+    "items": [
+     {
+      "item_code": "A",
+      "qty": 1,
+      "rate": 25,
+      "pricing_rules": "RULE-1"
+     }
+    ],
+    "payments": [
+     {
+      "mode_of_payment": "Cash",
+      "amount": 25
+     }
+    ],
+    "offline_id": "pos_offline_sale-1"
+   }
+  },
+  {
+   "offline_id": "pos_offline_payment-1",
+   "entity": "payment",
+   "entity_version": 1,
+   "seq": 13,
+   "cashier": "lina@example.com",
+   "pos_profile": "Main",
+   "created_at_device": "2026-11-06T09:30:00.000Z",
+   "client_totals": {
+    "paid": 10
+   },
+   "depends_on": [],
+   "payload": {
+    "doctype": "Payment Entry",
+    "invoice_name": "SINV-0001",
+    "customer": "CUST-1",
+    "pos_profile": "Main",
+    "cashier": "lina@example.com",
+    "payments": [
+     {
+      "mode_of_payment": "Cash",
+      "amount": 10
+     }
+    ],
+    "offline_id": "pos_offline_payment-1"
+   }
+  }
+ ]
+}
