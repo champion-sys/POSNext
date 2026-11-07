@@ -31,6 +31,8 @@
   "column_break_totals",
   "server_grand_total",
   "accept_total_difference",
+  "accept_device_date",
+  "clock_skew_seconds",
   "accept_unfinished",
   "section_coupon",
   "coupon_code",
@@ -237,6 +239,20 @@
    "label": "Accept Total Difference",
    "read_only": 1,
    "description": "Approved by a manager during review."
+  },
+  {
+   "fieldname": "accept_device_date",
+   "fieldtype": "Check",
+   "label": "Accept Device Date",
+   "read_only": 1,
+   "description": "Approved by a manager during review."
+  },
+  {
+   "fieldname": "clock_skew_seconds",
+   "fieldtype": "Int",
+   "label": "Device Clock Difference (Seconds)",
+   "read_only": 1,
+   "description": "How far the device's clock was from the server's when it sent this. Positive means ahead."
   },
   {
    "fieldname": "accept_unfinished",

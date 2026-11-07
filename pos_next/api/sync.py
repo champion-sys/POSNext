@@ -4,6 +4,7 @@
 """Invoice sync API: the device pushes sales here and asks how they ended."""
 
 import json
+import time
 
 import frappe
 from frappe import _
@@ -53,6 +54,14 @@ def _assert_profile_access(pos_profile):
 def _assert_may_upload(item):
     """Hold an item to the POS Profile it names. Its cashier is settled when it is stored."""
     _assert_profile_access(sync_inbox.get_item_profile(item))
+
+
+def _clock_skew(device_time):
+    """Seconds the device's clock is from the server's. Both are epoch based, so a device
+    in another time zone is not off."""
+    if not cint(device_time):
+        return 0
+    return cint(cint(device_time) / 1000 - time.time())
 
 
 def _rejected(item, message):
@@ -119,7 +128,7 @@ def _describe(row):
 
 
 @frappe.whitelist(methods=["POST"])
-def push(items=None, device_id=None, client_version=None, protocol_version=PROTOCOL_VERSION, wait_for_result=0):
+def push(items=None, device_id=None, client_version=None, protocol_version=PROTOCOL_VERSION, wait_for_result=0, device_time=None):
     """Store a batch of queued sales.
 
     Each item is committed on its own, so one bad invoice cannot lose the others.
@@ -130,6 +139,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
         client_version: App version
         protocol_version: Envelope version
         wait_for_result: Process inside this request, for a cashier who is waiting
+        device_time: The device's clock as it sent this, in milliseconds since the epoch
 
     Returns:
         dict: server_time and one result per item
@@ -141,6 +151,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
         frappe.throw(_("A batch cannot have more than {0} invoices").format(MAX_BATCH_SIZE))
 
     wait = cint(wait_for_result)
+    clock_skew = _clock_skew(device_time)
     uploader = frappe.session.user
     device_id = _recorded_device(device_id)
     results = []
@@ -156,6 +167,7 @@ def push(items=None, device_id=None, client_version=None, protocol_version=PROTO
             # Not frappe.database.savepoint: ingest commits, and releasing one then raises
             frappe.db.savepoint(ITEM_SAVEPOINT)
             _assert_may_upload(item)
+            item["clock_skew_seconds"] = clock_skew
             if item.get("void_reason"):
                 row = sync_void.request_void(
                     item, uploader, _assert_profile_access, device_id, client_version, protocol_version

@@ -314,6 +314,7 @@ const pushBatch = async (rows) => {
 		device_id: getDeviceId(),
 		client_version: typeof __BUILD_VERSION__ !== "undefined" ? __BUILD_VERSION__ : null,
 		protocol_version: SYNC_CONFIG.PROTOCOL_VERSION,
+		device_time: Date.now(),
 	})
 
 	return new Map((response?.results || []).map((result) => [result.offline_id, result]))

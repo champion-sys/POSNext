@@ -50,6 +50,10 @@ class SyncContractError(frappe.ValidationError):
     """The stored payload does not have the shape the server expects."""
 
 
+class ClockSkewError(frappe.ValidationError):
+    """The device's clock was so far off that the date of its sale cannot be trusted."""
+
+
 class TotalMismatchError(frappe.ValidationError):
     """The server's total differs from what the customer was charged."""
 

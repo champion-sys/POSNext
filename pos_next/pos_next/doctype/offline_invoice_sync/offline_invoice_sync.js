@@ -40,6 +40,13 @@ const TOTAL_MISMATCH_GUIDE = __(
 	"The server's total differs from what the customer paid. Use Accept Total Difference under Fix Record, or correct the invoice, then press Reprocess.",
 );
 
+const CLOCK_SKEW_GUIDE = __(
+	"The clock of this device was wrong, so the date of this sale may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
+);
+
+// Below the server's limit a clock only drifts, which is worth a look but stops nothing
+const CLOCK_DRIFT_SECONDS = 300;
+
 const SHIFT_CLOSED_GUIDE = __(
 	"Its shift is already closed, so this POS Invoice would never reach the books. Use Change Shift under Fix Record to move it to an open shift, then press Reprocess.",
 );
@@ -297,6 +304,17 @@ function addReviewActions(frm) {
 
 	if (entity === "invoice") {
 		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+
+		if (frm.doc.error_code === "ClockSkewError") {
+			frm.add_custom_button(
+				__("Accept Device Date"),
+				() =>
+					frappe.confirm(__("Post this invoice with the date from the device?"), () =>
+						callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
+					),
+				fix_group,
+			);
+		}
 	}
 
 	if (entity === "shift_close") {
@@ -382,6 +400,7 @@ function getReviewGuide(frm, canReview) {
 	if (!canReview) return __("A POS manager needs to review this record.");
 	if (error_code === VOID_AFTER_POSTED) return VOID_AFTER_POSTED_GUIDE;
 	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
+	if (error_code === "ClockSkewError") return CLOCK_SKEW_GUIDE;
 	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
 	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
 	if (error_code === "CashierUnavailableError") return CASHIER_GUIDE;
@@ -410,6 +429,16 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		const canReview = frappe.user.has_role(["Nexus POS Manager", "System Manager"]);
 
 		frm.set_df_property("payload", "read_only", inReview ? 0 : 1);
+
+		const clockSkew = Math.abs(frm.doc.clock_skew_seconds || 0);
+		if (clockSkew >= CLOCK_DRIFT_SECONDS) {
+			frm.set_intro(
+				__("The clock of this device was {0} minute(s) away from the server when it sent this.", [
+					Math.round(clockSkew / 60),
+				]),
+				"orange",
+			);
+		}
 		frm.disable_form_if_needed?.();
 
 		if (frm.doc.error_code === "NegativeStockError" || frm.doc.error_class === "stock") {

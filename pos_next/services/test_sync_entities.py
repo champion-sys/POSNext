@@ -464,6 +464,11 @@ class TestFixes(NoSiteTestCase):
             sync_inbox.apply_fix("row-1", fix, values)
         return row
 
+    def test_a_corrected_date_no_longer_depends_on_the_device_clock(self):
+        row = self._apply("invoice", "posting_date", {"posting_date": "2026-11-01"})
+
+        self.assertEqual(row.accept_device_date, 1)
+
     def test_a_customer_gets_a_valid_group(self):
         row = self._apply("customer", "customer_group", {"customer_group": "Retail"})
         self.assertEqual(json.loads(row.payload)["customer_group"], "Retail")

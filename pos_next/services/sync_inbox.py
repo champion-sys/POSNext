@@ -23,6 +23,7 @@ from rq.timeouts import JobTimeoutException
 from pos_next.services import sync_classifier, sync_entities, sync_retention
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
+    ClockSkewError,
     EditConflictError,
     ShiftClosedError,
     TotalMismatchError,
@@ -56,6 +57,8 @@ QUEUE_JOB_MARGIN_SECONDS = 120
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
 
 DEFAULT_TOTAL_TOLERANCE = 0.05
+#: Past this a clock is wrong, not drifting: half a day can move a sale to another date.
+MAX_CLOCK_SKEW_SECONDS = 12 * 60 * 60
 
 _NO_ERROR = {
     "error_class": None,
@@ -151,6 +154,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "payload_hash": compute_payload_hash(payload),
         "coupon_code": payload.get("coupon_code"),
         "seq": cint(item.get("seq")),
+        "clock_skew_seconds": cint(item.get("clock_skew_seconds")),
         "client_version": client_version,
         "protocol_version": cint(protocol_version),
         "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
@@ -415,8 +419,22 @@ def _assert_shift_open(row, payload, doctype):
         )
 
 
+def _assert_device_clock(row):
+    """A wrong clock puts a sale on the wrong day, and nothing later would show it."""
+    if abs(cint(row.clock_skew_seconds)) < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
+        return
+
+    raise ClockSkewError(
+        _("The device clock was {0} hour(s) away from the server when this was sent").format(
+            flt(abs(cint(row.clock_skew_seconds)) / 3600, 1)
+        )
+    )
+
+
 def _create_invoice(row):
     from pos_next.services.invoice_processor import process_invoice
+
+    _assert_device_clock(row)
 
     payload = sync_entities.load_payload(row)
     sync_entities.resolve_local_names(payload)
@@ -907,6 +925,9 @@ def apply_fix(name, fix, values):
         payload = sync_entities.load_payload(row)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        # The date is now a person's, so the clock it came from no longer matters
+        if fix == "posting_date":
+            row.accept_device_date = 1
         if fix == "shift":
             _move_to_shift(row, values["shift"])
 
@@ -1008,6 +1029,7 @@ _FIXES = {
         "shift": _fix_shift,
         "remove_coupon": _fix_remove_coupon,
         "accept_total_difference": None,
+        "accept_device_date": None,
     },
     ENTITY_CUSTOMER: {
         "customer_group": _fix_customer_group,
