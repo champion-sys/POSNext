@@ -11,6 +11,7 @@ const worker = vi.hoisted(() => ({
 	deleteOfflineInvoice: vi.fn(),
 }))
 const kept = vi.hoisted(() => ({ settings: new Map() }))
+const serialCache = vi.hoisted(() => vi.fn())
 const syncOfflineInvoices = vi.hoisted(() => vi.fn())
 const announceRecordEnded = vi.hoisted(() => vi.fn())
 const toast = vi.hoisted(() => ({ showSuccess: vi.fn(), showError: vi.fn(), showWarning: vi.fn() }))
@@ -22,7 +23,12 @@ const stock = vi.hoisted(() => ({
 }))
 const settings = vi.hoisted(() => ({ syncIntervalMinutes: 5, syncMode: "Realtime" }))
 
-vi.mock("@/utils/offline", () => ({ syncOfflineInvoices, announceRecordEnded }))
+vi.mock("@/utils/offline", () => ({
+	syncOfflineInvoices,
+	announceRecordEnded,
+	releaseSoldBatchesAndSerials: vi.fn(async () => []),
+}))
+vi.mock("@/stores/serialNumber", () => ({ useSerialNumberStore: () => ({ clearCache: serialCache }) }))
 vi.mock("@/utils/offline/offlineState", () => ({
 	offlineState: {
 		isOffline: false,
@@ -44,6 +50,7 @@ vi.mock("@/stores/posSettings", () => ({ usePOSSettingsStore: () => settings }))
 vi.mock("@/stores/posShift", () => ({ usePOSShiftStore: () => ({}) }))
 vi.mock("@/stores/stock", () => ({ useStockStore: () => stock }))
 
+const { releaseSoldBatchesAndSerials } = await import("@/utils/offline")
 const { usePOSSyncStore } = await import("../posSync")
 
 const REASON = "The customer changed their mind"
@@ -164,6 +171,31 @@ describe("asking to void a queued record", () => {
 	it("leaves a sale or a payment to the server's answer", async () => {
 		await store.requestVoid(1, REASON)
 		expect(announceRecordEnded).not.toHaveBeenCalled()
+	})
+
+	it("gives back the batches and serials of a sale that holds nothing now", async () => {
+		releaseSoldBatchesAndSerials.mockResolvedValueOnce(["A"])
+
+		await store.requestVoid(1, REASON)
+
+		expect(releaseSoldBatchesAndSerials).toHaveBeenCalledWith(queue.rows[0])
+		expect(serialCache).toHaveBeenCalledWith("A")
+	})
+
+	it("gives them back once when a void is asked for twice", async () => {
+		queue.rows = [row({ void_reason: REASON })]
+
+		await store.requestVoid(1, "Another reason")
+
+		expect(releaseSoldBatchesAndSerials).not.toHaveBeenCalled()
+	})
+
+	it("keeps them when the store would not take the request", async () => {
+		worker.requestVoid.mockResolvedValueOnce({ success: false })
+
+		await expect(store.requestVoid(1, REASON)).rejects.toThrow()
+
+		expect(releaseSoldBatchesAndSerials).not.toHaveBeenCalled()
 	})
 })
 

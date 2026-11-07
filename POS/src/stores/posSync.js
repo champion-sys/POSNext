@@ -33,6 +33,7 @@ import {
 	cacheUnpaidSummary,
 	announceRecordEnded,
 	isHeldFromSync,
+	releaseSoldBatchesAndSerials,
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
@@ -75,6 +76,7 @@ import { offlineWorker } from "@/utils/offline/workerClient"
 import { isWaitingToSend, needsAttention } from "@/utils/syncQueue"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
+import { useSerialNumberStore } from "@/stores/serialNumber"
 import { useStockStore } from "@/stores/stock"
 import { defineStore } from "pinia"
 import { computed, ref } from "vue"
@@ -631,6 +633,13 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 			// No new sale may come to need a customer that is on its way out
 			if (row && getEntity(row) === ENTITY_CUSTOMER) announceRecordEnded(row, "voided")
+
+			// Asked twice, the first request already gave them back
+			if (row && !row.void_reason) {
+				const serialStore = useSerialNumberStore()
+				const serialItems = await releaseSoldBatchesAndSerials(row)
+				serialItems.forEach((itemCode) => serialStore.clearCache(itemCode))
+			}
 
 			await updatePendingCount()
 			showSuccess(__("Void requested. It stays in the queue until the server answers"))

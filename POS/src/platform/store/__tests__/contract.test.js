@@ -897,6 +897,101 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			})
 		})
 
+		describe("of a sale with a batch and serials", () => {
+			const sold = {
+				items: [
+					{ item_code: "A-1", qty: 2, conversion_factor: 1, warehouse: "W1", batch_no: "B1" },
+					{ item_code: "A-2", qty: 2, conversion_factor: 1, warehouse: "W1", serial_no: "S1\nS2" },
+				],
+			}
+
+			let items
+			let syncOfflineInvoices
+			let queued
+
+			const batchLeft = async () => (await items.getCachedBatchData("A-1"))[0].batch_qty
+			const serialsLeft = async () => (await items.getCachedSerialData("A-2")).map((serial) => serial.serial_no)
+
+			const asked = async () => {
+				const row = await store.getQueuedInvoice(queued.offline_id)
+				await store.requestVoid(queued.id, REASON)
+				return items.releaseSoldBatchesAndSerials(row)
+			}
+
+			beforeEach(async () => {
+				items = await import("@/utils/offline/items")
+				;({ syncOfflineInvoices } = await import("@/utils/offline/sync"))
+				await store.cacheItems([item("A-1"), item("A-2")])
+				await items.persistItemBatchSerialData("A-1", { batch_no_data: [{ batch_no: "B1", batch_qty: 3 }] })
+				await items.persistItemBatchSerialData("A-2", { serial_no_data: [{ serial_no: "S3", warehouse: "W1" }] })
+				queued = await sale(sold)
+			})
+
+			it("gives them back when the void is asked for, as the dialog says", async () => {
+				await asked()
+
+				expect(await batchLeft()).toBe(5)
+				expect(await serialsLeft()).toEqual(["S1", "S2", "S3"])
+			})
+
+			it("says which items had serials, for what is kept in memory", async () => {
+				expect(await asked()).toEqual(["A-2"])
+			})
+
+			it("leaves a return alone, which took nothing", async () => {
+				queued = await sale({ ...sold, is_return: 1 })
+
+				await asked()
+
+				expect(await batchLeft()).toBe(3)
+				expect(await serialsLeft()).toEqual(["S3"])
+			})
+
+			it("takes them again when the void is refused", async () => {
+				await asked()
+				answers([{ offline_id: queued.offline_id, status: "void_refused" }])
+
+				await syncOfflineInvoices()
+
+				expect(await batchLeft()).toBe(3)
+				expect(await serialsLeft()).toEqual(["S3"])
+			})
+
+			it("takes them again when the sale stands", async () => {
+				await asked()
+				answers([{ offline_id: queued.offline_id, status: "sale_stands", invoice: "SINV-1" }])
+
+				await syncOfflineInvoices()
+
+				expect(await batchLeft()).toBe(3)
+				expect(await serialsLeft()).toEqual(["S3"])
+			})
+
+			const refreshes = async (answer) => {
+				const refresh = vi.fn()
+				window.addEventListener("offlineInvoicesSynced", refresh, { once: true })
+				await asked()
+				answers([{ offline_id: queued.offline_id, ...answer }])
+
+				await syncOfflineInvoices()
+
+				window.removeEventListener("offlineInvoicesSynced", refresh)
+				return refresh.mock.calls.length > 0
+			}
+
+			it("asks for the server's figures after a sync that only finished voids", async () => {
+				expect(await refreshes({ status: "voided" })).toBe(true)
+			})
+
+			it("asks for them after a void came too late", async () => {
+				expect(await refreshes({ status: "sale_stands", invoice: "SINV-1" })).toBe(true)
+			})
+
+			it("does not ask after a refusal, since they lack that sale", async () => {
+				expect(await refreshes({ status: "void_refused" })).toBe(false)
+			})
+		})
+
 		describe("through utils/offline/sync", () => {
 			let syncOfflineInvoices
 
@@ -2342,6 +2437,14 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			await items.deductCachedBatchQty("A-1", "B2", 9)
 
 			expect((await items.getCachedBatchData("A-1")).map((b) => b.batch_qty)).toEqual([3, 0])
+		})
+
+		it("gives a batch quantity back", async () => {
+			await items.persistItemBatchSerialData("A-1", { batch_no_data: [{ batch_no: "B1", batch_qty: 5 }] })
+
+			await items.returnCachedBatchQty("A-1", "B1", 2)
+
+			expect((await items.getCachedBatchData("A-1"))[0].batch_qty).toBe(7)
 		})
 
 		it("does not invent an item it does not hold", async () => {

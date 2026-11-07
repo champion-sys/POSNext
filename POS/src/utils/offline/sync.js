@@ -14,6 +14,7 @@ import {
 	withOfflinePosting,
 } from "./invoicePayload"
 import { ENTITY_CUSTOMER, ENTITY_INVOICE, buildLocalCustomer, getEntity } from "./entities"
+import { retakeSoldBatchesAndSerials } from "./items"
 import { removeOfflineReceiptPayload } from "./offlineReceiptCache"
 import { generateUUID } from "./uuid"
 
@@ -279,6 +280,7 @@ const noteRefusedVoid = async (row) => {
  */
 const endRefusedVoid = async (row) => {
 	await noteRefusedVoid(row)
+	await retakeSoldBatchesAndSerials(row)
 	if (getEntity(row) === ENTITY_CUSTOMER) await localStore.cacheCustomers([buildLocalCustomer(row.data)])
 	await localStore.cancelVoid(row.id)
 	window.dispatchEvent(new CustomEvent("offlineVoidRefused", { detail: { row } }))
@@ -298,6 +300,7 @@ const applyVoidAnswer = async (row, answer, result) => {
 		result.voided++
 		result.delivered++
 	} else if (answer.status === SALE_STANDS) {
+		await retakeSoldBatchesAndSerials(row)
 		await localStore.updateQueuedInvoice(row.id, getQueueUpdateForResult(answer))
 		announceRecordEnded(row, SALE_STANDS, answer.invoice)
 		result.saleStands++
@@ -525,8 +528,9 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 		// A refused void is a sale to send now, and this run has already passed it
 		result.waiting += result.voidsWaiting + result.voidsRefused
 
-		// Let the POS replace local batch and serial figures with server values
-		if (result.success > 0 && typeof window !== "undefined") {
+		// Let the POS replace local batch and serial figures with server values. Not for a
+		// refused void: the server's figures do not have that sale yet.
+		if ((result.success > 0 || result.voided > 0 || result.saleStands > 0) && typeof window !== "undefined") {
 			window.dispatchEvent(new CustomEvent("offlineInvoicesSynced", { detail: result }))
 		}
 

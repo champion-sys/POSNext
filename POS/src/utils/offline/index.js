@@ -35,6 +35,7 @@ export {
 	getItemByBarcode,
 	getItemWithPrice,
 	cacheCustomers,
+	releaseSoldBatchesAndSerials,
 	searchCachedCustomers as searchCachedCustomersOld,
 	getItemsLastSync,
 	getCustomersLastSync,
