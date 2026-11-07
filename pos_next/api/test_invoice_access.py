@@ -85,6 +85,14 @@ class TestApplyCoupon(NoSiteTestCase):
 
         self.assertEqual(invoice.coupon_code, "SAVE10")
 
+    def test_every_pos_sale_notes_the_coupon_it_will_count(self):
+        frappe.local.db.exists.return_value = "SAVE10"
+        invoice = Mock(coupon_code=None)
+
+        _apply_coupon(invoice, "SAVE10", queued=False)
+
+        self.assertEqual(invoice.pos_coupon_code, "SAVE10")
+
     def test_queued_sale_reports_an_overrun(self):
         frappe.local.db.exists.return_value = "SAVE10"
         invoice = Mock()

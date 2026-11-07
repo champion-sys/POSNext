@@ -54,7 +54,7 @@ const CONTACT_INTERVAL_MS = 60 * 1000
 /** Why an operation failed. `code` is for the page, `message` is the server's own words. */
 export class AuthError extends Error {
 	/**
-	 * @param {"network"|"bad_url"|"insecure_url"|"device_refused"|"refused"|"unsent_sales"|"local_data"} code
+	 * @param {"network"|"bad_url"|"insecure_url"|"device_refused"|"refused"|"unsent_sales"|"local_data"|"queue_unreadable"|"secret_store"} code
 	 * @param {string} [message]
 	 */
 	constructor(code, message = "") {
@@ -197,18 +197,20 @@ export function getDeviceId() {
 	return id
 }
 
+/** Not the count the screens use: that one reads a failing database as an empty queue. */
 async function assertNothingUnsent() {
-	if ((await localStore.getOfflineInvoiceCount()) > 0) {
-		throw new AuthError("unsent_sales")
+	let rows
+	try {
+		rows = await localStore.listUnconfirmedRows()
+	} catch (error) {
+		throw new AuthError("queue_unreadable", error.message)
 	}
+	if (rows.length > 0) throw new AuthError("unsent_sales")
 }
 
 /**
  * Leave one server's data behind before moving to another. A sale still queued, or waiting
  * for that server's answer, would never finish on the new one, so it stops the move.
- *
- * A failed read of the queue counts as empty, so it is counted again once clearing has
- * shown that the database answers.
  */
 async function prepareForNewServer() {
 	await assertNothingUnsent()
@@ -221,8 +223,15 @@ async function prepareForNewServer() {
 	} catch (error) {
 		throw new AuthError("local_data", error.message)
 	}
+}
 
-	await assertNothingUnsent()
+/** The device token, or an error that says the device could not keep it. */
+async function saveDeviceToken(token) {
+	try {
+		await secrets.set(DEVICE_TOKEN_KEY, token)
+	} catch (error) {
+		throw new AuthError("secret_store", error.message)
+	}
 }
 
 /**
@@ -234,7 +243,7 @@ export async function enrollDevice({ serverUrl, code }) {
 	const server = normalizeServerUrl(serverUrl)
 
 	// The code works once, so find out now if the token could not be kept
-	await secrets.set(DEVICE_TOKEN_KEY, getDeviceToken() || "")
+	await saveDeviceToken(getDeviceToken() || "")
 
 	if (server !== getServerUrl()) await prepareForNewServer()
 
@@ -251,7 +260,7 @@ export async function enrollDevice({ serverUrl, code }) {
 	// Another server's cashiers mean nothing to this one
 	if (server !== getServerUrl()) deviceState = emptyDeviceState()
 
-	await secrets.set(DEVICE_TOKEN_KEY, result.device_token)
+	await saveDeviceToken(result.device_token)
 	setDeviceToken(result.device_token)
 	setServerUrl(server)
 	await saveGrant(null)
@@ -444,7 +453,8 @@ export function isWithinOfflineLimit(now = Date.now()) {
 }
 
 /**
- * Whether a sale that cannot reach the server must be refused. Only the apps have a limit,
+ * Whether a sale, return or payment that cannot reach the server must be refused. Closing
+ * a shift never is, because a cashier must be able to finish. Only the apps have a limit,
  * because it comes with a cashier's sign-in there. The web has no such sign-in, so
  * isWithinOfflineLimit is always false on it and must not decide anything.
  * @param {number} [now]

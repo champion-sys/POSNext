@@ -1446,7 +1446,7 @@ async function saveReturnOffline() {
 		cashier: session.user,
 		grand_total: -returnTotal.value,
 	}
-	const result = await offlineStore.saveInvoiceOffline(invoiceData)
+	const result = await offlineStore.saveReturnOffline(invoiceData)
 
 	emit("return-created", { name: result.offline_id })
 	closeReturnModal()
@@ -1760,7 +1760,7 @@ async function handleCreateReturn() {
 		if (!submitError.value) {
 			const errorMsg = extractErrorMessage(error)
 			submitError.value = errorMsg
-			openErrorDialog(errorMsg)
+			openErrorDialog(errorMsg, error.title)
 		}
 	} finally {
 		isSubmitting.value = false

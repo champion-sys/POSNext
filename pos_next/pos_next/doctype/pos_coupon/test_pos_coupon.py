@@ -1,17 +1,25 @@
 # Copyright (c) 2021, Youssef Restom and Contributors
 # See license.txt
 
+import json
+import os
 import unittest
 from datetime import date
 from unittest.mock import Mock, patch
 
 import frappe
 
+from pos_next import hooks
+from pos_next.pos_next.doctype.pos_coupon import pos_coupon
 from pos_next.pos_next.doctype.pos_coupon.pos_coupon import (
     _get_customer_coupon_usage_count,
     check_coupon_code,
+    decrement_coupon_usage,
     increment_coupon_usage,
+    return_coupon_use,
 )
+
+RETURN_HOOK = "pos_next.pos_next.doctype.pos_coupon.pos_coupon.return_coupon_use"
 
 
 class NoSiteTestCase(unittest.TestCase):
@@ -55,6 +63,7 @@ class TestPOSCoupon(NoSiteTestCase):
         mock_db.count.return_value = 4
         mock_get_meta.side_effect = [
             Mock(has_field=lambda fieldname: fieldname == "coupon_code"),
+            Mock(has_field=Mock(return_value=False)),
             Mock(has_field=Mock(return_value=False)),
         ]
 
@@ -152,3 +161,103 @@ class TestIncrementCouponUsage(NoSiteTestCase):
 
         self.assertTrue(frappe.local.db.get_value.call_args.kwargs["for_update"])
         coupon.db_set.assert_called_once_with("used", 6)
+
+
+class TestDecrementCouponUsage(NoSiteTestCase):
+    def _decrement(self, coupon, code="save10"):
+        with patch("pos_next.pos_next.doctype.pos_coupon.pos_coupon.frappe.get_doc", return_value=coupon):
+            decrement_coupon_usage(code)
+
+    def test_locks_the_row_and_gives_one_use_back(self):
+        frappe.local.db.get_value.return_value = "Save Ten"
+        coupon = Mock(used=5)
+
+        self._decrement(coupon)
+
+        self.assertEqual(frappe.local.db.get_value.call_args.args[1], {"coupon_code": "SAVE10"})
+        self.assertTrue(frappe.local.db.get_value.call_args.kwargs["for_update"])
+        coupon.db_set.assert_called_once_with("used", 4)
+
+    def test_never_commits_for_the_cancellation_it_runs_in(self):
+        frappe.local.db.get_value.return_value = "Save Ten"
+
+        self._decrement(Mock(used=1))
+
+        frappe.local.db.commit.assert_not_called()
+
+    def test_a_failure_stops_the_cancellation(self):
+        frappe.local.db.get_value.return_value = "Save Ten"
+        coupon = Mock(used=1)
+        coupon.db_set.side_effect = RuntimeError("deadlock")
+
+        with self.assertRaises(RuntimeError):
+            self._decrement(coupon)
+
+    def test_does_not_go_below_zero(self):
+        frappe.local.db.get_value.return_value = "Save Ten"
+        coupon = Mock(used=0)
+
+        self._decrement(coupon)
+
+        coupon.db_set.assert_not_called()
+
+    def test_a_deleted_coupon_does_not_stop_the_cancellation(self):
+        frappe.local.db.get_value.return_value = None
+
+        with patch("pos_next.pos_next.doctype.pos_coupon.pos_coupon.frappe.get_doc") as get_doc:
+            decrement_coupon_usage("SAVE10")
+
+        get_doc.assert_not_called()
+
+
+class TestReturnCouponUse(unittest.TestCase):
+    def _cancel(self, **fields):
+        with patch.object(pos_coupon, "decrement_coupon_usage") as decrement:
+            return_coupon_use(frappe._dict(fields))
+        return decrement
+
+    def test_a_cancelled_sale_gives_its_use_back_once(self):
+        self._cancel(pos_coupon_code="SAVE10").assert_called_once_with("SAVE10")
+
+    def test_a_sale_without_a_coupon(self):
+        self._cancel(pos_coupon_code=None).assert_not_called()
+
+    def test_a_return_never_counted(self):
+        self._cancel(pos_coupon_code="SAVE10", is_return=1).assert_not_called()
+
+    def test_a_consolidated_invoice_never_counted(self):
+        self._cancel(pos_coupon_code="SAVE10", is_consolidated=1).assert_not_called()
+
+    def test_an_amended_copy_never_counted(self):
+        self._cancel(pos_coupon_code="SAVE10", amended_from="SINV-1").assert_not_called()
+
+    def test_erpnexts_own_coupon_is_left_to_erpnext(self):
+        self._cancel(coupon_code="SAVE10").assert_not_called()
+
+
+class TestCouponOnEveryDoctype(unittest.TestCase):
+    def test_each_doctype_gives_a_use_back_through_one_hook(self):
+        for doctype in ("Sales Invoice", "POS Invoice", "Sales Order"):
+            registered = hooks.doc_events[doctype]["on_cancel"]
+            registered = registered if isinstance(registered, list) else [registered]
+            self.assertEqual(registered.count(RETURN_HOOK), 1, doctype)
+
+    def test_a_sales_order_has_a_field_for_the_code(self):
+        custom = os.path.join(os.path.dirname(hooks.__file__), "pos_next", "custom", "sales_order.json")
+        with open(custom) as file:
+            fields = {field["fieldname"]: field for field in json.load(file)["custom_fields"]}
+
+        field = fields["pos_coupon_code"]
+        self.assertEqual(field["fieldtype"], "Data")
+        # The invoice made from the order must not spend or give back the use a second time
+        self.assertEqual(field["no_copy"], 1)
+
+    @patch("pos_next.pos_next.doctype.pos_coupon.pos_coupon.frappe.get_meta")
+    def test_one_use_per_customer_sees_a_sales_order(self, mock_get_meta):
+        frappe.local.db = Mock()
+        self.addCleanup(setattr, frappe.local, "db", None)
+        frappe.local.db.table_exists.side_effect = lambda doctype: doctype == "Sales Order"
+        frappe.local.db.count.side_effect = lambda doctype, filters=None: "pos_coupon_code" in filters
+        mock_get_meta.return_value = Mock(has_field=Mock(return_value=True))
+
+        self.assertEqual(_get_customer_coupon_usage_count("Customer A", "SAVE10"), 1)

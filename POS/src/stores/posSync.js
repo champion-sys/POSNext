@@ -23,6 +23,7 @@ import {
 } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import { pullChanges } from "@/core/sync/webPull"
+import { isPastOfflineSaleLimit } from "@/platform/auth"
 import {
 	cacheCustomersFromServer,
 	cachePaymentMethodsFromServer,
@@ -360,6 +361,16 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	// =========================================================================
 
 	/**
+	 * Refuse a return or payment this device may no longer take offline, as a sale is
+	 * refused. Only without a connection: work in a shift opened offline queues online too.
+	 * @param {string} message - What was not saved
+	 */
+	function assertWithinOfflineLimit(message) {
+		if (!isOffline.value || !isPastOfflineSaleLimit()) return
+		throw Object.assign(new Error(message), { title: __("Offline limit reached") })
+	}
+
+	/**
 	 * Save an invoice offline for later sync
 	 * @param {Object} invoiceData - Invoice data to save
 	 * @param {Object} [options]
@@ -381,6 +392,18 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			log.error('Failed to save invoice offline', error)
 			throw error
 		}
+	}
+
+	/**
+	 * Queue a return. The dialog stays open on a refusal, so nothing typed is lost.
+	 * @param {Object} invoiceData - Return invoice
+	 * @returns {Promise<{offline_id: string}>}
+	 */
+	async function saveReturnOffline(invoiceData) {
+		assertWithinOfflineLimit(
+			__("This device has been offline too long, so this return was not saved. Connect to the server and sign in with your password to finish it."),
+		)
+		return saveInvoiceOffline(invoiceData)
 	}
 
 	/**
@@ -428,6 +451,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 * @returns {Promise<{id: number, offline_id: string}>}
 	 */
 	async function savePaymentOffline(invoice, payments) {
+		assertWithinOfflineLimit(
+			__("This device has been offline too long, so this payment was not saved. Connect to the server and sign in with your password to finish it."),
+		)
+
 		if (exceedsOutstanding(invoice, payments)) {
 			throw new Error(__("Total payment amount exceeds the outstanding amount of {0}", [invoice.name]))
 		}
@@ -881,6 +908,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		// Actions
 		saveInvoiceOffline,
 		saveCustomerOffline,
+		saveReturnOffline,
 		savePaymentOffline,
 		withQueuedPayments,
 		saveShiftCloseOffline,
