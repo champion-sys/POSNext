@@ -5,12 +5,8 @@
  */
 
 import { CapacitorSQLite, SQLiteConnection } from "@/platform/capacitor"
-
-const DATABASE = "pos_next"
-const SCHEMA_VERSION = 1
-const ENCRYPTED = false
-const NO_ENCRYPTION = "no-encryption"
-const READ_ONLY = false
+import { openSecretStore } from "../secrets"
+import { openDatabase } from "./encryptedDatabase"
 
 /**
  * @param {Object} connection - An open SQLiteDBConnection
@@ -45,24 +41,8 @@ export function createCapacitorExecutor(connection) {
 	}
 }
 
-/**
- * Open the database, or reuse the connection a reloaded WebView left in the plugin.
- * @param {Object} sqlite - A SQLiteConnection
- * @returns {Promise<Object>} An open SQLiteDBConnection
- */
-export async function connect(sqlite) {
-	const consistent = (await sqlite.checkConnectionsConsistency()).result
-	const connected = (await sqlite.isConnection(DATABASE, READ_ONLY)).result
-
-	const connection =
-		consistent && connected
-			? await sqlite.retrieveConnection(DATABASE, READ_ONLY)
-			: await sqlite.createConnection(DATABASE, ENCRYPTED, NO_ENCRYPTION, SCHEMA_VERSION, READ_ONLY)
-
-	await connection.open()
-	return connection
-}
-
 export async function openExecutor() {
-	return createCapacitorExecutor(await connect(new SQLiteConnection(CapacitorSQLite)))
+	const sqlite = new SQLiteConnection(CapacitorSQLite)
+	const { connection, encrypted } = await openDatabase(sqlite, openSecretStore())
+	return { ...createCapacitorExecutor(connection), encrypted }
 }

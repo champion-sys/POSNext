@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it } from "vitest"
 import { createFakeConnection } from "@/platform/store/__tests__/sqliteHarness"
-import { connect, createCapacitorExecutor } from "../sqlExecutor"
+import { createCapacitorExecutor } from "../sqlExecutor"
 
 describe("the Android executor", () => {
 	let connection
@@ -69,45 +69,5 @@ describe("the Android executor", () => {
 		await expect(sql.run("NOT SQL")).rejects.toThrow()
 		await sql.run("INSERT INTO t (id) VALUES (1)")
 		expect(await sql.all("SELECT COUNT(*) AS count FROM t")).toEqual([{ count: 1 }])
-	})
-})
-
-describe("connecting", () => {
-	const fakeSqlite = ({ consistent, connected }) => {
-		const connection = { open: vi.fn(async () => {}) }
-		return {
-			connection,
-			checkConnectionsConsistency: vi.fn(async () => ({ result: consistent })),
-			isConnection: vi.fn(async () => ({ result: connected })),
-			retrieveConnection: vi.fn(async () => connection),
-			createConnection: vi.fn(async () => connection),
-		}
-	}
-
-	it("creates a connection on a fresh start", async () => {
-		const sqlite = fakeSqlite({ consistent: false, connected: false })
-
-		expect(await connect(sqlite)).toBe(sqlite.connection)
-
-		expect(sqlite.createConnection).toHaveBeenCalledWith("pos_next", false, "no-encryption", 1, false)
-		expect(sqlite.connection.open).toHaveBeenCalled()
-	})
-
-	it("reuses the connection a reloaded WebView left open", async () => {
-		const sqlite = fakeSqlite({ consistent: true, connected: true })
-
-		await connect(sqlite)
-
-		expect(sqlite.retrieveConnection).toHaveBeenCalledWith("pos_next", false)
-		expect(sqlite.createConnection).not.toHaveBeenCalled()
-	})
-
-	it("starts over when the plugin and the page disagree", async () => {
-		const sqlite = fakeSqlite({ consistent: false, connected: true })
-
-		await connect(sqlite)
-
-		expect(sqlite.createConnection).toHaveBeenCalled()
-		expect(sqlite.retrieveConnection).not.toHaveBeenCalled()
 	})
 })
