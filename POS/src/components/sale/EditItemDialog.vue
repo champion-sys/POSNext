@@ -228,7 +228,7 @@
 																:max="discountType === 'percentage' ? 100 : undefined"
 																step="0.01"
 																class="w-full h-7 border border-gray-300 rounded-lg px-3 pe-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-																@input="calculateDiscount"
+																@input="handleDiscountInput"
 															/>
 															<span class="absolute inset-y-0 end-0 pe-3 flex items-center text-gray-500 text-sm">
 																{{ discountType === 'percentage' ? '%' : '' }}
@@ -301,6 +301,15 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { getItemStock } from "@/utils/stockValidator"
 import { formatCurrency as formatCurrencyUtil, getCurrencySymbol, roundCurrency } from "@/utils/currency"
+import {
+	buildRateUpdate,
+	canEditItemRate,
+	capDiscountAmount,
+	capDiscountPercent,
+	getRateError,
+	getRateLockReason,
+	hasPricingRules as itemHasPricingRules,
+} from "@/utils/cartItemEdit"
 import { Button, FeatherIcon, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import SelectInput from "@/components/common/SelectInput.vue"
@@ -365,28 +374,12 @@ const availableUoms = computed(() => {
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
 
 // Check if item has pricing rules applied (promotional offers)
-const hasPricingRules = computed(() => {
-	if (!localItem.value) return false
-	return Boolean(localItem.value.pricing_rules) && localItem.value.pricing_rules.length > 0
-})
+const hasPricingRules = computed(() => itemHasPricingRules(localItem.value))
 
-// Rate editing is allowed only if:
-// 1. POS Settings allows rate editing AND
-// 2. Item does NOT have pricing rules (promotional offers) applied
-const canEditRate = computed(() => {
-	return settingsStore.allowUserToEditRate && !hasPricingRules.value
-})
+const canEditRate = computed(() => canEditItemRate(localItem.value, settingsStore))
 
 // Tooltip message for why rate editing is disabled
-const rateEditDisabledReason = computed(() => {
-	if (!settingsStore.allowUserToEditRate) {
-		return __('Rate editing is disabled')
-	}
-	if (hasPricingRules.value) {
-		return __('Locked (offer applied)')
-	}
-	return ''
-})
+const rateEditDisabledReason = computed(() => getRateLockReason(localItem.value, settingsStore))
 
 // Options for SelectInput components
 const uomOptions = computed(() => {
@@ -667,6 +660,17 @@ function handleDiscountTypeChange() {
 	calculateTotals()
 }
 
+// Only what the cashier types is limited. A larger discount from an offer stands.
+function handleDiscountInput() {
+	const maxDiscount = settingsStore.maxDiscountAllowed
+	if (discountType.value === "percentage") {
+		discountValue.value = capDiscountPercent(discountValue.value, maxDiscount)
+	} else {
+		discountValue.value = capDiscountAmount(discountValue.value, calculatedSubtotal.value, maxDiscount)
+	}
+	calculateDiscount()
+}
+
 function calculateDiscount() {
 	if (discountValue.value !== null && discountValue.value !== undefined && !isNaN(discountValue.value)) {
 		discountValue.value = roundCurrency(discountValue.value)
@@ -706,45 +710,31 @@ function formatCurrency(amount) {
 }
 
 function updateItem() {
-	const isRateManuallyEdited = localRate.value !== originalPriceListRate.value
+	const rateUpdate = buildRateUpdate(localRate.value, originalPriceListRate.value)
 
-	if (settingsStore.allowUserToEditRate && isRateManuallyEdited) {
-		if (localRate.value <= 0) {
-			showError(__('Rate must be greater than zero'))
+	if (settingsStore.allowUserToEditRate && rateUpdate.is_rate_manually_edited) {
+		const rateError = getRateError(
+			localRate.value,
+			originalPriceListRate.value,
+			settingsStore.maxDiscountAllowed,
+		)
+		if (rateError) {
+			showError(rateError)
 			return
-		}
-
-		const maxDiscount = settingsStore.maxDiscountAllowed
-		if (maxDiscount > 0 && localRate.value < originalPriceListRate.value) {
-			const discountPercent = ((originalPriceListRate.value - localRate.value) / originalPriceListRate.value) * 100
-			const roundedDiscount = Math.round(discountPercent * 100) / 100
-
-			if (roundedDiscount > maxDiscount) {
-				showError(
-					__('Rate reduction of {0}% exceeds maximum allowed discount of {1}%', [
-						roundedDiscount.toFixed(2),
-						maxDiscount
-					])
-				)
-				return
-			}
 		}
 	}
 
 	const updatedItem = {
 		...localItem.value,
+		...rateUpdate,
 		quantity: localQuantity.value,
 		uom: localUom.value,
-		rate: localRate.value,
-		price_list_rate: originalPriceListRate.value,
 		warehouse: localWarehouse.value,
 		remarks: localRemarks.value,
 		discount_percentage:
 			discountType.value === "percentage" ? discountValue.value : 0,
 		discount_amount:
 			discountType.value === "amount" ? discountValue.value : 0,
-		is_rate_manually_edited: isRateManuallyEdited ? 1 : 0,
-		original_rate: isRateManuallyEdited ? originalPriceListRate.value : null,
 	}
 
 	if (localItem.value.has_serial_no) {

@@ -1134,6 +1134,7 @@ import { useToast } from "@/composables/useToast";
 
 import { useCustomerSearchStore } from "@/stores/customerSearch";
 import { useItemSearchStore } from "@/stores/itemSearch";
+import { useScanWithoutSearch } from "@/composables/useSearchInput";
 import { useStockStore } from "@/stores/stock";
 // Pinia Stores
 import { usePOSCartStore } from "@/stores/posCart";
@@ -1196,6 +1197,13 @@ const itemsSelectorRef = ref(null);
 const offersDialogRef = ref(null);
 const containerRef = ref(null);
 const dividerRef = ref(null);
+
+useScanWithoutSearch({
+	hasItemSearch: () => Boolean(itemsSelectorRef.value),
+	itemStore,
+	onItemFound: handleItemSelected,
+	showWarning,
+});
 const pendingPaymentAfterCustomer = ref(false);
 const logoutAfterClose = ref(false);
 const editCustomer = ref(null); // Customer being edited (null for create mode)
