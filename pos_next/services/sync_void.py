@@ -40,6 +40,19 @@ def _insert_unprocessed(item, fields):
     return doc.name
 
 
+def _is_voiding_allowed(pos_profile):
+    return frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "allow_delete_offline_invoice")
+
+
+def _assert_voiding_allowed(pos_profile):
+    """A push need not come from the app, so its setting cannot be left to the app."""
+    if not _is_voiding_allowed(pos_profile):
+        frappe.throw(
+            _("Voiding queued records is turned off for POS Profile {0}").format(pos_profile),
+            frappe.PermissionError,
+        )
+
+
 def _assert_may_void(name, assert_access):
     """Hold the request to the record itself, which may not be what the envelope claims."""
     stored = frappe.db.get_value(DOCTYPE, name, ["entity", "pos_profile"], as_dict=True)
@@ -47,6 +60,7 @@ def _assert_may_void(name, assert_access):
         frappe.throw(_("A shift close cannot be voided from a device"), frappe.PermissionError)
     if stored.pos_profile:
         assert_access(stored.pos_profile)
+        _assert_voiding_allowed(stored.pos_profile)
 
 
 def _flag_for_manager(row, reason, document):
@@ -110,6 +124,8 @@ def request_void(item, uploaded_by, assert_access, device_id=None, client_versio
     Returns:
         frappe._dict: The record, for describe_void
     """
+    _assert_voiding_allowed(sync_inbox.get_item_profile(item))
+
     reason = item["void_reason"].strip()
     fields = sync_inbox._envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
 

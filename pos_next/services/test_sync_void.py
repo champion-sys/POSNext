@@ -23,6 +23,7 @@ class Void(Upload):
         super().setUp()
         for target, replacement in (
             ("pos_next.services.sync_void._", lambda text: text),
+            ("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=True)),
             ("pos_next.services.sync_void.now_datetime", Mock(return_value="2026-11-06 12:00:00")),
         ):
             patcher = patch(target, replacement)
@@ -49,6 +50,23 @@ class Void(Upload):
 
 
 class TestNothingStored(Void):
+    def test_a_device_cannot_void_where_the_profile_turned_it_off(self):
+        with patch("pos_next.services.sync_void._is_voiding_allowed", Mock(return_value=False)):
+            result = self.ask()
+
+        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertFalse(self.inbox.rows)
+
+    def test_a_record_of_a_profile_that_turned_it_off_is_left_alone(self):
+        row = self.stored_with("Needs Review")
+        allowed = Mock(side_effect=lambda profile: profile == "Other")
+
+        with patch("pos_next.services.sync_void._is_voiding_allowed", allowed):
+            result = self.ask(self.request(pos_profile="Other"))
+
+        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertEqual(self._row(row.name).status, "Needs Review")
+
     def test_the_record_is_kept_voided_with_its_reason_and_payload(self):
         result = self.ask(self.request(payload={"pos_profile": "Main", "grand_total": 25}))
 
