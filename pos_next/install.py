@@ -17,6 +17,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+#: What ERPNext reads while it fills in an invoice, beyond what the role's fixtures give it.
+#: Without these a cashier with only this role cannot sell at all.
+CASHIER_ROLE = "POSNext Cashier"
+CASHIER_PERMISSIONS = {"Account": "select", "Address": "read"}
+
+
+def ensure_cashier_permissions():
+	"""Give the cashier role what selling needs, on any site.
+
+	Not in the fixtures: the first Custom DocPerm of a doctype replaces all its standard
+	permissions. add_permission copies those first, so every other role keeps its access.
+	"""
+	from frappe.permissions import add_permission
+
+	for doctype, permission in CASHIER_PERMISSIONS.items():
+		if not frappe.db.exists(
+			"Custom DocPerm", {"parent": doctype, "role": CASHIER_ROLE, "permlevel": 0, "if_owner": 0}
+		):
+			add_permission(doctype, CASHIER_ROLE, ptype=permission)
+			frappe.clear_cache(doctype=doctype)
+
+
 def after_install():
 	"""Hook that runs after app installation"""
 	try:
@@ -45,6 +67,8 @@ def after_migrate():
 	try:
 		# Setup default print format
 		# setup_default_print_format(quiet=True)
+
+		ensure_cashier_permissions()
 
 		# Clear cache
 		frappe.clear_cache()

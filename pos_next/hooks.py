@@ -122,6 +122,7 @@ fixtures = [
 
 # before_install = "pos_next.install.before_install"
 after_install = "pos_next.install.after_install"
+after_sync = "pos_next.install.ensure_cashier_permissions"
 after_migrate = "pos_next.install.after_migrate"
 
 # Uninstallation
@@ -206,6 +207,7 @@ doc_events = {
 		"on_trash": "pos_next.realtime_events.emit_customer_event"
 	},
 	"Sales Invoice": {
+		"before_insert": "pos_next.api.sales_invoice_hooks.free_offline_id_on_amend",
 		"validate": [
 			"pos_next.api.sales_invoice_hooks.validate",
 			"pos_next.api.wallet.validate_wallet_payment"
@@ -222,6 +224,7 @@ doc_events = {
 		"after_insert": "pos_next.realtime_events.emit_invoice_created_event"
 	},
 	"POS Invoice": {
+		"before_insert": "pos_next.api.sales_invoice_hooks.free_offline_id_on_amend",
 		"on_cancel": "pos_next.pos_next.doctype.pos_coupon.pos_coupon.return_coupon_use"
 	},
 	"Sales Order": {

@@ -11,6 +11,16 @@ from frappe import _
 from frappe.utils import cint
 
 
+def free_offline_id_on_amend(doc, method=None):
+	"""An amendment is a new document with a new sale behind it.
+
+	Desk copies no_copy fields into an amendment, and the cancelled original keeps this unique
+	id, so without this no invoice from the POS could be amended.
+	"""
+	if doc.amended_from:
+		doc.offline_id = None
+
+
 def validate(doc, method=None):
 	"""
 	Validate hook for Sales Invoice.
