@@ -2,6 +2,8 @@ import { flushPromises, mount } from "@vue/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const acknowledgeSaleStands = vi.hoisted(() => vi.fn())
+const acknowledgeRefusedVoid = vi.hoisted(() => vi.fn())
+const refused = vi.hoisted(() => ({ notes: [] }))
 const settings = vi.hoisted(() => ({
 	allowDeleteOfflineInvoice: true,
 	allowEditOfflineInvoice: true,
@@ -22,7 +24,14 @@ vi.mock("frappe-ui", () => ({
 }))
 vi.mock("@/stores/posSettings", () => ({ usePOSSettingsStore: () => settings }))
 vi.mock("@/stores/posSync", () => ({
-	usePOSSyncStore: () => ({ reviewCount: 0, queuedCount: 0, lastSyncedAt: null, acknowledgeSaleStands }),
+	usePOSSyncStore: () => ({
+		reviewCount: 0,
+		queuedCount: 0,
+		lastSyncedAt: null,
+		refusedVoids: refused.notes,
+		acknowledgeSaleStands,
+		acknowledgeRefusedVoid,
+	}),
 }))
 vi.mock("@/stores/posUI", () => ({ usePOSUIStore: () => ({ lastInvoiceName: null }) }))
 vi.mock("@/composables/useToast", () => ({ useToast: () => ({ showWarning: vi.fn() }) }))
@@ -62,6 +71,40 @@ describe("the offline queue", () => {
 
 	afterEach(() => {
 		vi.unstubAllGlobals()
+	})
+
+	describe("a void the server refused", () => {
+		beforeEach(() => {
+			refused.notes = [sale({ void_reason: REASON })]
+		})
+
+		afterEach(() => {
+			refused.notes = []
+		})
+
+		it("says plainly that the sale stands, even with nothing left in the queue", () => {
+			const wrapper = open([])
+
+			expect(wrapper.text()).toContain("Not voided")
+			expect(wrapper.text()).toContain("The sale stands")
+			expect(wrapper.text()).toContain(REASON)
+		})
+
+		it("speaks of a record when it was not a sale", () => {
+			refused.notes = [sale({ entity: "customer", void_reason: REASON, data: { customer_name: "Sara" } })]
+
+			const wrapper = open([])
+
+			expect(wrapper.text()).toContain("The record stands")
+			expect(wrapper.text()).toContain("Sara")
+		})
+
+		it("goes once the cashier has acknowledged it", async () => {
+			await textButton(open([]), "I Understand").trigger("click")
+
+			expect(acknowledgeRefusedVoid).toHaveBeenCalledWith("pos_offline_1")
+			expect(acknowledgeSaleStands).not.toHaveBeenCalled()
+		})
 	})
 
 	describe("asking to void a record", () => {

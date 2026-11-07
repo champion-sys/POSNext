@@ -1266,6 +1266,7 @@ import {
 } from "@/utils/currency"
 import { useFormatters } from "@/composables/useFormatters"
 import { useCartSort } from "@/composables/useCartSort"
+import { hasLocalShift } from "@/composables/useShift"
 import { isOffline } from "@/utils/offline"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
@@ -1586,7 +1587,7 @@ const giftCardsResource = createResource({
 watch(
 	() => props.customer,
 	(newCustomer) => {
-		if (newCustomer && props.posProfile && !isOffline()) {
+		if (newCustomer && props.posProfile && !isOffline() && !hasLocalShift.value) {
 			giftCardsResource.reload()
 		} else {
 			availableGiftCards.value = []

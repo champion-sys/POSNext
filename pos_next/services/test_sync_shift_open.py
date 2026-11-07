@@ -16,6 +16,7 @@ from unittest.mock import Mock, patch
 import frappe
 
 from pos_next.api import shifts
+from pos_next.api import sync as sync_api
 from pos_next.pos_next.doctype.pos_opening_shift.pos_opening_shift import POSOpeningShift
 from pos_next.services import sync_entities, sync_inbox, test_sync_entities, test_sync_flow
 from pos_next.services.sync_classifier import (
@@ -553,6 +554,26 @@ class TestTheManagersLink(ShiftFlow):
     def test_it_creates_no_shift(self):
         self._link(self._refused(), "POSA-OS-OPEN")
         self.assertEqual(self.created_shifts, [])
+
+    def test_the_device_hears_whose_shift_it_became(self):
+        name = self._refused()
+        self.inbox.opening_shifts["POSA-OS-OPEN"].user = "colleague@example.com"
+        self._link(name, "POSA-OS-OPEN")
+
+        with patch("pos_next.api.sync._assert_pos_user"):
+            [status] = sync_api.get_status([LOCAL_SHIFT])
+
+        self.assertEqual(status["invoice"], "POSA-OS-OPEN")
+        self.assertEqual(status["shift_user"], "colleague@example.com")
+
+    def test_a_sale_says_nothing_of_a_shift(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        self._row(sale).update(status="Synced", sales_invoice="SINV-1")
+
+        with patch("pos_next.api.sync._assert_pos_user"):
+            [status] = sync_api.get_status([SALE])
+
+        self.assertNotIn("shift_user", status)
 
     def test_a_pos_invoice_goes_to_whoever_holds_that_shift(self):
         sale = self._send(SALE, {**SALE_PAYLOAD, "doctype": "POS Invoice"})

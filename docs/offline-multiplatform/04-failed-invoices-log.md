@@ -241,10 +241,11 @@ def process(name):
 
 ## 10. الإلغاء من الجهاز
 
-طلب الجهاز عنصر عادي في `push`، فيه `void_reason` مع حمولة السجل، ويعالجه [`sync_void.request_void`](../../pos_next/services/sync_void.py). يبقى في الخادم أثر في كل الحالات، ولا يُعالج السجل بسبب هذا الطلب أبدًا.
+طلب الجهاز عنصر عادي في `push`، فيه `void_reason` مع حمولة السجل، ويعالجه [`sync_void.request_void`](../../pos_next/services/sync_void.py). يبقى في الخادم أثر في كل الحالات إلا تعطيل الإلغاء، ولا يُعالج السجل بسبب هذا الطلب أبدًا.
 
 | ما في الخادم | ماذا يحدث | الرد |
 |---|---|---|
+| أي حالة، و`allow_delete_offline_invoice` معطل على الملف | لا يُخزن شيء ولا يتغير شيء، ويعود السجل من الجهاز بيعًا عاديًا. وملف طابور يُستورد بعد ذلك يُخزن صفه بيعًا. وسجل الوردية يبقى `rejected` | `void_refused` |
 | لا شيء | يُنشأ السجل `Voided` بالسبب والحمولة، ولا يصل إلى أي مهمة | `voided` |
 | `Received` أو `Blocked` أو `Needs Review` أو `Retry Scheduled` | يصبح `Voided` بالسبب | `voided` |
 | `Processing` | لا يُلمس السجل | `void_pending` |

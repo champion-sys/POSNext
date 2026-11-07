@@ -123,6 +123,20 @@ describe("getShiftOpenProblem", () => {
 	it("needs the setting on", () => {
 		expect(getShiftOpenProblem({ ...device, usable: 0 })).toBe("not_allowed")
 	})
+
+	it("stops a shift behind one of this cashier's that has no close, online or off", () => {
+		expect(getShiftOpenProblem({ ...device, unsettled: true })).toBe("shift_unsettled")
+		expect(getShiftOpenProblem({ ...device, unsettled: true, online: true })).toBe("shift_unsettled")
+	})
+
+	it("says to wait for the last shift when the device could not open one anyway", () => {
+		expect(getShiftOpenProblem({ ...device, online: true, usable: 0 })).toBe("shift_finishing")
+		expect(getShiftOpenProblem({ ...device, online: true, cached: 0, usable: 0 })).toBe("shift_finishing")
+	})
+
+	it("lets the queue take a shift behind the last one's close, online", () => {
+		expect(getShiftOpenProblem({ ...device, online: true })).toBeNull()
+	})
 })
 
 describe("getUnfinishedCloses", () => {

@@ -156,7 +156,7 @@
 
 <script setup>
 import { FeatherIcon } from "frappe-ui"
-import { computed, onMounted, reactive, ref } from "vue"
+import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import SignInError from "@/components/common/SignInError.vue"
 import QueueExport from "@/components/settings/QueueExport.vue"
@@ -216,6 +216,15 @@ const submitLabel = computed(() => {
 onMounted(async () => {
 	if (cashiers.value.length && !(await isServerReachable())) mode.value = PIN
 })
+
+// What the last PIN attempt opened was for that cashier
+watch(
+	() => form.user,
+	() => {
+		errorMessage.value = ""
+		canExportQueue.value = false
+	},
+)
 
 function switchMode() {
 	errorMessage.value = ""

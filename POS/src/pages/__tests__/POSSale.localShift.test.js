@@ -7,7 +7,7 @@ import { flushPromises, shallowMount } from "@vue/test-utils"
 import { createPinia, setActivePinia } from "pinia"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { reactive } from "vue"
-import { shiftState } from "@/composables/useShift"
+import { abandonLocalShift, shiftState } from "@/composables/useShift"
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSSyncStore } from "@/stores/posSync"
@@ -211,6 +211,44 @@ describe("POSSale with a shift the server does not know yet", () => {
 		await flushPromises()
 
 		expect(cartStore.posOpeningShift).toBe("POSA-OS-1")
+	})
+
+	it("will not queue a sale on a gift card, which only the server can confirm", async () => {
+		cartStore.appliedCoupon = { name: "GIFT-1", coupon: { coupon_type: "Gift Card" } }
+		uiStore.showPaymentDialog = true
+
+		await checkout()
+
+		expect(offlineStore.saveInvoiceOffline).not.toHaveBeenCalled()
+		expect(cartStore.submitInvoice).not.toHaveBeenCalled()
+		expect(uiStore.showPaymentDialog).toBe(false)
+	})
+
+	it("queues a sale on an ordinary coupon, which the device can check", async () => {
+		cartStore.appliedCoupon = { name: "SAVE5", coupon: { coupon_type: "Promotional" } }
+
+		await checkout()
+
+		expect(offlineStore.saveInvoiceOffline).toHaveBeenCalledTimes(1)
+	})
+
+	it("sends a gift card straight to the server once the shift has its real name", async () => {
+		openShift("POSA-OS-1")
+		cartStore.appliedCoupon = { name: "GIFT-1", coupon: { coupon_type: "Gift Card" } }
+
+		await checkout()
+
+		expect(cartStore.submitInvoice).toHaveBeenCalledTimes(1)
+		expect(offlineStore.saveInvoiceOffline).not.toHaveBeenCalled()
+	})
+
+	it("closes the payment dialog when a manager voids the shift, so nothing is paid into it", async () => {
+		uiStore.showPaymentDialog = true
+
+		await abandonLocalShift(LOCAL_SHIFT)
+		await flushPromises()
+
+		expect(uiStore.showPaymentDialog).toBe(false)
 	})
 
 	it("offers no payment that needs the server", async () => {

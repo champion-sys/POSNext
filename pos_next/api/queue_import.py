@@ -11,7 +11,7 @@ import frappe
 from frappe import _
 
 from pos_next.api import sync
-from pos_next.services import queue_file
+from pos_next.services import queue_file, sync_void
 from pos_next.services.sync_entities import DOCTYPE
 
 #: How many refused rows the reply names. The counts cover all of them.
@@ -21,6 +21,20 @@ STATUS_CONFLICT = "conflict"
 
 #: Which count each refusal goes to. Any other answer took the row, as a void request does.
 REFUSALS = {STATUS_CONFLICT: "conflicts", "rejected": "rejected"}
+
+
+def _store_row(item, queue, uploader):
+    """Store a row, as a sale if it asks for a void its POS Profile does not allow.
+
+    A device told so sends the record again without the request. A file never hears the
+    answer, and the paid sale would have no other way to the server.
+    """
+    name, answer = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
+    if not answer or answer["status"] != sync_void.VOID_REFUSED:
+        return name, answer
+
+    sale = {key: value for key, value in item.items() if key != "void_reason"}
+    return sync.store_item(sale, uploader, queue.device_id, queue.app_version, queue.protocol_version)
 
 
 def _import_row(item, queue, uploader):
@@ -33,7 +47,7 @@ def _import_row(item, queue, uploader):
     offline_id = item.get("offline_id") if isinstance(item, dict) else None
 
     known = isinstance(offline_id, str) and bool(frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}))
-    name, answer = sync.store_item(item, uploader, queue.device_id, queue.app_version, queue.protocol_version)
+    name, answer = _store_row(item, queue, uploader)
     return name, answer, known
 
 

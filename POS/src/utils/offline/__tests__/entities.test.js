@@ -13,6 +13,7 @@ import {
 	ENTITY_INVOICE,
 	ENTITY_PAYMENT,
 	ENTITY_SHIFT_CLOSE,
+	ENTITY_SHIFT_OPEN,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
@@ -21,6 +22,7 @@ import {
 	getShiftManifest,
 	hasOnlineOnlyPayment,
 	isLocalName,
+	getUnfinishedShiftRecords,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 	sumQueuedPayments,
@@ -374,6 +376,62 @@ describe("subtractQueuedReturns", () => {
 	})
 })
 
+describe("getUnfinishedShiftRecords", () => {
+	const CASHIER = "a@example.com"
+	const opening = (extra) => ({
+		offline_id: "pos_offline_old",
+		entity: ENTITY_SHIFT_OPEN,
+		data: { cashier: CASHIER, pos_profile: "Main" },
+		...extra,
+	})
+	const closing = (extra) => ({
+		offline_id: "pos_offline_close",
+		entity: ENTITY_SHIFT_CLOSE,
+		data: { cashier: CASHIER, pos_profile: "Main", pos_opening_shift: "pos_offline_old" },
+		...extra,
+	})
+
+	it("lets a shift with a close wait behind that close", () => {
+		expect(getUnfinishedShiftRecords([opening(), closing()], CASHIER)).toEqual({
+			closes: ["pos_offline_close"],
+			unclosed: [],
+		})
+	})
+
+	it("names a shift with no close, which nothing can wait behind", () => {
+		expect(getUnfinishedShiftRecords([opening()], CASHIER).unclosed).toEqual(["pos_offline_old"])
+	})
+
+	it("counts the close of a shift the server already opened", () => {
+		const server = closing({ data: { cashier: CASHIER, pos_opening_shift: "POSA-OS-1" } })
+		expect(getUnfinishedShiftRecords([server], CASHIER).closes).toEqual(["pos_offline_close"])
+	})
+
+	it("leaves out what has finished, been replaced, or is a colleague's", () => {
+		const rows = [
+			opening({ synced: true }),
+			closing({ superseded: true }),
+			opening({ data: { cashier: "b@example.com" } }),
+			{ offline_id: "pos_offline_sale", data: { cashier: CASHIER } },
+		]
+
+		expect(getUnfinishedShiftRecords(rows, CASHIER)).toEqual({ closes: [], unclosed: [] })
+	})
+
+	it("counts a colleague's on the POS Profile to open, where the server keeps one shift open", () => {
+		const colleague = { cashier: "b@example.com", pos_profile: "Main" }
+		const rows = [opening({ data: colleague })]
+
+		expect(getUnfinishedShiftRecords(rows, CASHIER, "Main").unclosed).toEqual(["pos_offline_old"])
+		expect(getUnfinishedShiftRecords(rows, CASHIER, "Other").unclosed).toEqual([])
+		expect(getUnfinishedShiftRecords(rows, CASHIER).unclosed).toEqual([])
+	})
+
+	it("counts this cashier's on any POS Profile, where the server keeps them to one shift", () => {
+		expect(getUnfinishedShiftRecords([opening()], CASHIER, "Other").unclosed).toEqual(["pos_offline_old"])
+	})
+})
+
 describe("isReturnableQueueRow", () => {
 	const sale = { offline_id: LOCAL_INVOICE, data: { doctype: "Sales Invoice" } }
 
@@ -389,6 +447,13 @@ describe("isReturnableQueueRow", () => {
 		expect(isReturnableQueueRow({ data: { is_return: 1 } })).toBe(false)
 		expect(isReturnableQueueRow({ data: { doctype: "Sales Order" } })).toBe(false)
 		expect(isReturnableQueueRow({ entity: ENTITY_CUSTOMER, data: {} })).toBe(false)
+	})
+
+	it("leaves out a sale in the cart for editing, since a return would depend on what gets replaced", () => {
+		const held = { ...sale, offline_id: "pos_offline_held" }
+
+		expect(isReturnableQueueRow(held, (id) => id === "pos_offline_held")).toBe(false)
+		expect(isReturnableQueueRow(sale, (id) => id === "pos_offline_held")).toBe(true)
 	})
 })
 

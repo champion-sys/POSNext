@@ -19,7 +19,10 @@ vi.mock("@/data/user", () => ({ userData: { refresh: vi.fn() } }))
 vi.mock("@/platform/auth", () => ({
 	ENROLL_ROUTE: "DeviceEnroll",
 	isServerReachable: async () => false,
-	knownCashiers: () => [{ user: "a@example.com", fullName: "Cashier A" }],
+	knownCashiers: () => [
+		{ user: "a@example.com", fullName: "Cashier A" },
+		{ user: "b@example.com", fullName: "Cashier B" },
+	],
 	pinRefusalMessage: ({ reason }) => reason,
 	setCashierPin: vi.fn(),
 	signInCashier: vi.fn(),
@@ -75,6 +78,15 @@ describe("the way out past the offline limit", () => {
 		await flushPromises()
 
 		expect(offersExport(wrapper)).toBe(false)
+	})
+
+	it("closes, with its message, when another cashier is chosen", async () => {
+		const wrapper = await signInWith({ ok: false, reason: "expired" })
+
+		await wrapper.find("select").setValue("b@example.com")
+
+		expect(offersExport(wrapper)).toBe(false)
+		expect(wrapper.text()).not.toContain("expired")
 	})
 
 	it("closes when they go back to a password", async () => {

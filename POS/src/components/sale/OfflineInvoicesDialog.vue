@@ -41,6 +41,45 @@
 					<QueueExport />
 				</div>
 
+				<!-- Apart from the list: a refused record may have reached the server and left it -->
+				<div
+					v-for="note in syncStore.refusedVoids"
+					:key="note.offline_id"
+					class="border border-gray-200 border-s-4 rounded-lg p-3"
+					:class="STATE_STYLES[QUEUE_SALE_STANDS].edge"
+				>
+					<div class="flex items-start justify-between gap-2">
+						<div class="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+							<h4 class="min-w-0 max-w-full font-semibold text-gray-900 text-sm sm:text-base truncate">
+								{{ getRowTitle(note) }}
+							</h4>
+							<span
+								v-if="getRowKind(note)"
+								class="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full"
+							>
+								{{ getRowKind(note) }}
+							</span>
+						</div>
+						<SyncStateBadge :state="STATE_STYLES[QUEUE_SALE_STANDS]" />
+					</div>
+					<p class="mt-1 text-sm" :class="STATE_STYLES[QUEUE_SALE_STANDS].note">{{ refusedVoidNote(note) }}</p>
+					<p
+						:dir="getTextDirection(note.void_reason)"
+						class="mt-1 px-2 py-1 text-sm bg-gray-50 text-gray-800 rounded break-words"
+					>
+						{{ __("Reason: {0}", [note.void_reason]) }}
+					</p>
+					<div class="mt-1 flex justify-end">
+						<Button
+							variant="outline"
+							class="!h-11"
+							@click="syncStore.acknowledgeRefusedVoid(note.offline_id)"
+						>
+							{{ __("I Understand") }}
+						</Button>
+					</div>
+				</div>
+
 				<!-- Empty State -->
 				<p v-if="invoices.length === 0" class="py-6 text-center text-gray-600">
 					{{ __('Nothing is waiting on this device') }}
@@ -493,6 +532,12 @@ function saleStandsNote(invoice) {
 				invoice.server_invoice,
 			])
 		: __("This sale was already on the server, so it was not voided. It stands. Tell a manager.")
+}
+
+function refusedVoidNote(note) {
+	return isSale(note)
+		? __("Voiding is turned off for this POS Profile, so the server refused this void. The sale stands and is sent as usual. Tell a manager.")
+		: __("Voiding is turned off for this POS Profile, so the server refused this void. The record stands and is sent as usual. Tell a manager.")
 }
 
 const summaryStyle = computed(() => {
