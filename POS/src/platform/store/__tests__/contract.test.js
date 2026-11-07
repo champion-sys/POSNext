@@ -79,13 +79,27 @@ async function openWebStore() {
 	return localStore
 }
 
+// vitest 2.1 empties its list of pending mocks once it has finished awaiting that list, so
+// a doMock made while an import from the last test is running can be lost, and under load
+// the test then runs on the real store. Importing straight away applies the mock in time
+// and shows whether it held.
+async function replaceLocalStore(store) {
+	for (let attempt = 0; attempt < 5; attempt++) {
+		vi.doMock("@/platform/store", () => ({ localStore: store }))
+		const { localStore } = await import("@/platform/store")
+		if (localStore === store) return
+		vi.resetModules()
+	}
+	throw new Error("The store under test did not take the place of the real one")
+}
+
 function sqlImplementation(createExecutor) {
 	return async () => {
 		const sql = createExecutor()
 		await migrate(sql)
 		const database = createSqlStore(sql)
 		const store = createNativeStore(async () => database)
-		vi.doMock("@/platform/store", () => ({ localStore: store }))
+		await replaceLocalStore(store)
 		return store
 	}
 }
