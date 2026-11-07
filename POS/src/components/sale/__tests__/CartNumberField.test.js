@@ -177,6 +177,25 @@ describe("a field in the cart", () => {
 			expect(onWindowKeydown).not.toHaveBeenCalled()
 		})
 
+		it.each([
+			["F8", {}],
+			["F9", {}],
+			["Enter", { altKey: true }],
+		])("saves what was typed and leaves %s to the window", async (key, modifiers) => {
+			const input = mountField()
+			input.element.focus()
+			await typeText(input, "5")
+			const onWindowKeydown = vi.fn()
+			window.addEventListener("keydown", onWindowKeydown)
+
+			await input.trigger("keydown", { key, ...modifiers })
+
+			window.removeEventListener("keydown", onWindowKeydown)
+			expect(wrapper.emitted("commit")).toEqual([[5]])
+			expect(onWindowKeydown).toHaveBeenCalledOnce()
+			expect(document.activeElement).toBe(input.element)
+		})
+
 		it("commits once when Enter moves focus away", async () => {
 			const input = mountField()
 			input.element.focus()

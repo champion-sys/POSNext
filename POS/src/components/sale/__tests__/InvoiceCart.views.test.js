@@ -153,6 +153,53 @@ describe("the cart views", () => {
 		vi.unstubAllGlobals()
 	})
 
+	describe.each(["cards", "compact", "table"])("%s, with prices that include tax", (view) => {
+		it("shows a line at what the customer pays", async () => {
+			stores.cart.taxInclusive = true
+			await mountCart([line({ quantity: 2, rate: 115, amount: 200, tax_amount: 30 })], view)
+
+			expect(wrapper.text().replace(/,/g, "")).toContain("230.00")
+			expect(wrapper.text()).not.toContain("200.00")
+		})
+	})
+
+	describe("the keys in a table field", () => {
+		const fieldOfRow = () => wrapper.find('input[aria-label="Quantity"]')
+
+		it.each([
+			["F8", {}, "proceed-to-payment"],
+			["F9", {}, "save-draft"],
+			["Enter", { altKey: true }, "proceed-to-payment"],
+		])("%s saves the field, then runs the shortcut", async (key, modifiers, emitted) => {
+			await mountCart([line()], "table")
+			const field = fieldOfRow()
+			field.element.focus()
+			field.element.value = "5"
+			await field.trigger("input")
+
+			await field.trigger("keydown", { key, ...modifiers })
+			await flushPromises()
+
+			expect(stores.cart.updateItemDetails).toHaveBeenCalledWith(
+				"ITEM-1",
+				{ quantity: 5 },
+				"Nos",
+				{ silent: true },
+			)
+			expect(wrapper.emitted(emitted)).toHaveLength(1)
+		})
+
+		it("leaves a plain letter to the field", async () => {
+			await mountCart([line()], "table")
+			const field = fieldOfRow()
+			field.element.focus()
+
+			await field.trigger("keydown", { key: "x" })
+
+			expect(wrapper.emitted("save-draft")).toBeUndefined()
+		})
+	})
+
 	describe("the switch", () => {
 		it("offers the three views with labels and starts on the cards", async () => {
 			await mountCart()

@@ -11,6 +11,9 @@ import { roundCurrency } from "@/utils/currency"
 const ARABIC_DIGIT_ZERO = "٠".charCodeAt(0)
 const PERSIAN_DIGIT_ZERO = "۰".charCodeAt(0)
 
+// As the app prints a figure. Read as a decimal, 1,000 would become 1 with no warning.
+const GROUPED_FIGURE = /^-?\d{1,3}(?:[,٬]\d{3})+(?:[.٫]\d*)?$/
+
 /**
  * @param {Object} item - Cart line
  * @returns {boolean} Whether a promotional offer set this line's price
@@ -149,11 +152,14 @@ export function getLineEditRules(item, settings) {
  * @returns {number|null} null when it is not a number
  */
 export function parseCartNumber(text) {
-	const western = String(text ?? "")
+	const digits = String(text ?? "")
 		.trim()
 		.replace(/[٠-٩]/g, (digit) => digit.charCodeAt(0) - ARABIC_DIGIT_ZERO)
 		.replace(/[۰-۹]/g, (digit) => digit.charCodeAt(0) - PERSIAN_DIGIT_ZERO)
-		.replace(/[٫,]/g, ".")
+
+	const western = (
+		GROUPED_FIGURE.test(digits) ? digits.replace(/[,٬]/g, "") : digits
+	).replace(/[٫,]/g, ".")
 
 	if (!/^-?(\d+\.?\d*|\.\d+)$/.test(western)) return null
 	return Number.parseFloat(western)
@@ -187,8 +193,20 @@ export function showsItemCode(item) {
 
 /**
  * @param {Object} item - Cart line
- * @returns {number} The line's total
+ * @param {boolean} [taxInclusive] - Whether rates include tax, which a line's amount leaves out
+ * @returns {number} The line's total, in the same terms as its rate
  */
-export function getLineTotal(item) {
-	return item.is_free_item ? 0 : item.amount || item.rate * item.quantity
+export function getLineTotal(item, taxInclusive = false) {
+	if (item.is_free_item) return 0
+
+	const amount = item.amount ?? item.rate * item.quantity
+	return taxInclusive ? roundCurrency(amount + (item.tax_amount || 0)) : amount
+}
+
+/**
+ * @param {KeyboardEvent} event
+ * @returns {boolean} Whether the key is one of the app's shortcuts, not input for a field
+ */
+export function isShortcutKey(event) {
+	return event.altKey || /^F\d+$/.test(event.key)
 }

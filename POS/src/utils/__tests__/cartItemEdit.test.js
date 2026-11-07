@@ -174,6 +174,18 @@ describe("numbers as typed", () => {
 		expect(parseCartNumber("-2")).toBe(-2)
 	})
 
+	it("reads a figure the way the app prints it", () => {
+		expect(parseCartNumber("1,000")).toBe(1000)
+		expect(parseCartNumber("1,000,000")).toBe(1000000)
+		expect(parseCartNumber("12,500.50")).toBe(12500.5)
+		expect(parseCartNumber("١٬٠٠٠")).toBe(1000)
+	})
+
+	it("keeps a comma before fewer than three digits as the decimal point", () => {
+		expect(parseCartNumber("1,5")).toBe(1.5)
+		expect(parseCartNumber("1,50")).toBe(1.5)
+	})
+
 	it("treats anything else as no number", () => {
 		for (const text of ["", "  ", "abc", "1.2.3", "12a", null, undefined]) {
 			expect(parseCartNumber(text)).toBeNull()
@@ -204,5 +216,20 @@ describe("line display", () => {
 		).toBe(0)
 		expect(getLineTotal({ rate: 10, quantity: 2, amount: 18 })).toBe(18)
 		expect(getLineTotal({ rate: 10, quantity: 2 })).toBe(20)
+	})
+
+	it("is nothing on a line discounted in full", () => {
+		expect(getLineTotal({ rate: 10, quantity: 2, amount: 0, discount_percentage: 100 })).toBe(0)
+	})
+
+	it("includes the tax when the rate does, so it agrees with the rate", () => {
+		const line = { rate: 115, quantity: 2, amount: 200, tax_amount: 30 }
+
+		expect(getLineTotal(line, true)).toBe(230)
+		expect(getLineTotal(line, false)).toBe(200)
+	})
+
+	it("is nothing on a free line, with or without tax in the rate", () => {
+		expect(getLineTotal({ is_free_item: 1, rate: 10, quantity: 2, amount: 10, tax_amount: 1 }, true)).toBe(0)
 	})
 })

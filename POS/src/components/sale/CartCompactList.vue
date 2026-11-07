@@ -60,7 +60,7 @@
 				v-else
 				dir="ltr"
 				class="flex-shrink-0 min-w-[84px] pe-2 text-right text-sm font-mono font-bold text-gray-900"
-			>{{ formatAmount(getLineTotal(item)) }}</span>
+			>{{ formatAmount(getLineTotal(item, taxInclusive)) }}</span>
 		</div>
 	</div>
 </template>
@@ -77,6 +77,10 @@ const props = defineProps({
 	settings: {
 		type: Object,
 		required: true,
+	},
+	taxInclusive: {
+		type: Boolean,
+		default: false,
 	},
 	focusedIndex: {
 		type: Number,

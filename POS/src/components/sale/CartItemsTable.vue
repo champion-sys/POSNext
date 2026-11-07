@@ -47,7 +47,7 @@
 					>
 						<option v-for="unit in getUnitOptions(item)" :key="unit" :value="unit">{{ unit }}</option>
 					</select>
-					<span v-else class="block px-1 text-xs text-gray-700 [overflow-wrap:anywhere]">{{ item.uom || item.stock_uom }}</span>
+					<span v-else class="block px-1 text-xs text-gray-700 whitespace-nowrap">{{ item.uom || item.stock_uom }}</span>
 				</td>
 
 				<td class="px-0.5 align-middle">
@@ -107,7 +107,7 @@
 
 				<td class="px-1 align-middle text-right">
 					<span v-if="item.is_free_item" class="font-bold text-green-700">{{ __('Free') }}</span>
-					<span v-else dir="ltr" class="font-mono font-bold whitespace-nowrap text-gray-900">{{ formatAmount(getLineTotal(item)) }}</span>
+					<span v-else dir="ltr" class="font-mono font-bold whitespace-nowrap text-gray-900">{{ formatAmount(getLineTotal(item, taxInclusive)) }}</span>
 				</td>
 
 				<td class="align-middle">
@@ -143,6 +143,7 @@ import {
 	getRateLockReason,
 	getUnitOptions,
 	hasPricingRules,
+	isShortcutKey,
 	normalizeQuantity,
 	showsItemCode,
 } from "@/utils/cartItemEdit"
@@ -162,6 +163,10 @@ const props = defineProps({
 	currency: {
 		type: String,
 		required: true,
+	},
+	taxInclusive: {
+		type: Boolean,
+		default: false,
 	},
 	focusedIndex: {
 		type: Number,
@@ -200,7 +205,7 @@ function handleUnitKeydown(event) {
 	if (unitScanBurst.handleKeydown(event)) event.preventDefault()
 
 	// Arrows and Enter belong to this field, not to the cart's row shortcuts
-	if (!event.altKey && !/^F\d+$/.test(event.key)) event.stopPropagation()
+	if (!isShortcutKey(event)) event.stopPropagation()
 }
 
 function handleUnitChange(item, event) {

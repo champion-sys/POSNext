@@ -786,6 +786,7 @@
 				:items="sortedItems"
 				:settings="settingsStore"
 				:currency="currency"
+				:tax-inclusive="Boolean(cartStore.taxInclusive)"
 				:focused-index="focusedCartItemIndex"
 				:format-quantity="formatQuantity"
 				:format-amount="formatAmount"
@@ -800,6 +801,7 @@
 				v-else-if="activeCartView === CART_VIEW_COMPACT"
 				:items="sortedItems"
 				:settings="settingsStore"
+				:tax-inclusive="Boolean(cartStore.taxInclusive)"
 				:focused-index="focusedCartItemIndex"
 				:format-quantity="formatQuantity"
 				:format-amount="formatAmount"
@@ -1145,9 +1147,7 @@
 									class="text-xs sm:text-sm font-mono !font-bold text-gray-900 leading-none"
 								>
 									{{
-										formatCurrency(
-											item.amount || item.rate * item.quantity
-										)
+										formatCurrency(getLineTotal(item, cartStore.taxInclusive))
 									}}
 								</div>
 							</div>
@@ -1322,7 +1322,7 @@ import {
 	CART_VIEW_TABLE,
 	useCartView,
 } from "@/composables/useCartView"
-import { normalizeQuantity } from "@/utils/cartItemEdit"
+import { getLineTotal, isShortcutKey, normalizeQuantity } from "@/utils/cartItemEdit"
 const cartContainer = ref(null)
 const cartRoot = ref(null)
 import OrderType from "./OrderType.vue"
@@ -2402,7 +2402,8 @@ function handleGlobalShortcutKeyDown(event) {
 				activeEl.id !== "cart-customer-search" &&
 				activeEl.id !== "item-search"))
 
-	if (isTyping) return
+	// A cart field has already saved what was typed, and leaves its shortcuts to the cart
+	if (isTyping && !(activeEl.hasAttribute("data-cart-field") && isShortcutKey(event))) return
 
 	const key = event.key.toLowerCase()
 

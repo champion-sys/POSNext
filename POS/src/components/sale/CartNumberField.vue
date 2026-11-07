@@ -7,6 +7,7 @@
 		enterkeyhint="done"
 		autocomplete="off"
 		dir="ltr"
+		data-cart-field
 		:aria-label="label"
 		:title="label"
 		:style="{ minWidth: `calc(${draft.length} * 0.65em + 14px)` }"
@@ -21,7 +22,7 @@
 </template>
 
 <script setup>
-import { parseCartNumber } from "@/utils/cartItemEdit"
+import { isShortcutKey, parseCartNumber } from "@/utils/cartItemEdit"
 import { announceScan, createScanBurst } from "@/utils/scanBurst"
 import { onBeforeUnmount, ref, watch } from "vue"
 
@@ -119,6 +120,12 @@ function handleKeydown(event) {
 	if (scanBurst.handleKeydown(event)) {
 		event.preventDefault()
 		event.stopPropagation()
+		return
+	}
+
+	// A shortcut acts on the sale, so what was typed here goes in first
+	if (isShortcutKey(event)) {
+		commit()
 		return
 	}
 
