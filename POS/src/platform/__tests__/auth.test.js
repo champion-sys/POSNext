@@ -7,6 +7,7 @@ const local = vi.hoisted(() => ({
 	clearCachedData: vi.fn(),
 	clearOffersCache: vi.fn(),
 	clearShift: vi.fn(),
+	setSetting: vi.fn(),
 }))
 
 vi.mock("../store", () => ({ localStore: local }))
@@ -403,6 +404,7 @@ describe("enrolling with another server", () => {
 		expect(local.clearCachedData).toHaveBeenCalledWith()
 		expect(local.clearOffersCache).toHaveBeenCalled()
 		expect(local.clearShift).toHaveBeenCalled()
+		expect(local.setSetting).toHaveBeenCalledWith("parked_shifts", null)
 		expect(runtime.getServerUrl()).toBe(OTHER)
 		expect(auth.knownCashiers()).toEqual([])
 	})

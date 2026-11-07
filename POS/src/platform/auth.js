@@ -28,6 +28,7 @@ import {
 } from "./runtime"
 import { openSecretStore } from "./secrets"
 import { localStore } from "./store"
+import { PARKED_SHIFTS_KEY } from "@/utils/offline/entities"
 
 export const ENROLL_ROUTE = "DeviceEnroll"
 export const SIGN_IN_ROUTE = "CashierSignIn"
@@ -218,6 +219,7 @@ async function prepareForNewServer() {
 		if (!success) throw new Error("Could not clear cached data")
 		await localStore.clearOffersCache()
 		await localStore.clearShift()
+		await localStore.setSetting(PARKED_SHIFTS_KEY, null)
 	} catch (error) {
 		throw new AuthError("local_data", error.message)
 	}

@@ -15,6 +15,12 @@ export const ENTITY_PAYMENT = "payment"
 export const ENTITY_SHIFT_CLOSE = "shift_close"
 export const ENTITY_SHIFT_OPEN = "shift_open"
 
+/**
+ * Shifts set aside for their cashiers, by user, in the store's settings. A device has one
+ * slot for an open shift, and one the server has not finished with cannot be overwritten.
+ */
+export const PARKED_SHIFTS_KEY = "parked_shifts"
+
 const LOCAL_NAME_PREFIX = "pos_offline_"
 
 /** Same tolerance as AMOUNT_TOLERANCE in pos_next.api.partial_payments */

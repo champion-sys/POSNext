@@ -3314,6 +3314,193 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect(await store.getShift()).toBeNull()
 			})
 
+			describe("when a colleague's online shift needs the slot", () => {
+				const colleagueShift = () => ({ name: "SHIFT-2", user: OTHER_CASHIER })
+
+				const parked = async () => (await store.getSetting("parked_shifts")) || {}
+
+				const colleagueOpens = async () => {
+					await cleanupUserSession()
+					signInAs(OTHER_CASHIER)
+					serverReports(colleagueShift())
+					await shiftStore.checkShift()
+					await settle()
+				}
+
+				const backOffline = async () => {
+					await cleanupUserSession()
+					signInAs(CASHIER)
+					serverIsUnreachable()
+				}
+
+				it("gives up the slot, and is kept for its cashier", async () => {
+					await colleagueOpens()
+
+					expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+					expect((await parked())[CASHIER].pos_opening_shift.name).toBe(local)
+					expect(shiftStore.currentShift.name).toBe("SHIFT-2")
+				})
+
+				it("is parked by a shift the colleague opens here too", async () => {
+					await cleanupUserSession()
+					signInAs(OTHER_CASHIER)
+					fetchResponses.set("create_opening_shift", {
+						message: {
+							pos_opening_shift: colleagueShift(),
+							pos_profile: { name: "Main" },
+							company: { name: "Acme" },
+						},
+					})
+
+					await useShift.useShift().createOpeningShift.fetch()
+					await settle()
+
+					expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+					expect((await parked())[CASHIER].pos_opening_shift.name).toBe(local)
+				})
+
+				it("comes back to its cashier signing in with a PIN", async () => {
+					await colleagueOpens()
+					await backOffline()
+
+					expect(await shiftStore.checkShift()).toBe(true)
+
+					expect(shiftStore.currentShift.name).toBe(local)
+					expect((await store.getShift()).pos_opening_shift.name).toBe(local)
+					expect(await parked()).toEqual({})
+				})
+
+				it("comes back to its cashier online, while the server has not heard of it", async () => {
+					await colleagueOpens()
+					await cleanupUserSession()
+					signInAs(CASHIER)
+					serverReports(null)
+
+					expect(await shiftStore.checkShift()).toBe(true)
+					await settle()
+
+					expect(shiftStore.currentShift.name).toBe(local)
+					expect((await store.getShift()).pos_opening_shift.name).toBe(local)
+					expect(await parked()).toEqual({})
+				})
+
+				it("survives a restart, on every store", async () => {
+					await colleagueOpens()
+					await cleanupUserSession()
+
+					vi.resetModules()
+					setActivePinia(createPinia())
+					const { usePOSShiftStore } = await import("@/stores/posShift")
+					const restarted = usePOSShiftStore()
+					signInAs(CASHIER)
+					serverIsUnreachable()
+
+					expect(await restarted.checkShift()).toBe(true)
+					expect(restarted.currentShift.name).toBe(local)
+				})
+
+				it("goes to nobody else", async () => {
+					await colleagueOpens()
+					await cleanupUserSession()
+					signInAs("c@example.com")
+					serverIsUnreachable()
+
+					expect(await shiftStore.checkShift()).toBe(false)
+					expect((await parked())[CASHIER].pos_opening_shift.name).toBe(local)
+				})
+
+				it("is not lost when the colleague's shift closes", async () => {
+					await colleagueOpens()
+					resetShiftState()
+					await settle()
+
+					expect(await store.getShift()).toBeNull()
+					expect((await parked())[CASHIER].pos_opening_shift.name).toBe(local)
+				})
+
+				it("parks the colleague's shift in turn if that one is unsettled too", async () => {
+					await cleanupUserSession()
+					await store.setSetting("parked_shifts", { [CASHIER]: await store.getShift() })
+					await store.clearShift()
+					signInAs(OTHER_CASHIER)
+					const { session } = await import("@/data/session")
+					session.user = OTHER_CASHIER
+					await syncStore.saveShiftOpenOffline(cached, amounts)
+					const colleagues = shiftStore.currentShift.name
+
+					await backOffline()
+					await shiftStore.checkShift()
+
+					expect(shiftStore.currentShift.name).toBe(local)
+					expect((await parked())[OTHER_CASHIER].pos_opening_shift.name).toBe(colleagues)
+				})
+
+				it("takes the server's name while parked, and comes back under it", async () => {
+					await colleagueOpens()
+
+					await useShift.adoptServerShift(local, "POSA-OS-1")
+					expect((await parked())[CASHIER].pos_opening_shift.name).toBe("POSA-OS-1")
+					expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+
+					await backOffline()
+					expect(await shiftStore.checkShift()).toBe(true)
+					expect(shiftStore.currentShift.name).toBe("POSA-OS-1")
+				})
+
+				it("ends while parked when a manager voids it", async () => {
+					await colleagueOpens()
+
+					await useShift.abandonLocalShift(local)
+
+					expect(await parked()).toEqual({})
+					expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+				})
+
+				it("gives way to its own server copy", async () => {
+					await colleagueOpens()
+					await cleanupUserSession()
+					signInAs(CASHIER)
+					serverReports({ name: "POSA-OS-1", user: CASHIER, offline_id: local })
+
+					await shiftStore.checkShift()
+					await settle()
+
+					expect(shiftStore.currentShift.name).toBe("POSA-OS-1")
+					expect(await parked()).toEqual({})
+				})
+
+				it("is forgotten once it has settled and the server has no such shift", async () => {
+					await colleagueOpens()
+					const { id } = await store.getQueuedInvoice(local)
+					await store.updateQueuedInvoice(id, { synced: true, server_status: "voided" })
+					await cleanupUserSession()
+					signInAs(CASHIER)
+					serverReports(null)
+
+					expect(await shiftStore.checkShift()).toBe(false)
+					await settle()
+
+					expect(await parked()).toEqual({})
+				})
+
+				it("does not park a shift whose record has finished, since nothing of it is unsent", async () => {
+					const { id } = await store.getQueuedInvoice(local)
+					await store.updateQueuedInvoice(id, { synced: true, server_status: "voided" })
+
+					await colleagueOpens()
+
+					expect(await parked()).toEqual({})
+				})
+
+				it("does not park a shift already closed here", async () => {
+					markShiftClosing(local)
+
+					await colleagueOpens()
+
+					expect(await parked()).toEqual({})
+				})
+			})
+
 			it("stays closed when its server copy still reports open", async () => {
 				markShiftClosing(local)
 				await store.clearShift()

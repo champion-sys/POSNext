@@ -2,7 +2,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref } from "vue"
 import { readIdentity } from "@/platform/identity"
 import { localStore } from "@/platform/store"
-import { isLocalName } from "@/utils/offline/entities"
+import { PARKED_SHIFTS_KEY, isLocalName } from "@/utils/offline/entities"
 
 export const shiftState = ref({
 	pos_opening_shift: null,
@@ -45,24 +45,68 @@ function showShift(data) {
 	}
 }
 
-async function restoreCachedShift() {
-	const data = await localStore.getShift()
-	if (!isOwnShift(data) || isClosing(data)) return
+const getParkedShifts = async () => (await localStore.getSetting(PARKED_SHIFTS_KEY)) || {}
 
-	showShift(data)
+/**
+ * @param {string} user
+ * @param {Object|null} data - As kept by localStore.saveShift, none to forget what is parked
+ */
+async function setParkedShift(user, data) {
+	const { [user]: _replaced, ...others } = await getParkedShifts()
+	await localStore.setSetting(PARKED_SHIFTS_KEY, data ? { ...others, [user]: data } : others)
 }
 
 /**
  * A shift opened here that the server has not finished with, so its answers say nothing
  * about it yet.
- * @returns {Promise<Object|null>} As kept by localStore.saveShift
+ * @param {Object|null} data - As kept by localStore.saveShift
+ * @returns {Promise<boolean>}
  */
-async function findUnsettledShift() {
-	const data = await localStore.getShift()
-	if (!isOwnShift(data) || isClosing(data) || !isLocalName(data.pos_opening_shift.name)) return null
+async function isUnsettled(data) {
+	const name = data?.pos_opening_shift?.name
+	if (!isLocalName(name) || isClosing(data)) return false
 
-	const row = await localStore.getQueuedInvoice(data.pos_opening_shift.name)
-	return row && !row.synced ? data : null
+	const row = await localStore.getQueuedInvoice(name)
+	return Boolean(row) && !row.synced
+}
+
+/**
+ * Put a shift in the one slot. A colleague's that the server has not finished with moves
+ * aside for them, and a copy parked for this cashier has done its job.
+ * @param {Object} data - As kept by localStore.saveShift
+ */
+async function takeSlot(data) {
+	const user = data.pos_opening_shift.user
+	const kept = await localStore.getShift()
+	const keptFor = kept?.pos_opening_shift?.user
+	if (keptFor !== user && (await isUnsettled(kept))) await setParkedShift(keptFor, kept)
+
+	await localStore.saveShift(data)
+	if ((await getParkedShifts())[user]) await setParkedShift(user, null)
+}
+
+/** @returns {Promise<Object|null>} This cashier's shift on the device, in the slot or parked */
+async function findOwnShift() {
+	const user = readIdentity().userId
+	const kept = await localStore.getShift()
+	if (isOwnShift(kept, user)) return kept
+
+	const parked = (await getParkedShifts())[user]
+	return isOwnShift(parked, user) ? parked : null
+}
+
+async function restoreCachedShift() {
+	const data = await findOwnShift()
+	if (!data || isClosing(data)) return
+
+	await takeSlot(data)
+	showShift(data)
+}
+
+/** @returns {Promise<Object|null>} This cashier's shift that the server has not finished with */
+async function findUnsettledShift() {
+	const data = await findOwnShift()
+	return (await isUnsettled(data)) ? data : null
 }
 
 const shiftProfilesKey = (user) => `${SHIFT_PROFILES_PREFIX}${user}`
@@ -84,7 +128,7 @@ export async function getCachedShiftProfiles() {
 }
 
 function keepShift(data) {
-	localStore.saveShift(data).catch((error) => console.error("Error caching shift data:", error))
+	takeSlot(data).catch((error) => console.error("Error caching shift data:", error))
 	rememberShiftProfile(data).catch((error) => console.error("Error keeping the POS Profile:", error))
 }
 
@@ -99,8 +143,13 @@ export async function isShiftSlotTaken() {
  * @param {Object} data - From buildLocalShift
  */
 export async function openLocalShift(data) {
-	await localStore.saveShift(data)
+	await takeSlot(data)
 	showShift(data)
+}
+
+/** A queue record ends for its shift whoever is signed in, and its cashier may be away */
+async function findParkedShift(name) {
+	return Object.values(await getParkedShifts()).find((data) => data.pos_opening_shift.name === name)
 }
 
 /**
@@ -116,6 +165,9 @@ export async function adoptServerShift(localName, serverName) {
 	const kept = await localStore.getShift()
 	if (kept?.pos_opening_shift?.name === localName) await localStore.saveShift(renamed(kept))
 
+	const parked = await findParkedShift(localName)
+	if (parked) await setParkedShift(parked.pos_opening_shift.user, renamed(parked))
+
 	const isCurrent = shiftState.value.pos_opening_shift?.name === localName
 	if (isCurrent) shiftState.value = renamed(shiftState.value)
 	return isCurrent
@@ -130,6 +182,9 @@ export async function abandonLocalShift(localName) {
 	const kept = await localStore.getShift()
 	if (kept?.pos_opening_shift?.name === localName) await localStore.clearShift()
 
+	const parked = await findParkedShift(localName)
+	if (parked) await setParkedShift(parked.pos_opening_shift.user, null)
+
 	const isCurrent = shiftState.value.pos_opening_shift?.name === localName
 	if (isCurrent) resetShiftState()
 	return isCurrent
@@ -141,6 +196,7 @@ async function forgetShift() {
 	try {
 		// Another cashier having no shift says nothing about the one kept here
 		if (isOwnShift(await localStore.getShift(), user)) await localStore.clearShift()
+		if ((await getParkedShifts())[user]) await setParkedShift(user, null)
 	} catch (error) {
 		console.error("Error clearing cached shift data:", error)
 	}
@@ -192,6 +248,7 @@ export function resetShiftState() {
 async function applyServerShift(data) {
 	const unsettled = await findUnsettledShift().catch(() => null)
 	if (unsettled && data?.pos_opening_shift?.offline_id !== unsettled.pos_opening_shift.name) {
+		await takeSlot(unsettled)
 		showShift(unsettled)
 		return
 	}
