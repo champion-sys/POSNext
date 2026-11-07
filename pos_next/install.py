@@ -13,6 +13,8 @@ This module handles post-fixture tasks like setting defaults and clearing cache.
 import frappe
 import logging
 
+from pos_next.patches.v2_0_0 import add_stock_pull_index, add_sync_pull_indexes
+
 # Configure logger
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,10 @@ def after_install():
 		# Setup default print format for POS Profiles
 		# setup_default_print_format()
 
+		# Installing an app marks its patches as done without running them
+		add_sync_pull_indexes.execute()
+		add_stock_pull_index.execute()
+
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
 		frappe.db.commit()
@@ -69,6 +75,10 @@ def after_migrate():
 		# setup_default_print_format(quiet=True)
 
 		ensure_cashier_permissions()
+
+		# A site installed before these ran at install has them marked done without having them
+		add_sync_pull_indexes.execute()
+		add_stock_pull_index.execute()
 
 		# Clear cache
 		frappe.clear_cache()

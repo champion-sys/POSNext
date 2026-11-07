@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => {
 	const manifest = {
@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => {
 			applyPulledItems: vi.fn(),
 			reloadProfileFromCache: vi.fn(async () => {}),
 		},
+		stockStore: { applyPulled: vi.fn() },
+		runtime: { isNative: false },
 		customerStore: { reloadFromCache: vi.fn(async () => {}) },
 		cartStore: { loadTaxRules: vi.fn(async () => {}) },
 		offersStore: { setAvailableOffers: vi.fn() },
@@ -36,14 +38,20 @@ vi.mock("@/utils/offline/settings", () => ({
 	setSetting: vi.fn(async (key, value) => void mocks.settings.set(key, value)),
 }))
 vi.mock("@/utils/offline/workerClient", () => ({ offlineWorker: mocks.offlineWorker }))
+vi.mock("@/platform/runtime", () => ({
+	get isNative() {
+		return mocks.runtime.isNative
+	},
+}))
 vi.mock("@/stores/itemSearch", () => ({ useItemSearchStore: () => mocks.itemStore }))
+vi.mock("@/stores/stock", () => ({ useStockStore: () => mocks.stockStore }))
 vi.mock("@/stores/customerSearch", () => ({ useCustomerSearchStore: () => mocks.customerStore }))
 vi.mock("@/stores/posCart", () => ({ usePOSCartStore: () => mocks.cartStore }))
 vi.mock("@/stores/posOffers", () => ({ usePOSOffersStore: () => mocks.offersStore }))
 vi.mock("@/stores/posSettings", () => ({ usePOSSettingsStore: () => mocks.settingsStore }))
 
 const { pullChanges } = await import("../webPull")
-const { pullStateKey } = await import("../pullEngine")
+const { STOCK_ENTITIES, pullStateKey } = await import("../pullEngine")
 
 const page = (rows = [], deleted = []) => ({ rows, deleted, next_cursor: "c1", has_more: false })
 
@@ -64,6 +72,130 @@ describe("pullChanges", () => {
 		mocks.settings.clear()
 		mocks.itemStore.cacheSyncing = false
 		serve()
+	})
+
+	describe("stock", () => {
+		const manifestOf = (scope = "wh-1", version = "s1") => ({
+			...mocks.manifest,
+			stock: version,
+			scopes: { stock: scope },
+		})
+
+		function serveStock(manifest, stock = page([{ item_code: "A", actual_qty: 3 }])) {
+			mocks.call.mockImplementation(async (method, args) => {
+				if (method.endsWith("get_manifest")) return manifest
+				return args.entity === "stock" ? stock : page()
+			})
+		}
+
+		const manifestArgs = () =>
+			mocks.call.mock.calls.filter(([method]) => method.endsWith("get_manifest")).map(([, args]) => args)
+
+		afterEach(() => {
+			mocks.runtime.isNative = false
+		})
+
+		it("is left to the socket on the web, even when the server offers it", async () => {
+			serveStock(manifestOf())
+
+			await pullChanges("Main")
+
+			expect(pulledEntities()).not.toContain("stock")
+			expect(mocks.stockStore.applyPulled).not.toHaveBeenCalled()
+		})
+
+		it("keeps the web's manifest request as it was", async () => {
+			await pullChanges("Main")
+
+			expect(manifestArgs()).toEqual([{ pos_profile: "Main" }])
+		})
+
+		describe("on the apps", () => {
+			beforeEach(() => {
+				mocks.runtime.isNative = true
+			})
+
+			it("comes with a full pull, after the items", async () => {
+				serveStock(manifestOf())
+
+				await pullChanges("Main")
+
+				const entities = pulledEntities()
+				expect(entities).toContain("stock")
+				expect(entities.indexOf("stock")).toBeGreaterThan(entities.indexOf("items"))
+			})
+
+			it("asks the server about stock alone on the short interval", async () => {
+				serveStock(manifestOf())
+
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				expect(manifestArgs()).toEqual([{ pos_profile: "Main", stock_only: 1 }])
+				expect(pulledEntities()).toEqual(["stock"])
+			})
+
+			it("reaches the same store path as the socket does", async () => {
+				const stock = page([{ item_code: "A", actual_qty: 3, warehouse: "W1" }])
+				serveStock(manifestOf(), stock)
+
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				expect(mocks.offlineWorker.applyPullPage).toHaveBeenCalledWith("stock", stock, "Main")
+				expect(mocks.stockStore.applyPulled).toHaveBeenCalledWith(stock.rows)
+			})
+
+			it("costs one small request while the warehouse is quiet", async () => {
+				serveStock(manifestOf())
+				await pullChanges("Main", STOCK_ENTITIES)
+				mocks.call.mockClear()
+
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				expect(mocks.call).toHaveBeenCalledTimes(1)
+			})
+
+			it("resumes from where the last walk ended", async () => {
+				serveStock(manifestOf("wh-1", "s1"))
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				serveStock(manifestOf("wh-1", "s2"))
+				mocks.call.mockClear()
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				const [, args] = mocks.call.mock.calls.find(([method]) => method.endsWith(".pull"))
+				expect(args.cursor).toBe("c1")
+			})
+
+			it("starts over when the POS Profile changes its warehouse", async () => {
+				serveStock(manifestOf("wh-1", "s1"))
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				serveStock(manifestOf("wh-2", "s1"))
+				mocks.call.mockClear()
+				await pullChanges("Main", STOCK_ENTITIES)
+
+				const [, args] = mocks.call.mock.calls.find(([method]) => method.endsWith(".pull"))
+				expect(args.cursor).toBeNull()
+			})
+
+			it("stays out of the way of a pull already running", async () => {
+				serveStock(manifestOf())
+				const first = pullChanges("Main")
+
+				expect(await pullChanges("Main", STOCK_ENTITIES)).toBeNull()
+				await first
+			})
+
+			it("leaves the catalog to the background sync but not the stock", async () => {
+				serveStock(manifestOf())
+				mocks.itemStore.cacheSyncing = true
+
+				await pullChanges("Main")
+
+				expect(pulledEntities()).toContain("stock")
+				expect(pulledEntities()).not.toContain("items")
+			})
+		})
 	})
 
 	it("does nothing without a profile", async () => {

@@ -15,9 +15,11 @@ from pos_next.api.customers import CUSTOMER_RESULT_FIELDS, _get_profile_customer
 from pos_next.api.items import (
     _build_item_base_conditions,
     _enrich_items_bulk,
+    _expand_warehouse,
     _get_allowed_profile_brands,
     _get_item_group_with_descendants,
     _select_item_rows,
+    get_stock_quantities,
 )
 from pos_next.api.offers import _get_offers
 from pos_next.api.pos_profile import _get_profile_data, _get_tax_rows, get_payment_methods
@@ -88,7 +90,7 @@ def _next_rows(table, stamp, after, after_name, limit, columns="", condition="",
         f"""
         SELECT name, {stamp} AS stamp{columns}
         FROM `tab{table}`
-        WHERE ({stamp} > %(after)s OR ({stamp} = %(after)s AND name > %(after_name)s)){condition}
+        WHERE {stamp} >= %(after)s AND ({stamp} > %(after)s OR name > %(after_name)s){condition}
         ORDER BY {stamp} ASC, name ASC
         LIMIT %(limit)s
         """,
@@ -242,6 +244,80 @@ def _pull_customers(profile, cursor, limit):
     return _page(rows, deleted + _still_gone("Customer", tombstones), next_cursor, has_more)
 
 
+def _stock_warehouses(profile):
+    return sorted(_expand_warehouse(profile.warehouse)) if profile.warehouse else []
+
+
+def _bundles_using(codes):
+    """A bundle has no Bin of its own, so its stock moves when a component's does."""
+    if not codes:
+        return []
+
+    marks = ", ".join(["%s"] * len(codes))
+    rows = frappe.db.sql(
+        f"""
+        SELECT DISTINCT bundle.new_item_code
+        FROM `tabProduct Bundle Item` component
+        INNER JOIN `tabProduct Bundle` bundle ON bundle.name = component.parent
+        WHERE component.item_code IN ({marks})
+        """,
+        codes,
+    )
+    return [row[0] for row in rows]
+
+
+def _next_bins(warehouses, position, limit):
+    """Read one warehouse at a time, because the index keeps its order only within one:
+    a single IN would sort every row past the position, on every page."""
+    rows = []
+    has_more = False
+    for warehouse in warehouses:
+        page, more = _next_rows(
+            "Bin",
+            "modified",
+            position["modified"],
+            position["name"],
+            limit,
+            ", item_code",
+            " AND warehouse = %(warehouse)s",
+            warehouse=warehouse,
+        )
+        rows += page
+        has_more = has_more or more
+
+    # In the order the next page compares against: the database ignores case in a name
+    rows.sort(key=lambda row: (row.stamp, row.name.casefold()))
+    return rows[:limit], has_more or len(rows) > limit
+
+
+def _pull_stock(profile, cursor, limit):
+    """Current quantities of what moved, read the way the web reads them.
+
+    Stock moves without touching Item.modified, but every write to a quantity stamps its Bin.
+    Unlike _walk this reads no tombstones: ERPNext deletes Bin rows in plain SQL, so that
+    query would scan Deleted Document on every walk and find nothing.
+    """
+    warehouses = _stock_warehouses(profile)
+    if not warehouses:
+        return _page([], [], cursor)
+
+    position = _decode_cursor(cursor)
+    changed, has_more = _next_bins(warehouses, position, limit)
+
+    if changed:
+        position["modified"], position["name"] = str(changed[-1].stamp), changed[-1].name
+    if not has_more:
+        position["modified"], position["name"] = _settled(position["modified"], position["name"])
+
+    codes = sorted({row.item_code for row in changed})
+    return _page(
+        get_stock_quantities(codes + _bundles_using(codes), profile.warehouse),
+        [],
+        json.dumps(position),
+        has_more,
+    )
+
+
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
@@ -249,6 +325,7 @@ def _pull_customers(profile, cursor, limit):
 _WALKED = {
     "items": _pull_items,
     "item_prices": _pull_item_prices,
+    "stock": _pull_stock,
     "customers": _pull_customers,
 }
 
@@ -292,12 +369,32 @@ def _item_scope(profile):
     )
 
 
+def _stock_version(warehouses):
+    """The newest stamp is all it takes. Counting rows would scan the warehouse every minute,
+    and a deleted Bin leaves nothing to pull anyway."""
+    if not warehouses:
+        return _fingerprint(None)
+
+    marks = ", ".join(["%s"] * len(warehouses))
+    stamps = frappe.db.sql(
+        f"SELECT warehouse, MAX(modified) FROM `tabBin` WHERE warehouse IN ({marks}) GROUP BY warehouse",
+        warehouses,
+    )
+    latest = max((stamp for _warehouse, stamp in stamps), default=None)
+
+    # A sale still committing can land behind this stamp. A walk would step back for it, but
+    # only a moved version starts one, so it keeps moving until nothing can land any more
+    settling = latest is not None and get_datetime(latest) > _commit_floor()
+    return _fingerprint(latest, now() if settling else None)
+
+
 @frappe.whitelist()
-def get_manifest(pos_profile):
+def get_manifest(pos_profile, stock_only=False):
     """Report a version per entity, so the device pulls only what moved.
 
     Args:
         pos_profile: The device's POS Profile
+        stock_only: Answer for stock alone, which the apps ask every minute
 
     Returns:
         dict: A version per entity, plus `scopes`: when an entity's scope differs from the
@@ -307,6 +404,12 @@ def get_manifest(pos_profile):
     _assert_profile_access(pos_profile)
 
     profile = frappe.get_cached_doc("POS Profile", pos_profile)
+    warehouses = _stock_warehouses(profile)
+    stock_scope = _fingerprint(warehouses)
+    stock_version = _stock_version(warehouses)
+    if cint(stock_only):
+        return {"server_time": now(), "scopes": {"stock": stock_scope}, "stock": stock_version}
+
     tombstones = _latest_tombstones()
     item_scope = _item_scope(profile)
 
@@ -315,6 +418,7 @@ def get_manifest(pos_profile):
         "scopes": {
             "items": item_scope,
             "item_prices": item_scope,
+            "stock": stock_scope,
             "customers": _fingerprint(_get_profile_customer_filters(profile.name)),
         },
         "items": _fingerprint(_table_state("Item"), tombstones.get("Item")),
@@ -322,6 +426,7 @@ def get_manifest(pos_profile):
             _table_state("Item Price", "WHERE price_list = %s", (profile.selling_price_list,)),
             tombstones.get("Item Price"),
         ),
+        "stock": stock_version,
         "customers": _fingerprint(_table_state("Customer"), tombstones.get("Customer")),
         "taxes": _fingerprint(
             profile.name, profile.taxes_and_charges, _table_state("Sales Taxes and Charges Template")

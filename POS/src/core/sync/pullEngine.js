@@ -11,6 +11,7 @@
  * A stale tax or payment method is worse than a stale catalog row, so those come first.
  * Prices come before items: a device's first price pull only records where to start,
  * and the item rows read after it already carry every price from that point on.
+ * Stock comes after items, because a row of an item the device has not stored yet is dropped.
  */
 export const PULL_ENTITIES = [
 	"pos_profile",
@@ -18,9 +19,13 @@ export const PULL_ENTITIES = [
 	"payment_methods",
 	"item_prices",
 	"items",
+	"stock",
 	"customers",
 	"offers",
 ]
+
+/** What moves between two full pulls on a device with no socket */
+export const STOCK_ENTITIES = ["stock"]
 
 export const PAGE_SIZE = 500
 
@@ -88,7 +93,7 @@ export async function runPull({
 	entities = PULL_ENTITIES,
 	pageSize = PAGE_SIZE,
 }) {
-	const manifest = await server.getManifest(posProfile)
+	const manifest = await server.getManifest(posProfile, entities)
 	const results = {}
 
 	for (const entity of entities) {

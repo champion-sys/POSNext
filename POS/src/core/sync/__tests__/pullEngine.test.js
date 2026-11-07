@@ -40,6 +40,12 @@ const threePages = {
 	c2: page("c3", false, [{ item_code: "C" }], ["OLD"]),
 }
 
+describe("the order of a full pull", () => {
+	it("reads stock after the items it applies to", () => {
+		expect(PULL_ENTITIES.indexOf("stock")).toBeGreaterThan(PULL_ENTITIES.indexOf("items"))
+	})
+})
+
 describe("runPull", () => {
 	const pull = (server, store, options = {}) =>
 		runPull({ server, store, posProfile: POS_PROFILE, entities: ["items"], ...options })
@@ -53,6 +59,14 @@ describe("runPull", () => {
 
 			expect(server.pull.mock.calls.map(([args]) => args.cursor)).toEqual([null, "c1", "c2"])
 			expect(results.items).toEqual({ status: "updated", pages: 3, rows: 3, deleted: 1 })
+		})
+
+		it("tells the manifest which entities this run is about", async () => {
+			const server = createServer({ items: "v2" }, { items: { start: page("c1", false) } })
+
+			await pull(server, createStore(), { entities: ["items"] })
+
+			expect(server.getManifest).toHaveBeenCalledWith(POS_PROFILE, ["items"])
 		})
 
 		it("passes the profile and page size to the server", async () => {

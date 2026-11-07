@@ -484,6 +484,10 @@ export function createSqlStore(sql) {
 					await catalog.remove(deleted)
 					break
 
+				case "stock":
+					await updateStockQuantities(rows)
+					break
+
 				case "customers":
 					await store.cacheCustomers(rows)
 					await store.deleteCustomers(deleted)

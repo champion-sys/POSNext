@@ -22,8 +22,10 @@ import {
 	openLocalShift,
 } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
+import { STOCK_ENTITIES } from "@/core/sync/pullEngine"
 import { pullChanges } from "@/core/sync/webPull"
 import { isPastOfflineSaleLimit } from "@/platform/auth"
+import { isNative } from "@/platform/runtime"
 import {
 	cacheCustomersFromServer,
 	cachePaymentMethodsFromServer,
@@ -88,6 +90,9 @@ const STARTUP_SYNC_DELAY_MS = 5000
 
 /** How often to ask the server what changed */
 const PULL_INTERVAL_MS = 15 * 60 * 1000
+
+/** How often the apps, which have no socket, ask whether stock moved */
+const STOCK_PULL_INTERVAL_MS = 60 * 1000
 
 const STORAGE_WARNING_KEY = "pos_next_storage_warning_shown"
 const LAST_SYNC_KEY = "pos_next_last_invoice_sync"
@@ -273,13 +278,14 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/**
 	 * Bring down what changed on the server
+	 * @param {string[]} [only] - Pull just these instead of everything
 	 */
-	async function pullServerChanges() {
+	async function pullServerChanges(only) {
 		try {
 			const { session } = await import("@/data/session")
 			if (!session.isLoggedIn || isOffline.value) return
 
-			await pullChanges(usePOSShiftStore().profileName)
+			await pullChanges(usePOSShiftStore().profileName, only)
 		} catch (error) {
 			log.warn('Pull from the server failed', error)
 		}
@@ -887,6 +893,12 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (isWaitingForServer || Date.now() - lastAutoSyncAt >= intervalMs) autoSync()
 	}, SYNC_TICK_MS)
 	setInterval(pullServerChanges, PULL_INTERVAL_MS)
+	if (isNative) {
+		// Out of step with the full pull, which gives up when it finds another one running
+		setTimeout(() => {
+			setInterval(() => pullServerChanges(STOCK_ENTITIES), STOCK_PULL_INTERVAL_MS)
+		}, STOCK_PULL_INTERVAL_MS / 2)
+	}
 
 	// =========================================================================
 	// EXPORTS
