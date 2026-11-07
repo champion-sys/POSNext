@@ -516,13 +516,13 @@ export function getShiftOpenProblem({ pastLimit, slotTaken, unsettled = false, o
 
 /**
  * Shift records still on their way that a new shift would collide with. The server keeps one
- * open shift per cashier and one per POS Profile, so a shift opened there meanwhile makes the
- * one it has not created yet fail, with its sales blocked behind it. A close lets the next
- * shift wait in the queue. A shift with no close stays open whatever waits for it, so nothing
- * can queue behind that one.
+ * open shift per cashier, and one for everyone on a POS Invoice profile, so a shift opened
+ * there meanwhile makes the one it has not created yet fail, with its sales blocked behind it.
+ * A close lets the next shift wait in the queue. A shift with no close stays open whatever
+ * waits for it, so nothing can queue behind that one.
  * @param {Array} rows - Queue rows, including those that have synced
  * @param {string} cashier
- * @param {string} [posProfile] - The POS Profile to open, which counts a colleague's records
+ * @param {string} [posProfile] - A POS Profile that keeps one shift, so a colleague's records count
  * @returns {{closes: string[], unclosed: string[]}} Offline IDs
  */
 export function getUnfinishedShiftRecords(rows, cashier, posProfile = null) {

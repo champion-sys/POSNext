@@ -892,18 +892,45 @@ class TestOnlinePath(test_sync_entities.NoSiteTestCase):
 
 
 class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
-    def _shift(self):
-        return Mock(pos_profile="Main", name="NEW", user=CASHIER, pos_opening_entry=None)
+    def _shift(self, pos_invoices=False):
+        shift = Mock(pos_profile="Main", name="NEW", user=CASHIER, pos_opening_entry=None)
+        shift.takes_pos_invoices.return_value = pos_invoices
+        return shift
 
-    def test_another_shift_on_the_profile_gets_the_stable_code(self):
-        frappe.local.db.get_value.return_value = frappe._dict(name="POSA-OS-1", user="other@example.com")
-        with self.assertRaises(ShiftConflictError):
+    def _shift_query(self):
+        return frappe.local.db.get_value.call_args_list[0].args[1]
+
+    def test_the_cashiers_own_shift_on_the_profile_gets_the_stable_code(self):
+        frappe.local.db.get_value.return_value = frappe._dict(name="POSA-OS-1", user=CASHIER)
+        with patch("frappe.utils.get_fullname", return_value="Cashier"), self.assertRaises(ShiftConflictError):
             POSOpeningShift.validate_no_other_active_shift(self._shift())
+
+    def test_a_colleagues_shift_on_the_profile_does_not_stand_in_the_way(self):
+        frappe.local.db.get_value.return_value = None
+
+        POSOpeningShift.validate_no_other_active_shift(self._shift())
+
+        self.assertEqual(self._shift_query()["user"], CASHIER)
+        self.assertEqual(self._shift_query()["pos_profile"], "Main")
+
+    def test_a_shift_for_sales_invoices_never_asks_about_the_standard_entry(self):
+        frappe.local.db.get_value.return_value = None
+
+        POSOpeningShift.validate_no_other_active_shift(self._shift())
+
+        self.assertEqual(frappe.local.db.get_value.call_count, 1)
+
+    def test_a_pos_invoice_profile_keeps_one_shift_for_everyone(self):
+        frappe.local.db.get_value.return_value = frappe._dict(name="POSA-OS-1", user=COLLEAGUE)
+        with patch("frappe.utils.get_fullname", return_value="Colleague"), self.assertRaises(ShiftConflictError):
+            POSOpeningShift.validate_no_other_active_shift(self._shift(pos_invoices=True))
+
+        self.assertNotIn("user", self._shift_query())
 
     def test_an_open_standard_entry_gets_the_stable_code(self):
         entry = frappe._dict(name="POE-1", user="other@example.com", period_start_date=datetime(2026, 11, 7, 8))
         frappe.local.db.get_value.side_effect = [None, entry]
-        shift = self._shift()
+        shift = self._shift(pos_invoices=True)
         shift.is_blocked_by_opening_entry.return_value = True
 
         with patch("frappe.utils.formatdate", return_value="2026-11-07"):

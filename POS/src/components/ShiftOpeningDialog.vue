@@ -371,8 +371,15 @@ async function initDialog() {
 	}
 }
 
+/** A colleague's records count only on a POS Profile that keeps one shift for everyone */
+function getCollisions(posProfile) {
+	return getCollidingShiftRecords(
+		posProfile && settingsStore.keepsOneShift(posProfile) ? posProfile : undefined,
+	)
+}
+
 async function hasCollidingShiftRecords(posProfile) {
-	const { closes, unclosed } = await getCollidingShiftRecords(posProfile)
+	const { closes, unclosed } = await getCollisions(posProfile)
 	return closes.length + unclosed.length > 0
 }
 
@@ -394,7 +401,7 @@ async function loadOfflineOpening() {
 		const name = entry.pos_profile.name
 		if (!settingsStore.allowsOfflineShiftOpen(name)) continue
 
-		if ((await getCollidingShiftRecords(name)).unclosed.length > 0) {
+		if ((await getCollisions(name)).unclosed.length > 0) {
 			held++
 			continue
 		}
@@ -434,7 +441,7 @@ function selectPosProfile(profile) {
 	selectedProfile.value = profile
 }
 
-/** A colleague's shift on the POS Profile collides like this cashier's own, once it is chosen */
+/** Where a POS Profile keeps one shift, a colleague's collides like this cashier's own */
 async function queueBehindColleague() {
 	const name = selectedProfile.value.name
 	if (!(await hasCollidingShiftRecords(name))) return
@@ -443,7 +450,7 @@ async function queueBehindColleague() {
 	await loadOfflineOpening()
 	if (offlineProfiles.value.some(({ pos_profile }) => pos_profile.name === name)) return
 
-	const { unclosed } = await getCollidingShiftRecords(name)
+	const { unclosed } = await getCollisions(name)
 	offlineProblem.value = offlineProblem.value || (unclosed.length > 0 ? "shift_unsettled" : "shift_finishing")
 	offlineProfiles.value = []
 	selectedProfile.value = null

@@ -371,6 +371,17 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		return Boolean(saved.allow_offline_shift_open) && !saved.custom_disable_offline_mode
 	}
 
+	/**
+	 * Whether a POS Profile holds one shift for all its cashiers, as this device last heard.
+	 * ERPNext takes one open POS Opening Entry on a POS Profile, which only POS Invoices use.
+	 * @param {string} posProfile
+	 * @returns {boolean}
+	 */
+	function keepsOneShift(posProfile) {
+		const saved = JSON.parse(localStorage.getItem(`${SETTINGS_CACHE_PREFIX}${posProfile}`) || "{}")
+		return saved.invoice_type === "POS Invoice"
+	}
+
 	// Actions
 	async function loadSettings(posProfile) {
 		if (!posProfile) {
@@ -629,6 +640,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		reloadSettings,
 		resetSettings,
 		allowsOfflineShiftOpen,
+		keepsOneShift,
 		validateDiscount,
 		isNegativeStockAllowed,
 		shouldEnforceStockValidation,

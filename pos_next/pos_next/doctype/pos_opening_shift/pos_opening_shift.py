@@ -18,20 +18,32 @@ class POSOpeningShift(Document):
         if self.docstatus == 1:
             self.validate_no_other_active_shift()
 
+    def takes_pos_invoices(self):
+        return frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") == "POS Invoice"
+
     def validate_no_other_active_shift(self):
-        # Check for another open POS Opening Shift for this POS Profile
-        existing_shift = frappe.db.get_value(
-            "POS Opening Shift",
-            {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name], "docstatus": ["!=", 2]},
-            ["name", "user"],
-            as_dict=True
-        )
+        """One open shift for each cashier on a POS Profile, so colleagues can work it together.
+
+        A POS Invoice profile keeps one for everyone: ERPNext takes a single open POS Opening
+        Entry on a POS Profile, and with a second it refuses the sales of both.
+        """
+        pos_invoices = self.takes_pos_invoices()
+
+        filters = {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name], "docstatus": ["!=", 2]}
+        if not pos_invoices:
+            filters["user"] = self.user
+
+        existing_shift = frappe.db.get_value("POS Opening Shift", filters, ["name", "user"], as_dict=True)
         if existing_shift:
             frappe.throw(
                 _("POS Profile {0} is already open by {1} in shift {2}. Close that shift before opening yours.")
                 .format(self.pos_profile, frappe.utils.get_fullname(existing_shift.user), existing_shift.name),
                 ShiftConflictError,
             )
+
+        # Sales Invoice shifts never touch the standard entry
+        if not pos_invoices:
+            return
 
         # Check for an open POS Opening Entry for this POS Profile
         filters = {"pos_profile": self.pos_profile, "status": "Open"}
@@ -57,21 +69,13 @@ class POSOpeningShift(Document):
             )
 
     def is_blocked_by_opening_entry(self, entry):
-        """Whether an open standard POS entry conflicts with this shift.
+        """Whether an open standard POS entry conflicts with this POS Invoice shift.
 
         POS Invoice sales depend on the entry, and ERPNext refuses them once it is from an
-        earlier day, so only the user's own entry from today can be reused. Sales Invoice
-        shifts never touch it, so there only another cashier working in the standard POS
-        today is a real overlap, and an abandoned entry must not lock the POS Profile.
+        earlier day, so only the user's own entry from today can be reused.
         """
         opened_today = getdate(entry.period_start_date) == getdate(self.period_start_date or nowdate())
-        same_user = entry.user == self.user
-
-        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type")
-        if invoice_type == "POS Invoice":
-            return not (same_user and opened_today)
-
-        return opened_today and not same_user
+        return not (entry.user == self.user and opened_today)
 
     def validate_pos_profile_and_cashier(self):
         if self.company != frappe.db.get_value("POS Profile", self.pos_profile, "company"):

@@ -91,8 +91,11 @@ const MAIN = {
 
 const button = (wrapper, label) => wrapper.findAll("button").find((found) => found.text() === label)
 
-const allowOffline = (profile = "Main", value = 1) => {
-	localStorage.setItem(`pos_next_settings_${profile}`, JSON.stringify({ allow_offline_shift_open: value }))
+const allowOffline = (profile = "Main", value = 1, invoice_type = "Sales Invoice") => {
+	localStorage.setItem(
+		`pos_next_settings_${profile}`,
+		JSON.stringify({ allow_offline_shift_open: value, invoice_type }),
+	)
 }
 
 const keepProfiles = (...entries) => {
@@ -477,6 +480,18 @@ describe("the shift opening dialog, offline", () => {
 				await flushPromises()
 			}
 
+			beforeEach(() => allowOffline("Main", 1, "POS Invoice"))
+
+			it("does not hold back a cashier on a POS Profile where each keeps a shift", async () => {
+				allowOffline("Main", 1, "Sales Invoice")
+				device.rows = [colleagues(OPENING)]
+
+				await choose()
+
+				expect(server.resources.get("pos_next.api.shifts.get_opening_dialog_data").fetch).toHaveBeenCalled()
+				expect(wrapper.text()).not.toContain("so another cannot open yet")
+			})
+
 			it("stays with the server for a POS Profile it has nothing to do with", async () => {
 				device.rows = [colleagues(OPENING, "Other"), colleagues(CLOSING, "Other")]
 
@@ -508,7 +523,7 @@ describe("the shift opening dialog, offline", () => {
 
 			it("refuses a close on this POS Profile where it cannot wait in the queue", async () => {
 				device.rows = [colleagues(OPENING), colleagues(CLOSING)]
-				allowOffline("Main", 0)
+				allowOffline("Main", 0, "POS Invoice")
 
 				await choose()
 
