@@ -7,6 +7,7 @@ import { createPinia, setActivePinia } from "pinia"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { shiftState } from "@/composables/useShift"
 import { offlineState } from "@/utils/offline/offlineState"
+import { holdFromSync, releaseFromSync } from "@/utils/offline/sync"
 import ShiftOpeningDialog from "../ShiftOpeningDialog.vue"
 
 const device = vi.hoisted(() => {
@@ -252,6 +253,25 @@ describe("the shift opening dialog, offline", () => {
 			await open()
 
 			expect(button(wrapper, "Close & Open New")).toBeDefined()
+		})
+
+		it("will not close it from here while a queued sale is in the cart for editing", async () => {
+			const { usePOSSettingsStore } = await import("@/stores/posSettings")
+			usePOSSettingsStore().settings.allow_offline_shift_close = 1
+			shiftState.value = {
+				pos_opening_shift: { name: "pos_offline_mine" },
+				pos_profile: { name: "Main" },
+				isOpen: true,
+			}
+			holdFromSync("pos_offline_sale")
+
+			await open()
+			await button(wrapper, "Close & Open New").trigger("click")
+			await flushPromises()
+			releaseFromSync("pos_offline_sale")
+
+			expect(wrapper.findComponent({ name: "ShiftClosingDialog" }).exists()).toBe(true)
+			expect(wrapper.vm.showClosingDialog).toBe(false)
 		})
 	})
 

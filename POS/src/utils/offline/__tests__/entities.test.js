@@ -390,6 +390,13 @@ describe("isReturnableQueueRow", () => {
 		expect(isReturnableQueueRow({ data: { doctype: "Sales Order" } })).toBe(false)
 		expect(isReturnableQueueRow({ entity: ENTITY_CUSTOMER, data: {} })).toBe(false)
 	})
+
+	it("leaves out a sale in the cart for editing, since a return would depend on what gets replaced", () => {
+		const held = { ...sale, offline_id: "pos_offline_held" }
+
+		expect(isReturnableQueueRow(held, (id) => id === "pos_offline_held")).toBe(false)
+		expect(isReturnableQueueRow(sale, (id) => id === "pos_offline_held")).toBe(true)
+	})
 })
 
 describe("isReturnableQueueRow after a void came too late", () => {

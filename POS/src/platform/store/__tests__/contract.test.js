@@ -2866,6 +2866,44 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect(close.data.manifest).toEqual([sale.offline_id])
 			})
 
+			describe("with one of its sales in the cart for editing", () => {
+				let held
+				let hold
+
+				beforeEach(async () => {
+					;({ offline_id: held } = await store.saveOfflineInvoice(invoice({ posa_pos_opening_shift: local })))
+					hold = await import("@/utils/offline/sync")
+					hold.holdFromSync(held)
+				})
+
+				afterEach(() => {
+					hold.releaseFromSync(held)
+				})
+
+				it("cannot be closed, or the close would wait for a sale that gets replaced", async () => {
+					await expect(
+						syncStore.saveShiftCloseOffline({
+							pos_opening_shift: local,
+							opening_offline_id: local,
+							pos_profile: "Main",
+							company: "Acme",
+							payment_reconciliation: [],
+						}),
+					).rejects.toThrow("Finish or clear the queued invoice you are editing first")
+
+					expect((await store.getQueueRows()).filter((row) => row.entity === ENTITY_SHIFT_CLOSE)).toEqual([])
+				})
+
+				it("does not offer that sale for return", async () => {
+					const { usePOSSettingsStore } = await import("@/stores/posSettings")
+					usePOSSettingsStore().settings.allow_return = 1
+
+					const documents = await syncStore.getOfflineReturnDocuments("Main")
+
+					expect(documents.map((doc) => doc.return_against)).not.toContain(held)
+				})
+			})
+
 			it("makes the next shift wait for the close before it", async () => {
 				const close = await syncStore.saveShiftCloseOffline({
 					pos_opening_shift: local,

@@ -293,11 +293,13 @@ export function subtractQueuedReturns(doc, rows) {
 }
 
 /**
- * Whether a queued sale can be returned. A sale under review may never post.
+ * Whether a queued sale can be returned. A sale under review may never post, and one in the
+ * cart for editing is about to be replaced, which would leave its return waiting forever.
  * @param {Object} row - Queue row
+ * @param {(offlineId: string) => boolean} [isHeld] - Whether it is being edited
  * @returns {boolean}
  */
-export function isReturnableQueueRow(row) {
+export function isReturnableQueueRow(row, isHeld = () => false) {
 	const data = row.data || {}
 	return (
 		getEntity(row) === ENTITY_INVOICE &&
@@ -306,6 +308,7 @@ export function isReturnableQueueRow(row) {
 		!row.superseded &&
 		!row.sync_failed &&
 		!isVoidPending(row) &&
+		!isHeld(row.offline_id) &&
 		row.server_status !== "voided"
 	)
 }

@@ -212,6 +212,7 @@ import { usePOSSettingsStore } from "../stores/posSettings"
 import { usePOSSyncStore } from "../stores/posSync"
 import { parseError } from "../utils/errorHandler"
 import { getShiftOpenProblem } from "../utils/offline/entities"
+import { isAnySaleHeldFromSync } from "../utils/offline/sync"
 import { offlineWorker } from "../utils/offline/workerClient"
 import ShiftClosingDialog from "./ShiftClosingDialog.vue"
 import TranslatedHTML from "./common/TranslatedHTML.vue"
@@ -230,7 +231,7 @@ const open = computed({
 const { createOpeningShift, getOpeningDialogData, checkOpeningShift } =
 	useShift()
 const { formatDateTime } = useFormatters()
-const { showError } = useToast()
+const { showError, showWarning } = useToast()
 const { isOffline, mustQueue } = useOfflineStatus()
 const settingsStore = usePOSSettingsStore()
 const syncStore = usePOSSyncStore()
@@ -460,6 +461,10 @@ function resumeShift() {
 
 function closeAndOpenNew() {
 	if (!existingShift.value?.pos_opening_shift?.name) {
+		return
+	}
+	if (isAnySaleHeldFromSync()) {
+		showWarning(__("Finish or clear the queued invoice you are editing first"))
 		return
 	}
 

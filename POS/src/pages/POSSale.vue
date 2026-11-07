@@ -1215,8 +1215,8 @@ function endOfflineEdit() {
 }
 
 // A draft of an edit would become a second sale, and sign-out clears drafts while the
-// original would already be gone
-function refuseDraftDuringEdit() {
+// original would already be gone. A close would wait for an original that never arrives.
+function refuseDuringOfflineEdit() {
 	if (!editingOfflineContext) return false;
 	showWarning(__("Finish or clear the queued invoice you are editing first"));
 	return true;
@@ -2726,6 +2726,7 @@ async function handleCloseShift() {
 		showError(__("You do not have the required role to close this shift."));
 		return;
 	}
+	if (refuseDuringOfflineEdit()) return;
 	if (!(await ensureInvoicesSyncedBeforeClose())) {
 		return;
 	}
@@ -2778,6 +2779,7 @@ async function confirmLogout() {
 
 async function logoutWithCloseShift() {
 	uiStore.showLogoutDialog = false;
+	if (refuseDuringOfflineEdit()) return;
 	if (!(await ensureInvoicesSyncedBeforeClose())) {
 		return;
 	}
@@ -2788,7 +2790,7 @@ async function logoutWithCloseShift() {
 }
 
 async function handleSaveDraft() {
-	if (refuseDraftDuringEdit()) return;
+	if (refuseDuringOfflineEdit()) return;
 
 	const savedDraft = await draftsStore.saveDraftInvoice(
 		cartStore.invoiceItems,
@@ -2805,7 +2807,7 @@ async function handleSaveDraft() {
 }
 
 async function handleLoadDraft(draft) {
-	if (refuseDraftDuringEdit()) return;
+	if (refuseDuringOfflineEdit()) return;
 
 	try {
 		// If current cart has items, save it as draft before loading new one

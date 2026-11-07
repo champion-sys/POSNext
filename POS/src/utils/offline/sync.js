@@ -139,6 +139,16 @@ export const releaseFromSync = (offlineId) => {
 }
 
 /**
+ * Whether a queued sale is in the cart for editing, and so about to be replaced.
+ * @param {string} offlineId
+ * @returns {boolean}
+ */
+export const isHeldFromSync = (offlineId) => heldFromSync.has(offlineId)
+
+/** @returns {boolean} Whether any queued sale is in the cart for editing */
+export const isAnySaleHeldFromSync = () => heldFromSync.size > 0
+
+/**
  * Wait for a specified duration
  * @param {number} ms - Milliseconds to wait
  * @returns {Promise<void>}

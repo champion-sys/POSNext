@@ -18,6 +18,7 @@ export {
 	getOfflineInvoices,
 	syncOfflineInvoices,
 	announceRecordEnded,
+	isHeldFromSync,
 	cacheInvoiceHistory,
 	getCachedInvoiceHistory,
 	clearInvoiceHistoryCache,

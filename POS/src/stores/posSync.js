@@ -32,6 +32,7 @@ import {
 	cacheUnpaidInvoices,
 	cacheUnpaidSummary,
 	announceRecordEnded,
+	isHeldFromSync,
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
@@ -510,7 +511,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			return_validity_days: settingsStore.settings.return_validity_days,
 		}
 		const queued = rows
-			.filter(isReturnableQueueRow)
+			.filter((row) => isReturnableQueueRow(row, isHeldFromSync))
 			.map((row) => buildReturnDocFromQueue(row, rules))
 			.filter((doc) => !keptNames.has(doc.return_against))
 
@@ -527,6 +528,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		const { session } = await import("@/data/session")
 		const shift = closing.pos_opening_shift
 		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), shift, closing.opening_offline_id)
+		// The close would wait for a sale that checkout is about to replace
+		if (manifest.some((offlineId) => isHeldFromSync(offlineId))) {
+			throw new Error(__("Finish or clear the queued invoice you are editing first"))
+		}
 		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
 
 		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, [...[shift].filter(isLocalName), ...manifest])
