@@ -18,6 +18,7 @@ from contextlib import contextmanager
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
+from frappe.utils.background_jobs import is_job_enqueued
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
@@ -53,6 +54,9 @@ QUEUE_JOB_SECONDS = 540
 
 #: A job takes no new row this close to its limit, so the row in hand can finish
 QUEUE_JOB_MARGIN_SECONDS = 120
+
+#: How long the next turn waits for the job that asked for it to end
+NEXT_TURN_WAIT_SECONDS = 30
 
 #: Set by the client after the invoice is queued, so they are not part of the sale
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
@@ -673,13 +677,17 @@ def record_direct_sync(offline_id, invoice_name, doctype, invoice):
     doc.insert()
 
 
+def _queue_job_id(pos_profile):
+    return f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}"
+
+
 def enqueue_processing(pos_profile):
     """Process a profile's queue in the background, oldest sale first."""
     frappe.enqueue(
         "pos_next.services.sync_inbox.process_profile_queue",
         queue="short",
         timeout=QUEUE_JOB_SECONDS,
-        job_id=f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}",
+        job_id=_queue_job_id(pos_profile),
         deduplicate=True,
         enqueue_after_commit=True,
         pos_profile=pos_profile,
@@ -708,14 +716,41 @@ def _due_rows(pos_profile=None):
 def process_profile_queue(pos_profile=None):
     """Work through a profile's due invoices. Backdated stock depends on this order.
 
-    A long backlog ends cleanly before the job's limit. What is left stays due, so the
-    sweep starts the next job.
+    It reads the queue again when it runs out, because a push during this job queues no
+    other. A long backlog ends cleanly before the job's limit, and the next job goes behind
+    whatever else is waiting. Each row is tried once per job: one that stays due is the
+    sweep's to bring back.
     """
     deadline = time.monotonic() + QUEUE_JOB_SECONDS - QUEUE_JOB_MARGIN_SECONDS
-    for name in _due_rows(pos_profile):
-        if time.monotonic() >= deadline:
-            return
-        process(name)
+    tried = set()
+    while names := [name for name in _due_rows(pos_profile) if name not in tried]:
+        for name in names:
+            if time.monotonic() >= deadline:
+                _queue_next_turn(pos_profile)
+                return
+            tried.add(name)
+            process(name)
+
+
+def _queue_next_turn(pos_profile):
+    """A running job holds its own id, so it takes another job to queue the next one."""
+    frappe.enqueue(
+        "pos_next.services.sync_inbox.take_next_turn",
+        queue="short",
+        job_id=f"pos_sync_next_turn:{frappe.local.site}:{pos_profile or 'none'}",
+        deduplicate=True,
+        enqueue_after_commit=True,
+        pos_profile=pos_profile,
+    )
+
+
+def take_next_turn(pos_profile):
+    """Queue a profile's next job once its last one has ended. If it has not, the sweep will."""
+    for _second in range(NEXT_TURN_WAIT_SECONDS):
+        if not is_job_enqueued(_queue_job_id(pos_profile)):
+            break
+        time.sleep(1)
+    enqueue_processing(pos_profile)
 
 
 def _flag_if_stuck(row):
