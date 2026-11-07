@@ -90,21 +90,6 @@ class ShiftInbox(test_sync_flow.FakeInbox):
         return super().exists(doctype, name)
 
 
-class RowDocument:
-    """A stored record, as the review actions load and save it."""
-
-    def __init__(self, row):
-        self.__dict__.update(row)
-        self.flags = frappe._dict()
-        self._row = row
-
-    def set(self, fieldname, value):
-        setattr(self, fieldname, value)
-
-    def save(self, **_kwargs):
-        self._row.update({key: value for key, value in vars(self).items() if key not in ("flags", "_row")})
-
-
 class ShiftFlow(test_sync_flow.Flow):
     inbox_class = ShiftInbox
 
@@ -123,7 +108,7 @@ class ShiftFlow(test_sync_flow.Flow):
 
     def _new_document(self, values, name=None):
         if values == DOCTYPE:
-            return RowDocument(self._row(name))
+            return test_sync_flow.RowDocument(self._row(name))
         if values == "POS Opening Shift":
             return self.inbox.opening_shifts[name]
         if isinstance(values, str):

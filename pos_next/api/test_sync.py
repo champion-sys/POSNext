@@ -131,13 +131,22 @@ class TestDeviceClock(NoSiteTestCase):
     def test_a_clock_a_day_behind(self):
         self.assertEqual(sync._clock_skew(1_000_000_000 - DAY_MS), -86400)
 
-    def test_an_app_that_does_not_send_its_clock_is_not_judged(self):
-        self.assertEqual(sync._clock_skew(None), 0)
+    def test_an_app_that_does_not_send_its_clock_has_no_reading(self):
+        self.assertIsNone(sync._clock_skew(None))
 
     def test_the_difference_is_stored_with_the_record(self):
         self._push(device_time=1_000_000_000 + DAY_MS)
 
         self.assertEqual(self.stored[0]["clock_skew_seconds"], 86400)
+        self.assertEqual(self.stored[0]["clock_not_measured"], 0)
+
+    def test_a_clock_that_agrees_is_told_apart_from_no_reading(self):
+        self._push(device_time=1_000_000_000)
+        self.assertEqual(self.stored[0]["clock_not_measured"], 0)
+
+    def test_a_push_with_no_clock_is_recorded_as_unmeasured(self):
+        self._push()
+        self.assertEqual(self.stored[0]["clock_not_measured"], 1)
 
     def test_a_device_cannot_declare_its_own_difference(self):
         item = {

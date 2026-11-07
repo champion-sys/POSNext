@@ -5,10 +5,11 @@
 
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 import frappe
 from werkzeug.test import EnvironBuilder
@@ -492,6 +493,59 @@ class TestTheDevicesClock(ImportFlow):
     def test_a_row_cannot_claim_how_far_off_it_was(self):
         self.import_rows(self.item(clock_skew_seconds=999999))
         self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_row_cannot_claim_it_was_measured(self):
+        self.import_rows(self.item(clock_skew_seconds=0, clock_not_measured=0))
+        self.assertEqual(self.stored().clock_not_measured, 1)
+
+    def test_a_row_with_no_reading_is_told_apart_from_a_clock_that_agrees(self):
+        self.import_rows(self.item())
+        self.assertEqual((self.stored().clock_skew_seconds, self.stored().clock_not_measured), (0, 1))
+
+    @staticmethod
+    def _iso(seconds_from_now):
+        moment = datetime.fromtimestamp(time.time() + seconds_from_now, UTC)
+        return moment.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    def test_a_row_past_the_limit_ahead_of_the_server_is_held_as_a_wrong_clock(self):
+        self.import_rows(self.item(created_at_device=self._iso(3 * 86400)))
+
+        self.process_all(sync_inbox._create_invoice)
+
+        row = self.stored()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "ClockSkewError")
+        self.assertEqual(row.clock_not_measured, 1)
+        self.assertGreater(row.clock_skew_seconds, 2 * 86400)
+        self.assertIn("ahead of the server", row.error_message)
+
+    def test_a_row_just_inside_the_limit_is_not_held(self):
+        self.import_rows(self.item(created_at_device=self._iso(11 * 3600)))
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_row_from_the_past_is_flagged_and_not_held(self):
+        self.import_rows(self.item(created_at_device=self._iso(-30 * 86400)))
+
+        row = self.stored()
+        self.assertEqual((row.status, row.clock_skew_seconds, row.clock_not_measured), ("Received", 0, 1))
+
+    def test_a_time_zone_does_not_put_a_correct_clock_ahead(self):
+        now = datetime.now(UTC).astimezone(timezone(timedelta(hours=14)))
+
+        self.import_rows(self.item(created_at_device=now.isoformat()))
+
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_time_with_no_zone_is_read_in_the_servers(self):
+        with patch("pos_next.services.sync_inbox.get_system_timezone", return_value="Pacific/Kiritimati"):
+            now = datetime.now(ZoneInfo("Pacific/Kiritimati")).replace(tzinfo=None)
+            self.import_rows(self.item(created_at_device=now.isoformat()))
+
+        self.assertEqual(self.stored().clock_skew_seconds, 0)
+
+    def test_a_time_that_cannot_be_read_stores_the_row_unjudged(self):
+        self.import_rows(self.item(created_at_device="not a time"))
+        self.assertEqual((self.stored().clock_skew_seconds, self.stored().clock_not_measured), (0, 1))
 
     def test_a_push_still_measures_it(self):
         frappe.local.session.user = CASHIER

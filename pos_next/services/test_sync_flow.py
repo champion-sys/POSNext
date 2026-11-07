@@ -161,7 +161,7 @@ class Flow(unittest.TestCase):
             ("pos_next.services.sync_inbox._notify_uploader", Mock()),
             ("pos_next.services.sync_inbox._notify_managers", Mock()),
             ("pos_next.services.sync_inbox.enqueue_processing", Mock()),
-            ("pos_next.services.sync_inbox.get_datetime", lambda value: value),
+            ("pos_next.services.sync_inbox.get_system_timezone", lambda: "UTC"),
         ):
             patcher = patch(target, replacement)
             patcher.start()
@@ -588,6 +588,21 @@ class TestSweepWritesOnlyWhatItRead(Flow):
         self.assertEqual(self._row(name).status, "Resolved")
 
 
+class RowDocument:
+    """A stored record, as the review actions load and save it."""
+
+    def __init__(self, row):
+        self.__dict__.update(row)
+        self.flags = frappe._dict()
+        self._row = row
+
+    def set(self, fieldname, value):
+        setattr(self, fieldname, value)
+
+    def save(self, **_kwargs):
+        self._row.update({key: value for key, value in vars(self).items() if key not in ("flags", "_row")})
+
+
 class TestDeviceClock(Flow):
     HOUR = 3600
 
@@ -607,6 +622,74 @@ class TestDeviceClock(Flow):
 
     def test_a_managers_acceptance_lets_it_through(self):
         sync_inbox._assert_device_clock(self._clock(48 * self.HOUR, accepted=1))
+
+    def _payment(self):
+        payload = {"invoice_name": "SINV-1", "pos_profile": "Main", "posting_date": "2027-11-07", "payments": [{"amount": 40}]}
+        item = {
+            "offline_id": PAYMENT,
+            "entity": "payment",
+            "pos_profile": "Main",
+            "cashier": "cashier@example.com",
+            "payload": payload,
+            "clock_skew_seconds": 365 * 24 * self.HOUR,
+        }
+        name, _conflict = sync_inbox.ingest(item, "cashier@example.com")
+        return name
+
+    def _process_payment(self, name, reprocess=False):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            patch("pos_next.api.partial_payments.post_queued_payments", return_value=["PE-1"]) as post,
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            (sync_inbox.reprocess if reprocess else sync_inbox.process)(name)
+        return post
+
+    def test_a_payment_from_a_wrong_clock_waits_for_a_person_and_does_not_post(self):
+        name = self._payment()
+
+        post = self._process_payment(name)
+
+        post.assert_not_called()
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "ClockSkewError")
+
+    def test_change_posting_date_releases_that_payment_on_the_new_date(self):
+        name = self._payment()
+        self._process_payment(name)
+
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            sync_inbox.apply_fix(name, "posting_date", {"posting_date": "2026-11-07"})
+        post = self._process_payment(name, reprocess=True)
+
+        self.assertEqual(post.call_args.args[2], "2026-11-07")
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_accept_device_date_releases_that_payment_on_its_own_date(self):
+        name = self._payment()
+        self._process_payment(name)
+
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            sync_inbox.apply_fix(name, "accept_device_date", {})
+        post = self._process_payment(name, reprocess=True)
+
+        self.assertEqual(post.call_args.args[2], "2027-11-07")
+
+    def test_the_form_offers_a_payment_the_same_way_out(self):
+        form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
+        button = form.index('frm.doc.error_code === "ClockSkewError"')
+
+        self.assertLess(form.rindex('if (entity === "invoice") {'), button)
+        self.assertIn("}\n\n\tif (frm.doc.error_code === \"ClockSkewError\")", form)
+
+    def test_the_form_says_when_there_was_no_reading(self):
+        form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
+        self.assertIn("frm.doc.clock_not_measured", form)
 
     def test_it_goes_to_a_person_not_to_a_retry(self):
         result = sync_classifier.classify(sync_classifier.ClockSkewError("Off"))

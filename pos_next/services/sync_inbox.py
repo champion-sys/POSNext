@@ -14,10 +14,11 @@ import json
 import time
 from collections import namedtuple
 from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
+from frappe.utils import add_to_date, cint, flt, get_datetime, get_system_timezone, now_datetime
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
@@ -154,11 +155,40 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "payload_hash": compute_payload_hash(payload),
         "coupon_code": payload.get("coupon_code"),
         "seq": cint(item.get("seq")),
-        "clock_skew_seconds": cint(item.get("clock_skew_seconds")),
+        **_clock_fields(item),
         "client_version": client_version,
         "protocol_version": cint(protocol_version),
         "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
     }
+
+
+def _clock_fields(item):
+    """What a record says about its sender's clock. A reading is zero or more, so none is its own value.
+
+    With no reading, all that can be told is whether it claims a time still to come, which
+    no correct clock can do. A claim in the past proves nothing, and is left unjudged.
+    """
+    reading = item.get("clock_skew_seconds")
+    if reading is not None:
+        return {"clock_skew_seconds": cint(reading), "clock_not_measured": 0}
+
+    ahead = _seconds_ahead(item.get("created_at_device"))
+    return {"clock_skew_seconds": ahead if ahead >= MAX_CLOCK_SKEW_SECONDS else 0, "clock_not_measured": 1}
+
+
+def _seconds_ahead(created_at):
+    """How far past the server's clock a time lies. Compared as moments, since a device
+    in another time zone is not ahead."""
+    try:
+        moment = get_datetime(created_at) if created_at else None
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+    if not moment:
+        return 0
+    if not moment.tzinfo:
+        moment = moment.replace(tzinfo=ZoneInfo(get_system_timezone()))
+    return max(cint(moment.timestamp() - time.time()), 0)
 
 
 def _adopt_payload(name, fields):
@@ -420,14 +450,19 @@ def _assert_shift_open(row, payload, doctype):
 
 
 def _assert_device_clock(row):
-    """A wrong clock puts a sale on the wrong day, and nothing later would show it."""
-    if abs(cint(row.clock_skew_seconds)) < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
+    """A wrong clock puts a record on the wrong day, and nothing later would show it."""
+    skew = abs(cint(row.clock_skew_seconds))
+    if skew < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
         return
 
-    raise ClockSkewError(
-        _("The device clock was {0} hour(s) away from the server when this was sent").format(
-            flt(abs(cint(row.clock_skew_seconds)) / 3600, 1)
+    if cint(row.clock_not_measured):
+        raise ClockSkewError(
+            _("This record says it was made {0} hour(s) ahead of the server, and no clock reading came with it").format(
+                flt(skew / 3600, 1)
+            )
         )
+    raise ClockSkewError(
+        _("The device clock was {0} hour(s) away from the server when this was sent").format(flt(skew / 3600, 1))
     )
 
 
@@ -1040,6 +1075,7 @@ _FIXES = {
         "payment_mode": _fix_payment_mode,
         "payment_amount": _fix_payment_amount,
         "shift": _fix_shift,
+        "accept_device_date": None,
     },
     ENTITY_SHIFT_CLOSE: {
         "accept_unfinished": None,

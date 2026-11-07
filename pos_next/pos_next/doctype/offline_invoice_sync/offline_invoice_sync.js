@@ -41,7 +41,7 @@ const TOTAL_MISMATCH_GUIDE = __(
 );
 
 const CLOCK_SKEW_GUIDE = __(
-	"The clock of this device was wrong, so the date of this sale may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
+	"The clock of this device was wrong, so the date of this record may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
 );
 
 // Below the server's limit a clock only drifts, which is worth a look but stops nothing
@@ -304,17 +304,17 @@ function addReviewActions(frm) {
 
 	if (entity === "invoice") {
 		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+	}
 
-		if (frm.doc.error_code === "ClockSkewError") {
-			frm.add_custom_button(
-				__("Accept Device Date"),
-				() =>
-					frappe.confirm(__("Post this invoice with the date from the device?"), () =>
-						callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
-					),
-				fix_group,
-			);
-		}
+	if (frm.doc.error_code === "ClockSkewError") {
+		frm.add_custom_button(
+			__("Accept Device Date"),
+			() =>
+				frappe.confirm(__("Post this record with the date from the device?"), () =>
+					callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
+				),
+			fix_group,
+		);
 	}
 
 	if (entity === "shift_close") {
@@ -431,7 +431,9 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		frm.set_df_property("payload", "read_only", inReview ? 0 : 1);
 
 		const clockSkew = Math.abs(frm.doc.clock_skew_seconds || 0);
-		if (clockSkew >= CLOCK_DRIFT_SECONDS) {
+		if (frm.doc.clock_not_measured) {
+			frm.set_intro(__("This came with no clock reading, so its date was only checked for being ahead of the server."), "orange");
+		} else if (clockSkew >= CLOCK_DRIFT_SECONDS) {
 			frm.set_intro(
 				__("The clock of this device was {0} minute(s) away from the server when it sent this.", [
 					Math.round(clockSkew / 60),

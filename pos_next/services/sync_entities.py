@@ -230,6 +230,9 @@ def create_payment(row):
     """
     from pos_next.api.partial_payments import post_queued_payments
     from pos_next.api.utilities import get_wallet_payment_modes
+    from pos_next.services.sync_inbox import _assert_device_clock
+
+    _assert_device_clock(row)
 
     payload = load_payload(row)
     resolve_local_names(payload)

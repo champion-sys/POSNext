@@ -33,6 +33,7 @@
   "accept_total_difference",
   "accept_device_date",
   "clock_skew_seconds",
+  "clock_not_measured",
   "accept_unfinished",
   "section_coupon",
   "coupon_code",
@@ -255,6 +256,13 @@
    "description": "How far the device's clock was from the server's when it sent this. Positive means ahead."
   },
   {
+   "fieldname": "clock_not_measured",
+   "fieldtype": "Check",
+   "label": "Device Clock Not Measured",
+   "read_only": 1,
+   "description": "It came with no clock reading, as a row of a queue file does, so only a time ahead of the server could be caught."
+  },
+  {
    "fieldname": "accept_unfinished",
    "fieldtype": "Check",
    "label": "Close With Unfinished Invoices",
@@ -449,7 +457,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-07 12:00:00",
+ "modified": "2026-11-07 18:00:00",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",
