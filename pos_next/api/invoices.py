@@ -774,6 +774,8 @@ def _apply_coupon(invoice_doc, coupon_code, queued):
         error_msg = coupon_result.get("msg", "Invalid coupon code") if coupon_result else "Invalid coupon code"
         frappe.throw(_(error_msg))
 
+    invoice_doc.pos_coupon_code = coupon_code
+
     # ERPNext's own field links to its Coupon Code doctype, which refuses a POS Coupon and
     # applies limits of its own. Only a code that exists there, online, can stay in it.
     if not queued and frappe.db.exists("Coupon Code", coupon_code):
@@ -781,7 +783,6 @@ def _apply_coupon(invoice_doc, coupon_code, queued):
         return None
 
     invoice_doc.coupon_code = None
-    invoice_doc.pos_coupon_code = coupon_code
     return coupon_result.get("overrun") if queued else None
 
 

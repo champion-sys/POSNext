@@ -9,7 +9,7 @@ from frappe.utils import strip, flt
 from frappe.utils import getdate, today
 
 
-ONE_USE_COUPON_DOCTYPES = ("Sales Invoice", "POS Invoice")
+ONE_USE_COUPON_DOCTYPES = ("Sales Invoice", "POS Invoice", "Sales Order")
 
 
 class POSCoupon(Document):
@@ -213,15 +213,29 @@ def increment_coupon_usage(coupon_code):
 
 
 def decrement_coupon_usage(coupon_code):
-    """Decrement the usage counter for a coupon (for cancelled invoices)"""
-    try:
-        coupon = frappe.get_doc("POS Coupon", {"coupon_code": coupon_code.upper()})
-        if coupon.used and coupon.used > 0:
-            coupon.used = coupon.used - 1
-            coupon.db_set('used', coupon.used)
-            frappe.db.commit()
-    except Exception as e:
-        frappe.log_error(
-            title="Coupon Usage Decrement Failed",
-            message=f"Failed to decrement usage for coupon {coupon_code}: {str(e)}"
-        )
+    """Give back one use of a coupon, in the caller's transaction
+
+    Locked as increment_coupon_usage is. A coupon deleted since the sale has nothing to
+    give back, and must not stop the cancellation.
+    """
+    name = frappe.db.get_value("POS Coupon", {"coupon_code": coupon_code.upper()}, "name", for_update=True)
+    if not name:
+        return
+
+    coupon = frappe.get_doc("POS Coupon", name)
+    if (coupon.used or 0) > 0:
+        coupon.db_set("used", coupon.used - 1)
+
+
+def return_coupon_use(doc, method=None):
+    """Give back the use a cancelled sale or order took. The on_cancel hook of all three.
+
+    Only the POS sets pos_coupon_code, and it counts a use as it submits. A return and a
+    consolidated invoice redeem nothing, and an amended copy repeats a code without
+    counting it: Desk copies every field when amending, no_copy ones too.
+    """
+    coupon_code = doc.get("pos_coupon_code")
+    if not coupon_code or doc.get("is_return") or doc.get("is_consolidated") or doc.get("amended_from"):
+        return
+
+    decrement_coupon_usage(coupon_code)
