@@ -40,14 +40,31 @@ def _cashier(email):
         user.add_roles(CASHIER_ROLE)
 
 
+def _set_up_site():
+    """A site straight from new-site has no company, and ERPNext v16 has no before_tests."""
+    from erpnext.setup.setup_wizard.setup_wizard import setup_complete
+
+    year = now_datetime().year
+    setup_complete(
+        frappe._dict(
+            country="United States",
+            currency="USD",
+            company_name="POS Test Company",
+            company_abbr="PTC",
+            chart_of_accounts="Standard",
+            fy_start_date=f"{year}-01-01",
+            fy_end_date=f"{year}-12-31",
+        )
+    )
+    frappe.db.commit()
+
+
 class TestPOSInvoiceBooks(IntegrationTestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         if not frappe.get_all("Company", limit=1):
-            from erpnext.setup.utils import before_tests
-
-            before_tests()
+            _set_up_site()
 
         frappe.set_user("Administrator")
         cls.company = frappe.get_all("Company", pluck="name", limit=1)[0]
