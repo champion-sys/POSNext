@@ -44,7 +44,7 @@
           </div>
 
           <div v-if="profilesResource.error && !opensOnDevice" class="rounded-md bg-red-50 p-4">
-            <p class="text-sm text-red-800">{{ profilesResource.error }}</p>
+            <p class="text-sm text-red-800">{{ parseError(profilesResource.error).message }}</p>
           </div>
         </div>
 
@@ -98,11 +98,11 @@
           </div>
 
           <div v-if="dialogDataResource.error" class="rounded-md bg-red-50 p-4">
-            <p class="text-sm text-red-800">{{ dialogDataResource.error }}</p>
+            <p class="text-sm text-red-800">{{ parseError(dialogDataResource.error).message }}</p>
           </div>
 
           <div v-if="createShiftResource.error" class="rounded-md bg-red-50 p-4">
-            <p class="text-sm text-red-800">{{ createShiftResource.error }}</p>
+            <p class="text-sm text-red-800">{{ parseError(createShiftResource.error).message }}</p>
           </div>
         </div>
 

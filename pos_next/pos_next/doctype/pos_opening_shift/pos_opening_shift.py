@@ -28,8 +28,8 @@ class POSOpeningShift(Document):
         )
         if existing_shift:
             frappe.throw(
-                _("POS Profile {0} is already open in another POS Opening Shift ({1}).")
-                .format(self.pos_profile, existing_shift.name, existing_shift.user),
+                _("POS Profile {0} is already open by {1} in shift {2}. Close that shift before opening yours.")
+                .format(self.pos_profile, frappe.utils.get_fullname(existing_shift.user), existing_shift.name),
                 ShiftConflictError,
             )
 

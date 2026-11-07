@@ -1388,7 +1388,7 @@ POS Profile is required to validate rate edit for item {0},ملف نقطة ال�
 POS Profile not found,لم يتم العثور على ملف نقطة البيع,
 POS Profile {0} does not belong to company {1},ملف نقطة البيع {0} لا يتبع الشركة {1},
 POS Profile {0} does not exist,ملف نقطة البيع {0} غير موجود,
-POS Profile {0} is already open in another POS Opening Shift ({1}).,ملف نقطة البيع {0} مفتوح بالفعل في وردية أخرى ({1}).,
+POS Profile {0} is already open by {1} in shift {2}. Close that shift before opening yours.,ملف نقطة البيع {0} مفتوح لدى {1} في الوردية {2}. أغلق تلك الوردية قبل فتح ورديتك.,
 POS Profile {0} not found,ملف نقطة البيع {0} غير موجود,
 POS Profile: {0},ملف نقطة البيع: {0},
 POS Settings is required,إعدادات نقطة البيع مطلوبة,

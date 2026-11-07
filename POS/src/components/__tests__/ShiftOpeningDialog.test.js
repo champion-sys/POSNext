@@ -207,6 +207,22 @@ describe("the shift opening dialog, offline", () => {
 			expect(wrapper.emitted("shift-opened")).toBeUndefined()
 		})
 
+		it("shows the server's words for a refused shift, not the request behind them", async () => {
+			await goToAmounts()
+
+			server.resources.get("pos_next.api.shifts.create_opening_shift").error = Object.assign(
+				new Error("/api/method/pos_next.api.shifts.create_opening_shift ShiftConflictError"),
+				{
+					exc_type: "ShiftConflictError",
+					messages: ["POS Profile Main is already open by Administrator in shift SHIFT-1."],
+				},
+			)
+			await flushPromises()
+
+			expect(wrapper.text()).toContain("already open by Administrator in shift SHIFT-1")
+			expect(wrapper.text()).not.toContain("ShiftConflictError")
+		})
+
 		it("offers only the profiles allowed to open offline", async () => {
 			keepProfiles(MAIN, { ...MAIN, pos_profile: { ...MAIN.pos_profile, name: "Branch" } })
 
