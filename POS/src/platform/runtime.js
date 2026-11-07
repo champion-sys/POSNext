@@ -11,7 +11,7 @@ export const WEB = "web"
 export const ELECTRON = "electron"
 export const ANDROID = "android"
 
-const SERVER_URL_KEY = "pos_next_server_url"
+export const SERVER_URL_KEY = "pos_next_server_url"
 
 export const PLATFORM = import.meta.env.VITE_PLATFORM || WEB
 export const isNative = PLATFORM !== WEB

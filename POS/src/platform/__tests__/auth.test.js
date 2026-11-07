@@ -130,6 +130,53 @@ afterEach(() => {
 	vi.unstubAllEnvs()
 })
 
+describe("a crash just after a write to localStorage", () => {
+	const URL_KEY = "pos_next_server_url"
+
+	it("keeps the server's address with the token", async () => {
+		await enroll()
+
+		expect(store.entries.get(URL_KEY)).toBe(SERVER)
+	})
+
+	it("cannot leave a token with no server, because the code works only once", async () => {
+		await enroll()
+		localStorage.removeItem(URL_KEY)
+
+		await restart()
+
+		expect(runtime.getServerUrl()).toBe(SERVER)
+		expect(auth.isEnrolled()).toBe(true)
+	})
+
+	it("cannot leave a new token pointing at the previous server", async () => {
+		await enroll()
+		localStorage.setItem(URL_KEY, "https://old.example.com")
+
+		await restart()
+
+		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+
+	it("is covered on a device enrolled before the keystore held the address", async () => {
+		await enroll()
+		store.entries.delete(URL_KEY)
+
+		await restart()
+
+		expect(store.entries.get(URL_KEY)).toBe(SERVER)
+		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+
+	it("invents no server on a device that was never enrolled", async () => {
+		await restart()
+
+		expect(store.entries.has(URL_KEY)).toBe(false)
+		expect(runtime.getServerUrl()).toBe("")
+		expect(auth.isEnrolled()).toBe(false)
+	})
+})
+
 describe("normalizeServerUrl", () => {
 	it("assumes https and keeps only the origin", () => {
 		expect(auth.normalizeServerUrl(" shop.example.com/pos/ ")).toBe(SERVER)
@@ -235,6 +282,18 @@ describe("enrollDevice", () => {
 
 	it("does not spend the code if the token could not be kept", async () => {
 		store.set = () => Promise.reject(new Error("keystore unavailable"))
+
+		await expect(enroll()).rejects.toThrow("keystore unavailable")
+
+		expect(fetch).not.toHaveBeenCalled()
+	})
+
+	it("does not spend the code if the server's address could not be kept", async () => {
+		const { set } = store
+		store.set = (key, value) =>
+			key === "pos_next_server_url"
+				? Promise.reject(new Error("keystore unavailable"))
+				: set(key, value)
 
 		await expect(enroll()).rejects.toThrow("keystore unavailable")
 
@@ -593,7 +652,8 @@ describe("signInCashier", () => {
 		expect(auth.knownCashiers()).toEqual([])
 		expect(runtime.getCashierGrant()).toBeNull()
 		expect(identity.readIdentity().userId).toBeNull()
-		expect(store.entries.size).toBe(0)
+		// Not a secret, and the enrollment page starts from it
+		expect([...store.entries.keys()]).toEqual(["pos_next_server_url"])
 	})
 
 	it("reports a network failure as such", async () => {

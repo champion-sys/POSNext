@@ -19,6 +19,7 @@ import {
 import {
 	ELECTRON,
 	PLATFORM,
+	SERVER_URL_KEY,
 	getDeviceToken,
 	getServerUrl,
 	isNative,
@@ -87,10 +88,11 @@ function parseJson(text) {
  */
 export async function loadCredentials(store = openSecretStore()) {
 	secrets = store
-	const [deviceToken, savedGrant, savedState] = await Promise.all([
+	const [deviceToken, savedGrant, savedState, savedServer] = await Promise.all([
 		secrets.get(DEVICE_TOKEN_KEY),
 		secrets.get(GRANT_KEY),
 		secrets.get(CASHIERS_KEY),
+		secrets.get(SERVER_URL_KEY),
 	])
 
 	setDeviceToken(deviceToken)
@@ -98,6 +100,11 @@ export async function loadCredentials(store = openSecretStore()) {
 	setCashierGrant(grant?.token ?? null)
 	deviceState = { ...emptyDeviceState(), ...parseJson(savedState) }
 	lastContactAt = 0
+
+	// localStorage reaches the disk seconds after a write, and the keystore is written with the token
+	if (savedServer && savedServer !== getServerUrl()) setServerUrl(savedServer)
+	else if (!savedServer && getServerUrl())
+		await secrets.set(SERVER_URL_KEY, getServerUrl())
 }
 
 /** @returns {boolean} */
@@ -227,10 +234,11 @@ async function prepareForNewServer() {
 	}
 }
 
-/** The device token, or an error that says the device could not keep it. */
-async function saveDeviceToken(token) {
+/** The device token and its server, or an error that says the device could not keep them. */
+async function saveDeviceAccess(token, server) {
 	try {
 		await secrets.set(DEVICE_TOKEN_KEY, token)
+		await secrets.set(SERVER_URL_KEY, server)
 	} catch (error) {
 		throw new AuthError("secret_store", error.message)
 	}
@@ -245,7 +253,7 @@ export async function enrollDevice({ serverUrl, code }) {
 	const server = normalizeServerUrl(serverUrl)
 
 	// The code works once, so find out now if the token could not be kept
-	await saveDeviceToken(getDeviceToken() || "")
+	await saveDeviceAccess(getDeviceToken() || "", getServerUrl())
 
 	if (server !== getServerUrl()) await prepareForNewServer()
 
@@ -262,7 +270,7 @@ export async function enrollDevice({ serverUrl, code }) {
 	// Another server's cashiers mean nothing to this one
 	if (server !== getServerUrl()) deviceState = emptyDeviceState()
 
-	await saveDeviceToken(result.device_token)
+	await saveDeviceAccess(result.device_token, server)
 	setDeviceToken(result.device_token)
 	setServerUrl(server)
 	await saveGrant(null)
