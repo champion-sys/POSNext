@@ -53,7 +53,11 @@ function createHandler(db) {
 				}
 				db.exec("COMMIT")
 			} catch (error) {
-				db.exec("ROLLBACK")
+				// SQLite ends the transaction itself on a full disk, and rolling back then
+				// raises an error of its own, which would hide why the batch failed
+				try {
+					db.exec("ROLLBACK")
+				} catch {}
 				throw error
 			}
 		},
