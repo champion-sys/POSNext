@@ -13,6 +13,7 @@ from frappe.utils import cint
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
 from pos_next.services import sync_inbox, sync_reconciliation, sync_void
+from pos_next.services.sync_classifier import ReplacedByEditError
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -57,10 +58,10 @@ def _assert_may_upload(item):
 
 
 def _clock_skew(device_time):
-    """Seconds the device's clock is from the server's. Both are epoch based, so a device
-    in another time zone is not off."""
+    """Seconds the device's clock is from the server's, or None when it did not say. Both are
+    epoch based, so a device in another time zone is not off."""
     if not cint(device_time):
-        return 0
+        return None
     return cint(cint(device_time) / 1000 - time.time())
 
 
@@ -127,11 +128,12 @@ def _describe(row):
     return response
 
 
-def store_item(item, uploader, device_id, client_version, protocol_version, clock_skew=0):
+def store_item(item, uploader, device_id, client_version, protocol_version, clock_skew=None):
     """Check one item and store it, or settle its void. Whatever goes wrong stays with this item.
 
     Args:
-        clock_skew: Seconds the sender's clock is off. Always ours, never what the item says
+        clock_skew: Seconds the sender's clock is off, None when it was not measured. Always
+            ours, never what the item says
 
     Returns:
         tuple[str | None, dict | None]: The record's name, or what to tell the sender instead
@@ -151,6 +153,8 @@ def store_item(item, uploader, device_id, client_version, protocol_version, cloc
             )
             return None, sync_void.describe_void(row)
         name, conflict = sync_inbox.ingest(item, uploader, device_id, client_version, protocol_version)
+    except ReplacedByEditError as exc:
+        return None, {"offline_id": item["offline_id"], "status": "conflict", "message": str(exc)}
     except Exception as exc:
         return None, _rejected(item, _discard_item(exc))
 

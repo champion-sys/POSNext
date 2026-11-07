@@ -115,6 +115,12 @@ def check_opening_shift(user=None):
 @frappe.whitelist()
 def create_opening_shift(pos_profile, company, balance_details):
 	"""Create a new POS Opening Shift"""
+	from pos_next.api.invoices import _assert_invoice_write_access
+
+	# The closing rule without its role: a shift ties up the POS Profile for everyone on it, and
+	# the answer carries the whole profile, while the role only says who may end a shift
+	_assert_invoice_write_access("Sales Invoice", pos_profile)
+
 	balance_details = json.loads(balance_details) if isinstance(balance_details, str) else balance_details
 
 	new_pos_opening = insert_opening_shift(pos_profile, company, balance_details)

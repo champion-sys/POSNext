@@ -15,6 +15,7 @@ from rq.timeouts import JobTimeoutException
 from pos_next.api import sync as sync_api
 from pos_next.pos_next.doctype.offline_invoice_sync import offline_invoice_sync
 from pos_next.services import sync_classifier, sync_inbox
+from pos_next.services.sync_classifier import ReplacedByEditError
 from pos_next.services.sync_entities import DOCTYPE
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
@@ -161,7 +162,7 @@ class Flow(unittest.TestCase):
             ("pos_next.services.sync_inbox._notify_uploader", Mock()),
             ("pos_next.services.sync_inbox._notify_managers", Mock()),
             ("pos_next.services.sync_inbox.enqueue_processing", Mock()),
-            ("pos_next.services.sync_inbox.get_datetime", lambda value: value),
+            ("pos_next.services.sync_inbox.get_system_timezone", lambda: "UTC"),
         ):
             patcher = patch(target, replacement)
             patcher.start()
@@ -462,6 +463,85 @@ class TestEditOfASaleOnTheServer(Flow):
         name = self._send(LATE_SALE, {"pos_profile": "Main", "edited_from": None})
         self.assertEqual(self._row(name).status, "Received")
 
+    def test_it_keeps_the_link_in_a_column_that_outlives_the_payload(self):
+        self.assertEqual(self._row(self._edit()).edited_from, SALE)
+
+    def test_an_edit_that_kept_its_id_links_to_nothing(self):
+        name = self._send(SALE, {"pos_profile": "Main", "edited_from": SALE})
+        self.assertIsNone(self._row(name).edited_from)
+
+    def test_a_link_that_is_not_a_name_links_to_nothing(self):
+        name = self._send(SALE, {"pos_profile": "Main", "edited_from": ["pos_offline_sale-9"]})
+        self.assertIsNone(self._row(name).edited_from)
+
+    def test_the_original_arriving_after_its_edit_is_refused_and_not_stored(self):
+        edit = self._edit()
+
+        with self.assertRaises(ReplacedByEditError) as refused:
+            self._send(SALE, {"pos_profile": "Main"})
+
+        self.assertIn(LATE_SALE, str(refused.exception))
+        self.assertEqual(list(self.inbox.rows), [edit])
+
+    def test_whatever_became_of_the_edit_the_original_stays_out(self):
+        for status in ("Received", "Needs Review", "Synced", "Resolved", "Voided"):
+            self.inbox.rows.clear()
+            self._row(self._edit())["status"] = status
+
+            with self.assertRaises(ReplacedByEditError):
+                self._send(SALE, {"pos_profile": "Main"})
+
+    def test_a_resend_of_an_original_already_held_is_still_the_same_record(self):
+        original = self._send(SALE, {"pos_profile": "Main"})
+        self._edit()
+
+        self.assertEqual(self._send(SALE, {"pos_profile": "Main"}), original)
+
+    def _arrives_with(self, other, offline_id, payload):
+        """Store a record while another request stores `other`, unseen until this one commits."""
+        real = self.inbox.commit
+        arrived = []
+
+        def commit():
+            real()
+            if not arrived:
+                arrived.append(other())
+
+        with patch.object(self.inbox, "commit", side_effect=commit):
+            name = self._send(offline_id, payload)
+        return name, arrived[0]
+
+    def _insert_unseen(self, offline_id, payload):
+        return lambda: self.inbox.insert(
+            {"offline_id": offline_id, "status": "Received", "edited_from": payload.get("edited_from")}
+        )
+
+    def test_a_sale_and_its_edit_stored_at_once_cannot_both_post(self):
+        name, _edit = self._arrives_with(
+            self._insert_unseen(LATE_SALE, {"edited_from": SALE}), SALE, {"pos_profile": "Main"}
+        )
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "EditConflictError")
+        self.assertIn(LATE_SALE, self._row(name).error_message)
+
+    def test_an_edit_and_its_sale_stored_at_once_cannot_both_post(self):
+        name, _sale = self._arrives_with(
+            self._insert_unseen(SALE, {}), LATE_SALE, {"pos_profile": "Main", "edited_from": SALE}
+        )
+
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "EditConflictError")
+
+    def test_a_record_a_worker_already_took_is_left_to_it(self):
+        def take():
+            self._row("row-1")["status"] = "Processing"
+            return self.inbox.insert({"offline_id": LATE_SALE, "status": "Received", "edited_from": SALE})
+
+        name, _edit = self._arrives_with(take, SALE, {"pos_profile": "Main"})
+
+        self.assertEqual(self._row(name).status, "Processing")
+
     def test_a_resend_of_the_edit_stays_where_it_is(self):
         self._send(SALE, {"pos_profile": "Main"})
         name = self._edit()
@@ -588,6 +668,21 @@ class TestSweepWritesOnlyWhatItRead(Flow):
         self.assertEqual(self._row(name).status, "Resolved")
 
 
+class RowDocument:
+    """A stored record, as the review actions load and save it."""
+
+    def __init__(self, row):
+        self.__dict__.update(row)
+        self.flags = frappe._dict()
+        self._row = row
+
+    def set(self, fieldname, value):
+        setattr(self, fieldname, value)
+
+    def save(self, **_kwargs):
+        self._row.update({key: value for key, value in vars(self).items() if key not in ("flags", "_row")})
+
+
 class TestDeviceClock(Flow):
     HOUR = 3600
 
@@ -607,6 +702,74 @@ class TestDeviceClock(Flow):
 
     def test_a_managers_acceptance_lets_it_through(self):
         sync_inbox._assert_device_clock(self._clock(48 * self.HOUR, accepted=1))
+
+    def _payment(self):
+        payload = {"invoice_name": "SINV-1", "pos_profile": "Main", "posting_date": "2027-11-07", "payments": [{"amount": 40}]}
+        item = {
+            "offline_id": PAYMENT,
+            "entity": "payment",
+            "pos_profile": "Main",
+            "cashier": "cashier@example.com",
+            "payload": payload,
+            "clock_skew_seconds": 365 * 24 * self.HOUR,
+        }
+        name, _conflict = sync_inbox.ingest(item, "cashier@example.com")
+        return name
+
+    def _process_payment(self, name, reprocess=False):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.utilities.get_wallet_payment_modes", return_value=[]),
+            patch("pos_next.api.partial_payments.post_queued_payments", return_value=["PE-1"]) as post,
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            (sync_inbox.reprocess if reprocess else sync_inbox.process)(name)
+        return post
+
+    def test_a_payment_from_a_wrong_clock_waits_for_a_person_and_does_not_post(self):
+        name = self._payment()
+
+        post = self._process_payment(name)
+
+        post.assert_not_called()
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        self.assertEqual(self._row(name).error_code, "ClockSkewError")
+
+    def test_change_posting_date_releases_that_payment_on_the_new_date(self):
+        name = self._payment()
+        self._process_payment(name)
+
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            sync_inbox.apply_fix(name, "posting_date", {"posting_date": "2026-11-07"})
+        post = self._process_payment(name, reprocess=True)
+
+        self.assertEqual(post.call_args.args[2], "2026-11-07")
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_accept_device_date_releases_that_payment_on_its_own_date(self):
+        name = self._payment()
+        self._process_payment(name)
+
+        with (
+            patch("pos_next.services.sync_inbox.frappe.get_doc", lambda _doctype, _name: RowDocument(self._row(name))),
+        ):
+            sync_inbox.apply_fix(name, "accept_device_date", {})
+        post = self._process_payment(name, reprocess=True)
+
+        self.assertEqual(post.call_args.args[2], "2027-11-07")
+
+    def test_the_form_offers_a_payment_the_same_way_out(self):
+        form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
+        button = form.index('frm.doc.error_code === "ClockSkewError"')
+
+        self.assertLess(form.rindex('if (entity === "invoice") {'), button)
+        self.assertIn("}\n\n\tif (frm.doc.error_code === \"ClockSkewError\")", form)
+
+    def test_the_form_says_when_there_was_no_reading(self):
+        form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
+        self.assertIn("frm.doc.clock_not_measured", form)
 
     def test_it_goes_to_a_person_not_to_a_retry(self):
         result = sync_classifier.classify(sync_classifier.ClockSkewError("Off"))

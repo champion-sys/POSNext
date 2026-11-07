@@ -24,7 +24,7 @@ const OFFLINE_SHIFT_GUIDE = __(
 );
 
 const LINKED_CLOSE_GUIDE = __(
-	"This close counted the shift of the device only, and that shift was linked to another open shift. Close the open shift from the POS and add this count to it, then void this record.",
+	"This close counted the drawer of one device, so it cannot close the shift it names, which stays open for the cashier who holds it. When that shift closes, add this count to its closing amounts, then void this record.",
 );
 
 const REVIEW_GUIDE = {
@@ -41,7 +41,7 @@ const TOTAL_MISMATCH_GUIDE = __(
 );
 
 const CLOCK_SKEW_GUIDE = __(
-	"The clock of this device was wrong, so the date of this sale may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
+	"The clock of this device was wrong, so the date of this record may be wrong too. Check it, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
 );
 
 // Below the server's limit a clock only drifts, which is worth a look but stops nothing
@@ -52,7 +52,7 @@ const SHIFT_CLOSED_GUIDE = __(
 );
 
 const EDIT_CONFLICT_GUIDE = __(
-	"The device edited a sale the server had already received, so both would post. To keep the original, void this record. To keep this edit, cancel the original invoice or void its record first, then press Reprocess.",
+	"The server holds a sale and the edit that replaced it, and both would post. Void the record that should not stand, or cancel its invoice if it already posted. Then press Reprocess on the one that stays.",
 );
 
 const CASHIER_GUIDE = __(
@@ -304,17 +304,17 @@ function addReviewActions(frm) {
 
 	if (entity === "invoice") {
 		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
+	}
 
-		if (frm.doc.error_code === "ClockSkewError") {
-			frm.add_custom_button(
-				__("Accept Device Date"),
-				() =>
-					frappe.confirm(__("Post this invoice with the date from the device?"), () =>
-						callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
-					),
-				fix_group,
-			);
-		}
+	if (frm.doc.error_code === "ClockSkewError") {
+		frm.add_custom_button(
+			__("Accept Device Date"),
+			() =>
+				frappe.confirm(__("Post this record with the date from the device?"), () =>
+					callSyncAction(frm, "apply_fix", { fix: "accept_device_date" }, SAVED_MESSAGE),
+				),
+			fix_group,
+		);
 	}
 
 	if (entity === "shift_close") {
@@ -407,7 +407,7 @@ function getReviewGuide(frm, canReview) {
 	if (error_code === "ShiftConflictError") return SHIFT_CONFLICT_GUIDE;
 	if (error_code === "ShiftOutdatedError") return SHIFT_OUTDATED_GUIDE;
 	if (error_code === "OfflineShiftNotAllowedError") return OFFLINE_SHIFT_GUIDE;
-	if (error_code === "LinkedShiftCloseError") return LINKED_CLOSE_GUIDE;
+	if (error_code === "LinkedShiftCloseError" || error_code === "NotShiftHolderError") return LINKED_CLOSE_GUIDE;
 	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
 	return REVIEW_GUIDE[error_class] || "";
 }
@@ -431,7 +431,9 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		frm.set_df_property("payload", "read_only", inReview ? 0 : 1);
 
 		const clockSkew = Math.abs(frm.doc.clock_skew_seconds || 0);
-		if (clockSkew >= CLOCK_DRIFT_SECONDS) {
+		if (frm.doc.clock_not_measured) {
+			frm.set_intro(__("This came with no clock reading, so its date was only checked for being ahead of the server."), "orange");
+		} else if (clockSkew >= CLOCK_DRIFT_SECONDS) {
 			frm.set_intro(
 				__("The clock of this device was {0} minute(s) away from the server when it sent this.", [
 					Math.round(clockSkew / 60),

@@ -156,6 +156,7 @@
 										<div class="flex flex-col gap-3">
 											<CheckboxField
 												v-model="settings.allow_negative_stock"
+												:disabled="isManagerOnly('allow_negative_stock')"
 												:label="__('Allow Negative Stock')"
 												:description="__('Enable selling items even when stock reaches zero or below. Integrates with Back Office stock settings.')"
 											/>
@@ -297,11 +298,13 @@
 										<div class="flex flex-col gap-3">
 											<CheckboxField
 												v-model="settings.tax_inclusive"
+												:disabled="isManagerOnly('tax_inclusive')"
 												:label="__('Tax Inclusive')"
 												:description="__('When enabled, displayed prices include tax. When disabled, tax is calculated separately. Changes apply immediately to your cart when you save.')"
 											/>
 											<NumberField
 												v-model="settings.max_discount_allowed"
+												:disabled="isManagerOnly('max_discount_allowed')"
 												:label="__('Max Discount (%)')"
 												:description="__('Maximum discount per item')"
 												:min="0"
@@ -314,16 +317,19 @@
 											/>
 											<CheckboxField
 												v-model="settings.allow_user_to_edit_additional_discount"
+												:disabled="isManagerOnly('allow_user_to_edit_additional_discount')"
 												:label="__('Allow Additional Discount')"
 												:description="__('Enable invoice-level discount')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_user_to_edit_item_discount"
+												:disabled="isManagerOnly('allow_user_to_edit_item_discount')"
 												:label="__('Allow Item Discount')"
 												:description="__('Enable item-level discount in edit dialog')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_user_to_edit_rate"
+												:disabled="isManagerOnly('allow_user_to_edit_rate')"
 												:label="__('Allow User To Edit Rate')"
 												:description="__('Allow editing item rate in cart. Disabled when offers are applied.')"
 											/>
@@ -346,11 +352,13 @@
 										<div class="flex flex-col gap-3">
 											<CheckboxField
 												v-model="settings.allow_credit_sale"
+												:disabled="isManagerOnly('allow_credit_sale')"
 												:label="__('Allow Credit Sale')"
 												:description="__('Enable sales on credit')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_return"
+												:disabled="isManagerOnly('allow_return')"
 												:label="__('Allow Return')"
 												:description="__('Enable product returns')"
 											/>
@@ -361,6 +369,7 @@
 											/>
 											<CheckboxField
 												v-model="settings.allow_partial_payment"
+												:disabled="isManagerOnly('allow_partial_payment')"
 												:label="__('Allow Partial Payment')"
 												:description="__('Enable partial payment for invoices')"
 											/>
@@ -391,21 +400,25 @@
 											</div>
 											<CheckboxField
 												v-model="settings.disable_offline_coupons"
+												:disabled="isManagerOnly('disable_offline_coupons')"
 												:label="__('Disable Coupons While Offline')"
 												:description="__('Offline, a coupon can go over its limit. The sale is accepted and the overrun is recorded.')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_offline_returns"
+												:disabled="isManagerOnly('allow_offline_returns')"
 												:label="__('Allow Returns While Offline')"
 												:description="__('Refunds are paid before the server can confirm them.')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_offline_shift_close"
+												:disabled="isManagerOnly('allow_offline_shift_close')"
 												:label="__('Allow Closing the Shift While Offline')"
 												:description="__('The closing is finalized on the server once every invoice of the shift has arrived.')"
 											/>
 											<CheckboxField
 												v-model="settings.allow_offline_shift_open"
+												:disabled="isManagerOnly('allow_offline_shift_open')"
 												:label="__('Allow Opening the Shift While Offline')"
 												:description="__('The cashier can open a shift and sell with no connection. The shift is created on the server when the device connects.')"
 											/>
@@ -644,6 +657,9 @@ import { useQzTray } from "@/composables/useQzTray"
 
 
 const isDesktop = PLATFORM === ELECTRON
+
+/** The server refuses a change to these from anyone but a manager, so the screen says so first */
+const isManagerOnly = (fieldname) => (settings.value._manager_only_fields || []).includes(fieldname)
 
 const syncModeOptions = [
 	{ label: __("Realtime"), value: "Realtime" },

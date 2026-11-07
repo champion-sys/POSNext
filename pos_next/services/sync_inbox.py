@@ -14,10 +14,11 @@ import json
 import time
 from collections import namedtuple
 from contextlib import contextmanager
+from zoneinfo import ZoneInfo
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
+from frappe.utils import add_to_date, cint, flt, get_datetime, get_system_timezone, now_datetime
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
@@ -25,6 +26,7 @@ from pos_next.services.sync_classifier import (
     CashierUnavailableError,
     ClockSkewError,
     EditConflictError,
+    ReplacedByEditError,
     ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
@@ -135,16 +137,19 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
     serialized = frappe.as_json(payload, indent=1)
     pos_profile = get_item_profile(item)
     totals = item.get("client_totals") or {}
+    entity = item.get("entity") or ENTITY_INVOICE
+    cashier = _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile)
 
     return {
-        "entity": item.get("entity") or ENTITY_INVOICE,
+        "entity": entity,
         "invoice_doctype": payload.get("doctype") or "Sales Invoice",
         "pos_profile": _link_or_none("POS Profile", pos_profile),
         "customer": _link_or_none("Customer", payload.get("customer")),
-        "shift": _link_or_none("POS Opening Shift", sync_entities.get_server_shift(payload)),
-        "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
+        "shift": _link_or_none("POS Opening Shift", sync_entities.get_record_shift(entity, payload, cashier)),
+        "cashier": cashier,
         "uploaded_by": uploaded_by,
         "device_id": device_id,
+        "edited_from": _get_edited_from(item),
         "client_created_at": _parse_datetime(item.get("created_at_device")),
         "received_at": now_datetime(),
         "client_grand_total": flt(totals.get("grand_total", payload.get("grand_total"))),
@@ -154,11 +159,40 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "payload_hash": compute_payload_hash(payload),
         "coupon_code": payload.get("coupon_code"),
         "seq": cint(item.get("seq")),
-        "clock_skew_seconds": cint(item.get("clock_skew_seconds")),
+        **_clock_fields(item),
         "client_version": client_version,
         "protocol_version": cint(protocol_version),
         "depends_on": "\n".join(sync_entities.get_dependencies(payload, item.get("depends_on"))),
     }
+
+
+def _clock_fields(item):
+    """What a record says about its sender's clock. A reading is zero or more, so none is its own value.
+
+    With no reading, all that can be told is whether it claims a time still to come, which
+    no correct clock can do. A claim in the past proves nothing, and is left unjudged.
+    """
+    reading = item.get("clock_skew_seconds")
+    if reading is not None:
+        return {"clock_skew_seconds": cint(reading), "clock_not_measured": 0}
+
+    ahead = _seconds_ahead(item.get("created_at_device"))
+    return {"clock_skew_seconds": ahead if ahead >= MAX_CLOCK_SKEW_SECONDS else 0, "clock_not_measured": 1}
+
+
+def _seconds_ahead(created_at):
+    """How far past the server's clock a time lies. Compared as moments, since a device
+    in another time zone is not ahead."""
+    try:
+        moment = get_datetime(created_at) if created_at else None
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+    if not moment:
+        return 0
+    if not moment.tzinfo:
+        moment = moment.replace(tzinfo=ZoneInfo(get_system_timezone()))
+    return max(cint(moment.timestamp() - time.time()), 0)
 
 
 def _adopt_payload(name, fields):
@@ -188,15 +222,20 @@ def _holds_sale(offline_id):
     return bool(status and status != "Voided") or bool(find_invoice_by_offline_id(offline_id))
 
 
+def _get_edited_from(item):
+    """The sale a record replaced. An edit that kept the original's id is the original."""
+    original = item["payload"].get("edited_from")
+    return original if original and isinstance(original, str) and original != item["offline_id"] else None
+
+
 def _get_edit_conflict(item):
     """Spot an edit of a sale that already reached the server.
 
     A device offers an edit while it thinks the sale is unsent. If the push landed and only
-    its response was lost, the edit arrives under a new offline_id and both would post. An
-    edit that kept the original's id is the original, which the device replaced.
+    its response was lost, the edit arrives under a new offline_id and both would post.
     """
-    original = item["payload"].get("edited_from")
-    if isinstance(original, str) and original != item["offline_id"] and _holds_sale(original):
+    original = _get_edited_from(item)
+    if original and _holds_sale(original):
         return EditConflictError(
             _("This edits sale {0}, which the server already holds. A manager must decide which one stands.").format(
                 original
@@ -205,12 +244,36 @@ def _get_edit_conflict(item):
     return None
 
 
+def _get_replacing_edit(offline_id):
+    """The edit that replaced a sale, finished long ago or not.
+
+    A voided edit counts. The device retired the sale when it was edited, so a cashier who
+    voids the edit believes the sale is gone, and a copy from before must not bring it back.
+    """
+    return frappe.db.get_value(DOCTYPE, {"edited_from": offline_id}, "offline_id")
+
+
+def _hold_edit_conflict(name, item):
+    """Keep a record from posting beside the sale it replaced, or was replaced by."""
+    edit = _get_replacing_edit(item["offline_id"])
+    conflict = _get_edit_conflict(item) or (
+        EditConflictError(_("Edit {0} replaced this sale. A manager must decide which one stands.").format(edit))
+        if edit
+        else None
+    )
+    if conflict and frappe.db.get_value(DOCTYPE, name, "status", for_update=True) == "Received":
+        _handle_failure(name, 1, conflict, None, None)
+
+
 def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_version=1):
     """Store one record and commit, before anything can fail on its contents.
 
     Returns:
         tuple[str, bool]: The record name, and whether this payload conflicts with
             a different one already stored under the same offline_id
+
+    Raises:
+        ReplacedByEditError: When this is a sale the server holds an edit of
     """
     offline_id = item["offline_id"]
 
@@ -230,6 +293,10 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         conflict = bool(existing.payload_hash) and existing.payload_hash != payload_hash
         return existing.name, conflict
 
+    edit = _get_replacing_edit(offline_id)
+    if edit:
+        raise ReplacedByEditError(_("Edit {0} replaced this sale, so it was not stored.").format(edit))
+
     doc = frappe.get_doc(
         {
             "doctype": DOCTYPE,
@@ -248,11 +315,13 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
         return frappe.db.get_value(DOCTYPE, {"offline_id": offline_id}), False
 
     # In this transaction, so no worker can see the row before it is held back
-    edit_conflict = _get_edit_conflict(item)
-    if edit_conflict:
-        _handle_failure(doc.name, 1, edit_conflict, None, None)
-
+    _hold_edit_conflict(doc.name, item)
     frappe.db.commit()  # nosemgrep: the sale must survive anything that happens next
+
+    # A sale and its edit stored at the same moment cannot see each other until both commit.
+    # Whichever commits last sees the other here.
+    _hold_edit_conflict(doc.name, item)
+    frappe.db.commit()  # nosemgrep: release the row lock, and keep the hold
     return doc.name, False
 
 
@@ -420,14 +489,19 @@ def _assert_shift_open(row, payload, doctype):
 
 
 def _assert_device_clock(row):
-    """A wrong clock puts a sale on the wrong day, and nothing later would show it."""
-    if abs(cint(row.clock_skew_seconds)) < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
+    """A wrong clock puts a record on the wrong day, and nothing later would show it."""
+    skew = abs(cint(row.clock_skew_seconds))
+    if skew < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
         return
 
-    raise ClockSkewError(
-        _("The device clock was {0} hour(s) away from the server when this was sent").format(
-            flt(abs(cint(row.clock_skew_seconds)) / 3600, 1)
+    if cint(row.clock_not_measured):
+        raise ClockSkewError(
+            _("This record says it was made {0} hour(s) ahead of the server, and no clock reading came with it").format(
+                flt(skew / 3600, 1)
+            )
         )
+    raise ClockSkewError(
+        _("The device clock was {0} hour(s) away from the server when this was sent").format(flt(skew / 3600, 1))
     )
 
 
@@ -923,8 +997,12 @@ def apply_fix(name, fix, values):
         row.set(fix, 1)
     else:
         payload = sync_entities.load_payload(row)
+        named = sync_entities.get_local_names(payload)
         fixes[fix](payload, values)
         row.payload = frappe.as_json(payload, indent=1)
+        replaced = set(named) - set(sync_entities.get_local_names(payload))
+        if replaced:
+            _forget_dependencies(row, replaced)
         # The date is now a person's, so the clock it came from no longer matters
         if fix == "posting_date":
             row.accept_device_date = 1
@@ -935,6 +1013,12 @@ def apply_fix(name, fix, values):
     row.save(ignore_permissions=True)
     _log_attempt(name, f"fix: {fix}", message=frappe.as_json(values))
     return row
+
+
+def _forget_dependencies(row, replaced):
+    """Stop waiting for what a fix replaced. It may never arrive, which is why it was fixed."""
+    lines = [line for line in (row.depends_on or "").splitlines() if line.strip() not in replaced]
+    row.depends_on = "\n".join(lines)
 
 
 def _fix_posting_date(payload, values):
@@ -1040,6 +1124,7 @@ _FIXES = {
         "payment_mode": _fix_payment_mode,
         "payment_amount": _fix_payment_amount,
         "shift": _fix_shift,
+        "accept_device_date": None,
     },
     ENTITY_SHIFT_CLOSE: {
         "accept_unfinished": None,

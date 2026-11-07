@@ -7,6 +7,7 @@ These run on stand-ins for the database, so they prove the logic and nothing abo
 or ERPNext. docs/offline-multiplatform/03-sync-engine.md lists what a real site must show.
 """
 
+import inspect
 import json
 import unittest
 from datetime import datetime
@@ -20,6 +21,7 @@ from pos_next.services import sync_entities, sync_inbox, test_sync_entities, tes
 from pos_next.services.sync_classifier import (
     BUSINESS,
     LinkedShiftCloseError,
+    NotShiftHolderError,
     OfflineShiftNotAllowedError,
     ShiftConflictError,
     ShiftOutdatedError,
@@ -37,6 +39,7 @@ CLOSE = test_sync_flow.CLOSE
 PAYMENT = test_sync_flow.PAYMENT
 
 CASHIER = "cashier@example.com"
+COLLEAGUE = "colleague@example.com"
 
 OPENING = {
     "doctype": "POS Opening Shift",
@@ -90,21 +93,6 @@ class ShiftInbox(test_sync_flow.FakeInbox):
         return super().exists(doctype, name)
 
 
-class RowDocument:
-    """A stored record, as the review actions load and save it."""
-
-    def __init__(self, row):
-        self.__dict__.update(row)
-        self.flags = frappe._dict()
-        self._row = row
-
-    def set(self, fieldname, value):
-        setattr(self, fieldname, value)
-
-    def save(self, **_kwargs):
-        self._row.update({key: value for key, value in vars(self).items() if key not in ("flags", "_row")})
-
-
 class ShiftFlow(test_sync_flow.Flow):
     inbox_class = ShiftInbox
 
@@ -123,7 +111,7 @@ class ShiftFlow(test_sync_flow.Flow):
 
     def _new_document(self, values, name=None):
         if values == DOCTYPE:
-            return RowDocument(self._row(name))
+            return test_sync_flow.RowDocument(self._row(name))
         if values == "POS Opening Shift":
             return self.inbox.opening_shifts[name]
         if isinstance(values, str):
@@ -368,6 +356,122 @@ class TestItsRecords(ShiftFlow):
         self.assertEqual(row.status, sync_inbox.REVIEW)
         self.assertEqual(row.error_code, "LinkedShiftCloseError")
 
+    def _close_record(self, shift=LOCAL_SHIFT, **kwargs):
+        return self._send(CLOSE, {"pos_opening_shift": shift, "pos_profile": "Main"}, "shift_close", **kwargs)
+
+    def _link_to_colleague(self):
+        name = self._refused()
+        self.inbox.opening_shifts["POSA-OS-OPEN"].user = COLLEAGUE
+        self._link(name, "POSA-OS-OPEN")
+        return name
+
+    def _sees_the_shift(self):
+        return not sync_entities.has_pending_close("POSA-OS-OPEN")
+
+    def test_a_close_stored_before_the_link_stays_off_the_linked_shift(self):
+        close = self._close_record()
+
+        self._link_to_colleague()
+
+        self.assertIsNone(self._row(close).shift)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_stored_after_the_link_stays_off_it_too(self):
+        self._link_to_colleague()
+
+        close = self._close_record()
+
+        self.assertIsNone(self._row(close).shift)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_the_sales_of_that_device_still_go_to_the_linked_shift(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        close = self._close_record(depends_on=[SALE])
+
+        self._link_to_colleague()
+
+        self.assertEqual(self._row(sale).shift, "POSA-OS-OPEN")
+        self.assertIsNone(self._row(close).shift)
+
+    def test_the_shift_can_take_another_link_with_that_close_in_review(self):
+        close = self._close_record()
+        self._link_to_colleague()
+        sync_inbox.sweep()
+        self._close_it(close)
+
+        sync_entities.assert_can_take_sales("POSA-OS-OPEN", "Main")
+
+    def test_a_close_attached_before_this_fix_stops_freezing_the_shift_once_refused(self):
+        close = self._close_record()
+        self._link_to_colleague()
+        self._row(close)["shift"] = "POSA-OS-OPEN"
+        self.assertFalse(self._sees_the_shift())
+
+        sync_inbox.sweep()
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).error_code, "LinkedShiftCloseError")
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_that_can_still_finish_keeps_the_shift_from_its_holder(self):
+        self._add_shift("POSA-OS-OPEN")
+        close = self._close_record("POSA-OS-OPEN")
+        self._row(close).update({"status": sync_inbox.REVIEW, "error_code": "WaitingForDependencyError"})
+
+        self.assertFalse(self._sees_the_shift())
+
+    def test_a_finished_close_is_not_pending(self):
+        self._add_shift("POSA-OS-OPEN")
+        self._row(self._close_record("POSA-OS-OPEN"))["status"] = "Synced"
+
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_device_that_took_a_colleagues_shift_cannot_close_it_with_its_own_count(self):
+        self._link_to_colleague()
+        close = self._close_record("POSA-OS-OPEN")
+
+        self.assertIsNone(self._row(close).shift)
+        self._close_it(close)
+
+        self.submit_close.assert_not_called()
+        row = self._row(close)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "NotShiftHolderError")
+        self.assertIn(COLLEAGUE, row.error_message)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_attached_to_a_colleagues_shift_stops_freezing_it_once_refused(self):
+        self._link_to_colleague()
+        close = self._close_record("POSA-OS-OPEN")
+        self._row(close)["shift"] = "POSA-OS-OPEN"
+
+        self._close_it(close)
+
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_device_on_its_own_linked_shift_may_close_it(self):
+        name = self._refused()
+        self._link(name, "POSA-OS-OPEN")
+        self.inbox.opening_shifts["POSA-OS-OPEN"].as_dict = lambda: {"name": "POSA-OS-OPEN"}
+        close = self._close_record("POSA-OS-OPEN")
+
+        self.assertEqual(self._row(close).shift, "POSA-OS-OPEN")
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).status, "Synced")
+
+    def test_the_holder_closes_their_own_shift_as_before(self):
+        self._add_shift("POSA-OS-OPEN")
+        self.inbox.opening_shifts["POSA-OS-OPEN"].as_dict = lambda: {"name": "POSA-OS-OPEN"}
+        close = self._close_record("POSA-OS-OPEN")
+
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).status, "Synced")
+
+    def test_a_shift_that_never_was_stays_unattached(self):
+        self.assertIsNone(self._row(self._close_record("POSA-OS-GONE")).shift)
+
     def test_a_later_shift_waits_for_the_close_before_it(self):
         close = self._send(CLOSE, {"pos_opening_shift": "POSA-OS-OLD", "pos_profile": "Main"}, "shift_close")
         later = self._send(LATER_SHIFT, {**OPENING, "offline_id": LATER_SHIFT}, "shift_open", depends_on=[CLOSE])
@@ -515,6 +619,76 @@ class TestTheManagersLink(ShiftFlow):
             sync_inbox.link_existing_invoice(name, "POSA-OS-OPEN", "POS Opening Shift", "By hand")
 
 
+class TestAFixReplacesWhatTheRecordWaitedFor(ShiftFlow):
+    """A shift or a customer that never reached the server, so a person chose another."""
+
+    def _stuck(self, payload, **kwargs):
+        name = self._send(SALE, payload, **kwargs)
+        self._post(name)
+        self._age(name)
+        sync_inbox.sweep()
+        self.assertEqual(self._row(name).status, sync_inbox.REVIEW)
+        return name
+
+    def _reprocess(self, name):
+        with patch("pos_next.services.invoice_processor.process_invoice") as self.process_invoice:
+            self.process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}
+            sync_inbox.reprocess(name)
+            sync_inbox.sweep()
+
+    def test_change_shift_rescues_a_sale_whose_opening_never_came(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck(SALE_PAYLOAD)
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+        self._reprocess(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+        self.assertEqual(self.process_invoice.call_args.args[0]["posa_pos_opening_shift"], "POSA-OS-OPEN")
+
+    def test_change_customer_rescues_a_sale_whose_customer_never_came(self):
+        name = self._stuck({"pos_profile": "Main", "customer": test_sync_flow.LOCAL_CUSTOMER})
+
+        sync_inbox.apply_fix(name, "customer", {"customer": "Walk-in"})
+        self._reprocess(name)
+
+        self.assertEqual(self._row(name).status, "Synced")
+        self.assertEqual(self.process_invoice.call_args.args[0]["customer"], "Walk-in")
+
+    def test_it_keeps_waiting_for_what_the_fix_did_not_replace(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck({**SALE_PAYLOAD, "customer": test_sync_flow.LOCAL_CUSTOMER})
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, test_sync_flow.LOCAL_CUSTOMER)
+
+    def test_a_declared_dependency_that_is_not_in_the_payload_stays(self):
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck(SALE_PAYLOAD, depends_on=[PAYMENT])
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, PAYMENT)
+
+    def test_a_fix_that_replaces_nothing_it_waited_for_changes_nothing(self):
+        name = self._stuck(SALE_PAYLOAD)
+
+        sync_inbox.apply_fix(name, "customer", {"customer": "Walk-in"})
+
+        self.assertEqual(self._row(name).depends_on, LOCAL_SHIFT)
+
+    def test_a_payment_can_be_moved_off_a_shift_that_never_came(self):
+        self._add_shift("POSA-OS-OPEN")
+        payload = {"invoice_name": "SINV-1", "pos_profile": "Main", "posa_pos_opening_shift": LOCAL_SHIFT}
+        name = self._send(PAYMENT, payload, "payment")
+        self._row(name).update({"status": sync_inbox.REVIEW})
+
+        sync_inbox.apply_fix(name, "shift", {"shift": "POSA-OS-OPEN"})
+
+        self.assertEqual(self._row(name).depends_on, "")
+
+
 class TestOpenShiftHandler(test_sync_entities.NoSiteTestCase):
     def _settings(self, allowed=1, invoice_type="Sales Invoice"):
         frappe.local.db.get_value.return_value = frappe._dict(
@@ -655,18 +829,39 @@ class TestOnlinePath(test_sync_entities.NoSiteTestCase):
         self._insert()
         self.document.set.assert_called_once_with("balance_details", [{"mode_of_payment": "Cash", "amount": 5}])
 
-    def test_create_opening_shift_still_answers_with_the_three_documents(self):
-        shift = Mock()
+    def _create(self):
+        self.shift = Mock()
         with (
-            patch("pos_next.api.shifts.insert_opening_shift", return_value=shift) as insert,
+            patch("pos_next.api.shifts.insert_opening_shift", return_value=self.shift) as self.create,
             patch("pos_next.api.shifts.frappe.get_doc", side_effect=lambda doctype, name: f"{doctype} {name}"),
         ):
-            data = shifts.create_opening_shift("Main", "Acme", '[{"mode_of_payment": "Cash", "opening_amount": 5}]')
+            return shifts.create_opening_shift("Main", "Acme", '[{"mode_of_payment": "Cash", "opening_amount": 5}]')
 
-        insert.assert_called_once_with("Main", "Acme", [{"mode_of_payment": "Cash", "opening_amount": 5}])
-        self.assertEqual(data["pos_opening_shift"], shift.as_dict())
+    def test_create_opening_shift_still_answers_with_the_three_documents(self):
+        with patch("pos_next.api.invoices._assert_invoice_write_access"):
+            data = self._create()
+
+        self.create.assert_called_once_with("Main", "Acme", [{"mode_of_payment": "Cash", "opening_amount": 5}])
+        self.assertEqual(data["pos_opening_shift"], self.shift.as_dict())
         self.assertEqual(data["pos_profile"], "POS Profile Main")
         self.assertEqual(data["company"], "Company Acme")
+
+    def test_someone_outside_the_profile_opens_nothing_and_reads_nothing(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access", side_effect=frappe.PermissionError) as access,
+            self.assertRaises(frappe.PermissionError),
+        ):
+            self._create()
+
+        access.assert_called_once_with("Sales Invoice", "Main")
+        self.create.assert_not_called()
+
+    def test_the_role_for_closing_does_not_stop_a_cashier_opening(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.shifts.assert_may_close_shift", side_effect=frappe.PermissionError),
+        ):
+            self.assertIn("pos_opening_shift", self._create())
 
     def test_a_cashier_with_a_shift_is_refused_with_the_stable_code(self):
         with patch("pos_next.api.shifts.check_opening_shift", return_value={"pos_opening_shift": Mock()}):
@@ -694,11 +889,25 @@ class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
                 POSOpeningShift.validate_no_other_active_shift(shift)
 
     def test_each_refusal_needs_a_person_and_keeps_its_name(self):
-        for exc in (ShiftConflictError, ShiftOutdatedError, OfflineShiftNotAllowedError, LinkedShiftCloseError):
+        for exc in (
+            ShiftConflictError,
+            ShiftOutdatedError,
+            OfflineShiftNotAllowedError,
+            LinkedShiftCloseError,
+            NotShiftHolderError,
+        ):
             result = classify(exc("No"))
             self.assertEqual(result.error_class, BUSINESS)
             self.assertEqual(result.error_code, exc.__name__)
             self.assertIsNone(next_retry_minutes(result.error_class, 1))
+
+    def test_the_form_guides_a_manager_past_both_refusals_of_a_close(self):
+        with open(frappe.get_app_path("pos_next", "pos_next", "doctype", "offline_invoice_sync", "offline_invoice_sync.js"), encoding="utf-8") as handle:
+            form = handle.read()
+
+        for code in sync_entities.CLOSE_REFUSALS:
+            self.assertIn(f'error_code === "{code}"', form)
+        self.assertNotIn("Close the open shift from the POS", form)
 
     def test_the_online_path_still_sees_a_validation_error(self):
         self.assertTrue(issubclass(ShiftConflictError, frappe.ValidationError))
@@ -723,6 +932,24 @@ class TestSchema(unittest.TestCase):
         self.assertEqual(field["unique"], 1)
         self.assertEqual(field["no_copy"], 1)
         self.assertIn("offline_id", doctype["field_order"])
+
+    def _inbox_field(self, fieldname):
+        doctype = self._fields(("pos_next", "doctype", "offline_invoice_sync", "offline_invoice_sync.json"))
+        self.assertIn(fieldname, doctype["field_order"])
+        return next(field for field in doctype["fields"] if field["fieldname"] == fieldname)
+
+    def test_the_link_from_an_edit_is_indexed_so_both_sides_can_look_it_up(self):
+        field = self._inbox_field("edited_from")
+        self.assertEqual(field["fieldtype"], "Data")
+        self.assertEqual(field["search_index"], 1)
+
+    def test_retention_erases_the_payload_and_not_the_link(self):
+        from pos_next.services import sync_retention
+
+        self.assertNotIn("edited_from", json.dumps(inspect.getsource(sync_retention)))
+
+    def test_no_reading_has_a_field_of_its_own_because_the_int_column_cannot_hold_null(self):
+        self.assertEqual(self._inbox_field("clock_not_measured")["fieldtype"], "Check")
 
     def test_the_setting_is_off_unless_someone_turns_it_on(self):
         doctype = self._fields(("pos_next", "doctype", "pos_settings", "pos_settings.json"))
