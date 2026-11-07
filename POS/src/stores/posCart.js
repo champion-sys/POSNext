@@ -1377,8 +1377,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	 * @param {string} itemCode - Item code
 	 * @param {Object} updates - Updated details
 	 * @param {string|null} currentUom - Current UOM (required when same item has multiple UOMs)
+	 * @param {{silent?: boolean}} [options] - silent leaves out the success message, for
+	 *   edits made in the cart's own rows. Failures always show.
 	 */
-	async function updateItemDetails(itemCode, updates, currentUom = null) {
+	async function updateItemDetails(itemCode, updates, currentUom = null, { silent = false } = {}) {
 		try {
 			const cartItem = findCartItem(itemCode, currentUom)
 			if (!cartItem) {
@@ -1445,7 +1447,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 			recalculateItem(cartItem)
 			rebuildIncrementalCache()
-			showSuccess(__("{0} updated", [cartItem.item_name]))
+			if (!silent) showSuccess(__("{0} updated", [cartItem.item_name]))
 			return true
 		} catch (error) {
 			console.error("Error updating item:", error)

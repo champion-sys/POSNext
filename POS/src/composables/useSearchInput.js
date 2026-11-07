@@ -1,5 +1,6 @@
 import { ref, watch, nextTick, onUnmounted } from "vue"
 import { QueuedMutex } from "@/utils/mutex"
+import { BARCODE_SCANNED_EVENT } from "@/utils/scanBurst"
 
 // ---- localStorage persistence ----
 // Scanner/auto-add are device traits, not account settings: one till has a
@@ -27,6 +28,60 @@ function _saveFlag(key, value) {
 	} catch {
 		// localStorage unavailable
 	}
+}
+
+/**
+ * Look a barcode up and pass the item on, or say it was not found.
+ *
+ * @param {Object} scan
+ * @param {string} scan.barcode
+ * @param {boolean} scan.autoAdd - Add without asking the cashier
+ * @param {Object} scan.itemStore - Pinia item-search store
+ * @param {(item: Object, autoAdd: boolean) => *} scan.onItemFound
+ * @param {(message: string) => void} scan.showWarning
+ */
+async function addScannedItem({ barcode, autoAdd, itemStore, onItemFound, showWarning }) {
+	try {
+		const item = await itemStore.searchByBarcode(barcode)
+		if (item) {
+			onItemFound(item, autoAdd)
+			return
+		}
+	} catch (error) {
+		console.error("Barcode API error:", error)
+	}
+
+	// Barcode not found — show clear "not found" message.
+	// Note: we cannot fall back to filteredItems here because
+	// clearSearch() was called before the API request, so
+	// filteredItems would contain ALL cached items (not search results).
+	showWarning(__('Item Not Found: No item found with barcode: {0}', [barcode]))
+}
+
+/**
+ * Add a scan forwarded from a cart field while the item search is not on screen, which
+ * is the cart tab of a narrow device.
+ *
+ * @param {Object} options
+ * @param {() => boolean} options.hasItemSearch - Whether the item search is mounted
+ * @param {Object} options.itemStore - Pinia item-search store
+ * @param {(item: Object, autoAdd: boolean) => *} options.onItemFound
+ * @param {(message: string) => void} options.showWarning
+ */
+export function useScanWithoutSearch({ hasItemSearch, itemStore, onItemFound, showWarning }) {
+	function handleForwardedScan(event) {
+		if (hasItemSearch()) return
+		addScannedItem({
+			barcode: event.detail.barcode,
+			autoAdd: _loadFlag(AUTO_ADD_ENABLED_KEY),
+			itemStore,
+			onItemFound,
+			showWarning,
+		})
+	}
+
+	window.addEventListener(BARCODE_SCANNED_EVENT, handleForwardedScan)
+	onUnmounted(() => window.removeEventListener(BARCODE_SCANNED_EVENT, handleForwardedScan))
 }
 
 /**
@@ -227,25 +282,10 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 	 * @param {boolean} forceAutoAdd - When true, item is added without user click
 	 */
 	function processBarcodeScan(barcode, forceAutoAdd) {
-		const shouldAutoAdd = forceAutoAdd || (scannerEnabled.value && autoAddEnabled.value)
+		const autoAdd = forceAutoAdd || (scannerEnabled.value && autoAddEnabled.value)
 
 		barcodeQueue.withLock(async () => {
-			try {
-				const item = await itemStore.searchByBarcode(barcode)
-				if (item) {
-					onItemFound(item, shouldAutoAdd)
-					focusSearchInput()
-					return
-				}
-			} catch (error) {
-				console.error("Barcode API error:", error)
-			}
-
-			// Barcode not found — show clear "not found" message.
-			// Note: we cannot fall back to filteredItems here because
-			// clearSearch() was called before the API request, so
-			// filteredItems would contain ALL cached items (not search results).
-			showWarning(__('Item Not Found: No item found with barcode: {0}', [barcode]))
+			await addScannedItem({ barcode, autoAdd, itemStore, onItemFound, showWarning })
 			focusSearchInput()
 		})
 	}
@@ -318,8 +358,15 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 		focusSearchInput()
 	}
 
+	// A scan that arrived while focus sat in a cart field. Handled as if typed here.
+	function handleForwardedScan(event) {
+		clearAutoSearchTimer()
+		processBarcodeScan(event.detail.barcode, autoAddEnabled.value)
+	}
+
 	window.addEventListener("pos-next:dialog-closed", handleUntrackedDialogClosed)
 	window.addEventListener("focus", handleWindowFocus)
+	window.addEventListener(BARCODE_SCANNED_EVENT, handleForwardedScan)
 
 	// ---- Cleanup ----
 	function cleanup() {
@@ -330,6 +377,7 @@ export function useSearchInput({ itemStore, onItemFound, showWarning, isAnyDialo
 			handleUntrackedDialogClosed,
 		)
 		window.removeEventListener("focus", handleWindowFocus)
+		window.removeEventListener(BARCODE_SCANNED_EVENT, handleForwardedScan)
 		stopPersistWatcher()
 		stopDialogWatcher()
 	}

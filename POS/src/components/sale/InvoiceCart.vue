@@ -62,7 +62,7 @@
   ============================================================================
 -->
 <template>
-	<div class="flex flex-col h-full">
+	<div ref="cartRoot" class="flex flex-col h-full">
 		<!-- Header with Customer -->
 		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0 flex items-center gap-2 w-full">
 			<div class="flex-1 min-w-0">
@@ -395,6 +395,11 @@
 			<div class="flex items-center justify-between mb-0">
 				<h2 class="text-base font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
 				<div class="flex items-center gap-2">
+					<CartViewSwitch
+						:active="activeCartView"
+						:table-available="tableAvailable"
+						@select="setCartView"
+					/>
 					<!-- Clear Cart Button -->
 					<button
 						@click="$emit('clear-cart')"
@@ -495,6 +500,10 @@
 					</div>
 				</div>
 			</div>
+
+			<p v-if="cartView === CART_VIEW_TABLE && !tableAvailable" class="pb-1 text-xs text-gray-700">
+				{{ __("The table needs a wider cart, so this is the compact view.") }}
+			</p>
 
 			<!-- Offers & Coupon Buttons -->
 			<div v-if="settingsStore.showOffers || settingsStore.showCoupon" class="flex gap-2">
@@ -772,11 +781,38 @@
 				</div>
 			</div>
 
+			<CartItemsTable
+				v-else-if="activeCartView === CART_VIEW_TABLE"
+				:items="sortedItems"
+				:settings="settingsStore"
+				:currency="currency"
+				:focused-index="focusedCartItemIndex"
+				:format-quantity="formatQuantity"
+				:format-amount="formatAmount"
+				@edit-line="handleLineEdit"
+				@change-unit="handleLineUnitChange"
+				@open-dialog="openEditDialog"
+				@remove="(item) => emit('remove-item', item.item_code, item.uom)"
+				@row-click="(index) => (focusedCartItemIndex = index)"
+			/>
+
+			<CartCompactList
+				v-else-if="activeCartView === CART_VIEW_COMPACT"
+				:items="sortedItems"
+				:settings="settingsStore"
+				:focused-index="focusedCartItemIndex"
+				:format-quantity="formatQuantity"
+				:format-amount="formatAmount"
+				@row-click="handleCartItemRowClick"
+				@increase="incrementQuantity"
+				@decrease="decrementQuantity"
+				@commit-quantity="handleLineQuantity"
+			/>
+
 			<div v-else class="flex flex-col border-t border-black divide-y divide-gray-200">
 				<div
 					v-for="(item, index) in sortedItems"
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
-					ref="cartItemRefs"
 					@click.stop="handleCartItemRowClick(item, index)"
 					:class="[
 						'cart-item-row px-3 py-2 transition-all items-center duration-75 flex gap-3 cursor-pointer group select-none border-s-4',
@@ -1263,6 +1299,7 @@ import { useBootstrapStore } from "@/stores/bootstrap"
 import {
 	DEFAULT_CURRENCY,
 	formatCurrency as formatCurrencyUtil,
+	formatCurrencyNumber,
 } from "@/utils/currency"
 import { useFormatters } from "@/composables/useFormatters"
 import { useCartSort } from "@/composables/useCartSort"
@@ -1275,8 +1312,19 @@ import { FeatherIcon } from "frappe-ui"
 const log = logger.create("InvoiceCart")
 import { createResource } from "frappe-ui"
 import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect, nextTick } from "vue"
+import CartCompactList from "./CartCompactList.vue"
+import CartItemsTable from "./CartItemsTable.vue"
+import CartViewSwitch from "./CartViewSwitch.vue"
 import EditItemDialog from "./EditItemDialog.vue"
+import {
+	CART_VIEW_CARDS,
+	CART_VIEW_COMPACT,
+	CART_VIEW_TABLE,
+	useCartView,
+} from "@/composables/useCartView"
+import { normalizeQuantity } from "@/utils/cartItemEdit"
 const cartContainer = ref(null)
+const cartRoot = ref(null)
 import OrderType from "./OrderType.vue"
 import TableSelector from "./TableSelector.vue"
 
@@ -1293,6 +1341,7 @@ const customerSearchStore = useCustomerSearchStore() // Pinia store for customer
 const shiftStore = usePOSShiftStore() // Pinia store for shift details
 const bootstrapStore = useBootstrapStore()
 const { formatQuantity } = useFormatters() // Quantity formatting utilities
+const { cartView, activeCartView, tableAvailable, setCartView } = useCartView(cartRoot)
 
 function handleProceedToPayment() {
 	emit("proceed-to-payment")
@@ -1451,7 +1500,6 @@ const previousCustomer = ref(null) // Store previous customer for restore on blu
 const showEditDialog = ref(false) // Controls edit dialog visibility
 const selectedItem = ref(null) // Item being edited
 const focusedCartItemIndex = ref(-1) // Tracks highlighted cart item index for keyboard shortcuts
-const cartItemRefs = ref([]) // Array of DOM element refs for cart item rows
 
 // UOM dropdown state - tracks which item's UOM dropdown is open (by item_code)
 const openUomDropdown = ref(null)
@@ -1936,6 +1984,16 @@ function formatCurrency(amount) {
 	)
 }
 
+/**
+ * Format an amount without its currency, for rows where the header carries it.
+ *
+ * @param {Number} amount - Amount to format
+ * @returns {String} Formatted number
+ */
+function formatAmount(amount) {
+	return formatCurrencyNumber(Number.parseFloat(amount || 0), undefined, settingsStore.decimalPrecision)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Quantity Control Functions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2139,6 +2197,41 @@ async function handleUpdateItem(updatedItem) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Editing In The Line
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Apply an edit from the compact or table view, through the same store action as the
+ * edit dialog. Saving every field must not raise a toast every time.
+ *
+ * @param {Object} item - Cart line
+ * @param {Object} updates - Changed fields
+ */
+function handleLineEdit(item, updates) {
+	return cartStore.updateItemDetails(item.item_code, updates, item.uom, { silent: true })
+}
+
+function handleLineQuantity(item, typed) {
+	const quantity = normalizeQuantity(typed)
+	if (quantity !== null && quantity !== item.quantity) {
+		handleLineEdit(item, { quantity })
+	}
+}
+
+async function handleLineUnitChange(item, unit) {
+	await selectUom(item, unit)
+	// The row is rebuilt under the new unit, so its field is gone. This is the signal
+	// that puts a scanning till back in the item search.
+	window.dispatchEvent(new CustomEvent("pos-next:dialog-closed"))
+}
+
+function focusLineField(index, selector) {
+	const field = cartContainer.value?.querySelector(`[data-line="${index}"] ${selector}`)
+	field?.focus()
+	return Boolean(field)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Event Handlers & Lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2263,7 +2356,8 @@ function handleQuickActionKeyDown(event) {
 
 function scrollFocusedCartItemIntoView() {
 	nextTick(() => {
-		const el = cartItemRefs.value[focusedCartItemIndex.value]
+		const rows = cartContainer.value?.querySelectorAll(".cart-item-row")
+		const el = rows?.[focusedCartItemIndex.value]
 		if (el) {
 			el.scrollIntoView({ block: "nearest", behavior: "smooth" })
 		}
@@ -2447,6 +2541,9 @@ function handleGlobalShortcutKeyDown(event) {
 			if (event.key === "Enter") {
 				if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
 				event.preventDefault()
+				if (activeCartView.value === CART_VIEW_TABLE && focusLineField(focusedCartItemIndex.value, "input")) {
+					return
+				}
 				if (!focusedItem.is_free_item) {
 					openEditDialog(focusedItem)
 				}
@@ -2454,7 +2551,14 @@ function handleGlobalShortcutKeyDown(event) {
 			}
 			if (event.key.toLowerCase() === "u" || event.key === " ") {
 				event.preventDefault()
-				if (!focusedItem.is_resolved_barcode && focusedItem.item_uoms && focusedItem.item_uoms.length > 0) {
+				if (activeCartView.value === CART_VIEW_TABLE) {
+					focusLineField(focusedCartItemIndex.value, "select")
+				} else if (
+					activeCartView.value === CART_VIEW_CARDS &&
+					!focusedItem.is_resolved_barcode &&
+					focusedItem.item_uoms &&
+					focusedItem.item_uoms.length > 0
+				) {
 					toggleUomDropdown(focusedItem.item_code, focusedItem.uom)
 				}
 				return
