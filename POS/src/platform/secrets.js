@@ -21,6 +21,9 @@ const MISSING_ITEM = /does not exist/i
  * Adapter for capacitor-secure-storage-plugin, which keeps its key in the Android Keystore.
  * The plugin rejects when asked for a key it does not hold, and only that means "empty":
  * any other failure must not look like a device that was never enrolled.
+ *
+ * Its set reports success even when the Keystore failed, so a write counts only once the
+ * value reads back.
  * @param {{get: Function, set: Function, remove: Function}} plugin
  * @returns {SecretStore}
  */
@@ -30,9 +33,16 @@ export function androidSecretStore(plugin) {
 		return null
 	}
 
+	const get = (key) => plugin.get({ key }).then(({ value }) => value, ignoreMissing)
+
 	return {
-		get: (key) => plugin.get({ key }).then(({ value }) => value, ignoreMissing),
-		set: (key, value) => plugin.set({ key, value }).then(() => undefined),
+		get,
+		set: async (key, value) => {
+			await plugin.set({ key, value })
+			if ((await get(key)) !== value) {
+				throw new Error(__("This system cannot store secrets safely"))
+			}
+		},
 		remove: (key) =>
 			plugin.remove({ key }).then(() => undefined, ignoreMissing),
 	}

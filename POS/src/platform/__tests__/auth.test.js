@@ -4,6 +4,7 @@ import { androidSecretStore } from "../secrets"
 
 const local = vi.hoisted(() => ({
 	getOfflineInvoiceCount: vi.fn(),
+	listUnconfirmedRows: vi.fn(),
 	clearCachedData: vi.fn(),
 	clearOffersCache: vi.fn(),
 	clearShift: vi.fn(),
@@ -106,7 +107,7 @@ beforeEach(async () => {
 	online = true
 	replies = {}
 	store = memoryStore()
-	local.getOfflineInvoiceCount.mockReset().mockResolvedValue(0)
+	local.listUnconfirmedRows.mockReset().mockResolvedValue([])
 	local.clearCachedData.mockReset().mockResolvedValue({ success: true })
 	local.clearOffersCache.mockReset().mockResolvedValue({ success: true })
 	local.clearShift.mockReset().mockResolvedValue(undefined)
@@ -239,6 +240,32 @@ describe("enrollDevice", () => {
 		expect(fetch).not.toHaveBeenCalled()
 	})
 
+	it("does not spend the code if the Android plugin only pretended to keep the token", async () => {
+		// What PasswordStorageHelper does when the Keystore fails: it logs and reports success
+		store = androidSecretStore({
+			get: () => Promise.reject(new Error("Item with given key does not exist")),
+			set: async () => ({ value: true }),
+		})
+		await auth.loadCredentials(store)
+
+		await expect(enroll()).rejects.toMatchObject({ code: "secret_store" })
+
+		expect(fetch).not.toHaveBeenCalled()
+		expect(auth.isEnrolled()).toBe(false)
+	})
+
+	it("is not enrolled if the new token could not be kept", async () => {
+		const set = store.set
+		let writes = 0
+		store.set = (key, value) =>
+			++writes === 1 ? set(key, value) : Promise.reject(new Error("keystore lost"))
+
+		await expect(enroll()).rejects.toMatchObject({ code: "secret_store" })
+
+		expect(runtime.getDeviceToken()).toBeFalsy()
+		expect(auth.isEnrolled()).toBe(false)
+	})
+
 	it("stays unenrolled when the server refuses, and shows why", async () => {
 		replies["pos_next.api.device.enroll"] = () =>
 			refusal(
@@ -368,14 +395,14 @@ describe("enrolling with another server", () => {
 		await enroll()
 		await signIn()
 		fetch.mockClear()
-		local.getOfflineInvoiceCount.mockClear()
+		local.listUnconfirmedRows.mockClear()
 		local.clearCachedData.mockClear()
 		local.clearOffersCache.mockClear()
 		local.clearShift.mockClear()
 	})
 
 	it("refuses while sales wait, and keeps the code and everything else", async () => {
-		local.getOfflineInvoiceCount.mockResolvedValue(3)
+		local.listUnconfirmedRows.mockResolvedValue([{}, {}, {}])
 
 		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "unsent_sales" })
 
@@ -415,7 +442,7 @@ describe("enrolling with another server", () => {
 	})
 
 	it("keeps everything when it is the same server", async () => {
-		local.getOfflineInvoiceCount.mockResolvedValue(3)
+		local.listUnconfirmedRows.mockResolvedValue([{}, {}, {}])
 
 		await enrollWith(SERVER)
 
@@ -449,13 +476,26 @@ describe("enrolling with another server", () => {
 		expect(enrollCalls()).toEqual([])
 	})
 
-	it("catches sales a failed read hid the first time", async () => {
-		local.getOfflineInvoiceCount.mockResolvedValueOnce(0).mockResolvedValueOnce(2)
+	it("refuses to move when the queue cannot be read, and clears nothing", async () => {
+		local.listUnconfirmedRows.mockRejectedValue(new Error("database closed"))
 
-		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "unsent_sales" })
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "queue_unreadable" })
 
+		expect(local.clearCachedData).not.toHaveBeenCalled()
 		expect(enrollCalls()).toEqual([])
 		expect(runtime.getServerUrl()).toBe(SERVER)
+	})
+
+	it("does not take the real store's failing database for an empty queue", async () => {
+		const { createNativeStore } = await vi.importActual("../store/native")
+		const failing = createNativeStore(() => Promise.reject(new Error("cannot open")))
+		local.getOfflineInvoiceCount.mockImplementation(failing.getOfflineInvoiceCount)
+		local.listUnconfirmedRows.mockImplementation(failing.listUnconfirmedRows)
+
+		await expect(enrollWith(OTHER)).rejects.toMatchObject({ code: "queue_unreadable" })
+
+		expect(await failing.getOfflineInvoiceCount()).toBe(0)
+		expect(enrollCalls()).toEqual([])
 	})
 })
 
@@ -467,7 +507,7 @@ describe("enrolling for the first time", () => {
 	})
 
 	it("refuses sales it can no longer say which server they belong to", async () => {
-		local.getOfflineInvoiceCount.mockResolvedValue(1)
+		local.listUnconfirmedRows.mockResolvedValue([{}])
 
 		await expect(enroll()).rejects.toMatchObject({ code: "unsent_sales" })
 	})
