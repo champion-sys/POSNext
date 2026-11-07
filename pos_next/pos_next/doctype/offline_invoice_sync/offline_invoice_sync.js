@@ -24,7 +24,7 @@ const OFFLINE_SHIFT_GUIDE = __(
 );
 
 const LINKED_CLOSE_GUIDE = __(
-	"This close counted the shift of the device only, and that shift was linked to another open shift. Close the open shift from the POS and add this count to it, then void this record.",
+	"This close counted the drawer of one device, so it cannot close the shift it names, which stays open for the cashier who holds it. When that shift closes, add this count to its closing amounts, then void this record.",
 );
 
 const REVIEW_GUIDE = {
@@ -407,7 +407,7 @@ function getReviewGuide(frm, canReview) {
 	if (error_code === "ShiftConflictError") return SHIFT_CONFLICT_GUIDE;
 	if (error_code === "ShiftOutdatedError") return SHIFT_OUTDATED_GUIDE;
 	if (error_code === "OfflineShiftNotAllowedError") return OFFLINE_SHIFT_GUIDE;
-	if (error_code === "LinkedShiftCloseError") return LINKED_CLOSE_GUIDE;
+	if (error_code === "LinkedShiftCloseError" || error_code === "NotShiftHolderError") return LINKED_CLOSE_GUIDE;
 	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
 	return REVIEW_GUIDE[error_class] || "";
 }

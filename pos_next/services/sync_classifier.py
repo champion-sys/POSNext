@@ -90,6 +90,10 @@ class LinkedShiftCloseError(frappe.ValidationError):
     """A close counted a shift a manager linked to another, and must not close that one."""
 
 
+class NotShiftHolderError(frappe.ValidationError):
+    """A close from someone who does not hold the shift. Their drawer is not that shift's."""
+
+
 class DependencyError(frappe.ValidationError):
     """A record this one needs was voided, so a person has to decide what happens to it."""
 

@@ -137,14 +137,16 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
     serialized = frappe.as_json(payload, indent=1)
     pos_profile = get_item_profile(item)
     totals = item.get("client_totals") or {}
+    entity = item.get("entity") or ENTITY_INVOICE
+    cashier = _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile)
 
     return {
-        "entity": item.get("entity") or ENTITY_INVOICE,
+        "entity": entity,
         "invoice_doctype": payload.get("doctype") or "Sales Invoice",
         "pos_profile": _link_or_none("POS Profile", pos_profile),
         "customer": _link_or_none("Customer", payload.get("customer")),
-        "shift": _link_or_none("POS Opening Shift", sync_entities.get_server_shift(payload)),
-        "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
+        "shift": _link_or_none("POS Opening Shift", sync_entities.get_record_shift(entity, payload, cashier)),
+        "cashier": cashier,
         "uploaded_by": uploaded_by,
         "device_id": device_id,
         "edited_from": _get_edited_from(item),

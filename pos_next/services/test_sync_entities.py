@@ -1017,7 +1017,7 @@ class TestCloseShift(NoSiteTestCase):
     }
 
     def _close(self, row=None, assert_may_close=None):
-        opening = Mock(pos_profile="Main")
+        opening = Mock(pos_profile="Main", user="cashier@example.com")
         opening.as_dict.return_value = {"name": "POSA-OS-1"}
         frappe.local.db.exists.return_value = True
         closing_module = "pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift"
@@ -1088,7 +1088,10 @@ class TestCloseShift(NoSiteTestCase):
 
     def test_the_shift_is_found_through_its_own_field(self):
         item = {"offline_id": "x", "entity": "shift_close", "payload": {"pos_opening_shift": "POSA-OS-1"}}
-        frappe.local.db.get_value.return_value = None
+        shift = frappe._dict(name="POSA-OS-1", offline_id=None, user="cashier@example.com")
+        frappe.local.db.get_value.side_effect = lambda doctype, *_args, **_kwargs: (
+            shift if doctype == "POS Opening Shift" else None
+        )
         frappe.local.db.exists.side_effect = lambda doctype, name: name
         document = Mock()
 
@@ -1102,11 +1105,10 @@ class TestCloseShift(NoSiteTestCase):
 
 class TestPendingClose(NoSiteTestCase):
     def test_looks_for_an_unfinished_close(self):
-        frappe.local.db.exists.return_value = "row-1"
+        with patch("pos_next.services.sync_entities.frappe.get_all", return_value=[None]) as get_all:
+            self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
 
-        self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
-
-        filters = frappe.local.db.exists.call_args.args[1]
+        filters = get_all.call_args.kwargs["filters"]
         self.assertEqual(filters["entity"], "shift_close")
         self.assertEqual(filters["status"], ["not in", sync_entities.FINAL_STATES])
 

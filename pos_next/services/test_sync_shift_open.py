@@ -21,6 +21,7 @@ from pos_next.services import sync_entities, sync_inbox, test_sync_entities, tes
 from pos_next.services.sync_classifier import (
     BUSINESS,
     LinkedShiftCloseError,
+    NotShiftHolderError,
     OfflineShiftNotAllowedError,
     ShiftConflictError,
     ShiftOutdatedError,
@@ -38,6 +39,7 @@ CLOSE = test_sync_flow.CLOSE
 PAYMENT = test_sync_flow.PAYMENT
 
 CASHIER = "cashier@example.com"
+COLLEAGUE = "colleague@example.com"
 
 OPENING = {
     "doctype": "POS Opening Shift",
@@ -353,6 +355,122 @@ class TestItsRecords(ShiftFlow):
         row = self._row(close)
         self.assertEqual(row.status, sync_inbox.REVIEW)
         self.assertEqual(row.error_code, "LinkedShiftCloseError")
+
+    def _close_record(self, shift=LOCAL_SHIFT, **kwargs):
+        return self._send(CLOSE, {"pos_opening_shift": shift, "pos_profile": "Main"}, "shift_close", **kwargs)
+
+    def _link_to_colleague(self):
+        name = self._refused()
+        self.inbox.opening_shifts["POSA-OS-OPEN"].user = COLLEAGUE
+        self._link(name, "POSA-OS-OPEN")
+        return name
+
+    def _sees_the_shift(self):
+        return not sync_entities.has_pending_close("POSA-OS-OPEN")
+
+    def test_a_close_stored_before_the_link_stays_off_the_linked_shift(self):
+        close = self._close_record()
+
+        self._link_to_colleague()
+
+        self.assertIsNone(self._row(close).shift)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_stored_after_the_link_stays_off_it_too(self):
+        self._link_to_colleague()
+
+        close = self._close_record()
+
+        self.assertIsNone(self._row(close).shift)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_the_sales_of_that_device_still_go_to_the_linked_shift(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        close = self._close_record(depends_on=[SALE])
+
+        self._link_to_colleague()
+
+        self.assertEqual(self._row(sale).shift, "POSA-OS-OPEN")
+        self.assertIsNone(self._row(close).shift)
+
+    def test_the_shift_can_take_another_link_with_that_close_in_review(self):
+        close = self._close_record()
+        self._link_to_colleague()
+        sync_inbox.sweep()
+        self._close_it(close)
+
+        sync_entities.assert_can_take_sales("POSA-OS-OPEN", "Main")
+
+    def test_a_close_attached_before_this_fix_stops_freezing_the_shift_once_refused(self):
+        close = self._close_record()
+        self._link_to_colleague()
+        self._row(close)["shift"] = "POSA-OS-OPEN"
+        self.assertFalse(self._sees_the_shift())
+
+        sync_inbox.sweep()
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).error_code, "LinkedShiftCloseError")
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_that_can_still_finish_keeps_the_shift_from_its_holder(self):
+        self._add_shift("POSA-OS-OPEN")
+        close = self._close_record("POSA-OS-OPEN")
+        self._row(close).update({"status": sync_inbox.REVIEW, "error_code": "WaitingForDependencyError"})
+
+        self.assertFalse(self._sees_the_shift())
+
+    def test_a_finished_close_is_not_pending(self):
+        self._add_shift("POSA-OS-OPEN")
+        self._row(self._close_record("POSA-OS-OPEN"))["status"] = "Synced"
+
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_device_that_took_a_colleagues_shift_cannot_close_it_with_its_own_count(self):
+        self._link_to_colleague()
+        close = self._close_record("POSA-OS-OPEN")
+
+        self.assertIsNone(self._row(close).shift)
+        self._close_it(close)
+
+        self.submit_close.assert_not_called()
+        row = self._row(close)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "NotShiftHolderError")
+        self.assertIn(COLLEAGUE, row.error_message)
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_close_attached_to_a_colleagues_shift_stops_freezing_it_once_refused(self):
+        self._link_to_colleague()
+        close = self._close_record("POSA-OS-OPEN")
+        self._row(close)["shift"] = "POSA-OS-OPEN"
+
+        self._close_it(close)
+
+        self.assertTrue(self._sees_the_shift())
+
+    def test_a_device_on_its_own_linked_shift_may_close_it(self):
+        name = self._refused()
+        self._link(name, "POSA-OS-OPEN")
+        self.inbox.opening_shifts["POSA-OS-OPEN"].as_dict = lambda: {"name": "POSA-OS-OPEN"}
+        close = self._close_record("POSA-OS-OPEN")
+
+        self.assertEqual(self._row(close).shift, "POSA-OS-OPEN")
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).status, "Synced")
+
+    def test_the_holder_closes_their_own_shift_as_before(self):
+        self._add_shift("POSA-OS-OPEN")
+        self.inbox.opening_shifts["POSA-OS-OPEN"].as_dict = lambda: {"name": "POSA-OS-OPEN"}
+        close = self._close_record("POSA-OS-OPEN")
+
+        self._close_it(close)
+
+        self.assertEqual(self._row(close).status, "Synced")
+
+    def test_a_shift_that_never_was_stays_unattached(self):
+        self.assertIsNone(self._row(self._close_record("POSA-OS-GONE")).shift)
 
     def test_a_later_shift_waits_for_the_close_before_it(self):
         close = self._send(CLOSE, {"pos_opening_shift": "POSA-OS-OLD", "pos_profile": "Main"}, "shift_close")
@@ -771,11 +889,25 @@ class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
                 POSOpeningShift.validate_no_other_active_shift(shift)
 
     def test_each_refusal_needs_a_person_and_keeps_its_name(self):
-        for exc in (ShiftConflictError, ShiftOutdatedError, OfflineShiftNotAllowedError, LinkedShiftCloseError):
+        for exc in (
+            ShiftConflictError,
+            ShiftOutdatedError,
+            OfflineShiftNotAllowedError,
+            LinkedShiftCloseError,
+            NotShiftHolderError,
+        ):
             result = classify(exc("No"))
             self.assertEqual(result.error_class, BUSINESS)
             self.assertEqual(result.error_code, exc.__name__)
             self.assertIsNone(next_retry_minutes(result.error_class, 1))
+
+    def test_the_form_guides_a_manager_past_both_refusals_of_a_close(self):
+        with open(frappe.get_app_path("pos_next", "pos_next", "doctype", "offline_invoice_sync", "offline_invoice_sync.js"), encoding="utf-8") as handle:
+            form = handle.read()
+
+        for code in sync_entities.CLOSE_REFUSALS:
+            self.assertIn(f'error_code === "{code}"', form)
+        self.assertNotIn("Close the open shift from the POS", form)
 
     def test_the_online_path_still_sees_a_validation_error(self):
         self.assertTrue(issubclass(ShiftConflictError, frappe.ValidationError))
