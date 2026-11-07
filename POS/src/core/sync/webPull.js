@@ -1,28 +1,34 @@
 /**
- * Runs the pull engine on the web: requests through the app's API wrapper, storage
- * through the offline worker, and the stores already on screen refreshed afterwards.
+ * Runs the pull engine: requests through the app's API wrapper, storage through the
+ * offline worker, and the stores already on screen refreshed afterwards. The apps run it
+ * too, and they alone pull stock: the web has its socket for that.
  *
  * @module core/sync/webPull
  */
 
+import { isNative } from "@/platform/runtime"
 import { useCustomerSearchStore } from "@/stores/customerSearch"
 import { useItemSearchStore } from "@/stores/itemSearch"
 import { usePOSCartStore } from "@/stores/posCart"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { useStockStore } from "@/stores/stock"
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
 import { getSetting, setSetting } from "@/utils/offline/settings"
 import { offlineWorker } from "@/utils/offline/workerClient"
-import { PULL_ENTITIES, pullStateKey, runPull } from "./pullEngine"
+import { PULL_ENTITIES, STOCK_ENTITIES, pullStateKey, runPull } from "./pullEngine"
 
 const log = logger.create("PullSync")
 
 const CATALOG_ENTITIES = ["items", "item_prices"]
 
 const server = {
-	getManifest: (posProfile) =>
-		call("pos_next.api.sync_pull.get_manifest", { pos_profile: posProfile }),
+	getManifest: (posProfile, entities) =>
+		call("pos_next.api.sync_pull.get_manifest", {
+			pos_profile: posProfile,
+			...(entities === STOCK_ENTITIES ? { stock_only: 1 } : {}),
+		}),
 	pull: ({ entity, posProfile, cursor, limit }) =>
 		call("pos_next.api.sync_pull.pull", { entity, pos_profile: posProfile, cursor, limit }),
 }
@@ -34,6 +40,9 @@ const createStore = (posProfile) => ({
 		await offlineWorker.applyPullPage(entity, page, posProfile)
 		if (entity === "items" || entity === "item_prices") {
 			useItemSearchStore().applyPulledItems(page.rows, page.deleted)
+		}
+		if (entity === "stock") {
+			useStockStore().applyPulled(page.rows)
 		}
 	},
 })
@@ -67,15 +76,18 @@ let isPulling = false
  * Web Locks keep it to one tab, because all tabs share the same local tables.
  *
  * @param {string} posProfile
+ * @param {string[]} [only] - Pull just these instead of everything
  * @returns {Promise<Object|null>} A result per entity, or null when nothing ran
  */
-export async function pullChanges(posProfile) {
+export async function pullChanges(posProfile, only = null) {
 	if (!posProfile || isPulling) return null
 
-	// The background sync is downloading every item, so walking them too would be waste
-	const entities = useItemSearchStore().cacheSyncing
-		? PULL_ENTITIES.filter((entity) => !CATALOG_ENTITIES.includes(entity))
-		: PULL_ENTITIES
+	const skipped = [
+		...(isNative ? [] : STOCK_ENTITIES),
+		// The background sync is downloading every item, so walking them too would be waste
+		...(useItemSearchStore().cacheSyncing ? CATALOG_ENTITIES : []),
+	]
+	const entities = only ?? PULL_ENTITIES.filter((entity) => !skipped.includes(entity))
 
 	const run = async () => {
 		const results = await runPull({ server, store: createStore(posProfile), posProfile, entities })
