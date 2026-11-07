@@ -93,6 +93,9 @@
   "disable_offline_coupons",
   "allow_offline_returns",
   "allow_offline_shift_close",
+  "sync_alert_recipients",
+  "sync_alert_last_sent_at",
+  "sync_payload_retention_days",
   "barcode_tab",
   "barcode_rules"
  ],
@@ -619,6 +622,28 @@
    "description": "The cashier enters the counted amounts on the device. The closing is finalized on the server once every invoice of the shift has arrived."
   },
   {
+   "fieldname": "sync_alert_recipients",
+   "fieldtype": "Small Text",
+   "label": "Sync Alert Recipients",
+   "description": "Emails to tell when records of this POS Profile need review, separated by commas or new lines. Checked every hour, and sent only when something new needs review. Leave empty to send no email."
+  },
+  {
+   "fieldname": "sync_alert_last_sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sync Alert Last Sent At",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sync_payload_retention_days",
+   "fieldtype": "Int",
+   "label": "Sync Payload Retention (Days)",
+   "default": "0",
+   "non_negative": 1,
+   "description": "Days to keep what devices sent for records that have finished. After that the payload is erased, while the record, its totals and its attempts stay. This cannot be undone, and an erased record cannot be processed or corrected again. 0 keeps payloads forever."
+  },
+  {
    "fieldname": "barcode_tab",
    "fieldtype": "Tab Break",
    "label": "Barcode"
@@ -692,7 +717,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-07 10:00:00.000000",
+ "modified": "2026-11-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",
