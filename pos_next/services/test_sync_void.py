@@ -395,6 +395,14 @@ class TestEntities(Void):
         self.assertEqual(result[SALE]["status"], "rejected")
         self.assertEqual(row.status, "Blocked")
 
+    def test_a_shift_opening_is_refused_since_its_sales_wait_on_it(self):
+        row = self.stored_with("Blocked", entity="shift_open")
+
+        result = self.ask()
+
+        self.assertEqual(result[SALE]["status"], "rejected")
+        self.assertEqual(self._row(row.name).status, "Blocked")
+
     def test_a_shift_close_the_server_never_saw_leaves_nothing_behind(self):
         result = self.ask(self.request(entity="shift_close"))
 

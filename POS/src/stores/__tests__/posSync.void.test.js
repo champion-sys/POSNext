@@ -113,7 +113,7 @@ describe("asking to void a queued record", () => {
 	it("refuses a shift close, which only a manager can undo", async () => {
 		queue.rows = [row({ entity: "shift_close" })]
 
-		await expect(store.requestVoid(1, REASON)).rejects.toThrow("A shift close cannot be voided")
+		await expect(store.requestVoid(1, REASON)).rejects.toThrow("A shift cannot be voided")
 
 		expect(worker.requestVoid).not.toHaveBeenCalled()
 	})

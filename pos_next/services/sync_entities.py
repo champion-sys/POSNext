@@ -11,9 +11,15 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 
-from pos_next.services.sync_classifier import DependencyError, SyncContractError
+from pos_next.services.sync_classifier import (
+    DependencyError,
+    LinkedShiftCloseError,
+    OfflineShiftNotAllowedError,
+    ShiftOutdatedError,
+    SyncContractError,
+)
 
 DOCTYPE = "Offline Invoice Sync"
 
@@ -23,14 +29,15 @@ ENTITY_INVOICE = "invoice"
 ENTITY_CUSTOMER = "customer"
 ENTITY_PAYMENT = "payment"
 ENTITY_SHIFT_CLOSE = "shift_close"
+ENTITY_SHIFT_OPEN = "shift_open"
 
-ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER, ENTITY_PAYMENT, ENTITY_SHIFT_CLOSE)
+ENTITIES = (ENTITY_INVOICE, ENTITY_CUSTOMER, ENTITY_PAYMENT, ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN)
 
 #: Names the device gives records the server has not seen yet
 LOCAL_NAME_PREFIX = "pos_offline_"
 
 #: Payload fields that may hold such a name
-LOCAL_NAME_FIELDS = ("customer", "return_against")
+LOCAL_NAME_FIELDS = ("customer", "return_against", "posa_pos_opening_shift", "pos_opening_shift")
 
 
 def is_local_name(value):
@@ -88,6 +95,14 @@ def resolve_local_names(payload):
             payload[fieldname] = _get_server_name(payload[fieldname])
             if fieldname == "customer":
                 payload.pop("customer_name", None)
+
+
+def get_server_shift(payload):
+    """The shift a record names, by the name the server gave it if it was opened on a device."""
+    shift = payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+    if is_local_name(shift):
+        return frappe.db.get_value(DOCTYPE, {"offline_id": shift}, "sales_invoice")
+    return shift
 
 
 def _get_return_row_positions(doctype, invoice):
@@ -217,6 +232,7 @@ def create_payment(row):
     from pos_next.api.utilities import get_wallet_payment_modes
 
     payload = load_payload(row)
+    resolve_local_names(payload)
     invoice_name = payload.get("invoice_name")
     payments = payload.get("payments")
     if not invoice_name or not payments:
@@ -244,6 +260,84 @@ def create_payment(row):
         "grand_total": sum(flt(payment.get("amount")) for payment in payments),
         "note": ", ".join(entries),
     }
+
+
+def find_shift_open(offline_id):
+    name = frappe.db.get_value("POS Opening Shift", {"offline_id": offline_id, "docstatus": 1}, "name")
+    return {"name": name, "doctype": "POS Opening Shift"} if name else None
+
+
+def assert_can_take_sales(shift, pos_profile):
+    """Refuse a shift a manager picked for the sales of a refused opening."""
+    found = frappe.db.get_value("POS Opening Shift", shift, ["status", "pos_profile"], as_dict=True)
+    if not found or found.status != "Open" or found.pos_profile != pos_profile or has_pending_close(shift):
+        frappe.throw(_("Shift {0} is not open on POS Profile {1}").format(shift, pos_profile))
+
+
+def _assert_may_open_offline(pos_profile, opened_at):
+    settings = frappe.db.get_value(
+        "POS Settings", {"pos_profile": pos_profile}, ["allow_offline_shift_open", "invoice_type"], as_dict=True
+    ) or frappe._dict()
+
+    # The device only knows the last copy, and a request can skip its check altogether
+    if not cint(settings.allow_offline_shift_open):
+        raise OfflineShiftNotAllowedError(
+            _("POS Settings of {0} does not allow opening a shift offline").format(pos_profile)
+        )
+
+    # Such an entry would refuse the shift's own sales, and hold the POS Profile until it closed
+    if settings.invoice_type == "POS Invoice" and getdate(opened_at) != getdate(nowdate()):
+        raise ShiftOutdatedError(
+            _("This shift opened on {0}, and ERPNext only takes POS Invoices under a POS Opening Entry from today").format(
+                getdate(opened_at)
+            )
+        )
+
+
+def _attach_waiting_records(local_name, shift):
+    """Put the records that named a shift by its device name on the shift it became.
+
+    They were stored with no shift, and a closing and has_pending_close find them through
+    it. Only those: a manager may have moved one elsewhere already.
+    """
+    from pos_next.services.sync_inbox import _move_to_shift
+
+    waiting = frappe.get_all(
+        DOCTYPE,
+        filters={"depends_on": ["like", f"%{local_name}%"], "shift": ["is", "not set"]},
+        fields=["name", "cashier", "invoice_doctype"],
+    )
+    for row in waiting:
+        _move_to_shift(row, shift)
+        frappe.db.set_value(DOCTYPE, row.name, {"shift": row.shift, "cashier": row.cashier})
+
+
+def open_shift(row):
+    """Create the shift a cashier opened on a device, as that cashier, or take a manager's link.
+
+    Goes through the online path, so a POS Invoice profile gets its POS Opening Entry here too.
+    """
+    from pos_next.api.shifts import insert_opening_shift
+
+    payload = load_payload(row)
+    pos_profile = payload.get("pos_profile") or row.pos_profile
+    _assert_target_access(row, pos_profile)
+
+    shift = payload.get("linked_shift")
+    if shift:
+        assert_can_take_sales(shift, pos_profile)
+    else:
+        opened_at = payload.get("period_start_date") and get_datetime(payload["period_start_date"])
+        if not opened_at or not payload.get("balance_details"):
+            raise SyncContractError(_("The shift has no opening time or no amounts"))
+
+        _assert_may_open_offline(pos_profile, opened_at)
+        shift = insert_opening_shift(
+            pos_profile, payload.get("company"), payload["balance_details"], opened_at, row.offline_id
+        ).name
+
+    _attach_waiting_records(row.offline_id, shift)
+    return {"name": shift, "doctype": "POS Opening Shift"}
 
 
 def find_shift_close(_offline_id):
@@ -283,11 +377,19 @@ def close_shift(row):
     )
 
     payload = load_payload(row)
+    counted_shift = payload.get("pos_opening_shift")
+    resolve_local_names(payload)
     opening_shift = payload.get("pos_opening_shift")
     if not opening_shift or not frappe.db.exists("POS Opening Shift", opening_shift):
         raise SyncContractError(_("Shift {0} does not exist").format(opening_shift))
 
     opening = frappe.get_doc("POS Opening Shift", opening_shift)
+    # The count covers this device's drawer only, and the linked shift may still be in use
+    if is_local_name(counted_shift) and opening.offline_id != counted_shift:
+        raise LinkedShiftCloseError(
+            _("This close counted a shift that was linked to {0}, so it cannot close {0}").format(opening_shift)
+        )
+
     _assert_target_access(row, opening.pos_profile)
     assert_may_close_shift(opening, row.cashier)
 

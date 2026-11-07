@@ -11,6 +11,22 @@ const LINK_DOCTYPES = {
 	shift_close: ["POS Closing Shift"],
 };
 
+const SHIFT_CONFLICT_GUIDE = __(
+	"Another shift is open and stands in the way of this one. Close that shift and press Reprocess, or use Link to Open Shift under Fix Record so the sales of this record go to it.",
+);
+
+const SHIFT_OUTDATED_GUIDE = __(
+	"This shift opened on an earlier day, and ERPNext only takes POS Invoices under an opening from today. Open a shift for today, then use Link to Open Shift under Fix Record.",
+);
+
+const OFFLINE_SHIFT_GUIDE = __(
+	"POS Settings no longer allows opening a shift offline. Turn the setting on and press Reprocess, or use Link to Open Shift under Fix Record.",
+);
+
+const LINKED_CLOSE_GUIDE = __(
+	"This close counted the shift of the device only, and that shift was linked to another open shift. Close the open shift from the POS and add this count to it, then void this record.",
+);
+
 const REVIEW_GUIDE = {
 	stock: __("There was not enough stock. Receive the stock and press Reprocess, or use Fix Record to change the warehouse."),
 	business: __("A rule on the server refused this record. Use Fix Record to correct it, then press Reprocess."),
@@ -149,6 +165,21 @@ const SYNC_FIXES = {
 				options: "POS Opening Shift",
 				label: __("Open Shift"),
 				description: __("Use when the original shift is already closed."),
+				reqd: 1,
+			},
+		],
+	},
+	link_shift: {
+		label: __("Link to Open Shift"),
+		entities: ["shift_open"],
+		fields: [
+			{
+				fieldname: "shift",
+				fieldtype: "Link",
+				options: "POS Opening Shift",
+				label: __("Open Shift"),
+				description: __("Use a shift open on this POS Profile. The sales of this record go to it."),
+				get_query: () => ({ filters: { status: "Open" } }),
 				reqd: 1,
 			},
 		],
@@ -293,36 +324,38 @@ function addReviewActions(frm) {
 		);
 	}
 
-	frm.add_custom_button(
-		__("Link Existing Document"),
-		() => {
-			frappe.prompt(
-				[
-					{
-						fieldname: "doctype",
-						fieldtype: "Select",
-						options: linkDoctypes.join("\n"),
-						label: __("Type"),
-						default: linkDoctypes[0],
-						reqd: 1,
-					},
-					{
-						fieldname: "invoice_name",
-						fieldtype: "Dynamic Link",
-						options: "doctype",
-						label: __("Document"),
-						description: __("Use when it was already entered by hand."),
-						reqd: 1,
-					},
-					{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
-				],
-				(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
-				__("Link Existing Document"),
-				__("Link"),
-			);
-		},
-		close_group,
-	);
+	if (linkDoctypes) {
+		frm.add_custom_button(
+			__("Link Existing Document"),
+			() => {
+				frappe.prompt(
+					[
+						{
+							fieldname: "doctype",
+							fieldtype: "Select",
+							options: linkDoctypes.join("\n"),
+							label: __("Type"),
+							default: linkDoctypes[0],
+							reqd: 1,
+						},
+						{
+							fieldname: "invoice_name",
+							fieldtype: "Dynamic Link",
+							options: "doctype",
+							label: __("Document"),
+							description: __("Use when it was already entered by hand."),
+							reqd: 1,
+						},
+						{ fieldname: "note", fieldtype: "Small Text", label: __("Note"), reqd: 1 },
+					],
+					(values) => callSyncAction(frm, "link_existing_invoice", values, __("Linked")),
+					__("Link Existing Document"),
+					__("Link"),
+				);
+			},
+			close_group,
+		);
+	}
 
 	frm.add_custom_button(
 		__("Void"),
@@ -352,6 +385,10 @@ function getReviewGuide(frm, canReview) {
 	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
 	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
 	if (error_code === "CashierUnavailableError") return CASHIER_GUIDE;
+	if (error_code === "ShiftConflictError") return SHIFT_CONFLICT_GUIDE;
+	if (error_code === "ShiftOutdatedError") return SHIFT_OUTDATED_GUIDE;
+	if (error_code === "OfflineShiftNotAllowedError") return OFFLINE_SHIFT_GUIDE;
+	if (error_code === "LinkedShiftCloseError") return LINKED_CLOSE_GUIDE;
 	if (entity === "shift_close" && error_class === "dependency") return SHIFT_CLOSE_GUIDE;
 	return REVIEW_GUIDE[error_class] || "";
 }

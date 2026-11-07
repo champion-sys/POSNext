@@ -93,6 +93,7 @@
   "disable_offline_coupons",
   "allow_offline_returns",
   "allow_offline_shift_close",
+  "allow_offline_shift_open",
   "barcode_tab",
   "barcode_rules"
  ],
@@ -619,6 +620,13 @@
    "description": "The cashier enters the counted amounts on the device. The closing is finalized on the server once every invoice of the shift has arrived."
   },
   {
+   "fieldname": "allow_offline_shift_open",
+   "fieldtype": "Check",
+   "label": "Allow Opening the Shift While Offline",
+   "default": "0",
+   "description": "The cashier can open a shift and sell with no connection, from what the device has saved. The shift is created on the server when the device connects."
+  },
+  {
    "fieldname": "barcode_tab",
    "fieldtype": "Tab Break",
    "label": "Barcode"
@@ -692,7 +700,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-11-07 10:00:00.000000",
+ "modified": "2026-11-07 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Settings",

@@ -14,7 +14,13 @@
  * @module stores/posSync
  */
 
-import { clearShiftClosing, markShiftClosing } from "@/composables/useShift"
+import {
+	abandonLocalShift,
+	adoptServerShift,
+	clearShiftClosing,
+	markShiftClosing,
+	openLocalShift,
+} from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import { pullChanges } from "@/core/sync/webPull"
 import {
@@ -34,18 +40,23 @@ import {
 	ENTITY_CUSTOMER,
 	ENTITY_PAYMENT,
 	ENTITY_SHIFT_CLOSE,
+	ENTITY_SHIFT_OPEN,
 	applyQueuedPayments,
 	buildCustomerPayload,
 	buildLocalCustomer,
+	buildLocalShift,
 	buildPaymentPayload,
 	buildReturnDocFromQueue,
 	buildShiftClosePayload,
+	buildShiftOpenPayload,
 	countQueuedCouponUses,
 	exceedsOutstanding,
 	getCachedCouponProblem,
 	getDependentRows,
 	getEntity,
 	getShiftManifest,
+	getUnfinishedCloses,
+	isLocalName,
 	isReturnableQueueRow,
 	subtractQueuedReturns,
 } from "@/utils/offline/entities"
@@ -423,15 +434,17 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 		const { session } = await import("@/data/session")
 		const shiftStore = usePOSShiftStore()
+		const shift = shiftStore.currentShift?.name
 		return saveQueueEntity(
 			ENTITY_PAYMENT,
 			buildPaymentPayload({
 				invoice,
 				payments,
 				posProfile: shiftStore.profileName,
-				shift: shiftStore.currentShift?.name,
+				shift,
 				cashier: session.user,
 			}),
+			[shift].filter(isLocalName),
 		)
 	}
 
@@ -512,12 +525,58 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 	 */
 	async function saveShiftCloseOffline(closing) {
 		const { session } = await import("@/data/session")
-		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), closing.pos_opening_shift)
+		const shift = closing.pos_opening_shift
+		const manifest = getShiftManifest(await offlineWorker.getQueueRows(), shift, closing.opening_offline_id)
 		const payload = buildShiftClosePayload({ closing, manifest, cashier: session.user })
 
-		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, manifest)
-		markShiftClosing(closing.pos_opening_shift)
+		const result = await saveQueueEntity(ENTITY_SHIFT_CLOSE, payload, [...[shift].filter(isLocalName), ...manifest])
+		markShiftClosing(shift)
 		return result
+	}
+
+	/**
+	 * Open a shift with no server to ask. It sells under a local name, the way a customer
+	 * added offline does, and everything in it depends on this record.
+	 * @param {{pos_profile: Object, company: Object}} cached - From getCachedShiftProfiles
+	 * @param {Array} balanceDetails - The dialog's opening amounts
+	 */
+	async function saveShiftOpenOffline(cached, balanceDetails) {
+		if (usePOSShiftStore().hasOpenShift) {
+			throw new Error(__("A shift is already open on this device"))
+		}
+
+		const { session } = await import("@/data/session")
+		const payload = buildShiftOpenPayload({
+			offlineId: generateOfflineId(),
+			posProfile: cached.pos_profile.name,
+			company: cached.pos_profile.company,
+			cashier: session.user,
+			balanceDetails,
+		})
+
+		const closes = getUnfinishedCloses(await offlineWorker.getQueueRows())
+		await saveQueueEntity(ENTITY_SHIFT_OPEN, payload, closes)
+		await openLocalShift(buildLocalShift(payload, cached))
+	}
+
+	/**
+	 * The server finished with a shift opened on this device.
+	 * @param {{row: Object, status: string, name: string}} detail - From offlineEntitySynced
+	 */
+	async function settleLocalShift({ row, status, name }) {
+		if (status === "voided") {
+			if (await abandonLocalShift(row.offline_id)) {
+				showWarning(__("A manager voided the shift opened on this device. Open a new shift to keep selling."))
+			}
+			return
+		}
+
+		// A manager may have linked it to a colleague's shift, and only the server can say
+		if (await adoptServerShift(row.offline_id, name)) {
+			usePOSShiftStore().checkOpeningShift.fetch().catch((error) => {
+				log.warn("Could not read the shift back from the server", error)
+			})
+		}
 	}
 
 	/**
@@ -545,7 +604,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 			const rows = await getPending()
 			const row = rows.find((candidate) => candidate.id === id)
-			if (row && getEntity(row) === ENTITY_SHIFT_CLOSE) throw new Error(__("A shift close cannot be voided"))
+			if (row && [ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN].includes(getEntity(row))) {
+				throw new Error(__("A shift cannot be voided"))
+			}
 			if (row && getDependentRows(rows, row.offline_id).length > 0) {
 				throw new Error(__("Other queued records depend on this one, so it cannot be voided"))
 			}
@@ -782,6 +843,9 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		if (detail.row.entity === ENTITY_SHIFT_CLOSE) {
 			clearShiftClosing(detail.row.data.pos_opening_shift)
 		}
+		if (detail.row.entity === ENTITY_SHIFT_OPEN) {
+			settleLocalShift(detail).catch((error) => log.error("Failed to settle the local shift", error))
+		}
 	})
 
 	// Initialize pending count on store creation
@@ -820,6 +884,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 		savePaymentOffline,
 		withQueuedPayments,
 		saveShiftCloseOffline,
+		saveShiftOpenOffline,
 		checkCouponOffline,
 		refreshReturnDocuments,
 		getOfflineReturnDocuments,

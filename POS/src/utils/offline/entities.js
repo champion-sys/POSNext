@@ -1,6 +1,6 @@
 /**
  * Pure helpers for the queue records that are not plain sales: customers, payments on
- * existing invoices, and shift closes. Offline returns and coupons live here too,
+ * existing invoices, and shifts opened or closed. Offline returns and coupons live here too,
  * because both depend on what is waiting in the queue.
  * No store or database imports, so they can be tested directly and shared with the worker.
  *
@@ -13,6 +13,7 @@ export const ENTITY_INVOICE = "invoice"
 export const ENTITY_CUSTOMER = "customer"
 export const ENTITY_PAYMENT = "payment"
 export const ENTITY_SHIFT_CLOSE = "shift_close"
+export const ENTITY_SHIFT_OPEN = "shift_open"
 
 const LOCAL_NAME_PREFIX = "pos_offline_"
 
@@ -46,13 +47,13 @@ export function getEntity(row) {
 }
 
 /**
- * Records an invoice cannot post without. A local customer's or invoice's name is the
- * offline_id of its queue row, so this still works after that row has left the device.
+ * Records an invoice cannot post without. A local name is the offline_id of its queue
+ * row, so this still works after that row has left the device.
  * @param {Object} invoice - Invoice payload
  * @returns {string[]} Offline IDs
  */
 export function getInvoiceDependencies(invoice) {
-	return unique([invoice.customer, invoice.return_against].filter(isLocalName))
+	return unique([invoice.customer, invoice.return_against, invoice.posa_pos_opening_shift].filter(isLocalName))
 }
 
 /**
@@ -379,6 +380,7 @@ export function buildClosingDraft(openingShift, paymentMethods) {
 
 	return {
 		pos_opening_shift: openingShift.name,
+		opening_offline_id: openingShift.offline_id,
 		pos_profile: openingShift.pos_profile,
 		company: openingShift.company,
 		period_start_date: openingShift.period_start_date,
@@ -397,15 +399,17 @@ export function buildClosingDraft(openingShift, paymentMethods) {
  * with what it received, so a sale that never arrived cannot be closed over.
  * @param {Array} rows - Queue rows, including those that have synced
  * @param {string} shift - POS Opening Shift name
+ * @param {string} [localName] - The name it had on this device, which its earlier sales still carry
  * @returns {string[]} Offline IDs
  */
-export function getShiftManifest(rows, shift) {
+export function getShiftManifest(rows, shift, localName) {
+	const names = [shift, localName].filter(Boolean)
 	return rows
 		.filter(
 			(row) =>
 				getEntity(row) !== ENTITY_SHIFT_CLOSE &&
 				!row.superseded &&
-				row.data?.posa_pos_opening_shift === shift,
+				names.includes(row.data?.posa_pos_opening_shift),
 		)
 		.map((row) => row.offline_id)
 }
@@ -430,4 +434,80 @@ export function buildShiftClosePayload({ closing, manifest, cashier, timestamp =
 		})),
 		manifest,
 	}
+}
+
+/**
+ * @param {{offlineId: string, posProfile: string, company: string, cashier: string,
+ *   balanceDetails: Array, timestamp?: number}} shift
+ * @returns {Object} Queue payload, with the amounts as create_opening_shift takes them
+ */
+export function buildShiftOpenPayload({ offlineId, posProfile, company, cashier, balanceDetails, timestamp = Date.now() }) {
+	const { posting_date, posting_time } = formatLocalPosting(timestamp)
+	return {
+		doctype: "POS Opening Shift",
+		offline_id: offlineId,
+		pos_profile: posProfile,
+		company,
+		cashier,
+		period_start_date: `${posting_date} ${posting_time}`,
+		balance_details: balanceDetails.map(({ mode_of_payment, opening_amount }) => ({
+			mode_of_payment,
+			opening_amount: Number(opening_amount) || 0,
+		})),
+	}
+}
+
+/**
+ * The shift the POS works with until the server gives it a real name, in the shape of
+ * check_opening_shift.
+ * @param {Object} payload - From buildShiftOpenPayload
+ * @param {{pos_profile: Object, company: Object}} cached - The documents kept on the device
+ * @param {number} [timestamp]
+ * @returns {Object} As kept by localStore.saveShift
+ */
+export function buildLocalShift(payload, { pos_profile, company }, timestamp = Date.now()) {
+	return {
+		pos_opening_shift: {
+			name: payload.offline_id,
+			offline_id: payload.offline_id,
+			user: payload.cashier,
+			pos_profile: payload.pos_profile,
+			company: payload.company,
+			period_start_date: payload.period_start_date,
+			status: "Open",
+			balance_details: payload.balance_details.map(({ mode_of_payment, opening_amount }) => ({
+				mode_of_payment,
+				amount: opening_amount,
+			})),
+		},
+		pos_profile,
+		company,
+		_initialElapsedMs: 0,
+		_receivedAt: timestamp,
+	}
+}
+
+/**
+ * Why a shift cannot open without the server.
+ * @param {{pastLimit: boolean, slotTaken: boolean, cached: number, usable: number}} device
+ *   cached counts the POS Profiles kept for this cashier, usable those allowed to open offline
+ * @returns {"past_limit"|"slot_taken"|"no_profile"|"not_allowed"|null}
+ */
+export function getShiftOpenProblem({ pastLimit, slotTaken, cached, usable }) {
+	if (pastLimit) return "past_limit"
+	if (slotTaken) return "slot_taken"
+	if (!cached) return "no_profile"
+	return usable ? null : "not_allowed"
+}
+
+/**
+ * Closes still on their way. The server keeps a shift open until its close has finished,
+ * so a shift opened after one has to wait for it.
+ * @param {Array} rows - Queue rows, including those that have synced
+ * @returns {string[]} Offline IDs
+ */
+export function getUnfinishedCloses(rows) {
+	return rows
+		.filter((row) => getEntity(row) === ENTITY_SHIFT_CLOSE && !row.synced && !row.superseded)
+		.map((row) => row.offline_id)
 }

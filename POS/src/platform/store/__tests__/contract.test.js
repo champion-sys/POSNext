@@ -2627,6 +2627,302 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect(shiftStore.currentShift.name).toBe("SHIFT-2")
 			})
 		})
+
+		describe("opened offline", () => {
+			const cached = {
+				pos_profile: { name: "Main", company: "Acme", customer: "Walk-in" },
+				company: { name: "Acme" },
+			}
+			const amounts = [{ mode_of_payment: "Cash", opening_amount: 100 }]
+
+			const serverReports = (shift) => {
+				fetchResponses.set("check_opening_shift", {
+					message: shift && {
+						pos_opening_shift: shift,
+						pos_profile: { name: "Main" },
+						company: { name: "Acme" },
+					},
+				})
+			}
+
+			let syncStore
+			let local
+			let useShift
+
+			const createSyncStore = async () => {
+				const { usePOSSyncStore } = await import("@/stores/posSync")
+
+				// Its timers would outlive this store and the database behind it
+				const timeout = vi.spyOn(globalThis, "setTimeout").mockImplementation(() => 0)
+				const interval = vi.spyOn(globalThis, "setInterval").mockImplementation(() => 0)
+				const created = usePOSSyncStore()
+				timeout.mockRestore()
+				interval.mockRestore()
+
+				created.isOffline = true
+				return created
+			}
+
+			beforeEach(async () => {
+				vi.stubGlobal("__", (text) => text)
+				await store.clearShift()
+				const { session } = await import("@/data/session")
+				session.user = CASHIER
+				syncStore = await createSyncStore()
+				useShift = await import("@/composables/useShift")
+				await syncStore.saveShiftOpenOffline(cached, amounts)
+				local = shiftStore.currentShift.name
+			})
+
+			it("takes the one slot and keeps one record, under the same name", async () => {
+				expect(local.startsWith("pos_offline_")).toBe(true)
+				expect((await store.getShift()).pos_opening_shift.name).toBe(local)
+
+				const rows = await store.getQueueRows()
+				expect(rows).toHaveLength(1)
+				expect(rows[0].entity).toBe("shift_open")
+				expect(rows[0].offline_id).toBe(local)
+				expect(rows[0].data.balance_details).toEqual(amounts)
+				expect(rows[0].data.cashier).toBe(CASHIER)
+			})
+
+			it("sells from the cached profile", () => {
+				expect(shiftStore.hasOpenShift).toBe(true)
+				expect(shiftStore.profileName).toBe("Main")
+				expect(shiftStore.profileCompany).toBe("Acme")
+				expect(shiftStore.profileCustomer).toBe("Walk-in")
+			})
+
+			it("cannot be opened twice", async () => {
+				await expect(syncStore.saveShiftOpenOffline(cached, amounts)).rejects.toThrow()
+
+				expect(await store.getQueueRows()).toHaveLength(1)
+			})
+
+			it("makes a sale depend on it, on every platform", async () => {
+				const { offline_id } = await store.saveOfflineInvoice(invoice({ posa_pos_opening_shift: local }))
+
+				expect((await store.getQueuedInvoice(offline_id)).depends_on).toEqual([local])
+			})
+
+			it("makes a payment depend on it", async () => {
+				const { offline_id } = await syncStore.savePaymentOffline(
+					{ name: "SINV-1", outstanding_amount: 50 },
+					[{ mode_of_payment: "Cash", amount: 10 }],
+				)
+
+				expect((await store.getQueuedInvoice(offline_id)).depends_on).toEqual([local])
+			})
+
+			it("makes its close depend on it and on its sales", async () => {
+				const sale = await store.saveOfflineInvoice(invoice({ posa_pos_opening_shift: local }))
+
+				const { offline_id } = await syncStore.saveShiftCloseOffline({
+					pos_opening_shift: local,
+					opening_offline_id: local,
+					pos_profile: "Main",
+					company: "Acme",
+					payment_reconciliation: [],
+				})
+
+				expect((await store.getQueuedInvoice(offline_id)).depends_on).toEqual([local, sale.offline_id])
+			})
+
+			it("does not lose the sales made before it got its real name", async () => {
+				const sale = await store.saveOfflineInvoice(invoice({ posa_pos_opening_shift: local }))
+
+				const { offline_id } = await syncStore.saveShiftCloseOffline({
+					pos_opening_shift: "POSA-OS-1",
+					opening_offline_id: local,
+					pos_profile: "Main",
+					company: "Acme",
+					payment_reconciliation: [],
+				})
+
+				const close = await store.getQueuedInvoice(offline_id)
+				expect(close.depends_on).toEqual([sale.offline_id])
+				expect(close.data.manifest).toEqual([sale.offline_id])
+			})
+
+			it("makes the next shift wait for the close before it", async () => {
+				const close = await syncStore.saveShiftCloseOffline({
+					pos_opening_shift: local,
+					opening_offline_id: local,
+					pos_profile: "Main",
+					company: "Acme",
+					payment_reconciliation: [],
+				})
+				resetShiftState()
+				await settle()
+
+				await syncStore.saveShiftOpenOffline(cached, amounts)
+
+				const next = await store.getQueuedInvoice(shiftStore.currentShift.name)
+				expect(next.depends_on).toEqual([close.offline_id])
+			})
+
+			it("survives the sign-out, and comes back to its cashier offline", async () => {
+				await cleanupUserSession()
+				serverIsUnreachable()
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				expect(shiftStore.currentShift.name).toBe(local)
+			})
+
+			it("goes to nobody else, and keeps the slot from them", async () => {
+				await cleanupUserSession()
+				signInAs(OTHER_CASHIER)
+				serverIsUnreachable()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+				expect(await useShift.isShiftSlotTaken()).toBe(true)
+			})
+
+			it("does not count as taken for its own cashier", async () => {
+				expect(await useShift.isShiftSlotTaken()).toBe(false)
+			})
+
+			it("stays when the server has not heard of it", async () => {
+				serverReports(null)
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				await settle()
+
+				expect(shiftStore.currentShift.name).toBe(local)
+				expect((await store.getShift()).pos_opening_shift.name).toBe(local)
+			})
+
+			it("stays when the server knows another open shift of this cashier", async () => {
+				serverReports({ name: "POSA-OS-9", user: CASHIER })
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				await settle()
+
+				expect(shiftStore.currentShift.name).toBe(local)
+				expect((await store.getShift()).pos_opening_shift.name).toBe(local)
+			})
+
+			it("gives way to its own server copy", async () => {
+				serverReports({ name: "POSA-OS-1", user: CASHIER, offline_id: local })
+
+				expect(await shiftStore.checkShift()).toBe(true)
+				await settle()
+
+				expect(shiftStore.currentShift.name).toBe("POSA-OS-1")
+				expect((await store.getShift()).pos_opening_shift.name).toBe("POSA-OS-1")
+			})
+
+			it("ends when its record is finished and the server has no such shift", async () => {
+				const { id } = await store.getQueuedInvoice(local)
+				await store.updateQueuedInvoice(id, { synced: true, server_status: "voided" })
+				serverReports(null)
+
+				expect(await shiftStore.checkShift()).toBe(false)
+				await settle()
+
+				expect(await store.getShift()).toBeNull()
+			})
+
+			it("takes the server's name when its record ends", async () => {
+				expect(await useShift.adoptServerShift(local, "POSA-OS-1")).toBe(true)
+
+				expect(shiftStore.currentShift.name).toBe("POSA-OS-1")
+				expect(shiftStore.currentShift.offline_id).toBe(local)
+				expect((await store.getShift()).pos_opening_shift.name).toBe("POSA-OS-1")
+				expect(useShift.hasLocalShift.value).toBe(false)
+			})
+
+			it("leaves a colleague's work alone when it takes the name", async () => {
+				await store.saveShift(keptShift(OTHER_CASHIER, "SHIFT-9"))
+				useShift.shiftState.value = { ...useShift.shiftState.value, pos_opening_shift: { name: "SHIFT-9" } }
+
+				expect(await useShift.adoptServerShift(local, "POSA-OS-1")).toBe(false)
+
+				expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-9")
+				expect(shiftStore.currentShift.name).toBe("SHIFT-9")
+			})
+
+			it("reaches the name through the queue", async () => {
+				const { syncOfflineInvoices } = await import("@/utils/offline/sync")
+				const { offlineState } = await import("@/utils/offline/offlineState")
+				callServer.mockImplementation(async (method) =>
+					method.endsWith("push")
+						? { results: [{ offline_id: local, status: "received" }] }
+						: [{ offline_id: local, status: "synced", invoice: "POSA-OS-1" }],
+				)
+				serverReports({ name: "POSA-OS-1", user: CASHIER, offline_id: local })
+
+				expect(offlineState.isOffline).toBe(false)
+				await syncOfflineInvoices()
+				await settle()
+
+				expect(callServer.mock.calls[0][1].items[0].entity).toBe("shift_open")
+				expect(shiftStore.currentShift.name).toBe("POSA-OS-1")
+				expect(useShift.hasLocalShift.value).toBe(false)
+			})
+
+			it("ends when a manager voids it", async () => {
+				expect(await useShift.abandonLocalShift(local)).toBe(true)
+
+				expect(shiftStore.hasOpenShift).toBe(false)
+				expect(await store.getShift()).toBeNull()
+			})
+
+			it("ends through the queue when a manager voids it", async () => {
+				const { syncOfflineInvoices } = await import("@/utils/offline/sync")
+				callServer.mockImplementation(async (method) =>
+					method.endsWith("push")
+						? { results: [{ offline_id: local, status: "received" }] }
+						: [{ offline_id: local, status: "voided" }],
+				)
+
+				await syncOfflineInvoices()
+				await settle()
+
+				expect(shiftStore.hasOpenShift).toBe(false)
+				expect(await store.getShift()).toBeNull()
+			})
+
+			it("stays closed when its server copy still reports open", async () => {
+				markShiftClosing(local)
+				await store.clearShift()
+				serverReports({ name: "POSA-OS-1", user: CASHIER, offline_id: local })
+
+				expect(await shiftStore.checkShift()).toBe(false)
+			})
+
+			it("reports what it can open for this cashier only", async () => {
+				const { useShift: shiftResources } = useShift
+				serverReports({ name: "POSA-OS-9", user: CASHIER })
+				resetShiftState()
+				await settle()
+				await store.clearShift()
+
+				await shiftResources().checkOpeningShift.fetch()
+				await settle()
+
+				expect((await useShift.getCachedShiftProfiles()).map(({ pos_profile }) => pos_profile.name)).toEqual(["Main"])
+
+				signInAs(OTHER_CASHIER)
+				expect(await useShift.getCachedShiftProfiles()).toEqual([])
+			})
+
+			it("keeps what it can open after the shift it was learned from closes", async () => {
+				serverReports({ name: "POSA-OS-9", user: CASHIER })
+				resetShiftState()
+				await settle()
+				await store.clearShift()
+				await shiftStore.checkShift()
+				await settle()
+
+				serverReports(null)
+				resetShiftState()
+				await settle()
+
+				expect(await store.getShift()).toBeNull()
+				expect(await useShift.getCachedShiftProfiles()).toHaveLength(1)
+			})
+		})
 	})
 
 	describe("the periodic stock sync", () => {

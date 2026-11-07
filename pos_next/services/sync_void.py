@@ -13,7 +13,7 @@ from frappe import _
 from frappe.utils import now_datetime
 
 from pos_next.services import sync_inbox
-from pos_next.services.sync_entities import DOCTYPE, ENTITY_SHIFT_CLOSE
+from pos_next.services.sync_entities import DOCTYPE, ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN
 
 #: Marks a record that stands although its device asked to void it. A stable identifier:
 #: the sync center, offline_invoice_sync.js and the device rely on it.
@@ -56,8 +56,8 @@ def _assert_voiding_allowed(pos_profile):
 def _assert_may_void(name, assert_access):
     """Hold the request to the record itself, which may not be what the envelope claims."""
     stored = frappe.db.get_value(DOCTYPE, name, ["entity", "pos_profile"], as_dict=True)
-    if stored.entity == ENTITY_SHIFT_CLOSE:
-        frappe.throw(_("A shift close cannot be voided from a device"), frappe.PermissionError)
+    if stored.entity in (ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN):
+        frappe.throw(_("A shift cannot be voided from a device"), frappe.PermissionError)
     if stored.pos_profile:
         assert_access(stored.pos_profile)
         _assert_voiding_allowed(stored.pos_profile)

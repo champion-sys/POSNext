@@ -6,8 +6,9 @@ from __future__ import unicode_literals
 import json
 import frappe
 from frappe import _
-from frappe.utils import nowdate, nowtime, get_datetime
+from frappe.utils import get_datetime
 from pos_next.api.utilities import get_wallet_payment_modes
+from pos_next.services.sync_classifier import ShiftConflictError
 from pos_next.services.sync_entities import has_pending_close
 
 
@@ -116,21 +117,47 @@ def create_opening_shift(pos_profile, company, balance_details):
 	"""Create a new POS Opening Shift"""
 	balance_details = json.loads(balance_details) if isinstance(balance_details, str) else balance_details
 
+	new_pos_opening = insert_opening_shift(pos_profile, company, balance_details)
+
+	data = {}
+	data["pos_opening_shift"] = new_pos_opening.as_dict()
+	data["pos_profile"] = frappe.get_doc("POS Profile", pos_profile)
+	data["company"] = frappe.get_doc("Company", company)
+
+	return data
+
+
+def insert_opening_shift(pos_profile, company, balance_details, opened_at=None, offline_id=None):
+	"""Open a shift for the session user. Submitting it creates what the POS Profile needs.
+
+	Args:
+		balance_details: Rows of mode_of_payment and opening_amount
+		opened_at: When a shift opened on a device began. Defaults to now.
+		offline_id: The queue record it came from, whose unique index stops a second copy
+
+	Returns:
+		Document: The submitted POS Opening Shift
+	"""
 	# Check if user already has an open shift
 	existing_shift = check_opening_shift(frappe.session.user)
 	if existing_shift:
-		frappe.throw(_("You already have an open shift: {0}").format(existing_shift["pos_opening_shift"].name))
+		frappe.throw(
+			_("You already have an open shift: {0}").format(existing_shift["pos_opening_shift"].name),
+			ShiftConflictError,
+		)
 
+	opened_at = get_datetime(opened_at)
 	new_pos_opening = frappe.get_doc(
 		{
 			"doctype": "POS Opening Shift",
-			"period_start_date": get_datetime(),
-			"posting_date": nowdate(),
-			"posting_time": nowtime(),
+			"period_start_date": opened_at,
+			"posting_date": opened_at.date(),
+			"posting_time": opened_at.time(),
 			"user": frappe.session.user,
 			"pos_profile": pos_profile,
 			"company": company,
 			"status": "Open",
+			"offline_id": offline_id,
 		}
 	)
 
@@ -145,13 +172,7 @@ def create_opening_shift(pos_profile, company, balance_details):
 	new_pos_opening.set("balance_details", formatted_balance_details)
 	new_pos_opening.insert(ignore_permissions=True)
 	new_pos_opening.submit()
-
-	data = {}
-	data["pos_opening_shift"] = new_pos_opening.as_dict()
-	data["pos_profile"] = frappe.get_doc("POS Profile", pos_profile)
-	data["company"] = frappe.get_doc("Company", company)
-
-	return data
+	return new_pos_opening
 
 
 def assert_may_close_shift(opening_shift_doc, user=None):

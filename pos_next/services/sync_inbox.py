@@ -34,6 +34,7 @@ from pos_next.services.sync_entities import (
     ENTITY_INVOICE,
     ENTITY_PAYMENT,
     ENTITY_SHIFT_CLOSE,
+    ENTITY_SHIFT_OPEN,
     FINAL_STATES,
 )
 
@@ -96,6 +97,10 @@ def validate_envelope(item):
     reason = item.get("void_reason")
     if reason is not None and (not isinstance(reason, str) or not reason.strip()):
         return "A void needs a reason"
+
+    # It moves a record's sales to someone else's shift, so only a manager's fix may set it
+    if item["payload"].get("linked_shift"):
+        return "A device cannot link a shift"
     return None
 
 
@@ -133,9 +138,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
         "invoice_doctype": payload.get("doctype") or "Sales Invoice",
         "pos_profile": _link_or_none("POS Profile", pos_profile),
         "customer": _link_or_none("Customer", payload.get("customer")),
-        "shift": _link_or_none(
-            "POS Opening Shift", payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
-        ),
+        "shift": _link_or_none("POS Opening Shift", sync_entities.get_server_shift(payload)),
         "cashier": _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile),
         "uploaded_by": uploaded_by,
         "device_id": device_id,
@@ -601,6 +604,8 @@ _ENTITIES = {
     ENTITY_SHIFT_CLOSE: _Entity(
         sync_entities.close_shift, sync_entities.find_shift_close, ("POS Closing Shift",)
     ),
+    # Nothing to link to from the general action: only the link_shift fix checks the shift is open
+    ENTITY_SHIFT_OPEN: _Entity(sync_entities.open_shift, sync_entities.find_shift_open, ()),
 }
 
 
@@ -944,6 +949,11 @@ def _fix_shift(payload, values):
     payload["posa_pos_opening_shift"] = values["shift"]
 
 
+def _fix_link_shift(payload, values):
+    sync_entities.assert_can_take_sales(values["shift"], payload.get("pos_profile"))
+    payload["linked_shift"] = values["shift"]
+
+
 def _move_to_shift(row, shift):
     """Keep the row on the shift its payload now names. Closing a shift reads the row.
 
@@ -1006,5 +1016,8 @@ _FIXES = {
     },
     ENTITY_SHIFT_CLOSE: {
         "accept_unfinished": None,
+    },
+    ENTITY_SHIFT_OPEN: {
+        "link_shift": _fix_link_shift,
     },
 }

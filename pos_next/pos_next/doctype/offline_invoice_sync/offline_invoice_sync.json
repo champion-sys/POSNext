@@ -131,7 +131,7 @@
    "fieldname": "entity",
    "fieldtype": "Select",
    "label": "Entity",
-   "options": "invoice\ncustomer\npayment\nshift_close",
+   "options": "invoice\ncustomer\npayment\nshift_close\nshift_open",
    "default": "invoice",
    "read_only": 1,
    "in_standard_filter": 1
@@ -419,7 +419,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-07 09:00:00",
+ "modified": "2026-11-07 12:00:00",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",

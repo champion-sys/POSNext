@@ -156,7 +156,7 @@
 									</svg>
 								</button>
 								<button
-									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && !invoice.void_reason && getEntity(invoice) !== ENTITY_SHIFT_CLOSE"
+									v-if="settingsStore.allowDeleteOfflineInvoice && !invoice.server_status && !invoice.void_reason && !isShiftRecord(invoice)"
 									@click="askToVoid(invoice)"
 									:disabled="isSyncing"
 									class="w-11 h-11 flex items-center justify-center hover:bg-red-50 rounded-lg transition-colors touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -321,6 +321,7 @@ import {
 	ENTITY_INVOICE,
 	ENTITY_PAYMENT,
 	ENTITY_SHIFT_CLOSE,
+	ENTITY_SHIFT_OPEN,
 	getEntity,
 } from "@/utils/offline/entities"
 import { SALE_STANDS } from "@/utils/offline/invoicePayload"
@@ -521,8 +522,13 @@ function isSale(row) {
 	return getEntity(row) === ENTITY_INVOICE
 }
 
+function isShiftRecord(row) {
+	return [ENTITY_SHIFT_CLOSE, ENTITY_SHIFT_OPEN].includes(getEntity(row))
+}
+
 function getRowTitle(row) {
 	const data = row.data
+	if (getEntity(row) === ENTITY_SHIFT_OPEN) return data.pos_profile
 	return (
 		data.customer_name ||
 		data.pos_opening_shift ||
@@ -540,6 +546,8 @@ function getRowKind(row) {
 			return __("Payment for {0}", [row.data.invoice_name])
 		case ENTITY_SHIFT_CLOSE:
 			return __("Shift Close")
+		case ENTITY_SHIFT_OPEN:
+			return __("Shift Opening")
 		default:
 			return ""
 	}

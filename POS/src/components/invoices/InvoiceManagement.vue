@@ -584,7 +584,7 @@ const { formatDate, formatDateTime, formatTime } = useFormatters()
 const settingsStore = usePOSSettingsStore()
 const uiStore = usePOSUIStore()
 const offlineStore = usePOSSyncStore()
-const { isOffline } = useOfflineStatus()
+const { mustQueue: isOffline } = useOfflineStatus()
 
 
 const props = defineProps({

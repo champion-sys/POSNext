@@ -61,7 +61,8 @@ POS_SETTINGS_FIELDS = [
 	"return_validity_days",
 	"disable_offline_coupons",
 	"allow_offline_returns",
-	"allow_offline_shift_close"
+	"allow_offline_shift_close",
+	"allow_offline_shift_open"
 ]
 
 # Default POS Settings values
@@ -110,6 +111,7 @@ DEFAULT_POS_SETTINGS = {
 	"disable_offline_coupons": 0,
 	"allow_offline_returns": 0,
 	"allow_offline_shift_close": 0,
+	"allow_offline_shift_open": 0,
 	"custom_allow_edit_offline_invoice": 1,
 	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None,
