@@ -3314,6 +3314,85 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect(await store.getShift()).toBeNull()
 			})
 
+			describe("when a manager linked it to a colleague's shift", () => {
+				const COLLEAGUES_SHIFT = "POSA-OS-COLLEAGUE"
+
+				const serverSettles = async (shiftUser = OTHER_CASHIER) => {
+					const { syncOfflineInvoices } = await import("@/utils/offline/sync")
+					callServer.mockImplementation(async (method) =>
+						method.endsWith("push")
+							? { results: [{ offline_id: local, status: "synced", invoice: COLLEAGUES_SHIFT, shift_user: shiftUser }] }
+							: [],
+					)
+					await syncOfflineInvoices()
+					await settle()
+				}
+
+				const backWithPin = async () => {
+					await cleanupUserSession()
+					signInAs(CASHIER)
+					serverIsUnreachable()
+				}
+
+				it("ends at once, with no read-back to depend on", async () => {
+					await serverSettles()
+
+					expect(shiftStore.hasOpenShift).toBe(false)
+					expect(shiftState.value.pos_opening_shift).toBeNull()
+					expect(await store.getShift()).toBeNull()
+					expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("check_opening_shift"))
+				})
+
+				it("does not come back on a PIN sign-in", async () => {
+					await serverSettles()
+					await backWithPin()
+
+					expect(await shiftStore.checkShift()).toBe(false)
+					expect(shiftState.value.pos_opening_shift).toBeNull()
+				})
+
+				it("ends though its cashier had signed out when the answer came", async () => {
+					await cleanupUserSession()
+					await serverSettles()
+					await backWithPin()
+
+					expect(await store.getShift()).toBeNull()
+					expect(await shiftStore.checkShift()).toBe(false)
+				})
+
+				it("ends while parked for its cashier", async () => {
+					await cleanupUserSession()
+					signInAs(OTHER_CASHIER)
+					serverReports({ name: "SHIFT-2", user: OTHER_CASHIER })
+					await shiftStore.checkShift()
+					await settle()
+
+					await serverSettles()
+					await backWithPin()
+
+					expect((await store.getShift()).pos_opening_shift.name).toBe("SHIFT-2")
+					expect(await shiftStore.checkShift()).toBe(false)
+				})
+
+				it("takes the server's name when the shift stayed this cashier's", async () => {
+					serverReports({ name: COLLEAGUES_SHIFT, user: CASHIER, offline_id: local })
+
+					await serverSettles(CASHIER)
+
+					expect(shiftStore.currentShift.name).toBe(COLLEAGUES_SHIFT)
+					expect((await store.getShift()).pos_opening_shift.name).toBe(COLLEAGUES_SHIFT)
+				})
+			})
+
+			it("does not leave the last cashier's shift on screen for the next to sell into", async () => {
+				signInAs(OTHER_CASHIER)
+				serverIsUnreachable()
+
+				expect(await shiftStore.checkShift()).toBe(false)
+
+				expect(shiftState.value.pos_opening_shift).toBeNull()
+			})
+
 			describe("when a colleague's online shift needs the slot", () => {
 				const colleagueShift = () => ({ name: "SHIFT-2", user: OTHER_CASHIER })
 

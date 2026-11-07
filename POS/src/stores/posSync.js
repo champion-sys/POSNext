@@ -578,9 +578,10 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 
 	/**
 	 * The server finished with a shift opened on this device.
-	 * @param {{row: Object, status: string, name: string}} detail - From offlineEntitySynced
+	 * @param {{row: Object, status: string, name: string, shiftUser: string}} detail - From
+	 *   offlineEntitySynced
 	 */
-	async function settleLocalShift({ row, status, name }) {
+	async function settleLocalShift({ row, status, name, shiftUser }) {
 		if (status === "voided") {
 			if (await abandonLocalShift(row.offline_id)) {
 				showWarning(__("A manager voided the shift opened on this device. Open a new shift to keep selling."))
@@ -588,7 +589,15 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			return
 		}
 
-		// A manager may have linked it to a colleague's shift, and only the server can say
+		// Linked to a colleague's shift, it ends here whoever is signed in. Taking the name
+		// would leave a shift to sell into, and to close, that is not this cashier's.
+		if (shiftUser && shiftUser !== row.data?.cashier) {
+			if (await abandonLocalShift(row.offline_id)) {
+				showWarning(__("A manager linked this shift to a colleague's shift, so it has ended on this device. Open a new shift to keep selling."))
+			}
+			return
+		}
+
 		if (await adoptServerShift(row.offline_id, name)) {
 			usePOSShiftStore().checkOpeningShift.fetch().catch((error) => {
 				log.warn("Could not read the shift back from the server", error)

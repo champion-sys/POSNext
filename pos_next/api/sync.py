@@ -13,6 +13,7 @@ from frappe.utils import cint
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
 from pos_next.services import sync_inbox, sync_reconciliation, sync_void
+from pos_next.services.sync_entities import ENTITY_SHIFT_OPEN
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -120,6 +121,9 @@ def _describe(row):
     }
     if row.sales_invoice:
         response["invoice"] = row.sales_invoice
+        # A manager can link it to a colleague's shift, and the device must not sell into that
+        if row.entity == ENTITY_SHIFT_OPEN:
+            response["shift_user"] = frappe.db.get_value("POS Opening Shift", row.sales_invoice, "user")
     if row.status in ("Needs Review", "Retry Scheduled"):
         response["error_class"] = row.error_class
         response["error_code"] = row.error_code
@@ -237,7 +241,7 @@ def get_status(offline_ids=None):
     rows = frappe.get_all(
         "Offline Invoice Sync",
         filters={"offline_id": ["in", offline_ids]},
-        fields=["offline_id", "status", "sales_invoice", "error_class", "error_code", "error_message"],
+        fields=["offline_id", "entity", "status", "sales_invoice", "error_class", "error_code", "error_message"],
     )
     return [_describe(row) for row in rows]
 

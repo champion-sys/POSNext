@@ -237,10 +237,11 @@ export const getDeviceId = () => {
  * @param {Object} row - Queue row
  * @param {string} status - How it ended
  * @param {string} [name] - What the server made of it, none when it was voided
+ * @param {string} [shiftUser] - For a shift opened here, who holds the shift it became
  */
-export const announceRecordEnded = (row, status, name) => {
+export const announceRecordEnded = (row, status, name, shiftUser) => {
 	removeOfflineReceiptPayload(row.offline_id)
-	window.dispatchEvent(new CustomEvent("offlineEntitySynced", { detail: { row, status, name } }))
+	window.dispatchEvent(new CustomEvent("offlineEntitySynced", { detail: { row, status, name, shiftUser } }))
 }
 
 /**
@@ -257,7 +258,7 @@ const applyResult = async (row, result) => {
 	if ((await localStore.getQueuedInvoice(row.offline_id))?.void_reason) return null
 
 	await localStore.updateQueuedInvoice(row.id, updates)
-	if (updates.synced) announceRecordEnded(row, updates.server_status, updates.server_invoice)
+	if (updates.synced) announceRecordEnded(row, updates.server_status, updates.server_invoice, result.shift_user)
 	return updates.server_status
 }
 

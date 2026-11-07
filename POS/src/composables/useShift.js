@@ -97,10 +97,13 @@ async function findOwnShift() {
 
 async function restoreCachedShift() {
 	const data = await findOwnShift()
-	if (!data || isClosing(data)) return
-
-	await takeSlot(data)
-	showShift(data)
+	if (data && !isClosing(data)) {
+		await takeSlot(data)
+		showShift(data)
+	} else if (shiftState.value.isOpen && !isOwnShift(shiftState.value)) {
+		// A sign-in that skipped the cleanup leaves the last cashier's shift on screen
+		resetShiftState()
+	}
 }
 
 /** @returns {Promise<Object|null>} This cashier's shift that the server has not finished with */
