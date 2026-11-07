@@ -11,6 +11,7 @@ import { logger } from "@/utils/logger"
 import { ELECTRON, PLATFORM } from "../runtime"
 import { migrate } from "../sql/migrations"
 import { createOutbox } from "../sql/outbox"
+import { DatabaseLockedError } from "./databaseLock"
 import { STORE_METHODS } from "./methods"
 import { createSqlStore } from "./sqlStore"
 
@@ -49,17 +50,18 @@ async function openDatabase() {
 	const sql = await openExecutor()
 	await migrate(sql)
 	await createOutbox(sql).recoverInterrupted()
-	return createSqlStore(sql)
+	return { store: createSqlStore(sql), encrypted: sql.encrypted }
 }
 
 /**
- * @param {() => Promise<Object>} open - Opens the SQLite store
- * @returns {Object} The store, degrading on reads when the database fails
+ * @param {() => Promise<T>} open
+ * @returns {() => Promise<T>} Opens once, and again only after a failure
+ * @template T
  */
-export function createNativeStore(open) {
+function openOnce(open) {
 	let opening = null
 
-	function getDatabase() {
+	return () => {
 		if (!opening) {
 			opening = open().catch((error) => {
 				opening = null
@@ -68,6 +70,14 @@ export function createNativeStore(open) {
 		}
 		return opening
 	}
+}
+
+/**
+ * @param {() => Promise<Object>} open - Opens the SQLite store
+ * @returns {Object} The store, degrading on reads when the database fails
+ */
+export function createNativeStore(open) {
+	const getDatabase = openOnce(open)
 
 	return Object.fromEntries(
 		STORE_METHODS.map((name) => [
@@ -76,7 +86,8 @@ export function createNativeStore(open) {
 				try {
 					return await (await getDatabase())[name](...args)
 				} catch (error) {
-					if (!FALLBACKS[name]) throw error
+					// Locked is not empty: an answer of "no sales" would be a lie
+					if (!FALLBACKS[name] || error instanceof DatabaseLockedError) throw error
 					log.error(`Local database failed on ${name}`, error)
 					return FALLBACKS[name](...args)
 				}
@@ -85,8 +96,25 @@ export function createNativeStore(open) {
 	)
 }
 
-const store = createNativeStore(openDatabase)
+const openLocalDatabase = openOnce(openDatabase)
+const store = createNativeStore(async () => (await openLocalDatabase()).store)
 
 export function openStore() {
 	return store
+}
+
+/**
+ * For the app's start, which must not go on over a database that exists and will not open.
+ * @param {() => Promise<{encrypted: boolean}>} [open]
+ * @returns {Promise<{locked: string|null, encrypted: boolean}>}
+ */
+export async function checkDatabase(open = openLocalDatabase) {
+	try {
+		const { encrypted } = await open()
+		return { locked: null, encrypted }
+	} catch (error) {
+		if (error instanceof DatabaseLockedError) return { locked: error.reason, encrypted: false }
+		log.error("Failed to open the local database", error)
+		return { locked: null, encrypted: false }
+	}
 }

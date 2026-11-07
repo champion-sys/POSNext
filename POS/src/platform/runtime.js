@@ -28,6 +28,7 @@ const DEVICE_KEYS = [
 	"pos_next_cashier",
 	"pos_next_device_id",
 	"pos_next_system_printer",
+	"pos_next_locked_text",
 ]
 
 /**

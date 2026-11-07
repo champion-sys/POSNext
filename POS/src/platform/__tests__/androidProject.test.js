@@ -51,6 +51,20 @@ describe("Android backups", () => {
 	})
 })
 
+describe("the database", () => {
+	it("has the plugin's encryption on", () => {
+		expect(config.plugins.CapacitorSQLite.androidIsEncryption).toBe(true)
+	})
+
+	it("does not ask for a fingerprint, which would stop a till with no cashier at it", () => {
+		expect(config.plugins.CapacitorSQLite.androidBiometric).toBeUndefined()
+	})
+
+	it("keeps plugin calls out of the log, because they carry the database secret", () => {
+		expect(config.loggingBehavior).toBe("none")
+	})
+})
+
 describe("exporting the queue", () => {
 	const manifest = JSON.parse(readFileSync(resolve(POS, "package.json"), "utf8"))
 
