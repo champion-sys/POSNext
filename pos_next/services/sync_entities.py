@@ -300,16 +300,13 @@ def _attach_waiting_records(local_name, shift):
     They were stored with no shift, and a closing and has_pending_close find them through
     it. Only those: a manager may have moved one elsewhere already.
     """
-    from pos_next.services.sync_inbox import _move_to_shift
-
     waiting = frappe.get_all(
         DOCTYPE,
         filters={"depends_on": ["like", f"%{local_name}%"], "shift": ["is", "not set"]},
-        fields=["name", "cashier", "invoice_doctype"],
+        pluck="name",
     )
-    for row in waiting:
-        _move_to_shift(row, shift)
-        frappe.db.set_value(DOCTYPE, row.name, {"shift": row.shift, "cashier": row.cashier})
+    for name in waiting:
+        frappe.db.set_value(DOCTYPE, name, "shift", shift)
 
 
 def open_shift(row):

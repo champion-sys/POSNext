@@ -919,8 +919,9 @@ def apply_fix(name, fix, values):
         # The date is now a person's, so the clock it came from no longer matters
         if fix == "posting_date":
             row.accept_device_date = 1
+        # Closing a shift reads the row, so it must stay on the shift its payload now names
         if fix == "shift":
-            _move_to_shift(row, values["shift"])
+            row.shift = values["shift"]
 
     row.flags.ignore_links = True
     row.save(ignore_permissions=True)
@@ -969,17 +970,6 @@ def _fix_shift(payload, values):
 def _fix_link_shift(payload, values):
     sync_entities.assert_can_take_sales(values["shift"], payload.get("pos_profile"))
     payload["linked_shift"] = values["shift"]
-
-
-def _move_to_shift(row, shift):
-    """Keep the row on the shift its payload now names. Closing a shift reads the row.
-
-    POS Closing Entry refuses a POS Invoice owned by anyone but the shift's user, so a move
-    to a colleague's shift also moves the sale to them, or that shift could never close.
-    """
-    row.shift = shift
-    if row.invoice_doctype == "POS Invoice":
-        row.cashier = frappe.db.get_value("POS Opening Shift", shift, "user") or row.cashier
 
 
 def _items_matching(payload, item_code):

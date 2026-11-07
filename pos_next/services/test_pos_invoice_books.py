@@ -201,3 +201,26 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         self.assertEqual(entry.total_quantity, 3)
         self.assertEqual(entry.period_end_date, closing.period_end_date)
         self.assertGreater(entry.period_end_date, entry.period_start_date)
+
+    def test_a_colleagues_sale_does_not_stop_the_shift_from_closing(self):
+        shift = self._open_shift()
+        hers = self._sell(SARA, shift)
+        self._sell(LINA, shift)
+
+        closing = self._close(shift)
+
+        self.assertEqual(frappe.db.get_value("POS Closing Entry", self._entry_of(closing), "status"), "Submitted")
+        self.assertTrue(frappe.db.get_value("POS Invoice", hers, "consolidated_invoice"))
+        self.assertEqual(frappe.db.get_value("POS Invoice", hers, "owner"), SARA)
+
+    def test_a_closing_made_by_hand_keeps_erpnexts_rule_on_owners(self):
+        shift = self._open_shift()
+        invoice = self._sell(SARA, shift)
+
+        frappe.set_user("Administrator")
+        entry = frappe.new_doc("POS Closing Entry")
+        entry.pos_profile, entry.user, entry.company = PROFILE, LINA, self.company
+        entry.append("pos_invoices", {"pos_invoice": invoice})
+
+        with self.assertRaises(frappe.ValidationError):
+            entry.validate_pos_invoices()

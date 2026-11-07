@@ -171,6 +171,7 @@ class POSClosingShift(Document):
         )
 
         pce = frappe.new_doc("POS Closing Entry")
+        pce.flags.closes_shift = True
         pce.pos_profile = self.pos_profile
         pce.user = self.user
         pce.company = self.company

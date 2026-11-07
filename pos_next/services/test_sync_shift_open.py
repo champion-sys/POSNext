@@ -450,23 +450,24 @@ class TestTheManagersLink(ShiftFlow):
         self._link(self._refused(), "POSA-OS-OPEN")
         self.assertEqual(self.created_shifts, [])
 
-    def test_a_pos_invoice_goes_to_whoever_holds_that_shift(self):
+    def test_a_sale_keeps_its_cashier_in_a_colleagues_shift(self):
         sale = self._send(SALE, {**SALE_PAYLOAD, "doctype": "POS Invoice"})
         name = self._refused()
         self.inbox.opening_shifts["POSA-OS-OPEN"].user = "colleague@example.com"
 
         self._link(name, "POSA-OS-OPEN")
 
-        self.assertEqual(self._row(sale).cashier, "colleague@example.com")
+        self.assertEqual(self._row(sale).cashier, CASHIER)
 
-    def test_a_sales_invoice_keeps_its_cashier(self):
-        sale = self._send(SALE, SALE_PAYLOAD)
+    def test_a_sale_sent_after_the_link_lands_there_and_keeps_its_cashier(self):
         name = self._refused()
         self.inbox.opening_shifts["POSA-OS-OPEN"].user = "colleague@example.com"
-
         self._link(name, "POSA-OS-OPEN")
 
-        self.assertEqual(self._row(sale).cashier, CASHIER)
+        late = self._send(LATE_SALE, {**SALE_PAYLOAD, "doctype": "POS Invoice"})
+
+        self.assertEqual(self._row(late).shift, "POSA-OS-OPEN")
+        self.assertEqual(self._row(late).cashier, CASHIER)
 
     def _assert_link_refused(self, name, shift):
         with self.assertRaises(frappe.ValidationError):
