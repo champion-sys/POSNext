@@ -655,18 +655,39 @@ class TestOnlinePath(test_sync_entities.NoSiteTestCase):
         self._insert()
         self.document.set.assert_called_once_with("balance_details", [{"mode_of_payment": "Cash", "amount": 5}])
 
-    def test_create_opening_shift_still_answers_with_the_three_documents(self):
-        shift = Mock()
+    def _create(self):
+        self.shift = Mock()
         with (
-            patch("pos_next.api.shifts.insert_opening_shift", return_value=shift) as insert,
+            patch("pos_next.api.shifts.insert_opening_shift", return_value=self.shift) as self.create,
             patch("pos_next.api.shifts.frappe.get_doc", side_effect=lambda doctype, name: f"{doctype} {name}"),
         ):
-            data = shifts.create_opening_shift("Main", "Acme", '[{"mode_of_payment": "Cash", "opening_amount": 5}]')
+            return shifts.create_opening_shift("Main", "Acme", '[{"mode_of_payment": "Cash", "opening_amount": 5}]')
 
-        insert.assert_called_once_with("Main", "Acme", [{"mode_of_payment": "Cash", "opening_amount": 5}])
-        self.assertEqual(data["pos_opening_shift"], shift.as_dict())
+    def test_create_opening_shift_still_answers_with_the_three_documents(self):
+        with patch("pos_next.api.invoices._assert_invoice_write_access"):
+            data = self._create()
+
+        self.create.assert_called_once_with("Main", "Acme", [{"mode_of_payment": "Cash", "opening_amount": 5}])
+        self.assertEqual(data["pos_opening_shift"], self.shift.as_dict())
         self.assertEqual(data["pos_profile"], "POS Profile Main")
         self.assertEqual(data["company"], "Company Acme")
+
+    def test_someone_outside_the_profile_opens_nothing_and_reads_nothing(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access", side_effect=frappe.PermissionError) as access,
+            self.assertRaises(frappe.PermissionError),
+        ):
+            self._create()
+
+        access.assert_called_once_with("Sales Invoice", "Main")
+        self.create.assert_not_called()
+
+    def test_the_role_for_closing_does_not_stop_a_cashier_opening(self):
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.shifts.assert_may_close_shift", side_effect=frappe.PermissionError),
+        ):
+            self.assertIn("pos_opening_shift", self._create())
 
     def test_a_cashier_with_a_shift_is_refused_with_the_stable_code(self):
         with patch("pos_next.api.shifts.check_opening_shift", return_value={"pos_opening_shift": Mock()}):
