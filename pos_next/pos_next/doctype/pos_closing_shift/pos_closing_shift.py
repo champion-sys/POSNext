@@ -175,6 +175,13 @@ class POSClosingShift(Document):
         pce.user = self.user
         pce.company = self.company
         pce.posting_date = self.posting_date
+        pce.period_start_date = self.period_start_date
+        pce.period_end_date = self.period_end_date
+        pce.grand_total = self.grand_total
+        pce.net_total = self.net_total
+        pce.total_quantity = self.total_quantity
+        for tax in self.taxes:
+            pce.append("taxes", {"account_head": tax.account_head, "rate": tax.rate, "amount": tax.amount})
 
         # Link to standard POS Opening Entry linked to our opening shift
         standard_opening = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_opening_entry")

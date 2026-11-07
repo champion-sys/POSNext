@@ -188,3 +188,16 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         )
         self.assertEqual(sum(row.actual_qty for row in moved), -2)
         self.assertEqual(flt(sum(row.stock_value_difference for row in moved)), -2 * VALUATION)
+
+    def test_the_closing_entry_carries_the_shifts_figures(self):
+        shift = self._open_shift()
+        self._sell(LINA, shift, 3)
+        closing = frappe.get_doc("POS Closing Shift", self._close(shift))
+
+        entry = frappe.get_doc("POS Closing Entry", closing.pos_closing_entry)
+
+        self.assertEqual(entry.grand_total, 3 * RATE)
+        self.assertEqual(entry.net_total, 3 * RATE)
+        self.assertEqual(entry.total_quantity, 3)
+        self.assertEqual(entry.period_end_date, closing.period_end_date)
+        self.assertGreater(entry.period_end_date, entry.period_start_date)
