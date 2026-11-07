@@ -51,6 +51,49 @@ describe("Android backups", () => {
 	})
 })
 
+describe("exporting the queue", () => {
+	const manifest = JSON.parse(readFileSync(resolve(POS, "package.json"), "utf8"))
+
+	it("has the plugins, pinned as the other Capacitor packages are", () => {
+		for (const plugin of ["@capacitor/filesystem", "@capacitor/share"]) {
+			expect(manifest.dependencies[plugin]).toMatch(/^\d+\.\d+\.\d+$/)
+		}
+	})
+
+	it("has the file provider the Share plugin looks for", () => {
+		const provider = parse("AndroidManifest.xml").querySelector("provider")
+
+		expect(provider.getAttribute("android:authorities")).toBe("${applicationId}.fileprovider")
+		expect(provider.getAttribute("android:exported")).toBe("false")
+		expect(provider.getAttribute("android:grantUriPermissions")).toBe("true")
+	})
+
+	it("lets that provider reach the cache, where the file is written", () => {
+		const cache = parse("res/xml/file_paths.xml").querySelector("cache-path")
+		expect(cache.getAttribute("path")).toBe(".")
+	})
+
+	it("needs no storage permission", () => {
+		const permissions = [...parse("AndroidManifest.xml").querySelectorAll("uses-permission")]
+		const names = permissions.map((permission) => permission.getAttribute("android:name"))
+
+		expect(names.filter((name) => /EXTERNAL_STORAGE|MANAGE_/.test(name))).toEqual([])
+	})
+
+	it("stays out of the web and desktop builds", () => {
+		const shared = readFileSync(resolve(POS, "src/platform/capacitor.js"), "utf8")
+		expect(shared).not.toContain("@capacitor/")
+	})
+
+	it("reaches the code that calls it through the Android build's copy", () => {
+		const android = readFileSync(resolve(POS, "src/platform/capacitor.android.js"), "utf8")
+
+		expect(android).toContain('import { Filesystem } from "@capacitor/filesystem"')
+		expect(android).toContain('import { Share } from "@capacitor/share"')
+		expect(android).toMatch(/export \{[^}]*\bFilesystem\b[^}]*\bShare\b[^}]*\}/)
+	})
+})
+
 describe("Android launcher icons", () => {
 	const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 }
 	const LEGACY_DP = 48

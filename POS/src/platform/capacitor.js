@@ -10,5 +10,7 @@ export const BleClient = null
 export const CapacitorSQLite = null
 export const ClassicPrinter = null
 export const Dialog = null
+export const Filesystem = null
 export const SQLiteConnection = null
+export const Share = null
 export const TcpPrinter = null

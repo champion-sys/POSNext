@@ -119,6 +119,15 @@ export function createSqlStore(sql) {
 		},
 
 		/**
+		 * What an export takes. It has its own name because the queue's other reads answer with
+		 * an empty list when they fail, and an empty file would say a broken device had nothing
+		 * to save, so createNativeStore gives this one no fallback.
+		 */
+		listUnconfirmedRows() {
+			return store.getOfflineInvoices()
+		},
+
+		/**
 		 * Keep a sale. Its receipt starts as the invoice itself, so a printable copy exists
 		 * from the moment the sale does.
 		 */

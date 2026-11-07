@@ -332,7 +332,9 @@ export function knownCashiers() {
 }
 
 /**
- * Check a PIN against what the server sent at the last online sign-in.
+ * Check a PIN against what the server sent at the last online sign-in. The offline limit
+ * comes after the PIN, so "expired" also says who is at the device: past the limit they may
+ * not sell, and may still take their queue out.
  * @param {string} user
  * @param {string} pin
  * @returns {Promise<{ok: boolean, reason?: "no_pin"|"expired"|"locked"|"wrong", retryInSeconds?: number}>}
@@ -342,25 +344,22 @@ export async function verifyPin(user, pin) {
 	if (!cashier?.pin) return { ok: false, reason: "no_pin" }
 
 	const now = Date.now()
-	if (offlineWindow(cashier, now, deviceState.clockHighWater).expired) {
-		return { ok: false, reason: "expired" }
-	}
-
 	const gate = attemptGate(cashier.attempts, now)
 	if (!gate.allowed)
 		return { ok: false, reason: "locked", retryInSeconds: gate.retryInSeconds }
 
-	if (await pinMatches(pin, cashier.pin)) {
-		cashier.attempts = null
-		deviceState.clockHighWater = Math.max(deviceState.clockHighWater, now)
+	if (!(await pinMatches(pin, cashier.pin))) {
+		cashier.attempts = recordFailure(cashier.attempts, now)
+		if (isPinExhausted(cashier.attempts)) cashier.pin = null
 		await saveDeviceState()
-		return { ok: true }
+		return { ok: false, reason: "wrong" }
 	}
 
-	cashier.attempts = recordFailure(cashier.attempts, now)
-	if (isPinExhausted(cashier.attempts)) cashier.pin = null
+	cashier.attempts = null
+	const { expired } = offlineWindow(cashier, now, deviceState.clockHighWater)
+	if (!expired) deviceState.clockHighWater = Math.max(deviceState.clockHighWater, now)
 	await saveDeviceState()
-	return { ok: false, reason: "wrong" }
+	return expired ? { ok: false, reason: "expired" } : { ok: true }
 }
 
 /**
