@@ -77,7 +77,7 @@ export const getCachedSerialData = async (itemCode) => {
 		if (!itemCode) return [];
 
 		const item = await localStore.getCachedItem(itemCode);
-		return item?.serial_no_data || [];
+		return await withoutQueuedSerials(itemCode, item?.serial_no_data || []);
 	} catch (error) {
 		console.error("Error getting cached serial data:", error);
 		return [];
@@ -93,6 +93,39 @@ export function parseSerialNumbers(serialNumbers) {
 				.map((s) => s.trim())
 				.filter(Boolean);
 }
+
+/** Holds the same sales as sumQueuedStock. A return gives its serial back. */
+function getQueuedSerials(rows, itemCode) {
+	const held = new Set();
+	for (const { data, void_reason } of rows) {
+		if (data?.doctype === "Sales Order" || data?.is_return || void_reason) continue;
+		for (const item of data?.items || []) {
+			if (item.item_code !== itemCode) continue;
+			for (const serial of parseSerialNumbers(item.serial_no)) held.add(serial);
+		}
+	}
+	return held;
+}
+
+/**
+ * Take off serials a queued sale has sold. The server lists them as available until that
+ * sale reaches it. A queue that cannot be read must not stop the sale in front of the
+ * cashier, and the server still refuses a serial sold twice.
+ * @param {string} itemCode
+ * @param {Array<{serial_no: string}>} serials
+ * @returns {Promise<Array<{serial_no: string}>>}
+ */
+export const withoutQueuedSerials = async (itemCode, serials) => {
+	if (serials.length === 0) return serials;
+
+	try {
+		const held = getQueuedSerials(await localStore.getOfflineInvoices(), itemCode);
+		return serials.filter((serial) => !held.has(serial.serial_no));
+	} catch (error) {
+		console.error("Error reading serials held by the queue:", error);
+		return serials;
+	}
+};
 
 // Persist batch/serial data for a single cached item (partial updates supported)
 export const persistItemBatchSerialData = async (itemCode, data) => {
