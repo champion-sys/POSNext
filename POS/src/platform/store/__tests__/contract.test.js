@@ -3176,7 +3176,7 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 			})
 
 			it("counts as unfinished with no close to wait behind", async () => {
-				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [], unclosed: [local] })
+				expect(await useShift.getCollidingShiftRecords()).toEqual({ closes: [], unclosed: [local] })
 			})
 
 			it("leaves its close for the next shift to wait behind, while it is on its way", async () => {
@@ -3188,10 +3188,12 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 					payment_reconciliation: [],
 				})
 
-				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [close.offline_id], unclosed: [] })
+				expect(await useShift.getCollidingShiftRecords()).toEqual({ closes: [close.offline_id], unclosed: [] })
 
 				signInAs(OTHER_CASHIER)
-				expect(await useShift.getOwnShiftRecords()).toEqual({ closes: [], unclosed: [] })
+				expect(await useShift.getCollidingShiftRecords()).toEqual({ closes: [], unclosed: [] })
+				expect(await useShift.getCollidingShiftRecords("Other")).toEqual({ closes: [], unclosed: [] })
+				expect(await useShift.getCollidingShiftRecords("Main")).toEqual({ closes: [close.offline_id], unclosed: [] })
 			})
 
 			it("makes the next shift wait for the close before it", async () => {

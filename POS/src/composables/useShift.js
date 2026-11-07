@@ -135,9 +135,12 @@ function keepShift(data) {
 	rememberShiftProfile(data).catch((error) => console.error("Error keeping the POS Profile:", error))
 }
 
-/** @returns {Promise<{closes: string[], unclosed: string[]}>} This cashier's, on this device */
-export async function getOwnShiftRecords() {
-	return getUnfinishedShiftRecords(await localStore.getQueueRows(), readIdentity().userId)
+/**
+ * @param {string} [posProfile] - The POS Profile to open, with none only this cashier's count
+ * @returns {Promise<{closes: string[], unclosed: string[]}>} What a new shift would collide with
+ */
+export async function getCollidingShiftRecords(posProfile) {
+	return getUnfinishedShiftRecords(await localStore.getQueueRows(), readIdentity().userId, posProfile)
 }
 
 /** @returns {Promise<boolean>} Whether another cashier's shift holds the one slot on this device */

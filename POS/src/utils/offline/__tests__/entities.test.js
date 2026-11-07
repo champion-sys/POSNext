@@ -381,13 +381,13 @@ describe("getUnfinishedShiftRecords", () => {
 	const opening = (extra) => ({
 		offline_id: "pos_offline_old",
 		entity: ENTITY_SHIFT_OPEN,
-		data: { cashier: CASHIER },
+		data: { cashier: CASHIER, pos_profile: "Main" },
 		...extra,
 	})
 	const closing = (extra) => ({
 		offline_id: "pos_offline_close",
 		entity: ENTITY_SHIFT_CLOSE,
-		data: { cashier: CASHIER, pos_opening_shift: "pos_offline_old" },
+		data: { cashier: CASHIER, pos_profile: "Main", pos_opening_shift: "pos_offline_old" },
 		...extra,
 	})
 
@@ -416,6 +416,19 @@ describe("getUnfinishedShiftRecords", () => {
 		]
 
 		expect(getUnfinishedShiftRecords(rows, CASHIER)).toEqual({ closes: [], unclosed: [] })
+	})
+
+	it("counts a colleague's on the POS Profile to open, where the server keeps one shift open", () => {
+		const colleague = { cashier: "b@example.com", pos_profile: "Main" }
+		const rows = [opening({ data: colleague })]
+
+		expect(getUnfinishedShiftRecords(rows, CASHIER, "Main").unclosed).toEqual(["pos_offline_old"])
+		expect(getUnfinishedShiftRecords(rows, CASHIER, "Other").unclosed).toEqual([])
+		expect(getUnfinishedShiftRecords(rows, CASHIER).unclosed).toEqual([])
+	})
+
+	it("counts this cashier's on any POS Profile, where the server keeps them to one shift", () => {
+		expect(getUnfinishedShiftRecords([opening()], CASHIER, "Other").unclosed).toEqual(["pos_offline_old"])
 	})
 })
 

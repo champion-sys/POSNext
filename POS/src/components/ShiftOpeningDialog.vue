@@ -200,7 +200,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import {
 	getCachedShiftProfiles,
-	getOwnShiftRecords,
+	getCollidingShiftRecords,
 	isShiftSlotTaken,
 	shiftState,
 	useShift,
@@ -248,10 +248,10 @@ const restartProfileName = ref(null)
 const offlineProfiles = ref([])
 const offlineProblem = ref(null)
 const savingOffline = ref(false)
-const waitingForOwnShift = ref(false)
+const waitingForShift = ref(false)
 
 // A shift opened on the server now would collide with the last one, which has not landed
-const opensOnDevice = computed(() => mustQueue.value || waitingForOwnShift.value)
+const opensOnDevice = computed(() => mustQueue.value || waitingForShift.value)
 
 const profiles = computed(() =>
 	opensOnDevice.value
@@ -270,13 +270,13 @@ const offlineMessage = computed(() => {
 		case "not_allowed":
 			return __("Opening a shift offline is not allowed for your POS Profile, or this device has not received that setting yet. Connect to the server to open a shift.")
 		case "shift_unsettled":
-			return __("A shift you opened on this device is still on its way to the server, so another cannot open yet. Try again once it has arrived, or ask a manager.")
+			return __("A shift opened on this device is still on its way to the server, so another cannot open yet. Try again once it has arrived, or ask a manager.")
 		case "shift_finishing":
-			return __("Your last shift is still on its way to the server, and your POS Profile cannot open a shift until it arrives. Try again shortly, or ask a manager.")
+			return __("The last shift is still on its way to the server, and this POS Profile cannot open a shift until it arrives. Try again shortly, or ask a manager.")
 		default:
 			return isOffline.value
 				? __("You are offline. The shift opens on this device and is created on the server when it connects.")
-				: __("Your last shift is still on its way to the server. This shift opens on this device and follows it there.")
+				: __("The last shift is still on its way to the server. This shift opens on this device and follows it there.")
 	}
 })
 
@@ -343,8 +343,8 @@ async function initDialog() {
 	openingBalances.value = {}
 	dialogDataResource.reset()
 
-	waitingForOwnShift.value = !isOffline.value && (await hasUnfinishedShiftRecords())
-	if (waitingForOwnShift.value && !shiftState.value.isOpen) {
+	waitingForShift.value = !isOffline.value && (await hasCollidingShiftRecords())
+	if (waitingForShift.value && !shiftState.value.isOpen) {
 		// Its server copy, or another shift of theirs, is there to resume instead
 		await checkOpeningShift.fetch().catch(() => {})
 		await whenCachedShiftRestored()
@@ -371,8 +371,8 @@ async function initDialog() {
 	}
 }
 
-async function hasUnfinishedShiftRecords() {
-	const { closes, unclosed } = await getOwnShiftRecords()
+async function hasCollidingShiftRecords(posProfile) {
+	const { closes, unclosed } = await getCollidingShiftRecords(posProfile)
 	return closes.length + unclosed.length > 0
 }
 
@@ -389,21 +389,27 @@ async function loadOfflineOpening() {
 
 	const cached = await getCachedShiftProfiles()
 	const usable = []
+	let held = 0
 	for (const entry of cached) {
 		const name = entry.pos_profile.name
 		if (!settingsStore.allowsOfflineShiftOpen(name)) continue
+
+		if ((await getCollidingShiftRecords(name)).unclosed.length > 0) {
+			held++
+			continue
+		}
 
 		const methods = await offlineWorker.getCachedPaymentMethods(name)
 		const openable = methods.filter((method) => !method.is_wallet_payment)
 		if (openable.length > 0) usable.push({ ...entry, methods: openable })
 	}
 
-	const { unclosed } = await getOwnShiftRecords()
+	const { unclosed } = await getCollidingShiftRecords()
 	offlineProblem.value = getShiftOpenProblem({
 		pastLimit: isPastOfflineSaleLimit(),
 		// Offline it would stay out of its cashier's reach. Online it moves aside for them.
 		slotTaken: isOffline.value && (await isShiftSlotTaken()),
-		unsettled: unclosed.length > 0,
+		unsettled: unclosed.length > 0 || (held > 0 && usable.length === 0),
 		online: !isOffline.value,
 		cached: cached.length,
 		usable: usable.length,
@@ -418,7 +424,7 @@ function resetDialog() {
 	existingShift.value = null
 	offlineProfiles.value = []
 	offlineProblem.value = null
-	waitingForOwnShift.value = false
+	waitingForShift.value = false
 	profilesResource.reset()
 	dialogDataResource.reset()
 	createShiftResource.reset()
@@ -428,8 +434,26 @@ function selectPosProfile(profile) {
 	selectedProfile.value = profile
 }
 
+/** A colleague's shift on the POS Profile collides like this cashier's own, once it is chosen */
+async function queueBehindColleague() {
+	const name = selectedProfile.value.name
+	if (!(await hasCollidingShiftRecords(name))) return
+
+	waitingForShift.value = true
+	await loadOfflineOpening()
+	if (offlineProfiles.value.some(({ pos_profile }) => pos_profile.name === name)) return
+
+	const { unclosed } = await getCollidingShiftRecords(name)
+	offlineProblem.value = offlineProblem.value || (unclosed.length > 0 ? "shift_unsettled" : "shift_finishing")
+	offlineProfiles.value = []
+	selectedProfile.value = null
+}
+
 async function nextStep() {
 	if (step.value === 1 && selectedProfile.value) {
+		if (!opensOnDevice.value) await queueBehindColleague()
+		if (!selectedProfile.value) return
+
 		if (!opensOnDevice.value) await dialogDataResource.fetch()
 		step.value = 2
 	}
@@ -514,7 +538,7 @@ async function handleExistingShiftClosed() {
 	step.value = 1
 	openingBalances.value = {}
 
-	if (mustQueue.value || (await hasUnfinishedShiftRecords())) {
+	if (mustQueue.value || (await hasCollidingShiftRecords())) {
 		await initDialog()
 		return
 	}

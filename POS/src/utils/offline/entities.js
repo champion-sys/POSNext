@@ -500,9 +500,9 @@ export function buildLocalShift(payload, { pos_profile, company }, timestamp = D
  * Why a shift cannot open from this device's queue.
  * @param {{pastLimit: boolean, slotTaken: boolean, unsettled?: boolean, online?: boolean,
  *   cached: number, usable: number}} device
- *   unsettled means a shift of this cashier reached no close here, online that only their
- *   last shift keeps them from the server, cached counts the POS Profiles kept for this
- *   cashier, usable those allowed to open offline
+ *   unsettled means a shift on its way has no close to wait behind, online that only that
+ *   keeps this opening from the server, cached counts the POS Profiles kept for this cashier,
+ *   usable those allowed to open offline
  * @returns {"past_limit"|"slot_taken"|"shift_unsettled"|"shift_finishing"|"no_profile"|"not_allowed"|null}
  */
 export function getShiftOpenProblem({ pastLimit, slotTaken, unsettled = false, online = false, cached, usable }) {
@@ -515,16 +515,23 @@ export function getShiftOpenProblem({ pastLimit, slotTaken, unsettled = false, o
 }
 
 /**
- * Shift records of a cashier still on their way. A shift they open on the server meanwhile
- * makes the one the server has not created yet fail as a second open shift, with its sales
- * blocked behind it. A close lets the next shift wait in the queue. A shift with no close
- * stays open whatever waits for it, so nothing can queue behind that one.
+ * Shift records still on their way that a new shift would collide with. The server keeps one
+ * open shift per cashier and one per POS Profile, so a shift opened there meanwhile makes the
+ * one it has not created yet fail, with its sales blocked behind it. A close lets the next
+ * shift wait in the queue. A shift with no close stays open whatever waits for it, so nothing
+ * can queue behind that one.
  * @param {Array} rows - Queue rows, including those that have synced
  * @param {string} cashier
+ * @param {string} [posProfile] - The POS Profile to open, which counts a colleague's records
  * @returns {{closes: string[], unclosed: string[]}} Offline IDs
  */
-export function getUnfinishedShiftRecords(rows, cashier) {
-	const unfinished = rows.filter((row) => !row.synced && !row.superseded && row.data?.cashier === cashier)
+export function getUnfinishedShiftRecords(rows, cashier, posProfile = null) {
+	const unfinished = rows.filter(
+		(row) =>
+			!row.synced &&
+			!row.superseded &&
+			(row.data?.cashier === cashier || (posProfile && row.data?.pos_profile === posProfile)),
+	)
 	const closes = unfinished.filter((row) => getEntity(row) === ENTITY_SHIFT_CLOSE)
 	const closed = new Set(closes.map((row) => row.data.pos_opening_shift))
 

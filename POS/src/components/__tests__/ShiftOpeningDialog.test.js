@@ -333,13 +333,13 @@ describe("the shift opening dialog, offline", () => {
 			offline_id: "pos_offline_old",
 			entity: "shift_open",
 			synced: false,
-			data: { cashier: CASHIER },
+			data: { cashier: CASHIER, pos_profile: "Main" },
 		}
 		const CLOSING = {
 			offline_id: "pos_offline_close",
 			entity: "shift_close",
 			synced: false,
-			data: { cashier: CASHIER, pos_opening_shift: "pos_offline_old" },
+			data: { cashier: CASHIER, pos_profile: "Main", pos_opening_shift: "pos_offline_old" },
 		}
 
 		const opensOnTheServer = () =>
@@ -446,12 +446,79 @@ describe("the shift opening dialog, offline", () => {
 			expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
 		})
 
-		it("stays with the server when the record is a colleague's, who only holds the slot", async () => {
-			device.rows = [{ ...CLOSING, data: { ...CLOSING.data, cashier: "b@example.com" } }]
+		describe("when the record is a colleague's", () => {
+			const colleagues = (row, pos_profile = "Main") => ({
+				...row,
+				data: { ...row.data, cashier: "b@example.com", pos_profile },
+			})
 
-			await open()
+			const choose = async () => {
+				await open()
+				server.resources.get("pos_next.api.pos_profile.get_pos_profiles").data = [MAIN.pos_profile]
+				await flushPromises()
+				await wrapper.find(".cursor-pointer").trigger("click")
+				await button(wrapper, "Next").trigger("click")
+				await flushPromises()
+			}
 
-			expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).toHaveBeenCalled()
+			it("stays with the server for a POS Profile it has nothing to do with", async () => {
+				device.rows = [colleagues(OPENING, "Other"), colleagues(CLOSING, "Other")]
+
+				await choose()
+
+				expect(server.resources.get("pos_next.api.shifts.get_opening_dialog_data").fetch).toHaveBeenCalled()
+				expect(wrapper.text()).not.toContain("still on its way")
+			})
+
+			it("waits behind a close on this POS Profile, since the server keeps one shift open on it", async () => {
+				device.rows = [colleagues(OPENING), colleagues(CLOSING)]
+
+				await choose()
+				await button(wrapper, "Open Shift").trigger("click")
+				await flushPromises()
+
+				expect(device.save).toHaveBeenCalledTimes(1)
+				expect(opensOnTheServer()).toBe(false)
+			})
+
+			it("refuses a shift on this POS Profile that has no close to wait behind", async () => {
+				device.rows = [colleagues(OPENING)]
+
+				await choose()
+
+				expect(wrapper.text()).toContain("so another cannot open yet")
+				expect(button(wrapper, "Open Shift")).toBeUndefined()
+			})
+
+			it("refuses a close on this POS Profile where it cannot wait in the queue", async () => {
+				device.rows = [colleagues(OPENING), colleagues(CLOSING)]
+				allowOffline("Main", 0)
+
+				await choose()
+
+				expect(wrapper.text()).toContain("cannot open a shift until it arrives")
+				expect(button(wrapper, "Open Shift")).toBeUndefined()
+				expect(opensOnTheServer()).toBe(false)
+			})
+
+			it("refuses offline too, where parking left the slot empty", async () => {
+				offlineState.isOffline = true
+				device.rows = [colleagues(OPENING)]
+
+				await open()
+
+				expect(wrapper.text()).toContain("so another cannot open yet")
+				expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+			})
+
+			it("does not get in the way offline on another POS Profile", async () => {
+				offlineState.isOffline = true
+				device.rows = [colleagues(OPENING, "Other")]
+
+				await open()
+
+				expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
+			})
 		})
 
 		it("stays with the server once the records have finished", async () => {
