@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import frappe
+from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
 from pos_next.api import sync as sync_api
@@ -718,9 +719,9 @@ class TestQueueJob(Flow):
     def test_a_row_that_stays_due_is_tried_once(self):
         self.assertEqual(self._run([["row-1"], ["row-1"]], [0, 1]), ["row-1"])
 
-    def _take_next_turn(self, enqueued):
+    def _take_next_turn(self, statuses):
         with (
-            patch.object(sync_inbox, "is_job_enqueued", side_effect=enqueued) as self.is_enqueued,
+            patch.object(sync_inbox, "get_job_status", side_effect=statuses) as self.job_status,
             patch.object(sync_inbox, "enqueue_processing") as queue,
             patch("pos_next.services.sync_inbox.time.sleep"),
         ):
@@ -728,13 +729,19 @@ class TestQueueJob(Flow):
         return queue
 
     def test_the_next_turn_waits_for_the_last_job_to_end(self):
-        queue = self._take_next_turn([True, True, False])
+        queue = self._take_next_turn([JobStatus.STARTED, JobStatus.STARTED, JobStatus.FINISHED])
 
-        self.assertEqual(self.is_enqueued.call_count, 3)
+        self.assertEqual(self.job_status.call_count, 3)
+        queue.assert_called_once_with("Main")
+
+    def test_a_job_the_sweep_queued_is_not_waited_for(self):
+        queue = self._take_next_turn([JobStatus.QUEUED])
+
+        self.assertEqual(self.job_status.call_count, 1)
         queue.assert_called_once_with("Main")
 
     def test_the_next_turn_does_not_wait_forever(self):
-        queue = self._take_next_turn([True] * sync_inbox.NEXT_TURN_WAIT_SECONDS)
+        queue = self._take_next_turn([JobStatus.STARTED] * sync_inbox.NEXT_TURN_WAIT_SECONDS)
 
         queue.assert_called_once_with("Main")
 

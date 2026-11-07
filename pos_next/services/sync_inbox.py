@@ -18,7 +18,8 @@ from contextlib import contextmanager
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
-from frappe.utils.background_jobs import is_job_enqueued
+from frappe.utils.background_jobs import get_job_status
+from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
@@ -747,7 +748,7 @@ def _queue_next_turn(pos_profile):
 def take_next_turn(pos_profile):
     """Queue a profile's next job once its last one has ended. If it has not, the sweep will."""
     for _second in range(NEXT_TURN_WAIT_SECONDS):
-        if not is_job_enqueued(_queue_job_id(pos_profile)):
+        if get_job_status(_queue_job_id(pos_profile)) != JobStatus.STARTED:
             break
         time.sleep(1)
     enqueue_processing(pos_profile)
