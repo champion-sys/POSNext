@@ -15,6 +15,7 @@ class TestCashierPermissions(unittest.TestCase):
             patch("pos_next.install.frappe.db", Mock(exists=Mock(return_value=existing))),
             patch("pos_next.install.frappe.clear_cache"),
             patch("frappe.permissions.add_permission") as add,
+            patch("frappe.permissions.update_permission_property") as self.update,
         ):
             install.ensure_cashier_permissions()
         return add
@@ -24,6 +25,17 @@ class TestCashierPermissions(unittest.TestCase):
 
         add.assert_any_call("Account", install.CASHIER_ROLE, ptype="select")
         add.assert_any_call("Address", install.CASHIER_ROLE, ptype="read")
+
+    def test_the_screens_can_list_what_they_show(self):
+        add = self.run_with(existing=False)
+
+        add.assert_any_call("Customer Group", install.CASHIER_ROLE, ptype="read")
+        add.assert_any_call("Sales Person", install.CASHIER_ROLE, ptype="read")
+
+    def test_only_select_turns_read_off(self):
+        self.run_with(existing=False)
+
+        self.update.assert_called_once_with("Account", install.CASHIER_ROLE, 0, "read", 0)
 
     def test_running_again_changes_nothing(self):
         self.run_with(existing=True).assert_not_called()

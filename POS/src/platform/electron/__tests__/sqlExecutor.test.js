@@ -1,5 +1,8 @@
 // @vitest-environment node
+import { mkdtempSync, rmSync } from "node:fs"
 import { createRequire } from "node:module"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { createElectronExecutor, openExecutor } from "../sqlExecutor"
 
@@ -72,6 +75,40 @@ describe("the database process", () => {
 			{ sql: "INSERT INTO t (id, name) VALUES (?, ?)", params: [2, "b"] },
 		])
 		expect(handler.all("SELECT COUNT(*) AS count FROM t")).toEqual([{ count: 2 }])
+	})
+
+	describe("on a full disk", () => {
+		function fullDatabase() {
+			const folder = mkdtempSync(join(tmpdir(), "pos-full-"))
+			const file = new DatabaseSync(join(folder, "full.sqlite"))
+			file.exec("PRAGMA journal_mode = WAL")
+			const full = createHandler(file)
+			full.run("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+			full.run("INSERT INTO t (id, name) VALUES (1, 'kept')")
+			const [{ page_count: pages }] = full.all("SELECT page_count FROM pragma_page_count")
+			file.exec(`PRAGMA max_page_count = ${pages + 1}`)
+			return { full, cleanUp: () => (file.close(), rmSync(folder, { recursive: true })) }
+		}
+
+		const tooMuch = [{ sql: "INSERT INTO t (id, name) VALUES (2, ?)", params: ["x".repeat(50000)] }]
+
+		it("says so, so the cashier is told what to do", () => {
+			const { full, cleanUp } = fullDatabase()
+
+			expect(() => full.batch(tooMuch)).toThrow(/disk is full/)
+
+			cleanUp()
+		})
+
+		it("keeps what was there and takes the next write", () => {
+			const { full, cleanUp } = fullDatabase()
+
+			expect(() => full.batch(tooMuch)).toThrow()
+			full.batch([{ sql: "INSERT INTO t (id, name) VALUES (?, ?)", params: [3, "small"] }])
+
+			expect(full.all("SELECT name FROM t ORDER BY id")).toEqual([{ name: "kept" }, { name: "small" }])
+			cleanUp()
+		})
 	})
 
 	it("rolls a batch back when any statement fails", () => {

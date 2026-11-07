@@ -18,11 +18,10 @@ from pos_next.patches.v2_0_0 import add_stock_pull_index, add_sync_pull_indexes
 # Configure logger
 logger = logging.getLogger(__name__)
 
-
-#: What ERPNext reads while it fills in an invoice, beyond what the role's fixtures give it.
-#: Without these a cashier with only this role cannot sell at all.
+#: What ERPNext reads while it fills in an invoice and what the POS screens list, beyond what
+#: the role's fixtures give it. Without these a cashier with only this role cannot sell at all.
 CASHIER_ROLE = "POSNext Cashier"
-CASHIER_PERMISSIONS = {"Account": "select", "Address": "read"}
+CASHIER_PERMISSIONS = {"Account": "select", "Address": "read", "Customer Group": "read", "Sales Person": "read"}
 
 
 def ensure_cashier_permissions():
@@ -30,14 +29,18 @@ def ensure_cashier_permissions():
 
 	Not in the fixtures: the first Custom DocPerm of a doctype replaces all its standard
 	permissions. add_permission copies those first, so every other role keeps its access.
+	A new rule also starts with read on, which would open the chart of accounts to a cashier
+	who only needs to pick from it.
 	"""
-	from frappe.permissions import add_permission
+	from frappe.permissions import add_permission, update_permission_property
 
 	for doctype, permission in CASHIER_PERMISSIONS.items():
 		if not frappe.db.exists(
 			"Custom DocPerm", {"parent": doctype, "role": CASHIER_ROLE, "permlevel": 0, "if_owner": 0}
 		):
 			add_permission(doctype, CASHIER_ROLE, ptype=permission)
+			if permission != "read":
+				update_permission_property(doctype, CASHIER_ROLE, 0, "read", 0)
 			frappe.clear_cache(doctype=doctype)
 
 

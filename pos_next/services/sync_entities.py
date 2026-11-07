@@ -352,18 +352,15 @@ def _attach_waiting_records(local_name, shift):
     it. Only those: a manager may have moved one elsewhere already. A close joins only the
     shift it counted, which a shift the record was linked to is not.
     """
-    from pos_next.services.sync_inbox import _move_to_shift
-
     waiting = frappe.get_all(
         DOCTYPE,
         filters={"depends_on": ["like", f"%{local_name}%"], "shift": ["is", "not set"]},
-        fields=["name", "cashier", "invoice_doctype", "entity"],
+        fields=["name", "cashier", "entity"],
     )
     for row in waiting:
         if row.entity == ENTITY_SHIFT_CLOSE and not _counted(shift, local_name, row.cashier):
             continue
-        _move_to_shift(row, shift)
-        frappe.db.set_value(DOCTYPE, row.name, {"shift": row.shift, "cashier": row.cashier})
+        frappe.db.set_value(DOCTYPE, row.name, "shift", shift)
 
 
 def open_shift(row):

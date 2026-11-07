@@ -19,6 +19,8 @@ from zoneinfo import ZoneInfo
 import frappe
 from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, get_system_timezone, now_datetime
+from frappe.utils.background_jobs import get_job_status
+from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
@@ -40,6 +42,7 @@ from pos_next.services.sync_entities import (
     ENTITY_SHIFT_OPEN,
     FINAL_STATES,
 )
+from pos_next.utils import session_of
 
 REVIEW = "Needs Review"
 
@@ -54,6 +57,9 @@ QUEUE_JOB_SECONDS = 540
 
 #: A job takes no new row this close to its limit, so the row in hand can finish
 QUEUE_JOB_MARGIN_SECONDS = 120
+
+#: How long the next turn waits for the job that asked for it to end
+NEXT_TURN_WAIT_SECONDS = 30
 
 #: Set by the client after the invoice is queued, so they are not part of the sale
 VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
@@ -341,25 +347,15 @@ def _as_cashier(row):
     """Run a block under the cashier's session, so what it creates is theirs.
 
     Only the handler runs here: the record itself is written under the session that
-    processes it, so it never depends on the cashier's permissions. set_user replaces the
-    session's id and data and clears form_dict, which a request still needs afterwards.
+    processes it, so it never depends on the cashier's permissions.
     """
     if not row.cashier or not frappe.db.get_value("User", row.cashier, "enabled"):
         raise CashierUnavailableError(
             _("The cashier of this record is disabled or no longer exists: {0}").format(row.cashier or "-")
         )
 
-    session = frappe.local.session
-    user, sid, data = session.user, session.sid, session.data
-    form_dict = frappe.local.form_dict
-
-    frappe.set_user(row.cashier)
-    try:
+    with session_of(row.cashier):
         yield
-    finally:
-        frappe.set_user(user)
-        session.sid, session.data = sid, data
-        frappe.local.form_dict = form_dict
 
 
 def process(name):
@@ -756,13 +752,17 @@ def record_direct_sync(offline_id, invoice_name, doctype, invoice):
     doc.insert()
 
 
+def _queue_job_id(pos_profile):
+    return f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}"
+
+
 def enqueue_processing(pos_profile):
     """Process a profile's queue in the background, oldest sale first."""
     frappe.enqueue(
         "pos_next.services.sync_inbox.process_profile_queue",
         queue="short",
         timeout=QUEUE_JOB_SECONDS,
-        job_id=f"pos_sync_queue:{frappe.local.site}:{pos_profile or 'none'}",
+        job_id=_queue_job_id(pos_profile),
         deduplicate=True,
         enqueue_after_commit=True,
         pos_profile=pos_profile,
@@ -791,14 +791,41 @@ def _due_rows(pos_profile=None):
 def process_profile_queue(pos_profile=None):
     """Work through a profile's due invoices. Backdated stock depends on this order.
 
-    A long backlog ends cleanly before the job's limit. What is left stays due, so the
-    sweep starts the next job.
+    It reads the queue again when it runs out, because a push during this job queues no
+    other. A long backlog ends cleanly before the job's limit, and the next job goes behind
+    whatever else is waiting. Each row is tried once per job: one that stays due is the
+    sweep's to bring back.
     """
     deadline = time.monotonic() + QUEUE_JOB_SECONDS - QUEUE_JOB_MARGIN_SECONDS
-    for name in _due_rows(pos_profile):
-        if time.monotonic() >= deadline:
-            return
-        process(name)
+    tried = set()
+    while names := [name for name in _due_rows(pos_profile) if name not in tried]:
+        for name in names:
+            if time.monotonic() >= deadline:
+                _queue_next_turn(pos_profile)
+                return
+            tried.add(name)
+            process(name)
+
+
+def _queue_next_turn(pos_profile):
+    """A running job holds its own id, so it takes another job to queue the next one."""
+    frappe.enqueue(
+        "pos_next.services.sync_inbox.take_next_turn",
+        queue="short",
+        job_id=f"pos_sync_next_turn:{frappe.local.site}:{pos_profile or 'none'}",
+        deduplicate=True,
+        enqueue_after_commit=True,
+        pos_profile=pos_profile,
+    )
+
+
+def take_next_turn(pos_profile):
+    """Queue a profile's next job once its last one has ended. If it has not, the sweep will."""
+    for _second in range(NEXT_TURN_WAIT_SECONDS):
+        if get_job_status(_queue_job_id(pos_profile)) != JobStatus.STARTED:
+            break
+        time.sleep(1)
+    enqueue_processing(pos_profile)
 
 
 def _flag_if_stuck(row):
@@ -1006,8 +1033,9 @@ def apply_fix(name, fix, values):
         # The date is now a person's, so the clock it came from no longer matters
         if fix == "posting_date":
             row.accept_device_date = 1
+        # Closing a shift reads the row, so it must stay on the shift its payload now names
         if fix == "shift":
-            _move_to_shift(row, values["shift"])
+            row.shift = values["shift"]
 
     row.flags.ignore_links = True
     row.save(ignore_permissions=True)
@@ -1062,17 +1090,6 @@ def _fix_shift(payload, values):
 def _fix_link_shift(payload, values):
     sync_entities.assert_can_take_sales(values["shift"], payload.get("pos_profile"))
     payload["linked_shift"] = values["shift"]
-
-
-def _move_to_shift(row, shift):
-    """Keep the row on the shift its payload now names. Closing a shift reads the row.
-
-    POS Closing Entry refuses a POS Invoice owned by anyone but the shift's user, so a move
-    to a colleague's shift also moves the sale to them, or that shift could never close.
-    """
-    row.shift = shift
-    if row.invoice_doctype == "POS Invoice":
-        row.cashier = frappe.db.get_value("POS Opening Shift", shift, "user") or row.cashier
 
 
 def _items_matching(payload, item_code):

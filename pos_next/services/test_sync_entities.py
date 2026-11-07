@@ -498,21 +498,13 @@ class TestFixes(NoSiteTestCase):
         self.assertEqual(row.shift, "SHIFT-2")
         self.assertEqual(json.loads(row.payload)["posa_pos_opening_shift"], "SHIFT-2")
 
-    def test_a_pos_invoice_goes_to_whoever_holds_the_new_shift(self):
-        frappe.local.db.get_value.return_value = "lina@example.com"
+    def test_a_sale_keeps_its_cashier_when_it_moves(self):
+        for doctype in ("POS Invoice", "Sales Invoice"):
+            row = self._apply(
+                "invoice", "shift", {"shift": "SHIFT-2"}, invoice_doctype=doctype, cashier="sara@example.com"
+            )
 
-        row = self._apply(
-            "invoice", "shift", {"shift": "SHIFT-2"}, invoice_doctype="POS Invoice", cashier="sara@example.com"
-        )
-
-        self.assertEqual(row.cashier, "lina@example.com")
-
-    def test_a_sales_invoice_keeps_its_cashier_when_it_moves(self):
-        row = self._apply(
-            "invoice", "shift", {"shift": "SHIFT-2"}, invoice_doctype="Sales Invoice", cashier="sara@example.com"
-        )
-
-        self.assertEqual(row.cashier, "sara@example.com")
+            self.assertEqual(row.cashier, "sara@example.com")
 
     def test_a_fix_on_a_record_without_a_payload_says_so(self):
         for payload in (None, ""):

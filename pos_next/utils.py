@@ -4,14 +4,41 @@ from __future__ import annotations
 
 import json
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
+import frappe
+
 from pos_next import __version__ as app_version
+
+#: ERPNext's merge saves each POS Invoice with the session's permissions, and runs a long
+#: one as the session's user. A cashier may not write POS Invoices, and must not need to.
+BOOKS_USER = "Administrator"
 
 _BASE_DIR = Path(__file__).resolve().parent
 _VERSION_FILE = _BASE_DIR / "public" / "pos" / "version.json"
 _MANIFEST_FILE = _BASE_DIR / "public" / "pos" / "manifest.webmanifest"
 _FALLBACK_VERSION: str | None = None
+
+
+@contextmanager
+def session_of(user):
+	"""Run a block as another user, and leave the session as it was found.
+
+	set_user replaces the session's id and data and clears form_dict, which a request
+	still needs afterwards.
+	"""
+	session = frappe.local.session
+	previous, sid, data = session.user, session.sid, session.data
+	form_dict = frappe.local.form_dict
+
+	frappe.set_user(user)
+	try:
+		yield
+	finally:
+		frappe.set_user(previous)
+		session.sid, session.data = sid, data
+		frappe.local.form_dict = form_dict
 
 
 def _read_version_file() -> str | None:

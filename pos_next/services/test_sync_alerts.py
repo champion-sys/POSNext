@@ -378,7 +378,8 @@ class TestHourlyJob(unittest.TestCase):
         with (
             patch("pos_next.tasks.sync.sync_inbox.remind_about_reviews", calls.remind),
             patch("pos_next.tasks.sync.sync_alerts.email_review_summaries", calls.email),
+            patch("pos_next.tasks.sync.closing_alerts.remind_about_closings", calls.closings),
         ):
             sync_tasks.remind_about_reviews()
 
-        self.assertEqual([call[0] for call in calls.mock_calls], ["remind", "email"])
+        self.assertEqual([call[0] for call in calls.mock_calls], ["remind", "email", "closings"])

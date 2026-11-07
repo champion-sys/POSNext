@@ -12,6 +12,23 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from pos_next.utils import BOOKS_USER, session_of
+
+
+def submit_keeping_the_cause(entry):
+    """Submit a closing entry, and let a failed merge say why it failed.
+
+    ERPNext rolls the entry back and then tries to mark it Failed, which raises because the
+    entry is gone. That second error says nothing, and is all the cashier would see.
+    """
+    try:
+        entry.submit()
+    except frappe.LinkValidationError as error:
+        if error.__context__:
+            frappe.clear_messages()
+            raise error.__context__
+        raise
+
 
 def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
     """Return the value for a field in company currency."""
@@ -149,7 +166,8 @@ class POSClosingShift(Document):
         
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
         if invoice_type == "POS Invoice":
-            self.create_standard_pos_closing_entry()
+            with session_of(BOOKS_USER):
+                self.create_standard_pos_closing_entry()
         # else:
         #     self.create_journal_entry()
 
@@ -166,11 +184,19 @@ class POSClosingShift(Document):
         )
 
         pce = frappe.new_doc("POS Closing Entry")
+        pce.flags.closes_shift = True
         pce.pos_profile = self.pos_profile
         pce.user = self.user
         pce.company = self.company
         pce.posting_date = self.posting_date
-        
+        pce.period_start_date = self.period_start_date
+        pce.period_end_date = self.period_end_date
+        pce.grand_total = self.grand_total
+        pce.net_total = self.net_total
+        pce.total_quantity = self.total_quantity
+        for tax in self.taxes:
+            pce.append("taxes", {"account_head": tax.account_head, "rate": tax.rate, "amount": tax.amount})
+
         # Link to standard POS Opening Entry linked to our opening shift
         standard_opening = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_opening_entry")
         if not standard_opening:
@@ -230,7 +256,7 @@ class POSClosingShift(Document):
             })
 
         pce.insert(ignore_permissions=True)
-        pce.submit()
+        submit_keeping_the_cause(pce)
         self.db_set("pos_closing_entry", pce.name)
 
     def create_journal_entry(self):
@@ -350,14 +376,16 @@ class POSClosingShift(Document):
                 opening_entry.set_status()
                 opening_entry.flags.ignore_permissions = True
                 opening_entry.save()
-        # remove links from invoices so they can be cancelled
-        self._clear_closing_entry_invoices()
+        # Undoing the books takes the access that made them
+        with session_of(BOOKS_USER):
+            # remove links from invoices so they can be cancelled
+            self._clear_closing_entry_invoices()
 
-        if getattr(self, "pos_closing_entry", None):
-            if frappe.db.exists("POS Closing Entry", self.pos_closing_entry):
-                pce_doc = frappe.get_doc("POS Closing Entry", self.pos_closing_entry)
-                if pce_doc.docstatus == 1:
-                    pce_doc.cancel()
+            if getattr(self, "pos_closing_entry", None):
+                if frappe.db.exists("POS Closing Entry", self.pos_closing_entry):
+                    pce_doc = frappe.get_doc("POS Closing Entry", self.pos_closing_entry)
+                    if pce_doc.docstatus == 1:
+                        pce_doc.cancel()
 
     def _set_closing_entry_invoices(self):
         """Set `pos_closing_entry` on linked invoices."""

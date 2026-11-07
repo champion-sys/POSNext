@@ -15,6 +15,36 @@ def closing(**values):
     return json.dumps({"doctype": "POS Closing Shift", "pos_opening_shift": "POS-1", **values})
 
 
+class TestAFailedMerge(unittest.TestCase):
+    def setUp(self):
+        frappe.local.message_log = []
+
+    def _entry_failing_with(self, cause):
+        def submit():
+            try:
+                raise cause
+            except type(cause):
+                raise frappe.LinkValidationError("Could not find Reference Name: POS-CLO-1") from None
+
+        return Mock(submit=submit)
+
+    def test_the_cashier_hears_why_it_failed(self):
+        cause = frappe.ValidationError("2 units of ITEM needed")
+
+        with self.assertRaises(frappe.ValidationError) as caught:
+            pos_closing_shift.submit_keeping_the_cause(self._entry_failing_with(cause))
+
+        self.assertIs(caught.exception, cause)
+
+    def test_a_real_link_error_stays_what_it_is(self):
+        error = frappe.LinkValidationError("Could not find Customer: X")
+
+        with self.assertRaises(frappe.LinkValidationError) as caught:
+            pos_closing_shift.submit_keeping_the_cause(Mock(submit=Mock(side_effect=error)))
+
+        self.assertIs(caught.exception, error)
+
+
 class TestSubmitClosingShift(unittest.TestCase):
     def setUp(self):
         frappe.local.flags = frappe._dict()

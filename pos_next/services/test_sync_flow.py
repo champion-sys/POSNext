@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import frappe
+from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
 from pos_next.api import sync as sync_api
@@ -841,9 +842,11 @@ class TestJobTimeout(Flow):
 
 class TestQueueJob(Flow):
     def _run(self, due, clock):
+        readings = due if isinstance(due[0], list) else [due]
         with (
-            patch.object(sync_inbox, "_due_rows", return_value=due),
+            patch.object(sync_inbox, "_due_rows", side_effect=[*readings, readings[-1]]),
             patch.object(sync_inbox, "process") as process,
+            patch.object(sync_inbox, "_queue_next_turn") as self.next_turn,
             patch("pos_next.services.sync_inbox.time.monotonic", side_effect=clock),
         ):
             sync_inbox.process_profile_queue("Main")
@@ -858,6 +861,53 @@ class TestQueueJob(Flow):
         taken = self._run(["row-1", "row-2", "row-3"], [0, 1, limit - 1, limit])
 
         self.assertEqual(taken, ["row-1", "row-2"])
+
+    def test_the_next_job_is_queued_at_the_limit_rather_than_left_to_the_sweep(self):
+        limit = sync_inbox.QUEUE_JOB_SECONDS - sync_inbox.QUEUE_JOB_MARGIN_SECONDS
+
+        self._run(["row-1", "row-2"], [0, 1, limit])
+
+        self.next_turn.assert_called_once_with("Main")
+
+    def test_a_finished_queue_asks_for_no_next_job(self):
+        self._run(["row-1"], [0, 1])
+
+        self.next_turn.assert_not_called()
+
+    def test_a_row_pushed_during_the_job_is_taken_by_it(self):
+        taken = self._run([["row-1"], ["row-1", "row-2"]], [0, 1, 2])
+
+        self.assertEqual(taken, ["row-1", "row-2"])
+
+    def test_a_row_that_stays_due_is_tried_once(self):
+        self.assertEqual(self._run([["row-1"], ["row-1"]], [0, 1]), ["row-1"])
+
+    def _take_next_turn(self, statuses):
+        with (
+            patch.object(sync_inbox, "_queue_job_id", return_value="job-1"),
+            patch.object(sync_inbox, "get_job_status", side_effect=statuses) as self.job_status,
+            patch.object(sync_inbox, "enqueue_processing") as queue,
+            patch("pos_next.services.sync_inbox.time.sleep"),
+        ):
+            sync_inbox.take_next_turn("Main")
+        return queue
+
+    def test_the_next_turn_waits_for_the_last_job_to_end(self):
+        queue = self._take_next_turn([JobStatus.STARTED, JobStatus.STARTED, JobStatus.FINISHED])
+
+        self.assertEqual(self.job_status.call_count, 3)
+        queue.assert_called_once_with("Main")
+
+    def test_a_job_the_sweep_queued_is_not_waited_for(self):
+        queue = self._take_next_turn([JobStatus.QUEUED])
+
+        self.assertEqual(self.job_status.call_count, 1)
+        queue.assert_called_once_with("Main")
+
+    def test_the_next_turn_does_not_wait_forever(self):
+        queue = self._take_next_turn([JobStatus.STARTED] * sync_inbox.NEXT_TURN_WAIT_SECONDS)
+
+        queue.assert_called_once_with("Main")
 
 
 class TestClosedShift(Flow):

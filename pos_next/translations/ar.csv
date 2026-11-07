@@ -1355,6 +1355,7 @@ Popup blocker prevented print test,منعت أداة حظر النوافذ ال�
 POS Allowed Locale,لغة نقطة البيع المسموح بها,
 POS Barcode Rules,قواعد باركود نقطة البيع,
 POS Brands Detail,تفاصيل علامات نقطة البيع التجارية,
+"POS Closing Entry {0} did not finish, so its shift's sales are not in the books. Fix the cause it shows, then press Retry.",لم يكتمل قيد إقفال نقطة البيع {0}، لذا لم تصل مبيعات ورديته إلى الدفاتر. عالج السبب الظاهر فيه، ثم اضغط إعادة المحاولة.,
 POS Closing Shift,إقفال وردية نقطة البيع,
 POS Closing Shift <strong>already exists</strong> against {0} between selected period,يوجد <strong>إقفال وردية</strong> للمستخدم {0} في الفترة المحددة,
 POS Closing Shift Detail,تفاصيل إقفال وردية نقطة البيع,
