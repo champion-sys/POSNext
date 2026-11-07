@@ -16,6 +16,7 @@ class TestCashierPermissions(unittest.TestCase):
             patch("pos_next.install.frappe.clear_cache"),
             patch("frappe.permissions.add_permission") as add,
             patch("frappe.permissions.update_permission_property") as self.update,
+            patch("pos_next.install.ensure_manager_closing_rights"),
         ):
             install.ensure_cashier_permissions()
         return add
@@ -39,6 +40,30 @@ class TestCashierPermissions(unittest.TestCase):
 
     def test_running_again_changes_nothing(self):
         self.run_with(existing=True).assert_not_called()
+
+
+class TestManagerClosingRights(unittest.TestCase):
+    def run_with(self, existing):
+        with (
+            patch("pos_next.install.frappe.db", Mock(exists=Mock(return_value=existing))),
+            patch("pos_next.install.frappe.clear_cache"),
+            patch("frappe.permissions.add_permission") as add,
+            patch("frappe.permissions.update_permission_property") as update,
+        ):
+            install.ensure_manager_closing_rights()
+        return add, update
+
+    def test_the_role_alerted_about_a_failed_closing_can_act_on_it(self):
+        add, update = self.run_with(existing=False)
+
+        add.assert_called_once_with("POS Closing Entry", install.MANAGER_ROLE)
+        update.assert_any_call("POS Closing Entry", install.MANAGER_ROLE, 0, "write", 1)
+        update.assert_any_call("POS Closing Entry", install.MANAGER_ROLE, 0, "cancel", 1)
+
+    def test_running_again_changes_nothing(self):
+        add, _update = self.run_with(existing=True)
+
+        add.assert_not_called()
 
 
 class TestAmendedInvoice(unittest.TestCase):

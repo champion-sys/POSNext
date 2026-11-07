@@ -24,6 +24,25 @@ CASHIER_ROLE = "POSNext Cashier"
 CASHIER_PERMISSIONS = {"Account": "select", "Address": "read", "Customer Group": "read", "Sales Person": "read"}
 
 
+#: A failed POS Invoice closing alerts this role, so it must be able to retry or cancel it.
+MANAGER_ROLE = "Nexus POS Manager"
+MANAGER_CLOSING_RIGHTS = ("write", "submit", "cancel")
+
+
+def ensure_manager_closing_rights():
+	from frappe.permissions import add_permission, update_permission_property
+
+	if frappe.db.exists(
+		"Custom DocPerm", {"parent": "POS Closing Entry", "role": MANAGER_ROLE, "permlevel": 0, "if_owner": 0}
+	):
+		return
+
+	add_permission("POS Closing Entry", MANAGER_ROLE)
+	for right in MANAGER_CLOSING_RIGHTS:
+		update_permission_property("POS Closing Entry", MANAGER_ROLE, 0, right, 1)
+	frappe.clear_cache(doctype="POS Closing Entry")
+
+
 def ensure_cashier_permissions():
 	"""Give the cashier role what selling needs, on any site.
 
@@ -42,6 +61,8 @@ def ensure_cashier_permissions():
 			if permission != "read":
 				update_permission_property(doctype, CASHIER_ROLE, 0, "read", 0)
 			frappe.clear_cache(doctype=doctype)
+
+	ensure_manager_closing_rights()
 
 
 def after_install():
