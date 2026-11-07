@@ -13,8 +13,26 @@ This module handles post-fixture tasks like setting defaults and clearing cache.
 import frappe
 import logging
 
+from frappe.permissions import add_permission, update_permission_property
+
 # Configure logger
 logger = logging.getLogger(__name__)
+
+CASHIER_ROLE = "POSNext Cashier"
+
+
+def allow_cashier_to_select_accounts():
+	"""Let a cashier pick accounts without being able to read them.
+
+	Every save of an invoice looks up the customer's receivable account with the session's
+	access, so the POS role alone could not sell. add_permission first copies the doctype's
+	standard rules, because Custom DocPerm rows replace them. It runs here rather than in a
+	patch, so a site that adds the app later gets it too.
+	"""
+	rule = {"parent": "Account", "role": CASHIER_ROLE, "permlevel": 0, "if_owner": 0}
+	if frappe.db.exists("Role", CASHIER_ROLE) and not frappe.db.exists("Custom DocPerm", rule):
+		add_permission("Account", CASHIER_ROLE, ptype="select")
+		update_permission_property("Account", CASHIER_ROLE, 0, "read", 0)
 
 
 def after_install():
@@ -24,6 +42,7 @@ def after_install():
 
 		# Setup default print format for POS Profiles
 		# setup_default_print_format()
+		allow_cashier_to_select_accounts()
 
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
@@ -45,6 +64,7 @@ def after_migrate():
 	try:
 		# Setup default print format
 		# setup_default_print_format(quiet=True)
+		allow_cashier_to_select_accounts()
 
 		# Clear cache
 		frappe.clear_cache()

@@ -38,6 +38,7 @@ from pos_next.services.sync_entities import (
     ENTITY_SHIFT_OPEN,
     FINAL_STATES,
 )
+from pos_next.utils import session_of
 
 REVIEW = "Needs Review"
 
@@ -272,25 +273,15 @@ def _as_cashier(row):
     """Run a block under the cashier's session, so what it creates is theirs.
 
     Only the handler runs here: the record itself is written under the session that
-    processes it, so it never depends on the cashier's permissions. set_user replaces the
-    session's id and data and clears form_dict, which a request still needs afterwards.
+    processes it, so it never depends on the cashier's permissions.
     """
     if not row.cashier or not frappe.db.get_value("User", row.cashier, "enabled"):
         raise CashierUnavailableError(
             _("The cashier of this record is disabled or no longer exists: {0}").format(row.cashier or "-")
         )
 
-    session = frappe.local.session
-    user, sid, data = session.user, session.sid, session.data
-    form_dict = frappe.local.form_dict
-
-    frappe.set_user(row.cashier)
-    try:
+    with session_of(row.cashier):
         yield
-    finally:
-        frappe.set_user(user)
-        session.sid, session.data = sid, data
-        frappe.local.form_dict = form_dict
 
 
 def process(name):

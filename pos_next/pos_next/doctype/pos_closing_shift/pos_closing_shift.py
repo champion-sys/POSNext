@@ -12,6 +12,12 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from pos_next.utils import session_of
+
+#: ERPNext's merge saves each POS Invoice with the session's permissions, and runs a long
+#: one as the session's user. A cashier may not write POS Invoices, and must not need to.
+BOOKS_USER = "Administrator"
+
 
 def get_base_value(doc, fieldname, base_fieldname=None, conversion_rate=None):
     """Return the value for a field in company currency."""
@@ -147,7 +153,8 @@ class POSClosingShift(Document):
         
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
         if invoice_type == "POS Invoice":
-            self.create_standard_pos_closing_entry()
+            with session_of(BOOKS_USER):
+                self.create_standard_pos_closing_entry()
         # else:
         #     self.create_journal_entry()
 
@@ -168,7 +175,7 @@ class POSClosingShift(Document):
         pce.user = self.user
         pce.company = self.company
         pce.posting_date = self.posting_date
-        
+
         # Link to standard POS Opening Entry linked to our opening shift
         standard_opening = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_opening_entry")
         if not standard_opening:
