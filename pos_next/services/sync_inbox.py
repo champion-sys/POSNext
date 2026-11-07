@@ -20,7 +20,7 @@ from frappe import _
 from frappe.utils import add_to_date, cint, flt, get_datetime, now_datetime
 from rq.timeouts import JobTimeoutException
 
-from pos_next.services import sync_classifier, sync_entities
+from pos_next.services import sync_classifier, sync_entities, sync_retention
 from pos_next.services.sync_classifier import (
     CashierUnavailableError,
     EditConflictError,
@@ -204,9 +204,13 @@ def ingest(item, uploaded_by, device_id=None, client_version=None, protocol_vers
     offline_id = item["offline_id"]
 
     existing = frappe.db.get_value(
-        DOCTYPE, {"offline_id": offline_id}, ["name", "payload_hash", "payload"], as_dict=True
+        DOCTYPE,
+        {"offline_id": offline_id},
+        ["name", "payload_hash", "payload", "original_payload"],
+        as_dict=True,
     )
-    if existing and not existing.payload:
+    # A cleared record is finished, not waiting for its payload, and its hash still answers
+    if existing and not existing.payload and not sync_retention.is_cleared(existing):
         fields = _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version)
         return existing.name, not _adopt_payload(existing.name, fields)
     if existing:
@@ -795,6 +799,7 @@ def remind_about_reviews():
 
 def _review_row(name):
     row = frappe.get_doc(DOCTYPE, name)
+    sync_retention.assert_not_cleared(row)
     if row.status != REVIEW:
         frappe.throw(_("Only an invoice that needs review can be changed"))
     return row
