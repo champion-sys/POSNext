@@ -14,6 +14,8 @@
   "customer",
   "shift",
   "entity",
+  "section_reconciliation",
+  "reconciliation_html",
   "section_source",
   "cashier",
   "uploaded_by",
@@ -125,7 +127,8 @@
    "fieldtype": "Link",
    "label": "Shift",
    "options": "POS Opening Shift",
-   "read_only": 1
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "entity",
@@ -135,6 +138,17 @@
    "default": "invoice",
    "read_only": 1,
    "in_standard_filter": 1
+  },
+  {
+   "fieldname": "section_reconciliation",
+   "fieldtype": "Section Break",
+   "label": "Shift Reconciliation",
+   "depends_on": "eval:doc.entity=='shift_close'"
+  },
+  {
+   "fieldname": "reconciliation_html",
+   "fieldtype": "HTML",
+   "label": "Shift Reconciliation"
   },
   {
    "fieldname": "section_source",

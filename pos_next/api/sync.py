@@ -11,7 +11,7 @@ from frappe.utils import cint
 
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
-from pos_next.services import sync_inbox, sync_void
+from pos_next.services import sync_inbox, sync_reconciliation, sync_void
 
 PROTOCOL_VERSION = 1
 MAX_BATCH_SIZE = 50
@@ -261,6 +261,14 @@ def link_existing_invoice(name, invoice_name, doctype, note):
 def void(name, note):
     _assert_manager()
     return sync_inbox.void(name, note).as_dict()
+
+
+@frappe.whitelist()
+def get_shift_reconciliation(name):
+    """Which invoices of a shift closed offline reached the server."""
+    _assert_manager()
+    frappe.has_permission("Offline Invoice Sync", "read", doc=name, throw=True)
+    return sync_reconciliation.get_shift_reconciliation(name)
 
 
 @frappe.whitelist()

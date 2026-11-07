@@ -94,6 +94,9 @@
   "allow_offline_returns",
   "allow_offline_shift_close",
   "allow_offline_shift_open",
+  "sync_alert_recipients",
+  "sync_alert_last_sent_at",
+  "sync_payload_retention_days",
   "barcode_tab",
   "barcode_rules"
  ],
@@ -625,6 +628,28 @@
    "label": "Allow Opening the Shift While Offline",
    "default": "0",
    "description": "The cashier can open a shift and sell with no connection, from what the device has saved. The shift is created on the server when the device connects."
+  },
+  {
+   "fieldname": "sync_alert_recipients",
+   "fieldtype": "Small Text",
+   "label": "Sync Alert Recipients",
+   "description": "Emails to tell when records of this POS Profile need review, separated by commas or new lines. Checked every hour, and sent only when something new needs review. Leave empty to send no email."
+  },
+  {
+   "fieldname": "sync_alert_last_sent_at",
+   "fieldtype": "Datetime",
+   "label": "Sync Alert Last Sent At",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "fieldname": "sync_payload_retention_days",
+   "fieldtype": "Int",
+   "label": "Sync Payload Retention (Days)",
+   "default": "0",
+   "non_negative": 1,
+   "description": "Days to keep what devices sent for records that have finished. After that the payload is erased, while the record, its totals and its attempts stay. This cannot be undone, and an erased record cannot be processed or corrected again. 0 keeps payloads forever."
   },
   {
    "fieldname": "barcode_tab",

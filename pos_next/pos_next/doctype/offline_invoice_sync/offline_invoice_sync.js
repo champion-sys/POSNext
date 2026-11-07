@@ -423,5 +423,87 @@ frappe.ui.form.on("Offline Invoice Sync", {
 		if (frm.doc.error_message) {
 			showError(frm, inReview, canReview);
 		}
+
+		if (frm.doc.entity === "shift_close") {
+			loadReconciliation(frm);
+		}
 	},
 });
+
+/** Worst first, so a long list opens on what needs attention */
+const RECONCILIATION_STATES = {
+	missing: { label: __("Never Arrived"), color: "red" },
+	review: { label: __("Needs Review"), color: "red" },
+	processing: { label: __("Being Processed"), color: "orange" },
+	voided: { label: __("Voided"), color: "gray" },
+	finished: { label: __("Finished"), color: "green" },
+};
+
+function reconciliationLink(doctype, name) {
+	return doctype && name ? frappe.utils.get_form_link(doctype, name, true) : "-";
+}
+
+function renderReconciliationRow(row) {
+	const { label, color } = RECONCILIATION_STATES[row.state];
+
+	return `<tr>
+		<td dir="auto">${frappe.utils.escape_html(row.offline_id || "-")}</td>
+		<td><span class="indicator-pill ${color}">${frappe.utils.escape_html(row.status ? __(row.status) : label)}</span></td>
+		<td>${reconciliationLink("Offline Invoice Sync", row.record)}</td>
+		<td>${reconciliationLink(row.invoice_doctype, row.invoice)}</td>
+	</tr>`;
+}
+
+function renderReconciliationTable(title, rows) {
+	const order = Object.keys(RECONCILIATION_STATES);
+	const sorted = [...rows].sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state));
+
+	return `<h6 class="mt-3">${title}</h6>
+		<div style="max-height: 360px; overflow: auto;">
+			<table class="table table-bordered table-sm mb-0">
+				<thead>
+					<tr>
+						<th>${__("Offline ID")}</th>
+						<th>${__("Status")}</th>
+						<th>${__("Record")}</th>
+						<th>${__("Invoice")}</th>
+					</tr>
+				</thead>
+				<tbody>${sorted.map(renderReconciliationRow).join("")}</tbody>
+			</table>
+		</div>`;
+}
+
+function renderReconciliation({ counts, entries, extras }) {
+	if (!entries.length && !extras.length) {
+		return `<p class="text-muted">${__("This shift close does not list any invoices.")}</p>`;
+	}
+
+	const pills = Object.entries(RECONCILIATION_STATES)
+		.filter(([state]) => counts[state])
+		.map(([state, { label, color }]) => `<span class="indicator-pill ${color} mr-2">${label}: ${counts[state]}</span>`);
+
+	return `<p class="mb-2">${__("{0} listed by the device, {1} more on the server.", [counts.manifest, counts.extra])}</p>
+		<div>${pills.join("")}</div>
+		${entries.length ? renderReconciliationTable(__("Listed By The Device"), entries) : ""}
+		${extras.length ? renderReconciliationTable(__("On The Server, Not Listed By The Device"), extras) : ""}`;
+}
+
+async function loadReconciliation(frm) {
+	const { name } = frm.doc;
+	const { $wrapper } = frm.get_field("reconciliation_html");
+	$wrapper.html(`<p class="text-muted">${__("Loading...")}</p>`);
+
+	try {
+		const { message } = await frappe.call({ method: `${SYNC_API}.get_shift_reconciliation`, args: { name } });
+		if (frm.doc.name === name) {
+			$wrapper.html(renderReconciliation(message));
+		}
+	} catch {
+		if (frm.doc.name === name) {
+			const retry = $(`<button class="btn btn-default btn-xs">${__("Try Again")}</button>`);
+			retry.on("click", () => loadReconciliation(frm));
+			$wrapper.html(`<p class="text-muted">${__("Could not load the reconciliation.")}</p>`).append(retry);
+		}
+	}
+}

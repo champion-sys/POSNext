@@ -241,6 +241,9 @@ scheduler_events = {
 	"daily": [
 		"pos_next.tasks.cleanup_expired_promotions.cleanup_expired_promotions",
 	],
+	"daily_long": [
+		"pos_next.tasks.sync.clear_old_payloads",
+	],
 }
 
 # Testing
