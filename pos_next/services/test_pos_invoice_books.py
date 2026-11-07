@@ -16,7 +16,7 @@ from frappe.tests import IntegrationTestCase
 from frappe.utils import add_to_date, flt, now_datetime
 
 from pos_next.api.shifts import insert_opening_shift
-from pos_next.install import CASHIER_ROLE, allow_cashier_to_select_accounts
+from pos_next.install import CASHIER_ROLE, grant_cashier_lookups
 from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import build_closing_shift, save_closing_shift
 from pos_next.services import closing_alerts
 from pos_next.services.invoice_processor import process_invoice
@@ -55,7 +55,7 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         cls.cash = cls._cash_mode()
         _cashier(LINA)
         _cashier(SARA)
-        allow_cashier_to_select_accounts()
+        grant_cashier_lookups()
         cls._item()
         cls._profile()
 
@@ -191,6 +191,16 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         )
         self.assertEqual(sum(row.actual_qty for row in moved), -2)
         self.assertEqual(flt(sum(row.stock_value_difference for row in moved)), -2 * VALUATION)
+
+    def test_the_pos_role_can_list_what_the_screens_list(self):
+        frappe.set_user(LINA)
+
+        frappe.get_list("Customer Group", fields=["name"], limit=1)
+        frappe.get_list("Sales Person", fields=["name", "sales_person_name"], limit=1)
+
+    def test_the_pos_role_can_pick_an_account_but_not_read_one(self):
+        self.assertTrue(frappe.has_permission("Account", "select", user=LINA))
+        self.assertFalse(frappe.has_permission("Account", "read", user=LINA))
 
     def test_the_closing_entry_carries_the_shifts_figures(self):
         shift = self._open_shift()
