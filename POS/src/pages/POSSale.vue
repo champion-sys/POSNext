@@ -21,7 +21,8 @@
 				<template #menu-items>
 					<button
 						v-if="shiftStore.hasOpenShift"
-						@click="uiStore.showOpenShiftDialog = true"
+						data-view-shift
+						@click="viewShift"
 						class="w-full text-start px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
 					>
 						<svg
@@ -448,7 +449,7 @@
 								"
 								@update-uom="cartStore.changeItemUOM"
 								@edit-item="handleEditItem"
-								@view-shift="uiStore.showOpenShiftDialog = true"
+								@view-shift="viewShift"
 								@show-drafts="openDraftDialog"
 								@show-history="openHistoryDialog"
 								@show-return="openReturnDialog"
@@ -570,6 +571,7 @@
 			<!-- Shift Opening Dialog -->
 			<ShiftOpeningDialog
 				v-model="uiStore.showOpenShiftDialog"
+				:view-only="viewingShift"
 				@shift-opened="handleShiftOpened"
 			/>
 
@@ -997,14 +999,40 @@
 			>
 				<template #body-content>
 					<div class="py-3">
-						<p class="text-sm text-gray-700 whitespace-pre-line">
+						<p dir="auto" class="text-sm text-gray-700 whitespace-pre-line text-start">
 							{{ uiStore.errorDialogMessage || __("An unexpected error occurred.") }}
 						</p>
 						<div
 							v-if="uiStore.errorDetails"
-							class="mt-3 pt-3 border-t border-gray-200"
+							class="mt-3 pt-2 border-t border-gray-200"
 						>
-							<p class="text-xs text-gray-500">{{ uiStore.errorDetails }}</p>
+							<button
+								type="button"
+								data-error-details-toggle
+								class="inline-flex items-center gap-1 min-h-pos-tap pe-2 text-xs text-gray-600 hover:text-gray-900"
+								:aria-expanded="showErrorDetails"
+								@click="showErrorDetails = !showErrorDetails"
+							>
+								<svg
+									:class="['w-3 h-3 transition-transform', showErrorDetails ? 'rotate-90' : 'rtl:rotate-180']"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									viewBox="0 0 24 24"
+									aria-hidden="true"
+								>
+									<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+								</svg>
+								{{ __("Details") }}
+							</button>
+							<p
+								v-if="showErrorDetails"
+								data-error-details
+								dir="auto"
+								class="mt-1 text-xs text-gray-500 text-start break-words"
+							>
+								{{ uiStore.errorDetails }}
+							</p>
 						</div>
 					</div>
 				</template>
@@ -1209,6 +1237,29 @@ const logoutAfterClose = ref(false);
 const editCustomer = ref(null); // Customer being edited (null for create mode)
 const showClearCacheDialog = ref(false);
 const clearCacheOverlayRef = ref(null);
+
+// The error dialog keeps its technical line folded away until asked for
+const showErrorDetails = ref(false);
+watch(
+	() => uiStore.showErrorDialog,
+	() => {
+		showErrorDetails.value = false;
+	},
+);
+
+// View Shift shows the open shift; the start of day opens one
+const viewingShift = ref(false);
+watch(
+	() => uiStore.showOpenShiftDialog,
+	(isOpen) => {
+		if (!isOpen) viewingShift.value = false;
+	},
+);
+
+function viewShift() {
+	viewingShift.value = true;
+	uiStore.showOpenShiftDialog = true;
+}
 
 // Debounce timer for offer reapplication
 const offerReapplyTimer = ref(null);
@@ -3147,7 +3198,7 @@ async function handleSyncAll() {
 					[firstError.customer, errorContext.message]
 				),
 				errorContext.technicalDetails || __("Invoice ID: {0}", [firstError.invoiceId]),
-				"sync"
+				errorContext.retryable ? "sync" : null
 			);
 		} else if (result.failed > 0) {
 			showWarning(__("{0} invoice(s) failed to sync", [result.failed]));
@@ -3159,7 +3210,7 @@ async function handleSyncAll() {
 			errorContext.title,
 			errorContext.message,
 			errorContext.technicalDetails,
-			"sync"
+			errorContext.retryable ? "sync" : null
 		);
 	}
 }

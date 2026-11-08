@@ -19,6 +19,8 @@
  * }
  */
 
+import { isNetworkFailure } from "./offline/invoicePayload"
+
 /**
  * Clean HTML and extra whitespace from error messages
  */
@@ -60,6 +62,7 @@ export function parseError(error) {
 		title: __("Error"),
 		message: __("An unexpected error occurred"),
 		type: "error", // error, warning, validation
+		// Only a request that may not have reached the server is worth sending again
 		retryable: false,
 		technicalDetails: null,
 	}
@@ -154,13 +157,13 @@ export function parseError(error) {
 				__("Not enough stock available in the warehouse.\n\nPlease reduce the quantity or check stock availability.")
 		}
 
-		context.retryable = true
+		context.retryable = false
 	}
 	// Validation Errors
 	else if (excType === "validationerror" || context.type === "validation") {
 		context.type = "validation"
 		context.title = __("Validation Error")
-		context.retryable = true
+		context.retryable = false
 	}
 	// Price List Errors
 	else if (
@@ -169,7 +172,7 @@ export function parseError(error) {
 	) {
 		context.type = "warning"
 		context.title = __("Pricing Error")
-		context.retryable = true
+		context.retryable = false
 	}
 	// Customer/Party Errors
 	else if (
@@ -178,7 +181,7 @@ export function parseError(error) {
 	) {
 		context.type = "validation"
 		context.title = __("Customer Error")
-		context.retryable = true
+		context.retryable = false
 	}
 	// Tax Errors
 	else if (
@@ -196,7 +199,7 @@ export function parseError(error) {
 	) {
 		context.type = "validation"
 		context.title = __("Payment Error")
-		context.retryable = true
+		context.retryable = false
 	}
 	// Series/Naming Errors
 	else if (
@@ -218,8 +221,10 @@ export function parseError(error) {
 	}
 	// Network/Connection Errors
 	else if (
+		isNetworkFailure(error) ||
 		normalizedMessage.includes("network") ||
 		normalizedMessage.includes("timeout") ||
+		normalizedMessage.includes("timed out") ||
 		normalizedMessage.includes("connection") ||
 		normalizedMessage.includes("fetch")
 	) {

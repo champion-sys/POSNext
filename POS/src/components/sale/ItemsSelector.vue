@@ -344,9 +344,12 @@
 						<!-- In-Cart Quantity Badge -->
 						<div
 							v-if="getCartItemQty(item.item_code) > 0"
-							class="absolute top-1 start-1 z-10 rounded-none bg-blue-600 text-white px-1 py-px text-[11px] sm:text-xs font-mono font-bold"
+							data-in-cart
+							class="absolute top-1 start-1 z-10 rounded-full bg-blue-600 text-white ps-1 pe-1.5 py-px text-[11px] sm:text-xs font-mono font-bold inline-flex items-center gap-0.5"
+							:title="__('In cart')"
 						>
-							x{{ Math.floor(getCartItemQty(item.item_code)) }}
+							<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+							<bdi>x{{ Math.floor(getCartItemQty(item.item_code)) }}</bdi>
 						</div>
 
 						<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
@@ -451,7 +454,7 @@
 							</div>
 							<div class="mt-0.5 flex items-baseline justify-between gap-1 flex-wrap">
 								<span class="text-[11px] sm:text-[13px] font-bold text-blue-700">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
-								<span class="text-[8px] sm:text-[9px] font-bold text-gray-700 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
+								<span class="text-[8px] sm:text-[9px] font-bold text-gray-700 uppercase tracking-wider truncate">/ <bdi>{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</bdi></span>
 							</div>
 						</div>
 					</div>
@@ -581,7 +584,7 @@
 							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{{ __('Name') }}</th>
 							<th scope="col" class="hidden sm:table-cell px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]" v-if="settingsStore.displayItemCode">{{ __('Code') }}</th>
 							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]">{{ __('Rate') }}</th>
-							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">{{ __('Qty') }}</th>
+							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">{{ __('Stock') }}</th>
 							<th scope="col" class="hidden md:table-cell px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 md:w-[80px]">{{ __('UOM') }}</th>
 						</tr>
 					</thead>
@@ -628,9 +631,12 @@
 									</span>
 									<span
 										v-if="getCartItemQty(item.item_code) > 0"
-										class="bg-blue-600 text-white px-1 py-0.5 rounded-[6px] font-mono font-bold text-[9px] sm:text-[12px] px-[6px]"
+										data-in-cart
+										class="bg-blue-600 text-white ps-1 pe-1.5 py-0.5 rounded-full font-mono font-bold text-[9px] sm:text-[12px] inline-flex items-center gap-0.5 flex-shrink-0"
+										:title="__('In cart')"
 									>
-										x{{ Math.floor(getCartItemQty(item.item_code)) }}
+										<svg class="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+										<bdi>x{{ Math.floor(getCartItemQty(item.item_code)) }}</bdi>
 									</span>
 								</div>
 								<div v-if="item.attributes" class="text-[8px] sm:text-[9px] text-gray-400 truncate leading-tight">

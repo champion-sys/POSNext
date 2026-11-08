@@ -7,7 +7,7 @@
 				<!-- Figures stay right-aligned in both directions, like a ledger -->
 				<th scope="col" :class="[headerClass, 'px-1 w-[9%] text-right']">{{ __('Qty') }}</th>
 				<th scope="col" :class="[headerClass, 'px-1 w-[12%] text-right']">{{ __('Rate') }}</th>
-				<th scope="col" :class="[headerClass, 'px-1 w-[9%] text-right']">{{ __('Discount %') }}</th>
+				<th scope="col" :class="[headerClass, 'px-1 w-[9%] text-right whitespace-nowrap']">{{ __('Discount %') }}</th>
 				<th scope="col" :class="[headerClass, 'px-1 w-[13%] text-right']">{{ __('Total') }} <span dir="ltr">({{ currencySymbol }})</span></th>
 				<th scope="col" :class="[headerClass, 'w-pos-tap']"><span class="sr-only">{{ __('Remove') }}</span></th>
 			</tr>

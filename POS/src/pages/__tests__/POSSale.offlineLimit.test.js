@@ -298,6 +298,53 @@ describe("POSSale at the offline limit", () => {
 		expect(uiStore.errorRetryAction).toBeNull()
 	})
 
+	describe("Try Again after a failed checkout", () => {
+		beforeEach(() => {
+			offlineStore.isOffline = false
+			settingsStore.settings.sync_mode = SYNC_REALTIME
+		})
+
+		it("is not offered when the server refused the sale, which would only fail again", async () => {
+			cartStore.submitInvoice = vi.fn(async () => {
+				throw { httpStatus: 417, exc_type: "ValidationError", messages: ["Customer is required"] }
+			})
+
+			await checkout()
+
+			expect(uiStore.showErrorDialog).toBe(true)
+			expect(uiStore.errorRetryAction).toBeNull()
+		})
+
+		it("is offered when the request may not have reached the server", async () => {
+			settingsStore.settings.custom_disable_offline_mode = 1
+			cartStore.submitInvoice = vi.fn(async () => {
+				throw NETWORK_FAILURE
+			})
+
+			await checkout()
+
+			expect(uiStore.showErrorDialog).toBe(true)
+			expect(uiStore.errorRetryAction).toBe("payment")
+		})
+	})
+
+	it("opens the shift dialog from View Shift as a view, and the start of day as an opening", async () => {
+		const dialog = () => wrapper.findComponent({ name: "ShiftOpeningDialog" })
+
+		wrapper.vm.viewShift()
+		await flushPromises()
+
+		expect(uiStore.showOpenShiftDialog).toBe(true)
+		expect(dialog().props("viewOnly")).toBe(true)
+
+		uiStore.showOpenShiftDialog = false
+		await flushPromises()
+		uiStore.showOpenShiftDialog = true
+		await flushPromises()
+
+		expect(dialog().props("viewOnly")).toBe(false)
+	})
+
 	it("queues a sale whose connection dropped within the limit", async () => {
 		offlineStore.isOffline = false
 		settingsStore.settings.sync_mode = SYNC_REALTIME
