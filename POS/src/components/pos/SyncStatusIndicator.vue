@@ -1,7 +1,7 @@
 <template>
 	<button
 		type="button"
-		class="h-full min-w-[44px] px-2 sm:px-3 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-none border-y-0 border-e-0 border-s border-gray-300 hover:bg-gray-150 active:bg-gray-200 transition-colors touch-manipulation"
+		class="h-full min-w-pos-bar px-2 sm:px-2.5 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap rounded-none border-y-0 border-e-0 border-s border-gray-300 hover:bg-gray-150 active:bg-gray-200 transition-colors touch-manipulation"
 		:title="summary"
 		:aria-label="summary"
 		@click="openQueue"

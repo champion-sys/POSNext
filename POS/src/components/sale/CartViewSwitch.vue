@@ -4,14 +4,14 @@
 			v-for="option in options"
 			:key="option.view"
 			type="button"
-			class="w-11 h-11 flex items-center justify-center transition-colors touch-manipulation"
+			class="size-pos-tap flex items-center justify-center transition-colors touch-manipulation"
 			:class="option.view === active ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-100 active:bg-gray-200'"
 			:aria-pressed="option.view === active"
 			:aria-label="option.label"
 			:title="option.label"
 			@click="$emit('select', option.view)"
 		>
-			<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+			<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="option.icon" />
 			</svg>
 		</button>

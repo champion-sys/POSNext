@@ -217,12 +217,10 @@ describe("the cart views", () => {
 			expect(pressedView()).toBe("Cards")
 		})
 
-		it("has 44px targets", async () => {
+		it("sizes its buttons to the tap target of the density tokens", async () => {
 			await mountCart()
 			for (const button of wrapper.findAll('[role="group"] button')) {
-				expect(button.classes()).toEqual(
-					expect.arrayContaining(["w-11", "h-11"]),
-				)
+				expect(button.classes()).toContain("size-pos-tap")
 			}
 		})
 
@@ -244,7 +242,7 @@ describe("the cart views", () => {
 			expect(wrapper.find("table").exists()).toBe(false)
 			const row = wrapper.find(".cart-item-row")
 			expect(row.text()).toContain("01")
-			expect(row.find("div.w-12").exists()).toBe(true)
+			expect(row.find("div.size-pos-thumb").exists()).toBe(true)
 		})
 
 		it("still opens the dialog when a row is tapped", async () => {

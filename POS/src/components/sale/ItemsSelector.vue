@@ -2,15 +2,16 @@
 	<div class="flex flex-col h-full bg-gray-50">
 		<!-- Item Groups Filter Tabs -->
 		<div
+			ref="itemGroupsRef"
 			class="bg-gray-200 border-b border-gray-300 overflow-y-auto"
-			:style="{ height: itemGroupHeight + 'px' }"
+			:style="{ maxHeight: itemGroupHeight + 'px' }"
 		>
-			<div class="grid grid-cols-[repeat(auto-fit,minmax(110px,1fr))] gap-[1px]">
+			<div class="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-[1px]">
 				<button
 					@click="handleAllFilterClick"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 min-h-[44px] rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center truncate min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-1 min-h-pos-control rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center min-w-0 w-full',
 						!activeFilterValue
 							? 'bg-black text-white border-none'
 							: 'bg-white text-gray-900 border-none hover:bg-gray-100 active:bg-gray-200',
@@ -19,7 +20,7 @@
 					<svg class="w-3.5 h-3.5 text-current flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
 					</svg>
-					<span class="truncate">{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
+					<span>{{ isBrandSortActive ? __('All Brands') : __('All Items') }}</span>
 				</button>
 				<button
 					v-for="(option, optionIndex) in activeFilterOptions"
@@ -27,7 +28,7 @@
 					@click="handleFilterClick(option.value)"
 					data-nav="filter"
 					:class="[
-						'flex items-center justify-center gap-1.5 px-3 py-3.5 min-h-[44px] rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
+						'flex items-center justify-center gap-1.5 px-2 py-1 min-h-pos-control rounded-none text-[11px] sm:text-xs !font-[600] uppercase tracking-wider transition-colors duration-75 touch-manipulation text-center  min-w-0 w-full',
 						activeFilterValue === option.value
 							? 'bg-black text-white border-none'
 							: 'border-none hover:brightness-90 active:brightness-75',
@@ -118,7 +119,7 @@
 						type="text"
 						:placeholder="searchPlaceholder"
 						:class="[
-							'w-full text-[11px] h-11 sm:text-sm border-1 px-2 sm:px-3 py-2 ps-7 sm:ps-10 pe-24 focus:outline-none transition-all rounded-none border-white',
+							'w-full text-[11px] h-pos-control sm:text-sm border-1 px-2 sm:px-3 py-1 ps-7 sm:ps-9 pe-20 focus:outline-none transition-all rounded-none border-white',
 							autoAddEnabled
 								? 'border-blue-600 bg-blue-50 focus:border-blue-700'
 								: scannerEnabled
@@ -133,7 +134,7 @@
 							@click="toggleBarcodeScanner"
 							data-nav="search-bar"
 							:class="[
-								'w-11 h-11 p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
+								'size-pos-control p-1 sm:p-1.5 rounded-none border border-transparent transition-all touch-manipulation flex justify-center items-center',
 								scannerEnabled
 									? 'bg-green-500 hover:bg-green-700 text-white border-green-700'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
@@ -149,7 +150,7 @@
 							@click="toggleAutoAdd"
 							data-nav="search-bar"
 							:class="[
-								'w-11 h-11 p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
+								'size-pos-control p-1 sm:p-1.5 rounded-none border border-transparent transition-all flex items-center gap-0.5 text-[9px] sm:text-xs font-bold uppercase tracking-wider px-1 sm:px-2 touch-manipulation justify-center items-center',
 								autoAddEnabled
 									? 'bg-blue-500 hover:bg-blue-500 text-white border-blue-500 text-blue-500'
 									: 'hover:bg-gray-100 active:bg-gray-200 text-gray-800'
@@ -169,7 +170,7 @@
 						@click="setViewMode('grid')"
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-11 h-11 flex justify-center items-center',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation size-pos-control flex justify-center items-center',
 							viewMode === 'grid' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('Grid View')"
@@ -183,7 +184,7 @@
 						@click="setViewMode('list')"
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation w-11 h-11 flex justify-center items-center',
+							'p-1.5 sm:p-2 rounded-none transition-colors duration-75 touch-manipulation size-pos-control flex justify-center items-center',
 							viewMode === 'list' ? 'bg-black text-white' : 'text-gray-800 hover:bg-gray-300 active:bg-gray-400'
 						]"
 						:title="__('List View')"
@@ -202,7 +203,7 @@
 						data-sort-button
 						data-nav="search-bar"
 						:class="[
-							'p-1.5 sm:p-1.5 h-11 w-11 rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
+							'p-1.5 sm:p-1.5 size-pos-control rounded-none transition-[background-color,box-shadow] duration-75 touch-manipulation border-1 flex items-center justify-center',
 							sortBy
 								? 'bg-blue-50 border-blue-600 text-blue-700 shadow-none'
 								: 'bg-white border-black text-gray-800 hover:bg-gray-100 active:bg-gray-200'
@@ -235,7 +236,7 @@
 								<button
 									@click="handleSortToggle(null)"
 									:class="[
-										'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group outline-none',
+										'w-full px-3 min-h-pos-control text-sm transition-colors flex items-center justify-between group outline-none',
 										!sortBy ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
 										focusedSortIndex === 0 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
@@ -256,7 +257,7 @@
 									:key="option.field"
 									@click="handleSortToggle(option.field)"
 									:class="[
-										'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group outline-none',
+										'w-full px-3 min-h-pos-control text-sm transition-colors flex items-center justify-between group outline-none',
 										sortBy === option.field ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50',
 										focusedSortIndex === index + 1 ? 'bg-blue-100/70 ring-2 ring-blue-600 ring-inset' : ''
 									]"
@@ -325,7 +326,7 @@
 				class="flex-1 overflow-y-auto bg-gray-200"
 				style="min-height: 0;"
 			>
-				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-8 gap-[2px] overflow-x-hidden">
+				<div data-item-grid class="grid grid-cols-[repeat(auto-fill,minmax(var(--pos-tile),1fr))] gap-[1px] overflow-x-hidden">
 					<div
 						v-for="(item, index) in displayedItems"
 						:key="item.item_code"
@@ -336,14 +337,14 @@
 						@mousedown="focusItemForKeyboard(index)"
 						@click="getOptimizedClickHandler(item).click"
 						:class="[
-							'group relative bg-white rounded-none p-1 sm:p-1.5 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50 flex flex-col h-full',
+							'group relative bg-white rounded-none p-1 touch-manipulation transition-colors duration-75 cursor-pointer hover:bg-amber-50/50 flex flex-col h-full',
 							focusedItemIndex === index ? 'ring-2 ring-blue-600 ring-inset transform scale-[0.98] bg-blue-50/50 z-20' : ''
 						]"
 					>
 						<!-- In-Cart Quantity Badge -->
 						<div
 							v-if="getCartItemQty(item.item_code) > 0"
-							class="absolute top-1.5 start-1.5 z-10 rounded-none bg-blue-600 text-white px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold "
+							class="absolute top-1 start-1 z-10 rounded-none bg-blue-600 text-white px-1 py-px text-[11px] sm:text-xs font-mono font-bold"
 						>
 							x{{ Math.floor(getCartItemQty(item.item_code)) }}
 						</div>
@@ -356,8 +357,8 @@
 							@pointercancel="clearLongPress"
 							@pointerleave="clearLongPress"
 							:class="[
-								'absolute top-1.5 end-1.5 z-10 rounded-none',
-								'px-1.5 py-0.5 text-[11px] sm:text-[13px] font-mono font-bold cursor-pointer select-none',
+								'absolute top-1 end-1 z-10 rounded-none',
+								'px-1 py-px text-[11px] sm:text-xs font-mono font-bold cursor-pointer select-none',
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 								getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 							]"
@@ -367,7 +368,7 @@
 						</div>
  
 						<!-- Item Image -->
-						<div v-if="!settingsStore.hideImages" class="relative aspect-[4/3] bg-gray-100 rounded-none mb-1 overflow-hidden border-b border-gray-100">
+						<div v-if="!settingsStore.hideImages" class="relative aspect-[2/1] bg-gray-100 rounded-none mb-0.5 overflow-hidden border-b border-gray-100">
 							<!-- Image with conditional blur on hover -->
 							<div :class="[
 								'w-full h-full transition-all duration-300',
@@ -383,7 +384,7 @@
 								>
 									<template #error>
 										<svg
-											class="h-8 w-8 sm:h-10 sm:w-10 text-gray-300"
+											class="h-6 w-6 text-gray-300"
 											fill="none"
 											stroke="currentColor"
 											viewBox="0 0 24 24"
@@ -399,7 +400,7 @@
 								</LazyImage>
 								<div v-else class="w-full h-full flex items-center justify-center">
 									<svg
-										class="h-8 w-8 sm:h-10 sm:w-10 text-gray-300"
+										class="h-6 w-6 text-gray-300"
 										fill="none"
 										stroke="currentColor"
 										viewBox="0 0 24 24"
@@ -433,23 +434,23 @@
 						</div>
  
 						<!-- Item Details -->
-						<div :class="['min-w-0 flex flex-col justify-between flex-1', settingsStore.hideImages ? 'pt-7' : 'pt-0.5']">
+						<div :class="['min-w-0 flex flex-col justify-between flex-1', settingsStore.hideImages ? 'pt-6' : 'pt-0']">
 							<div>
-								<h3 class="text-[9px] sm:text-[15px] font-[600] text-gray-900 leading-tight break-words line-clamp-2" :title="item.item_name">
+								<h3 class="text-[11px] sm:text-[13px] font-[600] text-gray-900 leading-tight break-words line-clamp-2" :title="item.item_name">
 									{{ item.item_name }}
 								</h3>
-								<p v-if="item.item_code && settingsStore.displayItemCode" class="text-[8px] sm:text-[12px] font-mono text-gray-700 truncate leading-none mt-0.5">
+								<p v-if="item.item_code && settingsStore.displayItemCode" class="text-[10px] sm:text-[11px] font-mono text-gray-700 truncate leading-none mt-0.5">
 									{{ item.item_code }}
 								</p>
-								<div v-if="item.barcode && settingsStore.displayBarcode" class="flex items-center gap-0.5 text-[13px] sm:text-[13px] font-mono text-gray-800 mt-1 leading-none truncate" :title="item.barcode">
+								<div v-if="item.barcode && settingsStore.displayBarcode" class="flex items-center gap-0.5 text-[11px] font-mono text-gray-800 mt-0.5 leading-none truncate" :title="item.barcode">
 									<svg class="w-[15px] h-[15px] flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
 									</svg>
 									<span>{{ item.barcode }}</span>
 								</div>
 							</div>
-							<div class="mt-2 flex items-baseline justify-between gap-1 flex-wrap">
-								<span class="text-[9px] sm:text-[13px] font-bold text-blue-700 mt-1">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
+							<div class="mt-0.5 flex items-baseline justify-between gap-1 flex-wrap">
+								<span class="text-[11px] sm:text-[13px] font-bold text-blue-700">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</span>
 								<span class="text-[8px] sm:text-[9px] font-bold text-gray-700 uppercase tracking-wider truncate">/ {{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</span>
 							</div>
 						</div>
@@ -474,8 +475,8 @@
 			</div>
 
 			<!-- Pagination Controls for Grid View -->
-			<div v-if="totalPages > 1" class="px-2 sm:px-3 py-2 bg-white border-t border-gray-200">
-				<div class="flex flex-col sm:flex-row items-center justify-between gap-2">
+			<div v-if="totalPages > 1" class="px-2 py-1 bg-white border-t border-gray-200">
+				<div class="flex flex-col sm:flex-row items-center justify-between gap-1">
 					<div class="text-[10px] sm:text-xs text-gray-600 order-2 sm:order-1">
 						{{ __('{0} - {1} of {2}', [
 							(((currentPage - 1) * itemsPerPage) + 1),
@@ -489,7 +490,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -504,7 +505,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -521,7 +522,7 @@
 								@click="goToPage(page)"
 								data-nav="pagination"
 								:class="[
-									'min-w-[44px] min-h-[44px] px-1.5 sm:px-2.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
+									'min-w-pos-tap min-h-pos-tap px-1.5 sm:px-2 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
 										? 'bg-black text-white border-gray-300'
 										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -536,7 +537,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -551,7 +552,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -576,12 +577,12 @@
 				<table v-if="displayedItems.length > 0" class="min-w-full divide-y divide-gray-200">
 					<thead class="bg-gray-50 sticky top-0 z-10">
 						<tr>
-							<th v-if="!settingsStore.hideImages" scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[50px] sm:w-[60px]">{{ __('Image') }}</th>
-							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{{ __('Name') }}</th>
-							<th scope="col" class="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]" v-if="settingsStore.displayItemCode">{{ __('Code') }}</th>
-							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]">{{ __('Rate') }}</th>
-							<th scope="col" class="px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">{{ __('Qty') }}</th>
-							<th scope="col" class="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-start text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 md:w-[80px]">{{ __('UOM') }}</th>
+							<th v-if="!settingsStore.hideImages" scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-14">{{ __('Image') }}</th>
+							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">{{ __('Name') }}</th>
+							<th scope="col" class="hidden sm:table-cell px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 sm:max-w-[150px]" v-if="settingsStore.displayItemCode">{{ __('Code') }}</th>
+							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]">{{ __('Rate') }}</th>
+							<th scope="col" class="px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">{{ __('Qty') }}</th>
+							<th scope="col" class="hidden md:table-cell px-2 py-1 text-start text-[10px] sm:text-[11px] font-semibold text-gray-700 uppercase tracking-wider bg-gray-50 border-b-2 border-gray-200 sticky top-0 z-10 md:w-[80px]">{{ __('UOM') }}</th>
 						</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
@@ -599,8 +600,8 @@
 								focusedItemIndex === index ? 'bg-blue-50 ring-2 ring-blue-600 ring-inset' : ''
 							]"
 						>
-							<td v-if="!settingsStore.hideImages" class="px-2 sm:px-3 py-2 whitespace-nowrap w-[50px] sm:w-[60px]">
-								<div class="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
+							<td v-if="!settingsStore.hideImages" class="px-2 py-pos-row whitespace-nowrap w-14">
+								<div class="size-pos-thumb bg-gray-100 rounded-none flex items-center justify-center overflow-hidden border border-gray-200">
 									<LazyImage
 										v-if="item.image"
 										:src="imageUrl(item.image)"
@@ -620,7 +621,7 @@
 									</svg>
 								</div>
 							</td>
-							<td class="px-2 sm:px-3 py-2 max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">
+							<td class="px-2 py-pos-row max-w-[120px] sm:max-w-[180px] md:max-w-[200px]">
 								<div class="flex items-center gap-1.5">
 									<span class="text-xs sm:text-sm font-bold uppercase tracking-tight text-gray-900 truncate" :title="item.item_name">
 										{{ item.item_name }}
@@ -642,13 +643,13 @@
 									<span>{{ item.barcode }}</span>
 								</div>
 							</td>
-							<td class="hidden sm:table-cell px-2 sm:px-3 py-2 whitespace-nowrap sm:max-w-[150px]" v-if="settingsStore.displayItemCode">
+							<td class="hidden sm:table-cell px-2 py-pos-row whitespace-nowrap sm:max-w-[150px]" v-if="settingsStore.displayItemCode">
 								<div class="text-xs sm:text-sm font-mono text-gray-800 truncate" :title="item.item_code">{{ item.item_code }}</div>
 							</td>
-							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]">
+							<td class="px-2 py-pos-row whitespace-nowrap w-[70px] sm:w-[100px]">
 								<div class="text-xs sm:text-sm font-bold text-blue-700 tracking-tight">{{ formatCurrency(item.rate || item.price_list_rate || 0) }}</div>
 							</td>
-							<td class="px-2 sm:px-3 py-2 whitespace-nowrap w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">
+							<td class="px-2 py-pos-row whitespace-nowrap w-[70px] sm:w-[100px]" v-if="!settingsStore.hideQuantity">
 								<!-- Stock Badge - Tap to select, long press to view warehouse availability -->
 								<div
 									v-if="(item.is_stock_item || item.is_bundle) && !item.has_variants && !settingsStore.hideQuantity"
@@ -657,7 +658,7 @@
 									@pointercancel="clearLongPress"
 									@pointerleave="clearLongPress"
 									:class="[
-										'inline-block px-1.5 sm:px-2.5 py-0.5 rounded-[6px] border border-gray-300 font-mono font-bold cursor-pointer select-none text-[14px]',
+										'inline-block px-1.5 py-px rounded-[6px] border border-gray-300 font-mono font-bold cursor-pointer select-none text-xs sm:text-[13px]',
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).color,
 										getStockStatus((item.actual_qty ?? item.stock_qty ?? 0)).textColor
 									]"
@@ -672,7 +673,7 @@
 									{{ __('N/A') }}
 								</span>
 							</td>
-							<td class="hidden md:table-cell px-2 sm:px-3 py-2 whitespace-nowrap md:w-[80px]">
+							<td class="hidden md:table-cell px-2 py-pos-row whitespace-nowrap md:w-[80px]">
 								<div class="text-xs sm:text-sm text-gray-800">{{ item.uom || item.stock_uom || __('Nos', null, 'UOM') }}</div>
 							</td>
 						</tr>
@@ -704,8 +705,8 @@
 			</div>
 
 			<!-- Pagination Controls for List View -->
-			<div v-if="totalPages > 1" class="px-2 sm:px-3 py-2 bg-white border-t border-gray-200">
-				<div class="flex flex-col sm:flex-row items-center justify-between gap-2">
+			<div v-if="totalPages > 1" class="px-2 py-1 bg-white border-t border-gray-200">
+				<div class="flex flex-col sm:flex-row items-center justify-between gap-1">
 					<div class="text-[10px] sm:text-xs text-gray-600 order-2 sm:order-1">
 						{{ __('{0} - {1} of {2}', [
 							(((currentPage - 1) * itemsPerPage) + 1),
@@ -719,7 +720,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -734,7 +735,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === 1"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === 1
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -751,7 +752,7 @@
 								@click="goToPage(page)"
 								data-nav="pagination"
 								:class="[
-									'min-w-[44px] min-h-[44px] px-1.5 sm:px-2.5 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
+									'min-w-pos-tap min-h-pos-tap px-1.5 sm:px-2 text-[10px] sm:text-xs font-bold rounded-none border transition-colors duration-75 touch-manipulation',
 									currentPage === page
 										? 'bg-black text-white border-black'
 										: 'bg-white text-gray-900 border-gray-300 hover:bg-gray-100 active:bg-gray-200'
@@ -766,7 +767,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -781,7 +782,7 @@
 							data-nav="pagination"
 							:disabled="currentPage === totalPages"
 							:class="[
-								'px-2 sm:px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
+								'px-2 sm:px-3 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider rounded-none border transition-colors duration-75 touch-manipulation',
 								currentPage === totalPages
 									? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
 									: 'bg-white text-gray-900 border-black hover:bg-gray-100 active:bg-gray-200'
@@ -954,6 +955,7 @@ const itemGroupHeight = ref(
 		: 160
 )
 const dividerRef = ref(null)
+const itemGroupsRef = ref(null)
 const isResizing = ref(false)
 let resizeState = null
 
@@ -970,7 +972,8 @@ function startResize(event) {
 	resizeState = {
 		pointerId: event.pointerId,
 		startY: event.clientY,
-		startHeight: itemGroupHeight.value,
+		// The chips take only the room they need, so drag from the height they show
+		startHeight: itemGroupsRef.value?.offsetHeight || itemGroupHeight.value,
 	}
 
 	isResizing.value = true
@@ -996,8 +999,8 @@ function handleResize(event) {
 	const deltaY = event.clientY - resizeState.startY
 	const rawHeight = resizeState.startHeight + deltaY
 
-	// Bounds logic: min 44px, max 300px
-	itemGroupHeight.value = Math.max(44, Math.min(350, rawHeight))
+	// Bounds logic: one row of chips (--pos-control, 36px) up to 350px
+	itemGroupHeight.value = Math.max(36, Math.min(350, rawHeight))
 }
 
 function stopResize(event) {
@@ -1247,13 +1250,12 @@ function handleScroll(event) {
 	handleScrollRAF(event)
 }
 
+// The grid fits as many tiles as the panel holds, so the arrow keys ask the grid itself
 const getColumnsCount = () => {
-	const width = window.innerWidth
-	if (width < 640) return 2
-	if (width < 768) return 3
-	if (width < 1024) return 3
-	if (width < 1280) return 4
-	return 5
+	const grid = gridScrollContainer.value?.querySelector("[data-item-grid]")
+	if (!grid) return 1
+	const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").filter(Boolean).length
+	return columns || 1
 }
 
 const scrollFocusedItemIntoView = (() => {

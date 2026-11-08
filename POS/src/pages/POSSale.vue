@@ -280,7 +280,7 @@
 						<button
 							@click="handleTabSwitch('items')"
 							:class="[
-								'flex-1 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none border-r border-gray-200',
+								'flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none border-r border-gray-200',
 								uiStore.mobileActiveTab === 'items'
 									? 'text-black bg-gray-100 border-b-4 border-black'
 									: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100',
@@ -309,7 +309,7 @@
 						<button
 							@click="handleTabSwitch('cart')"
 							:class="[
-								'flex-1 px-3 py-3 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none',
+								'flex-1 px-3 py-2 text-xs font-bold uppercase tracking-wider transition-[color,background-color,border-color] duration-100 relative touch-manipulation rounded-none',
 								uiStore.mobileActiveTab === 'cart'
 									? 'text-black bg-gray-100 border-b-4 border-black'
 									: 'text-gray-600 hover:text-gray-800 hover:bg-gray-50 active:bg-gray-100',
@@ -465,7 +465,7 @@
 							cartStore.itemCount > 0
 						"
 						@click="uiStore.setMobileTab('cart')"
-						class="lg:hidden fixed bottom-20 end-4 bg-blue-600 text-white border-2 border-black rounded-none p-4 shadow-md hover:bg-blue-700 active:bg-blue-800 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95"
+						class="lg:hidden fixed bottom-20 end-4 bg-blue-600 text-white border-2 border-black rounded-none p-3 shadow-md hover:bg-blue-700 active:bg-blue-800 transition-[background,box-shadow,transform] duration-200 z-50 touch-manipulation active:scale-95"
 						:aria-label="__('View cart with {0} items', [cartStore.itemCount])"
 					>
 						<div class="relative">
@@ -499,7 +499,7 @@
 			<div
 				v-else
 				class="flex-1 flex items-center justify-center bg-gray-50 p-6"
-				style="max-height: calc(100vh - var(--header-height, 44px))"
+				style="max-height: calc(100vh - var(--pos-bar))"
 			>
 				<div class="bg-white border border-gray-300 rounded-none p-8 text-center max-w-sm w-full mx-auto">
 					<div

@@ -30,7 +30,7 @@
 								type="date"
 								v-model="deliveryDate"
 								:min="today"
-								class="flex-1 h-11 border border-gray-300 rounded-none px-2 text-sm focus:outline-none focus:border-black bg-white"
+								class="flex-1 h-pos-control border border-gray-300 rounded-none px-2 text-sm focus:outline-none focus:border-black bg-white"
 							/>
 						</div>
 					</div>
@@ -54,7 +54,7 @@
 								</div>
 								<button
 									@click="clearSalesPersons"
-									class="w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 touch-manipulation"
+									class="size-pos-control -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 touch-manipulation"
 									:title="__('Change sales person')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,7 +73,7 @@
 									<!-- Refresh: re-fetch sales persons from server -->
 									<button
 										@click.prevent="refreshSalesPersons"
-										class="ms-auto w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
+										class="ms-auto size-pos-control -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
 										:class="{ 'animate-spin': loadingSalesPersons }"
 										:title="__('Refresh sales persons')"
 										:disabled="loadingSalesPersons"
@@ -90,7 +90,7 @@
 										:placeholder="loadingSalesPersons ? __('Loading...') : __('Select sales person...')"
 										@focus="onSalesPersonFocus"
 										@blur="handleSalesPersonBlur"
-										class="w-full h-11 px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
+										class="w-full h-pos-control px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
 										:class="!isSalesPersonValid ? 'border-red-300' : 'border-gray-300'"
 									/>
 									<svg
@@ -109,7 +109,7 @@
 											v-for="person in availableSalesPersons"
 											:key="person.name"
 											@mousedown.prevent="addSalesPerson(person)"
-											class="flex items-center justify-between min-h-[44px] p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
+											class="flex items-center justify-between min-h-pos-control p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
 										>
 											<span class="font-medium text-gray-900">{{ person.sales_person_name || person.name }}</span>
 											<span v-if="person.commission_rate" class="text-gray-500 text-[10px]">
@@ -150,7 +150,7 @@
 									<!-- Refresh: re-fetch sales persons from server -->
 									<button
 										@click.prevent="refreshSalesPersons"
-										class="ms-1 w-11 h-11 -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
+										class="ms-1 size-pos-control -my-2 flex items-center justify-center text-gray-500 hover:text-black rounded-none hover:bg-gray-200 transition-colors touch-manipulation"
 										:class="{ 'animate-spin': loadingSalesPersons }"
 										:title="__('Refresh sales persons')"
 										:disabled="loadingSalesPersons"
@@ -175,7 +175,7 @@
 										: __('Select sales person...'))"
 									@focus="onSalesPersonFocus"
 									@blur="handleSalesPersonBlur"
-									class="w-full h-11 px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
+									class="w-full h-pos-control px-3 ps-3 pe-8 text-sm border border-gray-300 rounded-none focus:outline-none focus:border-black bg-white"
 									:class="!isSalesPersonValid ? 'border-red-300' : 'border-gray-300'"
 								/>
 								<svg
@@ -195,7 +195,7 @@
 										v-for="person in availableSalesPersons"
 										:key="person.name"
 										@mousedown.prevent="addSalesPerson(person)"
-										class="flex items-center justify-between min-h-[44px] p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
+										class="flex items-center justify-between min-h-pos-control p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 text-sm"
 									>
 										<span class="font-medium text-gray-900">{{ person.sales_person_name || person.name }}</span>
 										<span v-if="person.commission_rate" class="text-gray-500 text-[10px]">
@@ -228,7 +228,7 @@
 								<div
 									v-for="person in selectedSalesPersons"
 									:key="person.sales_person"
-									class="inline-flex items-center gap-1 ps-2 min-h-[44px] bg-gray-200 border border-gray-300 rounded-none text-xs"
+									class="inline-flex items-center gap-1 ps-2 min-h-pos-control bg-gray-200 border border-gray-300 rounded-none text-xs"
 								>
 									<span class="font-medium text-gray-900 truncate max-w-[120px]">
 										{{ person.sales_person_name || person.sales_person }}
@@ -238,7 +238,7 @@
 									</span>
 									<button
 										@click="removeSalesPerson(person.sales_person)"
-										class="w-11 h-11 flex items-center justify-center text-gray-500 hover:text-black touch-manipulation"
+										class="size-pos-control flex items-center justify-center text-gray-500 hover:text-black touch-manipulation"
 										:aria-label="__('Remove')"
 									>
 										<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -251,7 +251,7 @@
 								<button
 									v-if="selectedSalesPersons.length > 1"
 									@click="clearSalesPersons"
-									class="inline-flex items-center gap-1 px-2 min-h-[44px] text-xs text-red-600 hover:text-red-700 touch-manipulation"
+									class="inline-flex items-center gap-1 px-2 min-h-pos-control text-xs text-red-600 hover:text-red-700 touch-manipulation"
 								>
 									<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -304,7 +304,7 @@
 									type="button"
 									v-if="settingsStore.showOffers"
 									@click="emit('show-offers')"
-									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-[44px] rounded-none bg-green-50 border border-black hover:bg-green-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-pos-control rounded-none bg-green-50 border border-black hover:bg-green-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('View all available offers')"
 								>
 									<svg
@@ -332,7 +332,7 @@
 									type="button"
 									v-if="settingsStore.showCoupon"
 									@click="emit('show-coupon')"
-									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-[44px] rounded-none bg-purple-50 border border-black hover:bg-purple-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
+									class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-pos-control rounded-none bg-purple-50 border border-black hover:bg-purple-100 transition-colors min-w-0 touch-manipulation active:scale-[0.98]"
 									:aria-label="__('Apply coupon or gift card')"
 								>
 									<svg
@@ -356,7 +356,7 @@
 							<div
 								v-for="(item, index) in items"
 								:key="index"
-								:class="['px-3 py-2 flex flex-col gap-1', item.is_free_item ? 'bg-green-50/50' : 'hover:bg-gray-50']"
+								:class="['px-2 py-1 flex flex-col gap-0.5', item.is_free_item ? 'bg-green-50/50' : 'hover:bg-gray-50']"
 							>
 								<!-- Main Item -->
 								<div class="flex items-start justify-between gap-2">
@@ -401,7 +401,7 @@
 								v-model="remarks"
 								rows="2"
 								:aria-label="__('Remarks')"
-								class="w-full min-h-[44px] px-2 py-1.5 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
+								class="w-full min-h-pos-control px-2 py-1.5 text-xs border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
 								:placeholder="__('Add invoice remarks here')"
 							></textarea>
 						</div>
@@ -428,7 +428,7 @@
 										<button
 											@click="decrementDiscount"
 											:disabled="localAdditionalDiscount <= 0"
-											class="h-11 w-11 flex items-center justify-center text-orange-600 hover:bg-orange-100 disabled:text-gray-300 disabled:hover:bg-transparent transition-colors flex-shrink-0 rounded-none touch-manipulation"
+											class="size-pos-control flex items-center justify-center text-orange-600 hover:bg-orange-100 disabled:text-gray-300 disabled:hover:bg-transparent transition-colors flex-shrink-0 rounded-none touch-manipulation"
 										>
 											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/>
@@ -443,12 +443,12 @@
 											min="0"
 											:max="additionalDiscountType === 'percentage' ? 100 : subtotal"
 											step="1"
-											class="flex-1 min-w-0 h-11 px-1 text-sm font-semibold text-center bg-transparent border-none focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+											class="flex-1 min-w-0 h-pos-control px-1 text-sm font-semibold text-center bg-transparent border-none focus:outline-none focus:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 										/>
 										<!-- Increment Button -->
 										<button
 											@click="incrementDiscount"
-											class="h-11 w-11 flex items-center justify-center text-orange-600 hover:bg-orange-100 transition-colors flex-shrink-0 rounded-none touch-manipulation"
+											class="size-pos-control flex items-center justify-center text-orange-600 hover:bg-orange-100 transition-colors flex-shrink-0 rounded-none touch-manipulation"
 										>
 											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
@@ -459,7 +459,7 @@
 									<button
 										@click="additionalDiscountType = 'percentage'; handleAdditionalDiscountTypeChange()"
 										:class="[
-											'h-11 rounded-none text-sm font-bold transition-colors touch-manipulation',
+											'h-pos-control rounded-none text-sm font-bold transition-colors touch-manipulation',
 											additionalDiscountType === 'percentage'
 												? 'bg-black text-white'
 												: 'bg-white text-orange-600 border border-orange-400 hover:bg-orange-100'
@@ -471,7 +471,7 @@
 									<button
 										@click="additionalDiscountType = 'amount'; handleAdditionalDiscountTypeChange()"
 										:class="[
-											'h-11 rounded-none text-sm font-bold transition-colors touch-manipulation',
+											'h-pos-control rounded-none text-sm font-bold transition-colors touch-manipulation',
 											additionalDiscountType === 'amount'
 												? 'bg-black text-white'
 												: 'bg-white text-orange-600 border border-orange-400 hover:bg-orange-100'
@@ -507,30 +507,30 @@
 						<div class="border-t border-gray-200">
 							<div class="grid grid-cols-2 divide-x rtl:divide-x-reverse divide-gray-200">
 								<!-- Paid (Left Half) -->
-								<div :class="['bg-blue-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div :class="['bg-blue-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{{ __('Paid') }}</div>
 									<div :class="['font-bold text-blue-600', dynamicTextSize.amount]">{{ formatCurrency(totalPaid) }}</div>
 								</div>
 								<!-- Remaining / Change (Right Half) -->
-								<div v-if="remainingAmount > 0 && !applyWriteOff" :class="['bg-orange-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div v-if="remainingAmount > 0 && !applyWriteOff" :class="['bg-orange-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-orange-600 uppercase tracking-wide mb-1">{{ __('Remaining') }}</div>
 									<div :class="['font-bold text-orange-600', dynamicTextSize.amount]">{{ formatCurrency(remainingAmount) }}</div>
 								</div>
 								<!-- Write-off Applied -->
-								<div v-else-if="applyWriteOff && canWriteOff" :class="['bg-purple-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div v-else-if="applyWriteOff && canWriteOff" :class="['bg-purple-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">{{ __('Write Off') }}</div>
 									<div :class="['font-bold text-purple-600', dynamicTextSize.amount]">{{ formatCurrency(writeOffAmount) }}</div>
 								</div>
-								<div v-else-if="changeAmount > 0 && allowsOverpayment" :class="['bg-green-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div v-else-if="changeAmount > 0 && allowsOverpayment" :class="['bg-green-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-green-600 uppercase tracking-wide mb-1">{{ __('Change Due') }}</div>
 									<div :class="['font-bold text-green-600', dynamicTextSize.amount]">{{ formatCurrency(changeAmount) }}</div>
 								</div>
 								<!-- Exact Amount Warning (when overpayment not allowed) -->
-								<div v-else-if="changeAmount > 0 && !allowsOverpayment" :class="['bg-red-50 text-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div v-else-if="changeAmount > 0 && !allowsOverpayment" :class="['bg-red-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">{{ __('Overpayment') }}</div>
 									<div :class="['font-bold text-red-600', dynamicTextSize.amount]">{{ formatCurrency(changeAmount) }}</div>
 								</div>
-								<div v-else :class="['bg-green-50 flex flex-col items-center justify-center', isCompactMode ? 'p-2' : 'p-3']">
+								<div v-else :class="['bg-green-50 flex flex-col items-center justify-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<svg class="w-5 h-5 text-green-600 mb-1" fill="currentColor" viewBox="0 0 20 20">
 										<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
 									</svg>
@@ -540,7 +540,7 @@
 						</div>
 
 						<!-- Write-Off Toggle -->
-						<div v-if="canWriteOff" class="border-t border-gray-200 px-4 py-3 bg-white">
+						<div v-if="canWriteOff" class="border-t border-gray-200 px-3 py-2 bg-white">
 							<div class="flex items-center justify-between mb-1.5">
 								<span class="text-xs font-bold uppercase tracking-wider text-gray-500">{{ __('Write Off') }}</span>
 								<span class="text-xs text-gray-400 font-medium">{{ __('Max') }}: {{ formatCurrency(writeOffLimit) }}</span>
@@ -548,7 +548,7 @@
 							<button
 								type="button"
 								@click="applyWriteOff = !applyWriteOff"
-								class="w-full h-12 flex items-center justify-between px-3 rounded-none border border-black transition-colors"
+								class="w-full h-pos-control flex items-center justify-between px-3 rounded-none border border-black transition-colors"
 								:class="applyWriteOff ? 'bg-black text-white' : 'bg-white text-gray-900 hover:bg-gray-50'"
 							>
 								<span class="text-xs font-bold uppercase tracking-wider">{{ __('Write Off Remaining') }}</span>
@@ -578,7 +578,7 @@
 							<button
 								v-if="paymentEntries.length > 0"
 								@click="clearAll"
-								:class="['flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none border border-transparent transition-colors touch-manipulation', isSmallMobile ? 'p-1' : 'w-11 h-11']"
+								:class="['flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none border border-transparent transition-colors touch-manipulation', isSmallMobile ? 'size-pos-tap' : 'size-pos-control']"
 								:title="__('Clear all payments')"
 							>
 								<svg :class="isSmallMobile ? 'w-4 h-4' : 'w-5 h-5'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -608,7 +608,7 @@
 								:title="isOnlineOnlyMethod(method) ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold select-none touch-none',
-									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-11 min-w-[44px] text-sm',
+									isSmallMobile ? 'gap-0.5 px-1.5 h-pos-tap text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-pos-control min-w-pos-control text-sm',
 									lastSelectedMethod?.mode_of_payment === method.mode_of_payment
 										? 'border-black bg-black text-white'
 										: isWalletPaymentMethod(method.mode_of_payment) && availableWalletBalance <= 0
@@ -636,7 +636,7 @@
 								:title="isOffline ? ONLINE_ONLY_MESSAGE : undefined"
 								:class="[
 									'inline-flex items-center rounded-none border transition-all font-semibold',
-									isSmallMobile ? 'gap-0.5 px-1.5 h-7 text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-11 min-w-[44px] text-sm',
+									isSmallMobile ? 'gap-0.5 px-1.5 h-pos-tap text-[10px]' : 'gap-1 lg:gap-2 px-3 lg:px-4 h-pos-control min-w-pos-control text-sm',
 									isOffline || remainingAmount === 0 || remainingAvailableCredit === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer',
 									getMethodTotal('Customer Credit') > 0
 										? 'border-black bg-black text-white'
@@ -683,11 +683,11 @@
 											v-model.number="entry.amount"
 											min="0"
 											step="0.01"
-											class="w-24 h-11 px-1.5 text-sm font-semibold text-end border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
+											class="w-24 h-pos-control px-1.5 text-sm font-semibold text-end border border-gray-300 rounded-none focus:outline-none focus:border-black bg-gray-50 focus:bg-white transition-colors"
 											@change="handlePaymentEntryChange(entry)"
 											@focus="$event.target.select()"
 										/>
-										<button @click="removePaymentEntry(index)" class="w-11 h-11 flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none transition-colors touch-manipulation" :title="__('Remove')" :aria-label="__('Remove')">
+										<button @click="removePaymentEntry(index)" class="size-pos-control flex items-center justify-center text-red-500 hover:text-red-700 hover:bg-red-50 rounded-none transition-colors touch-manipulation" :title="__('Remove')" :aria-label="__('Remove')">
 											<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
 											</svg>
@@ -714,7 +714,7 @@
 								:disabled="isQuickAmountDisabled(amount)"
 								:class="[
 									'font-bold rounded-none border transition-all',
-									'px-2 min-h-[44px] text-sm touch-manipulation',
+									'px-2 min-h-pos-control text-sm touch-manipulation',
 									isQuickAmountDisabled(amount)
 										? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 										: 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900 active:bg-gray-200'
@@ -741,7 +741,7 @@
 									:disabled="isQuickAmountDisabled(amount)"
 									:class="[
 										'font-bold rounded-none border transition-colors',
-										isSmallMobile ? 'py-1 text-[10px]' : 'min-h-[44px] text-sm touch-manipulation',
+										isSmallMobile ? 'min-h-pos-tap text-[10px]' : 'min-h-pos-control text-sm touch-manipulation',
 										isQuickAmountDisabled(amount)
 											? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 											: 'bg-white border-gray-300 text-gray-900 active:bg-gray-100'
@@ -769,7 +769,7 @@
 										:disabled="isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)"
 										:class="[
 											'w-full border rounded-none focus:outline-none font-semibold focus:border-black',
-											isSmallMobile ? 'h-7 ps-5 pe-1.5 text-xs' : 'h-11 ps-6 pe-2 text-sm',
+											isSmallMobile ? 'h-pos-tap ps-5 pe-1.5 text-xs' : 'h-pos-control ps-6 pe-2 text-sm',
 											isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)
 												? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 												: 'bg-white border-gray-300 focus:border-black'
@@ -781,7 +781,7 @@
 									:disabled="(isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)) || !mobileCustomAmount || mobileCustomAmount <= 0"
 									:class="[
 										'font-semibold rounded-none border border-black transition-all flex-shrink-0',
-										isSmallMobile ? 'h-7 px-2 text-[10px]' : 'h-11 px-4 text-sm touch-manipulation',
+										isSmallMobile ? 'h-pos-tap px-2 text-[10px]' : 'h-pos-control px-4 text-sm touch-manipulation',
 										(isExactAmountModeActive && !isCashPaymentMethod(lastSelectedMethod)) || !mobileCustomAmount || mobileCustomAmount <= 0
 											? 'bg-gray-100 border-gray-200 text-gray-400'
 											: 'bg-black text-white active:bg-gray-900'
@@ -887,15 +887,15 @@
 					<!-- Numeric Keypad (Desktop only) -->
 					<div class="hidden lg:block bg-white border border-gray-200">
 						<!-- Amount Display -->
-						<div class="bg-white border-b-2 border-black px-4 pt-3 pb-4">
+						<div class="bg-white border-b-2 border-black px-3 pt-1.5 pb-2">
 							<!-- Top row: label + method hint -->
-							<div class="flex items-center justify-center mb-2">
-								<span class="text-[10px] font-medium text-gray-500 uppercase ">{{ __('Enter Amount') }}</span>
+							<div class="flex items-center justify-center mb-1">
+								<span class="text-[10px] font-medium text-gray-500 uppercase">{{ __('Enter Amount') }}</span>
 							</div>
 							<!-- Amount row: currency + value -->
 							<div dir="ltr" class="flex items-baseline justify-center gap-1.5">
 								<!-- <span class="text-lg font-bold text-gray-400 leading-none">{{ currencySymbol }}</span> -->
-								<span class="font-mono font-black text-gray-900 text-3xl leading-none tracking-tight">{{ numpadFormattedDisplay }}</span>
+								<span class="font-mono font-black text-gray-900 text-2xl leading-none tracking-tight">{{ numpadFormattedDisplay }}</span>
 							</div>
 						</div>
 
@@ -906,13 +906,13 @@
 								v-for="num in ['7', '8', '9']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
 							<button
 								@click="numpadBackspace"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-lg font-semibold bg-white hover:bg-red-50 text-red-500 transition-colors active:bg-red-100 flex items-center justify-center touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-lg font-semibold bg-white hover:bg-red-50 text-red-500 transition-colors active:bg-red-100 flex items-center justify-center touch-manipulation select-none']"
 							>
 								<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/>
@@ -924,13 +924,13 @@
 								v-for="num in ['4', '5', '6']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
 							<button
 								@click="numpadClear"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-lg font-bold bg-white hover:bg-orange-50 text-orange-500 transition-colors active:bg-orange-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-lg font-bold bg-white hover:bg-orange-50 text-orange-500 transition-colors active:bg-orange-100 touch-manipulation select-none']"
 							>
 								C
 							</button>
@@ -940,7 +940,7 @@
 								v-for="num in ['1', '2', '3']"
 								:key="num"
 								@click="numpadInput(num)"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								{{ num }}
 							</button>
@@ -963,13 +963,13 @@
 							<!-- Row 4: 00, 0, . -->
 							<button
 								@click="numpadInput('00')"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								00
 							</button>
 							<button
 								@click="numpadInput('0')"
-								:class="[isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
+								:class="['h-pos-key', 'text-xl font-semibold bg-white hover:bg-gray-50 text-gray-900 transition-colors active:bg-gray-100 touch-manipulation select-none']"
 							>
 								0
 							</button>
@@ -977,7 +977,7 @@
 								@click="numpadInput('.')"
 								:disabled="numpadDisplay.includes('.')"
 								:class="[
-									isCompactMode ? 'h-12' : 'h-14', 'text-2xl font-semibold transition-colors touch-manipulation select-none',
+									'h-pos-key', 'text-xl font-semibold transition-colors touch-manipulation select-none',
 									numpadDisplay.includes('.')
 										? 'bg-gray-100 text-gray-400 cursor-not-allowed'
 										: 'bg-white hover:bg-gray-50 text-gray-900 active:bg-gray-100'
@@ -992,7 +992,7 @@
 					<!-- End scrollable section -->
 
 					<!-- Action Buttons - ALWAYS pinned at bottom (Desktop only) -->
-					<div class="hidden lg:flex items-center gap-2 p-3 bg-white border-t border-gray-200 mt-0">
+					<div class="hidden lg:flex items-center gap-2 p-2 bg-white border-t border-gray-200 mt-0">
 						<!-- Pay on Account Button (if credit sales enabled) -->
 						<button
 							v-if="allowCreditSale"
@@ -1067,13 +1067,13 @@
 				<div class="flex gap-2.5 justify-end">
 					<button
 						@click="resolveOverpayConfirm(false)"
-						class="px-4 min-h-[44px] rounded-none border border-black text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
+						class="px-4 min-h-pos-control rounded-none border border-black text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
 					>
 						{{ __("Cancel") }}
 					</button>
 					<button
 						@click="resolveOverpayConfirm(true)"
-						class="px-4 min-h-[44px] rounded-none border border-black text-sm font-semibold text-white bg-black hover:bg-gray-900 active:bg-black transition-colors touch-manipulation"
+						class="px-4 min-h-pos-control rounded-none border border-black text-sm font-semibold text-white bg-black hover:bg-gray-900 active:bg-black transition-colors touch-manipulation"
 					>
 						{{ __("Continue") }}
 					</button>

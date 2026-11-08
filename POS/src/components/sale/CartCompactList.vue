@@ -3,7 +3,7 @@
 		<div
 			v-for="(item, index) in items"
 			:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
-			class="cart-item-row flex items-center gap-2 min-h-[44px] ps-2 border-s-4 select-none"
+			class="cart-item-row flex items-center gap-2 min-h-pos-tap ps-1.5 border-s-4 select-none"
 			:class="[
 				index === focusedIndex ? 'bg-gray-100 border-s-black' : 'border-s-transparent',
 				item.is_free_item ? 'bg-green-50/30 cursor-default' : 'bg-white cursor-pointer hover:bg-gray-50',
@@ -20,7 +20,7 @@
 			<div v-if="rulesFor(item).quantity" class="flex items-center flex-shrink-0 border border-gray-400" @click.stop>
 				<button
 					type="button"
-					class="w-11 h-11 flex items-center justify-center text-gray-900 bg-white hover:bg-gray-100 border-e border-gray-400 touch-manipulation"
+					class="size-pos-tap flex items-center justify-center text-gray-900 bg-white hover:bg-gray-100 border-e border-gray-400 touch-manipulation"
 					:aria-label="__('Decrease quantity')"
 					:title="__('Decrease quantity')"
 					@click="$emit('decrease', item)"
@@ -29,7 +29,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4" />
 					</svg>
 				</button>
-				<div class="w-11">
+				<div class="w-10">
 					<CartNumberField
 						class="!border-0 !text-center !px-0"
 						:value="item.quantity"
@@ -40,7 +40,7 @@
 				</div>
 				<button
 					type="button"
-					class="w-11 h-11 flex items-center justify-center text-gray-900 bg-white hover:bg-gray-100 border-s border-gray-400 touch-manipulation"
+					class="size-pos-tap flex items-center justify-center text-gray-900 bg-white hover:bg-gray-100 border-s border-gray-400 touch-manipulation"
 					:aria-label="__('Increase quantity')"
 					:title="__('Increase quantity')"
 					@click="$emit('increase', item)"
@@ -50,16 +50,16 @@
 					</svg>
 				</button>
 			</div>
-			<span v-else dir="ltr" class="flex-shrink-0 w-[134px] text-center text-sm font-mono font-bold text-gray-700">{{ formatQuantity(item.quantity) }}</span>
+			<span v-else dir="ltr" class="flex-shrink-0 w-[calc(var(--pos-tap)*2+2.5rem+2px)] text-center text-sm font-mono font-bold text-gray-700">{{ formatQuantity(item.quantity) }}</span>
 
 			<span
 				v-if="item.is_free_item"
-				class="flex-shrink-0 min-w-[84px] pe-2 text-end text-sm font-bold text-green-700"
+				class="flex-shrink-0 min-w-[76px] pe-2 text-end text-sm font-bold text-green-700"
 			>{{ __('Free') }}</span>
 			<span
 				v-else
 				dir="ltr"
-				class="flex-shrink-0 min-w-[84px] pe-2 text-right text-sm font-mono font-bold text-gray-900"
+				class="flex-shrink-0 min-w-[76px] pe-2 text-right text-sm font-mono font-bold text-gray-900"
 			>{{ formatAmount(getLineTotal(item, taxInclusive)) }}</span>
 		</div>
 	</div>

@@ -2,7 +2,7 @@
 	<div
 		class="bg-white border-b border-gray-300 sticky top-0 z-[200]"
 	>
-		<div class="flex py-0 h-[44px] items-stretch">
+		<div class="flex py-0 h-pos-bar items-stretch">
 			<!-- Main Header Content -->
 			<div class="flex-1 flex justify-between items-stretch gap-0 pe-0">
 				<!-- Left Side: Brand Info -->
@@ -58,7 +58,7 @@
 						<button
 							@click="showCacheTooltip = !showCacheTooltip"
 							@blur="handleBlur"
-							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-pos-bar px-2.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 							:aria-label="getCacheAriaLabel()"
 						>
 							<svg
@@ -150,7 +150,7 @@
 										@click="handleClearCacheClick"
 										:disabled="isOffline"
 										:class="[
-											'w-full min-h-[44px] px-2 py-1.5 sm:py-2 rounded-none transition-colors font-bold text-[10px] sm:text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5',
+											'w-full min-h-pos-control px-2 py-1 rounded-none transition-colors font-bold text-[10px] sm:text-[11px] uppercase tracking-wider flex items-center justify-center gap-1.5',
 											isOffline
 												? 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
 												: 'border border-red-600 text-red-600 hover:bg-red-600 hover:text-white bg-white active:scale-95'
@@ -172,7 +172,7 @@
 						<button
 							:title="silentPrintEnabled ? (qzConnected ? __('Silent Print: Connected') : __('Silent Print: Disconnected')) : __('Print Invoice')"
 							@click="$emit('printer-click')"
-							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-pos-bar px-2.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors group touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 						>
 							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
 								<path stroke-linecap="round" stroke-linejoin="round" :d="printerIcon" />
@@ -190,7 +190,7 @@
 						<button
 							@click="showQueueTooltip = !showQueueTooltip"
 							@blur="handleQueueBlur"
-							class="min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
+							class="min-w-pos-bar px-2.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors relative touch-manipulation text-gray-600 hover:text-gray-900 h-full flex items-center justify-center"
 							:title="__('Bluetooth Print Queue')"
 						>
 							<svg class="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -270,7 +270,7 @@
 												<button
 													v-if="job.status === 'pending' || job.status === 'failed'"
 													@click="cancelJob(job.id)"
-													class="w-11 h-11 -m-3 flex items-center justify-center text-red-500 hover:text-red-700 font-bold rounded hover:bg-red-50 transition-colors touch-manipulation"
+													class="size-pos-tap -m-2 flex items-center justify-center text-red-500 hover:text-red-700 font-bold rounded hover:bg-red-50 transition-colors touch-manipulation"
 													:title="__('Cancel Job')"
 													:aria-label="__('Cancel Job')"
 												>
@@ -288,14 +288,14 @@
 									<button
 										@click="clearQueue"
 										:disabled="queueJobs.length === 0"
-										class="flex-1 min-h-[44px] py-1 text-[10px] font-bold uppercase tracking-wider text-center text-gray-600 hover:text-red-600 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
+										class="flex-1 min-h-pos-control py-1 text-[10px] font-bold uppercase tracking-wider text-center text-gray-600 hover:text-red-600 border border-gray-300 rounded bg-white hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-300 disabled:border-gray-200 disabled:cursor-not-allowed transition-colors"
 									>
 										{{ __('Clear All') }}
 									</button>
 									<button
 										@click="retryFailed"
 										:disabled="failedJobsCount === 0"
-										class="flex-1 min-h-[44px] py-1 text-[10px] font-bold uppercase tracking-wider text-center text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed rounded transition-colors"
+										class="flex-1 min-h-pos-control py-1 text-[10px] font-bold uppercase tracking-wider text-center text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed rounded transition-colors"
 									>
 										{{ __('Retry Failed') }}
 									</button>
@@ -308,7 +308,7 @@
 					<button
 						:title="isRefreshing ? __('Refreshing...') : __('Refresh')"
 						@click="$emit('refresh-click')"
-						class="touch-manipulation min-w-[44px] px-3 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center"
+						class="touch-manipulation min-w-pos-bar px-2.5 hover:bg-gray-150 active:bg-gray-200 rounded-none border-y-0 border-e-0 border-s border-gray-300 transition-colors text-gray-600 hover:text-gray-900 group h-full flex items-center justify-center"
 						:aria-label="isRefreshing ? __('Refreshing...') : __('Refresh items and customers')"
 					>
 						<svg :class="['w-3.5 h-3.5 sm:w-4 sm:h-4', isRefreshing ? 'animate-spin' : '']" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">

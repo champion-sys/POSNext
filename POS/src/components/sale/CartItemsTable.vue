@@ -9,7 +9,7 @@
 				<th scope="col" :class="[headerClass, 'px-1 w-[12%] text-right']">{{ __('Rate') }}</th>
 				<th scope="col" :class="[headerClass, 'px-1 w-[9%] text-right']">{{ __('Discount %') }}</th>
 				<th scope="col" :class="[headerClass, 'px-1 w-[13%] text-right']">{{ __('Total') }} <span dir="ltr">({{ currencySymbol }})</span></th>
-				<th scope="col" :class="[headerClass, 'w-11']"><span class="sr-only">{{ __('Remove') }}</span></th>
+				<th scope="col" :class="[headerClass, 'w-pos-tap']"><span class="sr-only">{{ __('Remove') }}</span></th>
 			</tr>
 		</thead>
 		<tbody class="divide-y divide-gray-200">
@@ -24,8 +24,8 @@
 				:data-line="index"
 				@click.stop="$emit('row-click', index)"
 			>
-				<td class="w-full max-w-0 px-2 py-1 align-middle">
-					<div class="line-clamp-2 text-sm font-bold leading-tight text-gray-900 [overflow-wrap:anywhere]" :title="item.item_name">
+				<td class="w-full max-w-0 px-2 py-0.5 align-middle">
+					<div class="line-clamp-2 text-[13px] font-bold leading-tight text-gray-900 [overflow-wrap:anywhere]" :title="item.item_name">
 						{{ item.item_name }}
 					</div>
 					<div v-if="showsItemCode(item)" class="truncate text-[10px] font-mono text-gray-500">{{ item.item_code }}</div>
@@ -37,7 +37,7 @@
 				<td class="px-0.5 align-middle">
 					<select
 						v-if="rulesFor(item).unit"
-						class="w-full min-w-[60px] h-11 px-1 text-xs font-bold text-gray-900 bg-white border border-gray-400 rounded-none focus:outline-none focus:border-black touch-manipulation"
+						class="w-full min-w-[60px] h-pos-tap px-1 text-xs font-bold text-gray-900 bg-white border border-gray-400 rounded-none focus:outline-none focus:border-black touch-manipulation"
 						:value="item.uom || item.stock_uom"
 						:aria-label="__('Unit')"
 						:title="__('Unit')"
@@ -62,7 +62,7 @@
 					<button
 						v-else-if="rulesFor(item).quantityInDialog"
 						type="button"
-						class="w-full min-w-[52px] h-11 flex items-center justify-end gap-1 px-1 text-sm font-mono font-bold text-gray-900 bg-white border border-black touch-manipulation"
+						class="w-full min-w-[52px] h-pos-tap flex items-center justify-end gap-1 px-1 text-sm font-mono font-bold text-gray-900 bg-white border border-black touch-manipulation"
 						:aria-label="__('Edit Item Details')"
 						:title="__('Edit Item Details')"
 						@click.stop="$emit('open-dialog', item)"
@@ -115,7 +115,7 @@
 						v-if="rulesFor(item).remove"
 						type="button"
 						tabindex="-1"
-						class="w-11 h-11 flex items-center justify-center text-gray-600 hover:text-red-600 active:text-red-700 touch-manipulation"
+						class="size-pos-tap flex items-center justify-center text-gray-600 hover:text-red-600 active:text-red-700 touch-manipulation"
 						:aria-label="__('Remove {0}', [item.item_name])"
 						:title="__('Remove item')"
 						@click.stop="$emit('remove', item)"
@@ -187,7 +187,7 @@ const emit = defineEmits(["edit-line", "change-unit", "open-dialog", "remove", "
 const { showError, showWarning } = useToast()
 
 // The line is a shadow because a collapsed border does not stick with its header
-const headerClass = "sticky top-0 z-10 py-1.5 bg-gray-50 shadow-[inset_0_-1px_0_#000]"
+const headerClass = "sticky top-0 z-10 py-1 bg-gray-50 shadow-[inset_0_-1px_0_#000]"
 
 const currencySymbol = computed(() => getCurrencySymbol(props.currency))
 

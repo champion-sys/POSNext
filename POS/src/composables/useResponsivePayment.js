@@ -74,8 +74,7 @@ export function useResponsivePayment() {
 	const dynamicGap = computed(() => {
 		if (viewportWidth.value < 360) return "gap-1" // Very small phones
 		if (viewportWidth.value < 640) return "gap-1.5"
-		if (viewportWidth.value < 1024) return "gap-2"
-		return "gap-3"
+		return "gap-2"
 	})
 
 	// Dynamic text sizes
@@ -114,8 +113,8 @@ export function useResponsivePayment() {
 		return {
 			header: "text-sm",
 			body: "text-sm",
-			amount: "text-xl",
-			grandTotal: "text-2xl",
+			amount: "text-lg",
+			grandTotal: "text-xl",
 		}
 	})
 
@@ -130,7 +129,8 @@ export function useResponsivePayment() {
 		if (width < 640) return "h-10"
 		// Short screens
 		if (height < 700) return "h-10"
-		return "h-12"
+		// --pos-action, the height of every button that finishes a sale
+		return "h-pos-action"
 	})
 
 	// Mobile action button sizing
@@ -155,7 +155,7 @@ export function useResponsivePayment() {
 			}
 		}
 		return {
-			height: "h-11",
+			height: "h-pos-action",
 			text: "text-sm",
 			icon: "w-4 h-4",
 			gap: "gap-2",

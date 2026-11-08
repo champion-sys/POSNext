@@ -2,7 +2,7 @@
 	<div ref="menuRef" class="relative">
 		<button
 			@click="isOpen = !isOpen"
-			class="w-11 h-11 flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 rounded-sm transition-colors focus:outline-none touch-manipulation"
+			class="size-pos-control flex items-center justify-center hover:bg-gray-50 active:bg-gray-100 rounded-sm transition-colors focus:outline-none touch-manipulation"
 		>
 			<Avatar :image="profileImage" :name="userName" :initials="userInitials" size="sm" />
 		</button>

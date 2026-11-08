@@ -1,9 +1,9 @@
 <template>
 	<!-- Icon-Only Sidebar - Hidden on Mobile, Visible on Desktop -->
-	<div class="hidden lg:flex w-12 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-0 flex flex-col gap-1.5">
+	<div class="hidden lg:flex w-10 flex-shrink-0 bg-white border-e border-gray-200 flex-col items-center py-0 flex flex-col gap-1">
 		<!-- Logo / POS Icon -->
 		<button
-			class="w-full h-[45px] flex items-center justify-center flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all mb-0 mt-0 border-b border-gray-200"
+			class="w-full h-[calc(var(--pos-bar)+1px)] flex items-center justify-center flex-shrink-0 hover:from-blue-600 hover:to-blue-700 active:scale-95 transition-all mb-0 mt-0 border-b border-gray-200"
 			:aria-label="'POS Next'"
 			:title="__('POS Next')"
 		>
@@ -16,7 +16,7 @@
 		<button
 			@click="handleMenuClick('promotions')"
 			:class="[
-				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
+				'size-pos-control rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'promotions'
 					? 'bg-green-100 text-green-600'
 					: 'text-gray-600 hover:text-gray-900'
@@ -33,7 +33,7 @@
 		<button
 			@click="handleMenuClick('products')"
 			:class="[
-				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
+				'size-pos-control rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'products'
 					? 'bg-purple-100 text-purple-600'
 					: 'text-gray-600 hover:text-gray-900'
@@ -50,7 +50,7 @@
 		<button
 			@click="handleMenuClick('invoices')"
 			:class="[
-				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
+				'size-pos-control rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'invoices'
 					? 'bg-indigo-100 text-indigo-600'
 					: 'text-gray-600 hover:text-gray-900'
@@ -73,7 +73,7 @@
 		<button
 			@click="openKeyboardShortcuts"
 			:class="[
-				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
+				'size-pos-control rounded-sm flex items-center justify-center transition-all relative group',
 				showKeyboardShortcuts
 					? 'bg-gray-100 text-gray-900'
 					: 'text-gray-600 hover:text-gray-900'
@@ -91,7 +91,7 @@
 			@click="handleMenuClick('settings')"
 			v-if="showSettings"
 			:class="[
-				'w-11 h-11 rounded-sm flex items-center justify-center transition-all relative group',
+				'size-pos-control rounded-sm flex items-center justify-center transition-all relative group',
 				activeMenu === 'settings'
 					? 'bg-gray-100 text-gray-900'
 					: 'text-gray-600 hover:text-gray-900'

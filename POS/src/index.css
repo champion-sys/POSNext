@@ -2,6 +2,7 @@
 @import "./assets/Inter/inter.css";
 @import "frappe-ui/style.css";
 @import "@abdulrysr/saudi-riyal-new-symbol-font/style.css";
+@import "./styles/density.css";
 
 /* CSS Custom Properties for consistent z-index layering */
 :root {
@@ -41,8 +42,8 @@ body {
 
 /* frappe-ui draws the dialog close button at 28px, too small to tap reliably */
 .dialog-content div:has(> header) + button {
-	min-width: 44px;
-	min-height: 44px;
+	min-width: var(--pos-control);
+	min-height: var(--pos-control);
 }
 
 /* Mobile touch optimizations - removes 300ms tap delay and improves scrolling */
