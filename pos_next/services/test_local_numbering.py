@@ -249,6 +249,28 @@ class TestLocalNumbering(NoSiteTestCase):
 		self.assertEqual(series.call_args_list[0].args[:2], ("Sales Invoice", False))
 		self.assertEqual(series.call_args_list[1].args[:2], ("Sales Invoice", True))
 
+	def _return_option(self, options):
+		meta = Mock(get_field=lambda _fieldname: frappe._dict(options=options))
+		with patch("frappe.get_meta", return_value=meta):
+			return local_numbering._return_option("Sales Invoice", "ACC-SINV-.YYYY.-")
+
+	def test_a_return_takes_erpnexts_ret_series_when_erpnext_gives_it_the_sales(self):
+		"""ERPNext names returns by the sale's series; their local numbers read as returns."""
+		self.assertEqual(self._return_option("ACC-SINV-.YYYY.-\nACC-SINV-RET-.YYYY.-"), "ACC-SINV-RET-.YYYY.-")
+		self.assertIsNone(self._return_option("ACC-SINV-.YYYY.-\nOTHER-RET-.YYYY.-"))
+		self.assertIsNone(self._return_option("ACC-SINV-.YYYY.-"))
+
+	def test_the_ret_series_is_used_only_when_both_kinds_would_share_one(self):
+		profile = SimpleNamespace(name="Main", company="Acme", get=lambda _key: None)
+		frappe.local.db.get_value.return_value = None
+		with (
+			patch("pos_next.services.local_numbering.get_series", side_effect=["S-.YYYY.-", "S-.YYYY.-"]),
+			patch("pos_next.services.local_numbering._return_option", return_value="S-RET-.YYYY.-"),
+			patch("pos_next.services.local_numbering.next_counters", return_value={"sale": 1, "return": 1}),
+		):
+			numbering = local_numbering.get_local_numbering(profile, SHIFT)
+		self.assertEqual(numbering["return_series"], "S-RET-.YYYY.-")
+
 	def test_a_pos_invoice_profile_takes_the_series_of_pos_invoices(self):
 		_numbering, series = self._numbering("POS Invoice")
 		self.assertEqual(series.call_args_list[0].args[0], "POS Invoice")

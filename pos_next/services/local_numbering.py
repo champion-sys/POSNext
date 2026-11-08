@@ -107,6 +107,21 @@ def get_series(doctype, is_return=False, values=None):
 	return probe.get("naming_series") or get_default_naming_series(doctype)
 
 
+def _return_option(doctype, sale_series):
+	"""The doctype's own series for returns, such as ACC-SINV-RET-.YYYY.- beside ACC-SINV-.YYYY.-.
+
+	ERPNext names a return by the sale's series, so a sale and a return of a shift would
+	share local numbers. ERPNext ships a RET series as an option, chosen only by hand; the
+	local number takes it, so a return reads as one: LACC-SINV-RET-2026-3-00001.
+	"""
+	field = frappe.get_meta(doctype).get_field("naming_series")
+	options = [option.strip() for option in (field.options or "").split("\n")] if field else []
+	for option in options:
+		if option != sale_series and "RET" in option and option.replace("RET-", "", 1) == sale_series:
+			return option
+	return None
+
+
 def _rule_matches(rule, doc):
 	from frappe.utils.data import evaluate_filters
 
@@ -192,6 +207,8 @@ def get_local_numbering(pos_profile, shift):
 	}
 	sale_series = get_series(doctype, False, values)
 	return_series = get_series(doctype, True, values)
+	if return_series == sale_series:
+		return_series = _return_option(doctype, sale_series) or return_series
 
 	return {
 		"sale_series": sale_series,
