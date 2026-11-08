@@ -1,0 +1,17 @@
+== F1 a Sales Invoice sold online into a shift already closed
+close took 0.1s: {'name': 'POSA-CS-26-0000050', 'status': 'success'}
+PASS posted into the closed shift, counted in no closing  [('ACC-SINV-2026-06844', {'docstatus': 1, 'posa_pos_opening_shift': 'POSA-OS-26-0000052', 'grand_total': 115.0}, 'Closed')]
+== F3 lina sells into sara's open shift; omar, off this profile, too
+lina: ACC-SINV-2026-06846  omar: ACC-SINV-2026-06847
+sara's closing: ['ACC-SINV-2026-06845', 'ACC-SINV-2026-06846', 'ACC-SINV-2026-06847'] expected cash 345.0
+PASS lina's sale lands in sara's drawer  [ACC-SINV-2026-06846]
+PASS omar's sale (profile PI Second) lands in sara's SI Main drawer  [ACC-SINV-2026-06847]
+close took 0.2s: {'name': 'POSA-CS-26-0000051', 'status': 'success'}
+== F2 a POS Invoice sold online into a closed shift, while the next is open
+close took 0.4s: {'name': 'POSA-CS-26-0000052', 'status': 'success'}
+stale: ACC-PSINV-2026-00118 current: ACC-PSINV-2026-00119
+close took 1.1s: {'name': 'POSA-CS-26-0000053', 'status': 'success'}
+stale POS Invoice: {'docstatus': 1, 'status': 'Paid', 'consolidated_invoice': None, 'posa_pos_opening_shift': 'POSA-OS-26-0000054'} GL rows: 0
+PASS stale POS Invoice submitted, never merged, no books  [{'docstatus': 1, 'status': 'Paid', 'consolidated_invoice': None, 'posa_pos_opening_shift': 'POSA-OS-26-0000054'}]
+left open by sara: []
+== 4 passed, 0 failed

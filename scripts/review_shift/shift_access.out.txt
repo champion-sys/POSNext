@@ -1,0 +1,23 @@
+omar roles ['POSNext Cashier', 'Desk User']
+omar on profiles ['PI Second']
+== A omar reads every shift and closing through the standard API
+PASS omar lists shifts of profiles he is not on  [36 of 49; e.g. [{'name': 'POSA-OS-26-0000001', 'user': 'lina@real.local', 'pos_profile': 'PI Main', 'status': 'Cancelled'}, {'name': 'POSA-OS-26-0000002', 'user': 'lina@real.local', 'pos_profile': 'PI Main', 'status': 'Closed'}]]
+PASS omar reads a SI Main closing with its cash count  [[('Cash', 0.0, 0.0)]]
+control: the POS API refuses him: {'status': 403, 'error': ['You do not have access to POS Profile PI Main'], 'exc_type': 'PermissionError'}
+== B omar cancels sara's empty SI Main shift
+PASS omar cancelled sara's open shift  [({'name': 'POSA-OS-26-0000050', 'owner': 'sara@real.local', 'creation': '2026-11-08 20:27:11.131163', 'modified': '2026-11-08 20:27:11.207006', 'modified_by': 'omar@real.local', 'docstatus': 2, 'idx': 0, 'period_start_date': '2026-11-08 20:27:11.129145', 'period_end_date': None, 'status': 'Open', 'posting_date': '2026-11-08', 'set_posting_date': 0, 'company': 'Real Trading', 'pos_profile': 'SI Main', 'pos_closing_shift': None, 'pos_opening_entry': None, 'offline_id': None, 'user': 'sara@real.local', 'amended_from': None, 'doctype': 'POS Opening Shift', 'balance_details': [{'name': 'qan858kfi7', 'owner': 'sara@real.local', 'creation': '2026-11-08 20:27:11.131163', 'modified': '2026-11-08 20:27:11.207006', 'modified_by': 'omar@real.local', 'docstatus': 2, 'idx': 1, 'mode_of_payment': 'Cash', 'amount': 5.0, 'parent': 'POSA-OS-26-0000050', 'parentfield': 'balance_details', 'parenttype': 'POS Opening Shift', 'doctype': 'POS Opening Shift Detail'}]}, 'Cancelled')]
+== C omar closes sara's SI Main shift by inserting a POS Closing Shift
+sara sold ACC-SINV-2026-06843
+insert: POSA-CS-26-0000048
+PASS sara's shift closed by omar, with no sales and nothing expected  [('Closed', {'name': 'POSA-CS-26-0000048', 'owner': 'omar@real.local', 'grand_total': 0.0})]
+== D omar cancels that closing, sara's shift opens again
+PASS reopened by omar's cancel  [({'name': 'POSA-CS-26-0000048', 'owner': 'omar@real.local', 'creation': '2026-11-08 20:27:15.747093', 'modified': '2026-11-08 20:27:15.899137', 'modified_by': 'omar@real.local', 'docstatus': 2, 'idx': 0, 'period_start_date': '2026-11-08 20:27:14.572529', 'period_end_date': '2026-11-08 20:27:15.727242', 'posting_date': '2026-11-08', 'pos_opening_shift': 'POSA-OS-26-0000051', 'company': 'Real Trading', 'difference_mode_of_payment_account': 'Write Off - RT', 'closing_to_mode_of_payment': 'Cash', 'pos_profile': 'SI Main', 'user': 'sara@real.local', 'journal_entry': None, 'pos_closing_entry': None, 'grand_total': 0.0, 'net_total': 0.0, 'total_quantity': 0.0, 'amended_from': None, 'doctype': 'POS Closing Shift', 'pos_transactions': [], 'pos_payments': [], 'payment_reconciliation': [{'name': 'qc5r8h6hs3', 'owner': 'omar@real.local', 'creation': '2026-11-08 20:27:15.747093', 'modified': '2026-11-08 20:27:15.899137', 'modified_by': 'omar@real.local', 'docstatus': 2, 'idx': 1, 'mode_of_payment': 'Cash', 'opening_amount': 30.0, 'closing_amount': 0.0, 'expected_amount': 0.0, 'difference': 0.0, 'parent': 'POSA-CS-26-0000048', 'parentfield': 'payment_reconciliation', 'parenttype': 'POS Closing Shift', 'doctype': 'POS Closing Shift Detail'}], 'taxes': []}, 'Open')]
+== E lina (colleague) closes sara's shift, through the POS API, with her own totals
+server says: expected 260.0 grand_total 230.0 sales ['ACC-SINV-2026-06843']
+submit: {'name': 'POSA-CS-26-0000049', 'status': 'success'}
+stored: POSA-CS-26-0000049 owner lina@real.local grand_total 0.0 rows 0 cash 30.0 30.0 0.0
+PASS lina closed sara's shift
+PASS stored closing hides the 230 sale and a 230 shortage  [(30.0, 0.0)]
+sale's pos_closing_entry: None
+left open by sara: []
+== 7 passed, 0 failed
