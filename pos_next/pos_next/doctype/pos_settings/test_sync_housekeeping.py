@@ -252,7 +252,8 @@ class TestThePos(unittest.TestCase):
     def _load(self):
         stored = frappe._dict({"pos_profile": "Main", "sync_mode": "Realtime", **SERVER_FIELDS})
         frappe.local.db.get_value.return_value = stored
-        return pos_settings.get_pos_settings("Main")
+        with patch("pos_next.services.sale_limits.get_rounding_settings", return_value={}):
+            return pos_settings.get_pos_settings("Main")
 
     def _save(self, settings):
         self.doc = MagicMock()
