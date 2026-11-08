@@ -6,6 +6,7 @@
  * @module platform/printing/context
  */
 
+import { isDeviceName } from "@/utils/offline/localNumber"
 import { normalizePaper } from "./template"
 
 const num = (value) => {
@@ -97,10 +98,16 @@ export function normalizePrintDoc(source = {}, defaults = {}) {
 			? num(source.paid_amount)
 			: round(payments.reduce((sum, payment) => sum + payment.amount, 0))
 
+	const docName = source.name || source.offline_id || ""
+	const localNumber = source.posa_local_number || ""
+	// A sale the server has not named prints its local number, never the device's id
+	const onDeviceOnly = queued || !docName || isDeviceName(docName)
+
 	return {
 		...source,
-		name: source.name || source.offline_id || "",
-		offline_id: source.offline_id || (source.is_offline ? source.name : null) || null,
+		name: onDeviceOnly && localNumber ? localNumber : docName,
+		posa_local_number: localNumber,
+		offline_id: source.offline_id || (queued || isDeviceName(source.name) ? source.name : null) || null,
 		is_offline: Boolean(source.is_offline),
 		is_return: Boolean(num(source.is_return)),
 		return_against: source.return_against || null,

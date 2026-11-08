@@ -55,6 +55,9 @@
 									<h4 class="text-sm font-semibold text-gray-900">
 										{{ invoice.name }}
 									</h4>
+									<span v-if="getInvoiceNumbers(invoice).secondary" class="text-xs text-gray-500" dir="ltr">
+										{{ getInvoiceNumbers(invoice).secondary }}
+									</span>
 									<!-- Show Return badge (red) if it's a return invoice -->
 									<span
 										v-if="invoice.is_return"
@@ -153,6 +156,7 @@ import {
 	formatCurrency as formatCurrencyUtil,
 } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
+import { getInvoiceNumbers, matchesInvoiceNumber } from "@/utils/offline/localNumber"
 import { Button, Dialog, Input, createResource } from "frappe-ui"
 import { computed, ref, watch } from "vue"
 import ReturnInvoiceDialog from "./ReturnInvoiceDialog.vue"
@@ -199,6 +203,9 @@ const selectedInvoiceForReturn = ref(null)
 // Track if we're loading more (appending) vs fresh load (replacing)
 const isLoadingMore = ref(false)
 
+// Older servers have no local number on the invoice
+let askForLocalNumber = true
+
 // Create resource for loading invoices
 const invoicesResource = createResource({
 	url: "frappe.client.get_list",
@@ -212,6 +219,7 @@ const invoicesResource = createResource({
 			},
 			fields: [
 				"name",
+				...(askForLocalNumber ? ["posa_local_number"] : []),
 				"customer",
 				"customer_name",
 				"posting_date",
@@ -248,6 +256,12 @@ const invoicesResource = createResource({
 		}
 	},
 	onError(error) {
+		// A server without the local number field refuses the list: ask once more without it
+		if (askForLocalNumber) {
+			askForLocalNumber = false
+			invoicesResource.reload()
+			return
+		}
 		console.error("Error loading invoices:", error)
 		showError(__("Failed to load invoices"))
 		isLoadingMore.value = false
@@ -281,7 +295,7 @@ const filteredInvoices = computed(() => {
 	const term = searchTerm.value.toLowerCase()
 	return invoices.value.filter(
 		(inv) =>
-			inv.name.toLowerCase().includes(term) ||
+			matchesInvoiceNumber(inv, term) ||
 			inv.customer_name?.toLowerCase().includes(term),
 	)
 })

@@ -14,6 +14,7 @@
 import { savePrintBundle } from "@/platform/printing/bundle"
 import { call } from "@/utils/apiWrapper"
 import { errorText } from "@/utils/errorHandler"
+import { readLocalNumbering, rememberLocalNumbering } from "@/utils/offline/localNumbering"
 import { logger } from "@/utils/logger"
 import { defineStore } from "pinia"
 import { ref } from "vue"
@@ -61,6 +62,11 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 			if (result?.success) {
 				data.value = result
 				loaded.value = true
+				// How this shift numbers its invoices on the device. Older servers send none.
+				rememberLocalNumbering(readLocalNumbering(result), {
+					shift: result.shift?.name,
+					posProfile: result.pos_profile?.name || result.shift?.pos_profile,
+				})
 				// Kept on the device, so receipts print from the profile's template offline.
 				// None means the profile has no template now: an older copy must not print.
 				if (result.print_bundle) {

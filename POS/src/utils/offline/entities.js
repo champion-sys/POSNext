@@ -341,6 +341,7 @@ export function buildReturnDocFromQueue(row, rules) {
 	return {
 		doctype: invoice.doctype || "Sales Invoice",
 		return_against: row.server_invoice || row.offline_id,
+		posa_local_number: invoice.posa_local_number || undefined,
 		customer: invoice.customer,
 		customer_name: invoice.customer_name,
 		company: invoice.company,
@@ -350,6 +351,7 @@ export function buildReturnDocFromQueue(row, rules) {
 		_return_rules: rules,
 		_original_invoice: {
 			name: row.server_invoice || row.offline_id,
+			posa_local_number: invoice.posa_local_number || undefined,
 			customer: invoice.customer,
 			customer_name: invoice.customer_name,
 			posting_date: invoice.posting_date,

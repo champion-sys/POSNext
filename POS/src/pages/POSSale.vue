@@ -964,7 +964,7 @@
 						</div>
 						<h3 class="mt-4 text-lg font-medium text-gray-900">
 							{{
-								__("Invoice {0} created successfully!", [uiStore.lastInvoiceName])
+								__("Invoice {0} created successfully!", [lastInvoiceLabel])
 							}}
 						</h3>
 						<p class="mt-2 text-sm text-gray-500">
@@ -1420,6 +1420,13 @@ watch(
 
 // Invoice history data (used by InvoiceManagement component)
 const invoiceHistoryData = ref([]);
+
+// A sale the server has not named yet shows its local number, not the device's id
+const lastInvoiceLabel = computed(() => {
+	const doc = uiStore.lastOfflinePrintDoc;
+	if (doc?.posa_local_number && doc.name === uiStore.lastInvoiceName) return doc.posa_local_number;
+	return uiStore.lastInvoiceName;
+});
 
 // Stock sync status
 const isStockSyncActive = ref(false);
@@ -2394,6 +2401,15 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		invoiceData.customer_credit_dict = customerCreditDict;
 	}
 
+	// The same number an online attempt of this cart already sent, or a new one
+	if (supportsOfflineId(cartStore.targetDoctype)) {
+		const localNumber = await cartStore.getCheckoutLocalNumber({
+			...basePayload,
+			posting_date: invoiceData.posting_date,
+		});
+		if (localNumber) invoiceData.posa_local_number = localNumber;
+	}
+
 	// An edit replaces its original row in the same transaction.
 	await offlineStore.saveInvoiceOffline(invoiceData, {
 		supersedesId: editingOfflineContext?.originalQueueId,
@@ -2402,6 +2418,8 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 	deductSoldBatches(invoiceData.items);
 
 	const offlineReceiptName = invoiceData.offline_id;
+	// What the receipt and the cashier see until the server names it
+	const receiptNumber = invoiceData.posa_local_number || offlineReceiptName;
 
 	const paidAmount = paymentData.paid_amount ?? cartStore.roundedTotal ?? 0;
 	const grandTotal = cartStore.grandTotal || 0;
@@ -2449,7 +2467,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			await handlePrintInvoice({ name: offlineReceiptName }, true);
 			showSuccess(
 				__("Invoice {0} saved and sent to printer. It will reach the server shortly", [
-					offlineReceiptName,
+					receiptNumber,
 				]),
 			);
 		} catch (error) {
@@ -2457,7 +2475,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			uiStore.showSuccess(offlineReceiptName, amountDue, paymentData.paid_amount);
 			showWarning(
 				__("Invoice {0} saved but print failed. Open Print from the success dialog", [
-					offlineReceiptName,
+					receiptNumber,
 				]),
 			);
 		}

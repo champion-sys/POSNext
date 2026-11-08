@@ -85,10 +85,24 @@
 					{{ __('Nothing is waiting on this device') }}
 				</p>
 
+				<!-- Either number, the local one or the server's, finds a sale -->
+				<input
+					v-if="invoices.length > 0"
+					v-model="searchTerm"
+					type="search"
+					data-test="queue-search"
+					class="w-full h-11 px-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+					:placeholder="__('Search by invoice number or customer...')"
+				/>
+
+				<p v-if="invoices.length > 0 && shownInvoices.length === 0" class="py-6 text-center text-gray-600">
+					{{ __('No invoices found') }}
+				</p>
+
 				<!-- Invoices List -->
-				<div v-else class="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
+				<div v-if="shownInvoices.length > 0" class="flex flex-col gap-2 max-h-[50vh] overflow-y-auto">
 					<div
-						v-for="invoice in invoices"
+						v-for="invoice in shownInvoices"
 						:key="invoice.id"
 						class="border border-gray-200 border-s-4 rounded-lg p-3"
 						:class="stateOf(invoice).edge"
@@ -103,6 +117,14 @@
 									class="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full"
 								>
 									{{ getRowKind(invoice) }}
+								</span>
+								<span
+									v-if="hasInvoiceNumber(invoice)"
+									class="text-xs text-gray-600"
+									dir="ltr"
+									data-test="queue-number"
+								>
+									{{ formatInvoiceNumbers(invoice) }}
 								</span>
 							</div>
 							<SyncStateBadge :state="stateOf(invoice)" />
@@ -229,6 +251,9 @@
 						<SyncStateBadge :state="stateOf(selectedInvoice)" />
 					</div>
 					<p class="text-sm sm:text-base">{{ selectedInvoice.data.customer || __('Walk-in Customer') }}</p>
+					<p v-if="hasInvoiceNumber(selectedInvoice)" class="text-sm text-gray-700" dir="ltr">
+						{{ formatInvoiceNumbers(selectedInvoice) }}
+					</p>
 					<p class="mt-1 text-sm" :class="stateOf(selectedInvoice).note">{{ stateNote(selectedInvoice) }}</p>
 					<p
 						v-if="selectedInvoice.error"
@@ -370,6 +395,7 @@ import {
 	getEntity,
 } from "@/utils/offline/entities"
 import { SALE_STANDS } from "@/utils/offline/invoicePayload"
+import { getInvoiceNumbers, matchesInvoiceNumber } from "@/utils/offline/localNumber"
 import {
 	QUEUE_FAILED,
 	QUEUE_RECEIVED,
@@ -436,6 +462,18 @@ const uiStore = usePOSUIStore()
 const { showWarning } = useToast()
 
 const invoices = computed(() => sortQueueRows(props.pendingInvoices))
+const searchTerm = ref("")
+const shownInvoices = computed(() => {
+	const term = searchTerm.value.trim().toLowerCase()
+	if (!term) return invoices.value
+	return invoices.value.filter(
+		(row) =>
+			matchesInvoiceNumber(row, term) ||
+			[row.data?.customer_name, row.data?.customer].some((value) =>
+				String(value || "").toLowerCase().includes(term),
+			),
+	)
+})
 const selectedInvoice = ref(null)
 const showDetails = ref(false)
 const showVoidDialog = ref(false)
@@ -586,6 +624,17 @@ function getRowTitle(row) {
 		data.customer ||
 		__("Walk-in Customer")
 	)
+}
+
+/** A sale with a local number, or one the server has named */
+function hasInvoiceNumber(row) {
+	return isSale(row) && Boolean(row.data?.posa_local_number || row.server_invoice)
+}
+
+/** The local number, and the server's name beside it once it has one */
+function formatInvoiceNumbers(row) {
+	const { primary, secondary } = getInvoiceNumbers(row)
+	return secondary ? `${primary} · ${secondary}` : primary
 }
 
 function getRowKind(row) {

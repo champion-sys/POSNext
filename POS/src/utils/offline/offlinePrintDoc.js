@@ -72,6 +72,8 @@ export function buildOfflinePrintDoc({
 
 		// Added for print templates. The built-in layouts read none of these, so they print as before.
 		offline_id: invoiceData.offline_id,
+		// Printed in place of offline_id, which stays the name the device finds the sale by
+		posa_local_number: invoiceData.posa_local_number || undefined,
 		customer: invoiceData.customer || customerDoc.name || undefined,
 		customer_tax_id: customerDoc.tax_id || undefined,
 		customer_mobile: customerDoc.mobile_no || undefined,

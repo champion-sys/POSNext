@@ -2,6 +2,7 @@ import { createResource } from "frappe-ui"
 import { computed, ref, toRaw } from "vue"
 import { isOffline, getCachedItem, getSetting, setSetting } from "@/utils/offline"
 import { generateOfflineId } from "@/utils/offline/uuid"
+import { allocateLocalNumber } from "@/utils/offline/localNumbering"
 import {
 	getCheckoutDeadline,
 	getSaleSignature,
@@ -30,7 +31,7 @@ export function useInvoice() {
 	// Serial Number Store for returning serials when items are removed
 	const serialStore = useSerialNumberStore()
 
-	// Idempotency key of the sale in progress, kept across retries
+	// Idempotency key and local number of the sale in progress, kept across retries
 	let checkoutIdentity = null
 
 	// State
@@ -1229,6 +1230,24 @@ export function useInvoice() {
 		return checkoutIdentity.offlineId
 	}
 
+	/**
+	 * The local number of this sale, handed out once: a retry of the same cart, online or
+	 * through the queue, prints and sends the same one.
+	 * @returns {Promise<string|null>}
+	 */
+	function getCheckoutLocalNumber(invoiceData) {
+		getCheckoutOfflineId(invoiceData)
+		const identity = checkoutIdentity
+		if (!identity.localNumber) {
+			identity.localNumber = allocateLocalNumber(invoiceData).then((number) => {
+				// Nothing was used up, so a later attempt may ask again
+				if (!number) identity.localNumber = null
+				return number
+			})
+		}
+		return identity.localNumber
+	}
+
 	async function saveDraft(targetDoctype = "Sales Invoice") {
 		/**
 		 * Save invoice as draft (Step 1)
@@ -1303,6 +1322,11 @@ export function useInvoice() {
 				const { invoiceData, redeemedCustomerCredit, customerCreditDict } =
 					buildInvoicePayload(targetDoctype, deliveryDate)
 
+				if (supportsOfflineId(targetDoctype)) {
+					const localNumber = await getCheckoutLocalNumber(invoiceData)
+					if (localNumber) invoiceData.posa_local_number = localNumber
+				}
+
 				const draftInvoice = await withDeadline(
 					updateInvoiceResource.submit({ data: invoiceData }),
 					deadlineAt,
@@ -1343,6 +1367,11 @@ export function useInvoice() {
 
 				if (supportsOfflineId(targetDoctype)) {
 					submitData.offline_id = getCheckoutOfflineId(invoiceData)
+				}
+
+				// The draft carries it already, unless the server did not keep it
+				if (invoiceData.posa_local_number && !invoiceDoc.posa_local_number) {
+					invoiceDoc = { ...invoiceDoc, posa_local_number: invoiceData.posa_local_number }
 				}
 
 				if (redeemedCustomerCredit > 0 && customerCreditDict.length > 0) {
@@ -1656,6 +1685,7 @@ export function useInvoice() {
 		formatItemsForSubmission,
 		buildInvoicePayload,
 		getCheckoutOfflineId,
+		getCheckoutLocalNumber,
 		resolveUomPricing,
 		setPosOrderType,
 		setPosTableNo,

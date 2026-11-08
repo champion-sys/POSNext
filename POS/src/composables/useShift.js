@@ -3,6 +3,7 @@ import { computed, ref } from "vue"
 import { readIdentity } from "@/platform/identity"
 import { localStore } from "@/platform/store"
 import { PARKED_SHIFTS_KEY, getUnfinishedShiftRecords, isLocalName } from "@/utils/offline/entities"
+import { rememberShiftNumbering } from "@/utils/offline/localNumbering"
 
 export const shiftState = ref({
 	pos_opening_shift: null,
@@ -281,6 +282,7 @@ async function applyServerShift(data) {
 			_initialElapsedMs: initialElapsedMs,
 			_receivedAt: Date.now(),
 		}
+		rememberShiftNumbering(data)
 		// Keep on the device for offline support
 		keepShift({
 			...data,
@@ -339,6 +341,7 @@ export function useShift() {
 				_initialElapsedMs: 0,
 				_receivedAt: Date.now(),
 			}
+			rememberShiftNumbering(data)
 			keepShift({
 				...data,
 				_initialElapsedMs: 0,

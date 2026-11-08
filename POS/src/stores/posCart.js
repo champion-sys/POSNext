@@ -130,6 +130,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		formatItemsForSubmission,
 		buildInvoicePayload,
 		getCheckoutOfflineId,
+		getCheckoutLocalNumber,
 	} = useInvoice()
 
 	const offersStore = usePOSOffersStore()
@@ -2114,6 +2115,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		formatItemsForSubmission,
 		buildCheckoutPayload,
 		getCheckoutOfflineId,
+		getCheckoutLocalNumber,
 
 		// Sales Order feature
 		targetDoctype,

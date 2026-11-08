@@ -1,6 +1,7 @@
 import { call } from "@/utils/apiWrapper"
 import { logger } from "@/utils/logger"
 import { getOfflineReceiptPayload, getStoredReceiptPayload } from "@/utils/offline/offlineReceiptCache"
+import { getInvoiceNumbers } from "@/utils/offline/localNumber"
 import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { canUseBrowserPrint } from "@/platform/printing/routes"
@@ -85,6 +86,7 @@ function receiptDocFromQueuedInvoice(offlineId, raw) {
 	)
 	return {
 		name: offlineId,
+		posa_local_number: raw.posa_local_number || undefined,
 		doctype: raw.doctype || "Sales Invoice",
 		is_offline: true,
 		pos_profile: raw.pos_profile,
@@ -205,6 +207,8 @@ export function buildReceiptHTML(invoiceData) {
 	const items = invoiceData.items || []
 	const paidAmount = derivePaidAmount(invoiceData)
 	const isRtl = !!invoiceData.is_offline
+	// The local number until the server names the sale, then both
+	const numbers = getInvoiceNumbers(invoiceData)
 
 	const itemsHtml = items
 		.map((item) => {
@@ -245,7 +249,8 @@ export function buildReceiptHTML(invoiceData) {
 				${invoiceData.is_offline ? `<div class="offline-badge">${__("غير متصل — في انتظار المزامنة")}</div>` : ""}
 
 				<div class="invoice-info">
-					<div><span>${isRtl ? __("رقم الفاتورة:") : __("Invoice #:")}</span><span><strong>${esc(invoiceData.name)}</strong></span></div>
+					<div><span>${isRtl ? __("رقم الفاتورة:") : __("Invoice #:")}</span><span><strong>${esc(numbers.primary)}</strong></span></div>
+					${numbers.secondary ? `<div><span>${isRtl ? __("الرقم المحلي:") : __("Local No.:")}</span><span>${esc(numbers.secondary)}</span></div>` : ""}
 					<div><span>${isRtl ? __("التاريخ والوقت:") : __("Date:")}</span><span>${new Date(invoiceData.posting_date || Date.now()).toLocaleString("ar-EG")}</span></div>
 					${invoiceData.owner ? `<div><span>${isRtl ? __("الكاشير:") : __("Cashier:")}</span><span>${esc(invoiceData.owner)}</span></div>` : ""}
 					${invoiceData.pos_order_type ? `<div><span>${isRtl ? __("نوع الطلب:") : __("Order Type:")}</span><span>${esc(invoiceData.pos_order_type)}</span></div>` : ""}
@@ -316,7 +321,7 @@ function buildReceiptDocumentHTML(
 		<html>
 		<head>
 			<meta charset="UTF-8">
-			<title>${__("Invoice - {0}", [invoiceData.name])}</title>
+			<title>${__("Invoice - {0}", [getInvoiceNumbers(invoiceData).primary])}</title>
 			<style>${RECEIPT_STYLES}</style>
 		</head>
 		<body>

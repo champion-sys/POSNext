@@ -1,6 +1,7 @@
 import { canvasToEscPos, htmlToRasterCanvas, rasterGeometry } from "@/platform/printing/rasterize"
 import { prepareTemplatePrint } from "@/platform/printing/templatePrint"
 import { usesNativeLink } from "@/platform/printing/transport"
+import { getInvoiceNumbers } from "@/utils/offline/localNumber"
 import { logger } from "./logger"
 import { useBluetoothPrinterStore } from "../stores/bluetoothPrinter"
 import { printerService } from "../services/printerService"
@@ -418,7 +419,12 @@ export function formatInvoiceToReceiptLines(invoice: any): ReceiptLine[] {
 	}
 
 	// Invoice Info
-	lines.push({ text: isRtl ? `رقم الفاتورة: ${invoice.name}` : `Invoice #: ${invoice.name}`, align: isRtl ? "right" : "left" })
+	// The local number until the server names the sale, then both
+	const numbers = getInvoiceNumbers(invoice)
+	lines.push({ text: isRtl ? `رقم الفاتورة: ${numbers.primary}` : `Invoice #: ${numbers.primary}`, align: isRtl ? "right" : "left" })
+	if (numbers.secondary) {
+		lines.push({ text: isRtl ? `الرقم المحلي: ${numbers.secondary}` : `Local No.: ${numbers.secondary}`, align: isRtl ? "right" : "left" })
+	}
 	
 	const dateStr = invoice.posting_date
 		? new Date(invoice.posting_date).toLocaleString(isRtl ? "ar-EG" : undefined)

@@ -82,7 +82,8 @@
 									<div class="flex items-center justify-between">
 										<div class="flex-1 min-w-0">
 											<div class="flex items-center gap-2">
-												<span class="text-sm font-medium text-gray-900"><HighlightedText :text="suggestion.name" :query="invoiceListFilter" mark-class="search-highlight" /></span>
+												<span class="text-sm font-medium text-gray-900"><HighlightedText :text="getInvoiceNumbers(suggestion).primary" :query="invoiceListFilter" mark-class="search-highlight" /></span>
+												<span v-if="getInvoiceNumbers(suggestion).secondary" class="text-xs text-gray-500" dir="ltr"><HighlightedText :text="getInvoiceNumbers(suggestion).secondary" :query="invoiceListFilter" mark-class="search-highlight" /></span>
 												<span :class="['px-1.5 py-0.5 text-xs font-medium rounded', getInvoiceStatusColor(suggestion)]">
 													{{ __(suggestion.status) }}
 												</span>
@@ -147,7 +148,8 @@
 								<!-- Invoice Info (Start Side) -->
 								<div class="flex-1 min-w-0">
 									<div class="flex items-center gap-2 flex-wrap">
-										<h4 class="text-sm font-bold text-gray-900">{{ invoice.name }}</h4>
+										<h4 class="text-sm font-bold text-gray-900">{{ getInvoiceNumbers(invoice).primary }}</h4>
+										<span v-if="getInvoiceNumbers(invoice).secondary" class="text-xs text-gray-500" dir="ltr">{{ getInvoiceNumbers(invoice).secondary }}</span>
 										<span :class="['px-2 py-0.5 text-xs font-semibold rounded-full whitespace-nowrap', getInvoiceStatusColor(invoice)]">
 											{{ __(invoice.status) }}
 										</span>
@@ -217,8 +219,11 @@
 							<FeatherIcon name="file-text" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
 							<div class="flex-1 min-w-0">
 								<h3 class="text-base font-bold text-gray-900">
-									{{ originalInvoice.name }}
+									{{ getInvoiceNumbers(originalInvoice).primary }}
 								</h3>
+								<p v-if="getInvoiceNumbers(originalInvoice).secondary" class="text-xs text-gray-500" dir="ltr">
+									{{ getInvoiceNumbers(originalInvoice).secondary }}
+								</p>
 								<span :class="['inline-block mt-1 px-2 py-0.5 text-xs font-semibold rounded-full', getInvoiceStatusColor(originalInvoice)]">
 									{{ __(originalInvoice.status) }}
 								</span>
@@ -250,8 +255,11 @@
 							<div class="flex items-center gap-2">
 								<FeatherIcon name="file-text" class="w-5 h-5 text-blue-600" />
 								<h3 class="text-base font-bold text-gray-900">
-									{{ originalInvoice.name }}
+									{{ getInvoiceNumbers(originalInvoice).primary }}
 								</h3>
+								<span v-if="getInvoiceNumbers(originalInvoice).secondary" class="text-xs text-gray-500" dir="ltr">
+									{{ getInvoiceNumbers(originalInvoice).secondary }}
+								</span>
 								<span :class="['px-2 py-0.5 text-xs font-semibold rounded-full', getInvoiceStatusColor(originalInvoice)]">
 									{{ __(originalInvoice.status) }}
 								</span>
@@ -772,6 +780,8 @@ import { usePOSShiftStore } from "@/stores/posShift"
 import { usePOSSyncStore } from "@/stores/posSync"
 import { checkReturnValidity, isLocalName } from "@/utils/offline/entities"
 import { formatLocalPosting, withOfflinePosting } from "@/utils/offline/invoicePayload"
+import { findByInvoiceNumber, getInvoiceNumbers, matchesInvoiceNumber } from "@/utils/offline/localNumber"
+import { allocateLocalNumber } from "@/utils/offline/localNumbering"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { getPaymentIcon } from "@/utils/payment"
 import {
@@ -794,7 +804,7 @@ const offlineStore = usePOSSyncStore()
 // ============================================
 // Constants (hoisted for performance)
 // ============================================
-const INVOICE_PATTERN = /^(ACC-SINV|SINV|SI|INV|ACC)/i
+const INVOICE_PATTERN = /^L?(ACC-SINV|SINV|SI|INV|ACC)/i
 const INVOICE_FORMAT_PATTERN = /^\d{4,}$/
 const DATE_FORMAT_OPTIONS = { year: "numeric", month: "short", day: "numeric" }
 const MAX_SUGGESTIONS = 8
@@ -832,6 +842,8 @@ const invoiceListFilter = ref("")
 const itemSearchFilter = ref("")
 const submitError = ref("")
 const isSubmitting = ref(false)
+// Handed out on the first attempt, so a retry sends the same one
+const returnLocalNumber = ref(null)
 // When true, return amount is added to customer credit balance instead of cash refund
 const addToCustomerCredit = ref(false)
 
@@ -967,6 +979,7 @@ function applyPreparedReturn(data) {
 		// Store original invoice data for display in the UI
 		originalInvoice.value = {
 			name: data.return_against,
+			posa_local_number: data.posa_local_number || origInvoice.posa_local_number || null,
 			customer: data.customer,
 			customer_name: origInvoice.customer_name || data.customer_name,
 			company: data.company,
@@ -1112,7 +1125,17 @@ function buildReturnInvoiceData() {
 		remarks:
 			returnReason.value ||
 			__("Return against {0}", [originalInvoice.value.name]),
+		...(returnLocalNumber.value && { posa_local_number: returnLocalNumber.value }),
 	}
+}
+
+/** The return's local number, handed out once for this return */
+async function ensureReturnLocalNumber() {
+	if (returnLocalNumber.value) return
+	returnLocalNumber.value = await allocateLocalNumber({
+		...buildReturnInvoiceData(),
+		posting_date: formatLocalPosting().posting_date,
+	})
 }
 
 // Resource for submitting the return invoice to the server
@@ -1330,7 +1353,7 @@ const filterInvoicesByTerm = (invoices, searchTerm) => {
 	const term = searchTerm.toLowerCase()
 	return invoices.filter(
 		(invoice) =>
-			invoice.name.toLowerCase().includes(term) ||
+			matchesInvoiceNumber(invoice, term) ||
 			invoice.customer_name?.toLowerCase().includes(term) ||
 			invoice.contact_mobile?.toLowerCase().includes(term),
 	)
@@ -1415,6 +1438,7 @@ async function loadOfflineInvoices() {
 		.filter((doc) => doc.items.some((item) => item.remaining_qty > 0))
 		.map((doc) => ({
 			name: doc.return_against,
+			posa_local_number: doc.posa_local_number || doc._original_invoice?.posa_local_number || null,
 			customer: doc.customer,
 			customer_name: doc._original_invoice.customer_name || doc.customer_name || doc.customer,
 			posting_date: doc._original_invoice.posting_date,
@@ -1671,7 +1695,9 @@ async function checkValidityAndOpenModal(invoiceName, fallbackOnError = false) {
 async function searchInvoiceDirectly() {
 	const searchTerm = normalizedSearchTerm.value
 	if (!searchTerm || !looksLikeInvoiceNumber(searchTerm)) return
-	await checkValidityAndOpenModal(searchTerm, false)
+	// A local number names the invoice the list already holds
+	const listed = findByInvoiceNumber(invoiceList.value, searchTerm)
+	await checkValidityAndOpenModal(listed?.name || searchTerm, false)
 }
 
 function closeReturnModal() {
@@ -1752,6 +1778,8 @@ async function handleCreateReturn() {
 	isSubmitting.value = true
 
 	try {
+		await ensureReturnLocalNumber()
+
 		if (offlineReturns.value) {
 			await saveReturnOffline()
 			return
@@ -1791,6 +1819,7 @@ function resetForm() {
 	// Reset submission state
 	submitError.value = ""
 	isSubmitting.value = false
+	returnLocalNumber.value = null
 
 	// Reset modal/dialog state
 	returnModal.visible = false

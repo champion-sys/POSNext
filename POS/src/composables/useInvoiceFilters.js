@@ -1,4 +1,5 @@
 import { useInvoiceFiltersStore } from "@/stores/invoiceFilters"
+import { matchesInvoiceNumber } from "@/utils/offline/localNumber"
 import { computed } from "vue"
 
 /**
@@ -26,7 +27,7 @@ export function useInvoiceFilters(invoices) {
 			const search = filtersStore.searchTerm.toLowerCase()
 			result = result.filter(
 				(inv) =>
-					inv.name?.toLowerCase().includes(search) ||
+					matchesInvoiceNumber(inv, search) ||
 					inv.customer_name?.toLowerCase().includes(search) ||
 					inv.customer?.toLowerCase().includes(search),
 			)
@@ -166,7 +167,7 @@ export function useInvoiceFilters(invoices) {
 		if (filtersStore.searchTerm) {
 			const search = filtersStore.searchTerm.toLowerCase()
 			const matchesSearch =
-				invoice.name?.toLowerCase().includes(search) ||
+				matchesInvoiceNumber(invoice, search) ||
 				invoice.customer_name?.toLowerCase().includes(search) ||
 				invoice.customer?.toLowerCase().includes(search)
 			if (!matchesSearch) return false

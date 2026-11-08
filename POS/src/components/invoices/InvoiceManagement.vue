@@ -184,7 +184,8 @@
 											<div class="flex items-start justify-between">
 												<div>
 													<div class="flex items-center gap-2">
-														<h3 class="text-lg font-bold text-gray-900">{{ invoice.name }}</h3>
+														<h3 class="text-lg font-bold text-gray-900">{{ getInvoiceNumbers(invoice).primary }}</h3>
+														<span v-if="getInvoiceNumbers(invoice).secondary" class="text-xs text-gray-500" dir="ltr">{{ getInvoiceNumbers(invoice).secondary }}</span>
 														<span
 															:class="[
 																'px-2 py-0.5 text-xs font-semibold rounded-full',
@@ -320,7 +321,8 @@
 										<div class="bg-gradient-to-r from-indigo-50 to-blue-50 px-5 py-4 border-b border-gray-200">
 											<div class="flex items-start justify-between mb-2">
 												<div class="flex-1">
-													<h3 class="text-base font-bold text-gray-900">{{ invoice.name }}</h3>
+													<h3 class="text-base font-bold text-gray-900">{{ getInvoiceNumbers(invoice).primary }}</h3>
+													<p v-if="getInvoiceNumbers(invoice).secondary" class="text-xs text-gray-500" dir="ltr">{{ getInvoiceNumbers(invoice).secondary }}</p>
 													<div class="flex items-center gap-2 mt-1">
 														<span
 															:class="[
@@ -490,7 +492,8 @@
 										<div class="flex items-start justify-between">
 											<div class="flex-1">
 												<div class="flex items-center gap-2 mb-1">
-													<h4 class="text-sm font-semibold text-gray-900">{{ invoice.name }}</h4>
+													<h4 class="text-sm font-semibold text-gray-900">{{ getInvoiceNumbers(invoice).primary }}</h4>
+													<span v-if="getInvoiceNumbers(invoice).secondary" class="text-xs text-gray-500" dir="ltr">{{ getInvoiceNumbers(invoice).secondary }}</span>
 													<span class="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-800">
 														{{ __('Return') }}
 													</span>
@@ -559,6 +562,7 @@
 import InvoiceFilters from "@/components/invoices/InvoiceFilters.vue"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
 import { useInvoiceFilters } from "@/composables/useInvoiceFilters"
+import { getInvoiceNumbers } from "@/utils/offline/localNumber"
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useInvoiceFiltersStore } from "@/stores/invoiceFilters"
 import { usePOSSettingsStore } from "@/stores/posSettings"
