@@ -36,9 +36,11 @@ class FakeInbox:
     def __init__(self):
         self.rows = {}
         self.disabled_users = set()
-        self.assigned = {"Main": {"cashier@example.com"}}
+        # sara is a colleague on the profile, who may have a sale uploaded from a shared device
+        self.assigned = {"Main": {"cashier@example.com", "sara@example.com"}}
         self.device_profiles = ["Main"]
         self.shifts = {}
+        self.closings = {}
         self.savepoints = {}
 
     @staticmethod
@@ -81,6 +83,8 @@ class FakeInbox:
             if isinstance(fieldname, str):
                 return shift.get(fieldname)
             return frappe._dict({field: shift.get(field) for field in fieldname})
+        if doctype == "POS Closing Shift":
+            return self.closings.get(filters)
         if doctype != DOCTYPE:
             return None
 
@@ -774,10 +778,11 @@ class TestDeviceClock(Flow):
 
     def test_the_form_offers_a_payment_the_same_way_out(self):
         form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
-        button = form.index('frm.doc.error_code === "ClockSkewError"')
+        button = form.index("DEVICE_DATE_CODES.includes(frm.doc.error_code)")
 
         self.assertLess(form.rindex('if (entity === "invoice") {'), button)
-        self.assertIn("}\n\n\tif (frm.doc.error_code === \"ClockSkewError\")", form)
+        self.assertIn("}\n\n\tif (DEVICE_DATE_CODES.includes(frm.doc.error_code))", form)
+        self.assertIn('const DEVICE_DATE_CODES = ["ClockSkewError", "SaleOutsideShiftError"];', form)
 
     def test_the_form_says_when_there_was_no_reading(self):
         form = Path(offline_invoice_sync.__file__).with_suffix(".js").read_text()
@@ -788,6 +793,185 @@ class TestDeviceClock(Flow):
 
         self.assertEqual(result.error_class, sync_classifier.BUSINESS)
         self.assertEqual(result.error_code, "ClockSkewError")
+
+
+class TestCashierLeftTheProfile(Flow):
+    """A colleague's record whose cashier is no longer on the POS Profile goes to a person."""
+
+    finished = {"name": "SINV-1", "doctype": "Sales Invoice", "grand_total": 0}
+
+    def _store(self, cashier, uploaded_by="manager@example.com"):
+        item = {
+            "offline_id": SALE,
+            "entity": "invoice",
+            "pos_profile": "Main",
+            "cashier": cashier,
+            "payload": {"pos_profile": "Main"},
+        }
+        name, _conflict = sync_inbox.ingest(item, uploaded_by)
+        return name
+
+    def _process(self, name):
+        users = []
+
+        def create(_row):
+            users.append(frappe.session.user)
+            return self.finished
+
+        handler = sync_inbox._Entity(create, Mock(return_value=None), ())
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": handler}):
+            sync_inbox.process(name)
+        return users
+
+    def test_it_keeps_their_name_and_waits_for_a_person(self):
+        self.inbox.assigned["Main"].discard("sara@example.com")
+        name = self._store("sara@example.com")
+
+        self.assertEqual(self._process(name), [])
+
+        row = self._row(name)
+        self.assertEqual(row.cashier, "sara@example.com")
+        self.assertEqual(row.uploaded_by, "manager@example.com")
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "CashierNotOnProfileError")
+        self.assertEqual(row.error_class, "business")
+        self.assertIn("no longer on POS Profile Main", row.error_message)
+        sync_inbox._notify_managers.assert_called_once()
+
+    def test_back_on_the_profile_it_posts_as_theirs(self):
+        self.inbox.assigned["Main"].discard("sara@example.com")
+        name = self._store("sara@example.com")
+        self._process(name)
+
+        self.inbox.assigned["Main"].add("sara@example.com")
+        self._row(name)["status"] = "Received"
+
+        self.assertEqual(self._process(name), ["sara@example.com"])
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_a_colleague_still_on_the_profile_posts_as_before(self):
+        name = self._store("sara@example.com", uploaded_by="cashier@example.com")
+
+        self.assertEqual(self._process(name), ["sara@example.com"])
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_the_uploaders_own_record_is_not_held(self):
+        # A manager who may write the profile without being on it, uploading their own sale
+        name = self._store("manager@example.com")
+
+        self.assertEqual(self._process(name), ["manager@example.com"])
+        self.assertEqual(self._row(name).status, "Synced")
+
+    def test_no_claim_is_the_uploaders(self):
+        name = self._store(None, uploaded_by="cashier@example.com")
+        self.assertEqual(self._row(name).cashier, "cashier@example.com")
+
+
+class TestSaleOutsideItsShift(Flow):
+    """The clock is read when a batch is sent, so the sale's date is checked against its shift."""
+
+    OPENED = datetime(2026, 11, 8, 9, 0)
+
+    def setUp(self):
+        super().setUp()
+        self.inbox.shifts["SHIFT-1"] = frappe._dict(
+            period_start_date=self.OPENED,
+            status="Open",
+            pos_closing_shift=None,
+            docstatus=1,
+            pos_profile="Main",
+            user="cashier@example.com",
+        )
+        now = patch("pos_next.services.sync_inbox.now_datetime", return_value=datetime(2026, 11, 8, 18, 0))
+        now.start()
+        self.addCleanup(now.stop)
+
+    def _post(self, **payload):
+        name = self._send(
+            SALE,
+            {"pos_profile": "Main", "doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1", **payload},
+        )
+        with (
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.services.invoice_processor.process_invoice") as self.process_invoice,
+        ):
+            self.process_invoice.return_value = {"name": "ACC-1", "grand_total": 0}
+            sync_inbox.process(name)
+        return self._row(name)
+
+    def _close(self, at):
+        self.inbox.shifts["SHIFT-1"].update(status="Closed", pos_closing_shift="CLOSE-1")
+        self.inbox.closings["CLOSE-1"] = at
+
+    def test_a_sale_dated_weeks_before_its_shift_opened_goes_to_a_person(self):
+        row = self._post(posting_date="2026-09-29", posting_time="10:00:00", set_posting_time=1)
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "SaleOutsideShiftError")
+        self.assertEqual(row.error_class, "business")
+        self.assertIn("SHIFT-1", row.error_message)
+
+    def test_a_sale_dated_after_its_shift_closed_goes_to_a_person(self):
+        self._close(datetime(2026, 11, 8, 12, 0))
+
+        row = self._post(posting_date="2026-11-08", posting_time="14:00:00")
+
+        self.assertEqual(row.error_code, "SaleOutsideShiftError")
+
+    def test_a_sale_dated_ahead_of_the_server_in_an_open_shift_goes_to_a_person(self):
+        row = self._post(posting_date="2026-11-08", posting_time="23:00:00")
+        self.assertEqual(row.error_code, "SaleOutsideShiftError")
+
+    def test_a_date_without_a_time_is_checked_by_day(self):
+        self.assertEqual(self._post(posting_date="2026-11-07").error_code, "SaleOutsideShiftError")
+
+    def test_a_sale_made_offline_in_its_open_shift_posts(self):
+        row = self._post(posting_date="2026-11-08", posting_time="11:30:00", set_posting_time=1)
+
+        self.process_invoice.assert_called_once()
+        self.assertEqual(row.status, "Synced")
+
+    def test_a_clock_a_few_minutes_off_is_tolerated(self):
+        self.assertEqual(self._post(posting_date="2026-11-08", posting_time="08:45:00").status, "Synced")
+
+    def test_a_sale_the_server_dates_is_not_checked(self):
+        self.assertEqual(self._post().status, "Synced")
+
+    def test_a_managers_acceptance_lets_it_through(self):
+        name = self._send(SALE, {"pos_profile": "Main", "posa_pos_opening_shift": "SHIFT-1", "posting_date": "2026-09-29"})
+        self._row(name)["accept_device_date"] = 1
+
+        sync_inbox._assert_device_clock(self._row(name))
+
+    def test_a_sale_a_manager_moved_to_another_shift_is_not_held_again(self):
+        self.inbox.shifts["SHIFT-2"] = frappe._dict(
+            period_start_date=self.OPENED, status="Open", pos_closing_shift=None
+        )
+        name = self._send(SALE, {"pos_profile": "Main", "posa_pos_opening_shift": "SHIFT-1", "posting_date": "2026-09-29"})
+        self._row(name)["payload"] = json.dumps({"pos_profile": "Main", "posa_pos_opening_shift": "SHIFT-2", "posting_date": "2026-09-29"})
+
+        sync_inbox._assert_device_clock(self._row(name))
+
+    def test_a_shift_opened_on_the_device_is_found_by_the_name_it_gave_it(self):
+        payload = json.dumps({"posa_pos_opening_shift": "pos_offline_shift-1", "posting_date": "2026-09-29"})
+        row = frappe._dict(entity="invoice", payload=payload, original_payload=payload)
+        self.inbox.get_value = Mock(
+            return_value=frappe._dict(name="SHIFT-9", period_start_date=self.OPENED, status="Open")
+        )
+
+        with self.assertRaises(sync_classifier.SaleOutsideShiftError):
+            sync_inbox._assert_device_clock(row)
+
+        self.assertEqual(
+            self.inbox.get_value.call_args.args[:2], ("POS Opening Shift", {"offline_id": "pos_offline_shift-1"})
+        )
+
+    def test_a_shift_the_server_does_not_know_yet_is_left_to_the_other_checks(self):
+        # TestClosedShift covers the check that refuses it, so only the date check is under test
+        self.inbox.shifts.clear()
+        with patch("pos_next.api.invoices.assert_shift_takes_sale"):
+            self.assertEqual(self._post(posting_date="2026-09-29").status, "Synced")
 
 
 class TestJobTimeout(Flow):
@@ -1080,16 +1264,36 @@ class TestUploadAccess(Upload):
         self.assertEqual(self.stored().cashier, "sara@example.com")
         self.assertEqual(self.stored().uploaded_by, "lina@example.com")
 
-    def test_a_claim_to_be_someone_outside_the_profile_is_dropped(self):
+    def _process_stored(self):
+        create = Mock(return_value={"name": "SINV-1", "doctype": "Sales Invoice"})
+        users = []
+        create.side_effect = lambda _row: users.append(frappe.session.user) or {"name": "SINV-1", "doctype": "Sales Invoice"}
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": sync_inbox._Entity(create, Mock(return_value=None), ())}):
+            sync_inbox.process(self.stored().name)
+        return users
+
+    def test_a_claim_to_be_someone_outside_the_profile_waits_for_a_person(self):
         self.push(self.item(cashier="omar@example.com"))
-        self.assertEqual(self.stored().cashier, "lina@example.com")
+
+        # Not given to the uploader, and not posted as someone the profile does not have
+        self.assertEqual(self.stored().cashier, "omar@example.com")
+        self.assertEqual(self._process_stored(), [])
+        self.assertEqual(self.stored().status, sync_inbox.REVIEW)
+        self.assertEqual(self.stored().error_code, "CashierNotOnProfileError")
 
     def test_high_roles_do_not_make_someone_a_cashier_here(self):
         self.profile_writers.add("Administrator")
 
         self.push(self.item(cashier="Administrator"))
 
-        self.assertEqual(self.stored().cashier, "lina@example.com")
+        self.assertEqual(self._process_stored(), [])
+        self.assertEqual(self.stored().error_code, "CashierNotOnProfileError")
+
+    def test_a_colleague_on_the_profile_posts_as_themselves(self):
+        self.push(self.item(cashier="sara@example.com"))
+
+        self.assertEqual(self._process_stored(), ["sara@example.com"])
+        self.assertEqual(self.stored().status, "Synced")
 
     def test_a_claim_that_is_not_a_name_cannot_become_a_filter(self):
         self.push(self.item(cashier=["like", "%"]))

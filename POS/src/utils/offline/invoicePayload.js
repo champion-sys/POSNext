@@ -261,13 +261,29 @@ export const SYNC_PERIODIC = "Periodic"
  * the cashier wait for the server. Sales Orders, customer credit and gift cards need
  * the server at the moment of the sale, so they never go through the queue while online.
  * A customer still in the queue is the opposite: the server cannot take that sale directly.
+ * So is an edit of a queued sale, whose original may have reached the server unanswered.
  * @param {{mode: string, doctype: string, usesCustomerCredit: boolean, usesGiftCard: boolean,
- *   hasLocalCustomer: boolean}} checkout
+ *   hasLocalCustomer: boolean, editsQueuedSale: boolean}} checkout
  * @returns {boolean}
  */
-export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit, usesGiftCard, hasLocalCustomer }) {
-	if (hasLocalCustomer) return true
+export function shouldQueueCheckout({ mode, doctype, usesCustomerCredit, usesGiftCard, hasLocalCustomer, editsQueuedSale }) {
+	// Only the queue carries edited_from, which lets the server hold an edit whose original
+	// it already has. Sent directly, both would post.
+	if (hasLocalCustomer || editsQueuedSale) return true
 	return mode !== SYNC_REALTIME && supportsOfflineId(doctype) && !usesCustomerCredit && !usesGiftCard
+}
+
+/**
+ * Why an edit of a queued sale cannot be finished, or null when it can. An edit always goes
+ * through the queue, and the queue cannot carry what needs the server at the moment of sale.
+ * @param {{doctype: string, usesCustomerCredit: boolean, usesGiftCard: boolean}} checkout
+ * @returns {string|null} One of "doctype", "customer_credit" or "gift_card"
+ */
+export function getQueuedEditBlocker({ doctype, usesCustomerCredit, usesGiftCard }) {
+	if (!supportsOfflineId(doctype)) return "doctype"
+	if (usesCustomerCredit) return "customer_credit"
+	if (usesGiftCard) return "gift_card"
+	return null
 }
 
 /**

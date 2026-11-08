@@ -14,7 +14,13 @@ from pos_next.api.invoices import save_invoice_draft
 from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox
 from pos_next.services.invoice_processor import process_invoice
-from pos_next.services.sync_classifier import ClockSkewError, DependencyError, SyncContractError, classify
+from pos_next.services.sync_classifier import (
+    ClockSkewError,
+    DependencyError,
+    EditConflictError,
+    SyncContractError,
+    classify,
+)
 
 LOCAL_CUSTOMER = "pos_offline_customer-1"
 LOCAL_INVOICE = "pos_offline_invoice-1"
@@ -686,6 +692,37 @@ class TestQueuedCoupons(NoSiteTestCase):
 
         self.assertNotIn("queued", process_invoice.call_args.kwargs)
 
+    def _submit_edit(self, server_holds_original):
+        invoice = {
+            "doctype": "Sales Invoice",
+            "pos_profile": "Main",
+            "offline_id": "pos_offline_edit",
+            "edited_from": "pos_offline_original",
+        }
+        with (
+            patch("pos_next.api.invoices._", lambda text: text),
+            patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.invoices.assert_shift_takes_sale"),
+            patch("pos_next.services.sync_inbox.get_duplicate_response", return_value=None),
+            patch("pos_next.services.sync_inbox.record_direct_sync") as self.record,
+            patch("pos_next.services.invoice_processor.process_invoice", return_value={"name": "SINV-1"}) as self.process,
+            patch.object(sync_inbox, "_holds_sale", return_value=server_holds_original) as self.holds,
+        ):
+            return invoices.submit_invoice(invoice=invoice, data={})
+
+    # The original's push landed and its answer was lost: both would post
+    def test_an_edit_of_a_sale_the_server_holds_is_refused_before_anything_is_made(self):
+        with self.assertRaises(EditConflictError):
+            self._submit_edit(server_holds_original=True)
+
+        self.holds.assert_called_once_with("pos_offline_original")
+        self.process.assert_not_called()
+        self.record.assert_not_called()
+
+    def test_an_edit_of_a_sale_that_never_reached_the_server_goes_through(self):
+        self.assertEqual(self._submit_edit(server_holds_original=False), {"name": "SINV-1"})
+        self.process.assert_called_once()
+
     @patch("pos_next.api.invoices.assert_shift_takes_sale")
     @patch("pos_next.api.invoices._assert_invoice_write_access")
     @patch("pos_next.services.invoice_processor.process_invoice")
@@ -964,9 +1001,22 @@ class TestShiftCloseWaiting(NoSiteTestCase):
         statuses = [("pos_offline_sale-1", "Synced"), ("pos_offline_sale-2", "Needs Review")]
         self.assertIn("pos_offline_sale-2", str(self._flag(row, statuses).call_args.args[2]))
 
-    def test_an_invoice_waiting_on_a_customer_under_review_stays_blocked(self):
+    def test_an_invoice_waiting_on_a_customer_under_review_reaches_a_manager(self):
         row = _row(depends_on=LOCAL_CUSTOMER, received_at=datetime.now() - timedelta(hours=2))
+
+        exc = self._flag(row, [(LOCAL_CUSTOMER, "Needs Review")]).call_args.args[2]
+
+        self.assertIn(LOCAL_CUSTOMER, str(exc))
+        self.assertEqual(classify(exc).error_class, "dependency")
+        self.assertEqual(classify(exc).error_code, "WaitingForDependencyError")
+
+    def test_an_invoice_behind_a_review_is_given_the_same_time_first(self):
+        row = _row(depends_on=LOCAL_CUSTOMER, received_at=datetime.now() - timedelta(minutes=5))
         self._flag(row, [(LOCAL_CUSTOMER, "Needs Review")]).assert_not_called()
+
+    def test_an_invoice_behind_a_customer_still_on_its_way_waits(self):
+        row = _row(depends_on=LOCAL_CUSTOMER, received_at=datetime.now() - timedelta(hours=2))
+        self._flag(row, [(LOCAL_CUSTOMER, "Processing")]).assert_not_called()
 
     def test_sales_on_their_way_are_given_time(self):
         row = self._row(received_at=datetime.now() - timedelta(hours=2))
@@ -1156,6 +1206,22 @@ class TestClosingValidation(NoSiteTestCase):
     def test_a_sale_under_review_only_warns(self):
         self._validate([frappe._dict(status="Needs Review", entity="invoice", count=1)])
         self.msgprint.assert_called_once()
+
+    def test_a_sale_blocked_behind_a_review_only_warns_and_names_what_it_waits_for(self):
+        row = frappe._dict(name="row-1", status="Blocked", entity="invoice", depends_on=LOCAL_CUSTOMER)
+        with patch("pos_next.services.sync_inbox.get_review_blockers", return_value=[LOCAL_CUSTOMER]):
+            self._validate([row])
+
+        self.msgprint.assert_called_once()
+        self.assertIn(LOCAL_CUSTOMER, self.msgprint.call_args.args[0])
+
+    def test_a_sale_blocked_behind_something_on_its_way_holds_it(self):
+        row = frappe._dict(name="row-1", status="Blocked", entity="invoice", depends_on=LOCAL_CUSTOMER)
+        with (
+            patch("pos_next.services.sync_inbox.get_review_blockers", return_value=[]),
+            self.assertRaises(frappe.ValidationError),
+        ):
+            self._validate([row])
 
 
 class TestSaveInvoiceDraft(NoSiteTestCase):

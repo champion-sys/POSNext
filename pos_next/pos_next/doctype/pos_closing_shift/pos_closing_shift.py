@@ -115,18 +115,25 @@ class POSClosingShift(Document):
 
         Invoices still being processed will arrive shortly, so they block the close.
         Invoices under review may take days, and the cashier has already been asked
-        to accept that, so they only raise a warning.
+        to accept that, so they only raise a warning. So does an invoice waiting for a
+        record in review: it will not move until a person acts, so waiting is no use.
         """
+        from pos_next.services.sync_inbox import get_review_blockers
+
         counts = {}
+        waiting_for = []
         for row in frappe.get_all(
             "Offline Invoice Sync",
             filters={"shift": self.pos_opening_shift, "status": ["not in", SYNC_FINISHED_STATUSES]},
-            fields=["status", "entity", {"COUNT": "name", "as": "count"}],
-            group_by="status, entity",
+            fields=["name", "status", "entity", "depends_on"],
         ):
             # A close queued on a device is this very closing, being processed
-            if row.entity != "shift_close":
-                counts[row.status] = counts.get(row.status, 0) + row.count
+            if row.entity == "shift_close":
+                continue
+            blockers = get_review_blockers(row) if row.status == "Blocked" else []
+            status = "Needs Review" if blockers else row.status
+            waiting_for.extend(blocker for blocker in blockers if blocker not in waiting_for)
+            counts[status] = counts.get(status, 0) + 1
 
         in_review = counts.pop("Needs Review", 0)
         in_progress = sum(counts.values())
@@ -137,11 +144,10 @@ class POSClosingShift(Document):
                 title=_("Invoices Still Syncing"),
             )
         if in_review:
-            frappe.msgprint(
-                _("{0} invoice(s) of this shift need review and are not in these totals.").format(in_review),
-                indicator="orange",
-                alert=True,
-            )
+            message = _("{0} invoice(s) of this shift need review and are not in these totals.").format(in_review)
+            if waiting_for:
+                message += " " + _("Some wait for records in review: {0}").format(", ".join(waiting_for))
+            frappe.msgprint(message, indicator="orange", alert=True)
 
     def update_payment_reconciliation(self):
         # update the difference values in Payment Reconciliation child table

@@ -59,6 +59,17 @@ const CASHIER_GUIDE = __(
 	"The cashier of this record is disabled or no longer exists. Enable the user and press Reprocess, or close the record without processing it.",
 );
 
+const CASHIER_NOT_ON_PROFILE_GUIDE = __(
+	"The cashier of this record is no longer on its POS Profile, so it was not given to whoever uploaded it. Add them back to the POS Profile and press Reprocess, or void the record.",
+);
+
+const SALE_OUTSIDE_SHIFT_GUIDE = __(
+	"This sale is dated outside the hours of its shift, as when the device clock was wrong when it was made. Check the date, then use Change Posting Date or Accept Device Date under Fix Record, and press Reprocess.",
+);
+
+// Codes a manager can settle by accepting the date the device gave
+const DEVICE_DATE_CODES = ["ClockSkewError", "SaleOutsideShiftError"];
+
 const SHIFT_CLOSE_GUIDE = __(
 	"Some invoices of this shift have not finished. Finish them and press Reprocess, or use Close Without Unfinished Invoices under Fix Record.",
 );
@@ -306,7 +317,7 @@ function addReviewActions(frm) {
 		frm.add_custom_button(__("Accept Total Difference"), () => confirmTotalDifference(frm), fix_group);
 	}
 
-	if (frm.doc.error_code === "ClockSkewError") {
+	if (DEVICE_DATE_CODES.includes(frm.doc.error_code)) {
 		frm.add_custom_button(
 			__("Accept Device Date"),
 			() =>
@@ -401,9 +412,11 @@ function getReviewGuide(frm, canReview) {
 	if (error_code === VOID_AFTER_POSTED) return VOID_AFTER_POSTED_GUIDE;
 	if (error_code === "TotalMismatchError") return TOTAL_MISMATCH_GUIDE;
 	if (error_code === "ClockSkewError") return CLOCK_SKEW_GUIDE;
+	if (error_code === "SaleOutsideShiftError") return SALE_OUTSIDE_SHIFT_GUIDE;
 	if (error_code === "ShiftClosedError") return SHIFT_CLOSED_GUIDE;
 	if (error_code === "EditConflictError") return EDIT_CONFLICT_GUIDE;
 	if (error_code === "CashierUnavailableError") return CASHIER_GUIDE;
+	if (error_code === "CashierNotOnProfileError") return CASHIER_NOT_ON_PROFILE_GUIDE;
 	if (error_code === "ShiftConflictError") return SHIFT_CONFLICT_GUIDE;
 	if (error_code === "ShiftOutdatedError") return SHIFT_OUTDATED_GUIDE;
 	if (error_code === "OfflineShiftNotAllowedError") return OFFLINE_SHIFT_GUIDE;

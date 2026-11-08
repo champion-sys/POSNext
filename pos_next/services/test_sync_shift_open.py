@@ -518,7 +518,6 @@ class TestARefusal(ShiftFlow):
 
     def test_its_sales_stay_blocked_and_keep_their_payload(self):
         sale = self._send(SALE, SALE_PAYLOAD)
-        self._age(sale)
         self._refused()
 
         self._post(sale)
@@ -526,6 +525,47 @@ class TestARefusal(ShiftFlow):
 
         row = self._row(sale)
         self.assertEqual(row.status, "Blocked")
+        self.assertEqual(json.loads(row.payload)["posa_pos_opening_shift"], LOCAL_SHIFT)
+        self.process_invoice.assert_not_called()
+
+    def _status_of(self, offline_id):
+        with patch("pos_next.api.sync._assert_pos_user"):
+            [status] = sync_api.get_status([offline_id])
+        return status
+
+    def test_the_device_hears_a_sale_behind_it_needs_review_not_that_it_is_processing(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        self._refused()
+        self._post(sale)
+        self.assertEqual(self._row(sale).status, "Blocked")
+
+        status = self._status_of(SALE)
+
+        self.assertEqual(status["status"], "needs_review")
+        self.assertEqual(status["server_status"], "Blocked")
+        self.assertEqual(status["error_code"], "WaitingForDependencyError")
+        self.assertIn(LOCAL_SHIFT, status["message"])
+
+    def test_a_sale_behind_a_shift_still_on_its_way_is_processing(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        self._open()
+        self._post(sale)
+        self.assertEqual(self._row(sale).status, "Blocked")
+
+        self.assertEqual(self._status_of(SALE)["status"], "processing")
+
+    def test_its_sales_reach_a_manager_in_time_naming_the_shift(self):
+        sale = self._send(SALE, SALE_PAYLOAD)
+        self._age(sale)
+        self._refused()
+
+        self._post(sale)
+        sync_inbox.sweep()
+
+        row = self._row(sale)
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "WaitingForDependencyError")
+        self.assertIn(LOCAL_SHIFT, row.error_message)
         self.assertEqual(json.loads(row.payload)["posa_pos_opening_shift"], LOCAL_SHIFT)
         self.process_invoice.assert_not_called()
 

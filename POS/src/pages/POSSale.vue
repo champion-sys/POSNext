@@ -1135,6 +1135,7 @@ import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache"
 import { useSerialNumberStore } from "@/stores/serialNumber";
 import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/entities";
 import {
+	getQueuedEditBlocker,
 	getShiftCloseDecision,
 	isNetworkFailure,
 	supportsOfflineId,
@@ -2512,14 +2513,36 @@ async function handlePaymentCompleted(paymentData) {
 		// Delete draft if it exists (since we're submitting/saving invoice)
 		draftIdToDelete = cartStore.currentDraftId;
 
+		const usesCustomerCredit = cartStore.payments.some((payment) => payment.is_customer_credit);
+
+		// An edit of a queued sale always goes through the queue, so it cannot use what needs
+		// the server. The cart and the edit stay, so the cashier can change the payment.
+		const editBlocker =
+			editingOfflineContext &&
+			getQueuedEditBlocker({
+				doctype: cartStore.targetDoctype,
+				usesCustomerCredit,
+				usesGiftCard: usesGiftCard(),
+			});
+		if (editBlocker) {
+			uiStore.showPaymentDialog = false;
+			showWarning(
+				editBlocker === "doctype"
+					? __("An edit of a queued invoice must stay an invoice")
+					: __("An edit of a queued invoice cannot use customer credit or a gift card. Choose another payment"),
+			);
+			return;
+		}
+
 		const queueCheckout =
 			mustQueue.value ||
 			shouldQueueCheckout({
 				mode: posSettingsStore.syncMode,
 				doctype: cartStore.targetDoctype,
-				usesCustomerCredit: cartStore.payments.some((payment) => payment.is_customer_credit),
+				usesCustomerCredit,
 				usesGiftCard: usesGiftCard(),
 				hasLocalCustomer: isLocalName(customerValue),
+				editsQueuedSale: Boolean(editingOfflineContext),
 			});
 
 		if (queueCheckout) {
@@ -2539,24 +2562,8 @@ async function handlePaymentCompleted(paymentData) {
 			if (result) {
 				uiStore.clearLastOfflinePrintDoc();
 
-				// If this online checkout originated from editing a still-queued
-				// offline invoice, mark the original row as superseded so the
-				// background sync doesn't push it as a duplicate. We pass the
-				// server invoice name as replaced_by for audit trail.
-				if (editingOfflineContext) {
-					const serverName = result.name || result.message?.name || null;
-					try {
-						await offlineWorker.supersedeOfflineInvoice(
-							editingOfflineContext.originalQueueId,
-							serverName,
-						);
-					} catch (err) {
-						log.error("Failed to supersede edited offline invoice after online submit:", err);
-					}
-					endOfflineEdit();
-					// Refresh pending count so the OfflineInvoicesDialog badge updates.
-					await offlineStore.updatePendingCount();
-				}
+				// No edit of a queued sale comes this way: its original may have reached the
+				// server unanswered, so retiring it here could leave both posted.
 
 				const invoiceName = result.name || result.message?.name || __("Unknown");
 				const invoiceTotal = result.grand_total || result.total || 0;

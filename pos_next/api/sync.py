@@ -12,8 +12,8 @@ from frappe.utils import cint
 
 from pos_next.api.invoices import _assert_invoice_write_access
 from pos_next.auth import assert_device_allows_profile
-from pos_next.services import sync_inbox, sync_reconciliation, sync_void
-from pos_next.services.sync_classifier import ReplacedByEditError
+from pos_next.services import sync_classifier, sync_inbox, sync_reconciliation, sync_void
+from pos_next.services.sync_classifier import ReplacedByEditError, WaitingForDependencyError
 from pos_next.services.sync_entities import ENTITY_SHIFT_OPEN
 
 PROTOCOL_VERSION = 1
@@ -26,6 +26,7 @@ _CLIENT_STATUS = {
     "Received": "received",
     "Processing": "processing",
     "Retry Scheduled": "processing",
+    # Unless what it waits for is in review: see _describe
     "Blocked": "processing",
     "Needs Review": "needs_review",
     "Synced": "synced",
@@ -120,6 +121,15 @@ def _describe(row):
         "status": _CLIENT_STATUS.get(row.status, "processing"),
         "server_status": row.status,
     }
+    # Waiting behind a review, it will not go on until a person acts, so it is not in progress
+    blockers = sync_inbox.get_review_blockers(row) if row.status == "Blocked" else []
+    if blockers:
+        response.update(
+            status="needs_review",
+            error_class=sync_classifier.DEPENDENCY,
+            error_code=WaitingForDependencyError.__name__,
+            message=_("Waiting for {0} record(s) in review: {1}").format(len(blockers), ", ".join(blockers)),
+        )
     if row.sales_invoice:
         response["invoice"] = row.sales_invoice
         # A manager can link it to a colleague's shift, and the device must not sell into that
@@ -245,7 +255,16 @@ def get_status(offline_ids=None):
     rows = frappe.get_all(
         "Offline Invoice Sync",
         filters={"offline_id": ["in", offline_ids]},
-        fields=["offline_id", "entity", "status", "sales_invoice", "error_class", "error_code", "error_message"],
+        fields=[
+            "offline_id",
+            "entity",
+            "status",
+            "sales_invoice",
+            "error_class",
+            "error_code",
+            "error_message",
+            "depends_on",
+        ],
     )
     return [_describe(row) for row in rows]
 

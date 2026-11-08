@@ -733,78 +733,57 @@ describe("editing a queued sale on the sale screen", () => {
 		})
 	})
 
-	describe("submitting the edited sale online", () => {
+	describe("checking out the edited sale while online", () => {
+		let submitted
+
 		beforeEach(() => {
 			sync.isOffline = false
-			page.serverAnswer = async (url) => ({
-				name: url.includes("submit") ? "SINV-1" : "DRAFT-1",
-			})
+			submitted = []
+			page.serverAnswer = async (url, params) => {
+				submitted.push(url)
+				return { name: url.includes("submit") ? "SINV-1" : "DRAFT-1" }
+			}
 		})
 
-		it("retires the original, though the submit empties the cart before it answers", async () => {
+		// The original may have reached the server with its answer lost. Only the queue carries
+		// edited_from, which lets the server hold the edit instead of posting both.
+		it("goes through the queue with edited_from in Realtime mode, and never straight to the server", async () => {
 			await editQueuedSale()
 			await nextTick()
 
 			await wrapper.vm.handlePaymentCompleted(payment)
 
-			expect(offlineWorker.supersedeOfflineInvoice).toHaveBeenCalledWith(
-				QUEUED.id,
-				"SINV-1",
-			)
-		})
-
-		it("keeps sync away from the original until it is retired", async () => {
-			let heldWhileRetiring
-			offlineWorker.supersedeOfflineInvoice.mockImplementation(async () => {
-				heldWhileRetiring = isHeld(QUEUED.offline_id)
-				return { success: true }
-			})
-			await editQueuedSale()
-
-			await wrapper.vm.handlePaymentCompleted(payment)
-
-			expect(heldWhileRetiring).toBe(true)
+			const [invoice, options] = sync.saveInvoiceOffline.mock.calls[0]
+			expect(invoice.edited_from).toBe(QUEUED.offline_id)
+			expect(options).toEqual({ supersedesId: QUEUED.id })
+			expect(submitted.filter((url) => url.includes("submit_invoice"))).toEqual([])
+			expect(offlineWorker.supersedeOfflineInvoice).not.toHaveBeenCalled()
 			expect(isHeld(QUEUED.offline_id)).toBe(false)
 		})
 
-		it("keeps the edit through a refused sale, so Try Again still retires the original", async () => {
-			await editQueuedSale()
-			page.serverAnswer = async () => {
-				throw Object.assign(new Error("Refused"), {
-					exc_type: "ValidationError",
-				})
-			}
+		it("still sends an ordinary sale straight to the server", async () => {
+			cart.addItem(item())
 
 			await wrapper.vm.handlePaymentCompleted(payment)
 
+			expect(sync.saveInvoiceOffline).not.toHaveBeenCalled()
+		})
+
+		it("is refused with customer credit, keeping the cart and the edit", async () => {
+			await editQueuedSale()
+
+			await wrapper.vm.handlePaymentCompleted({
+				payments: [{ mode_of_payment: "Credit", amount: 20, type: "Cash", is_customer_credit: true }],
+				paid_amount: 20,
+			})
+
+			expect(sync.saveInvoiceOffline).not.toHaveBeenCalled()
+			expect(submitted.filter((url) => url.includes("submit_invoice"))).toEqual([])
+			expect(page.toast.warning).toHaveBeenCalledWith(
+				"An edit of a queued invoice cannot use customer credit or a gift card. Choose another payment",
+			)
 			expect(cart.invoiceItems).toHaveLength(1)
 			expect(isHeld(QUEUED.offline_id)).toBe(true)
-			expect(offlineWorker.supersedeOfflineInvoice).not.toHaveBeenCalled()
-
-			page.serverAnswer = async (url) => ({
-				name: url.includes("submit") ? "SINV-1" : "DRAFT-1",
-			})
-			await wrapper.vm.handlePaymentCompleted(payment)
-
-			expect(offlineWorker.supersedeOfflineInvoice).toHaveBeenCalledWith(
-				QUEUED.id,
-				"SINV-1",
-			)
-			expect(isHeld(QUEUED.offline_id)).toBe(false)
-		})
-
-		it("queues under the online attempt's id when the connection drops, and retires the original", async () => {
-			await editQueuedSale()
-			page.serverAnswer = async () => {
-				throw new TypeError("Failed to fetch")
-			}
-
-			await wrapper.vm.handlePaymentCompleted(payment)
-
-			const [invoice, options] = sync.saveInvoiceOffline.mock.calls[0]
-			expect(invoice.offline_id).toMatch(/^pos_offline_/)
-			expect(options).toEqual({ supersedesId: QUEUED.id })
-			expect(isHeld(QUEUED.offline_id)).toBe(false)
 		})
 	})
 
