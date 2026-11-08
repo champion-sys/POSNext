@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import json
+import math
 from functools import lru_cache
 
 import frappe
@@ -2039,6 +2040,12 @@ def _get_return_sources(doctype, invoice_name):
     return rows, tax_details
 
 
+def _round_down(value, precision):
+    """Round toward zero, after clearing the float noise that turns 100 into 99.9999999."""
+    factor = 10**precision
+    return math.floor(flt(value, precision + 4) * factor) / factor
+
+
 def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
     """What one unit of an item row is worth back, after every discount of its sale.
 
@@ -2053,6 +2060,10 @@ def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
         price_list_rate: The row's price list rate, for the discount shown
         precision: Currency precision
 
+    ERPNext keeps a rate to the currency's precision, so a unit rarely carries its exact
+    share. It is rounded down: returns of a whole sale then refund at most a few cents
+    less than was paid, never more.
+
     Returns:
         dict: rate, rate_with_tax, tax_per_unit, tax_fraction and discount_per_unit. The
             device adds a refund up from these the way ERPNext totals the return:
@@ -2065,7 +2076,7 @@ def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
     unit_tax = item_tax / qty
 
     if tax_inclusive:
-        rate = flt(unit_net + unit_tax, precision)
+        rate = _round_down(unit_net + unit_tax, precision)
         return {
             "rate": rate,
             "rate_with_tax": rate,
@@ -2074,7 +2085,7 @@ def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
             "discount_per_unit": flt(price_list_rate - rate, precision),
         }
 
-    rate = flt(unit_net, precision)
+    rate = _round_down(unit_net, precision)
     if tax and flt(tax["rate"]):
         tax_fraction = flt(tax["rate"]) / 100
     else:
@@ -2446,14 +2457,16 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
     def process_return_item(item):
         """Process single item for return, returns None if not returnable."""
         item_ref = item.get("pos_invoice_item") or item.get("sales_invoice_item") or item.get("item_code")
-        original_qty = abs(flt(item.get("qty", 0)))
+        source_name = item.get("pos_invoice_item") or item.get("sales_invoice_item")
+        # make_sales_return already takes earlier returns off its qty, so the sale's own row
+        # gives the quantity sold. Taking them off that again hid what was left to return.
+        original_qty = abs(flt(sources[source_name].qty if source_name in sources else item.get("qty", 0)))
         remaining_qty = original_qty - returned_qty_map.get(item_ref, 0)
 
         if remaining_qty <= 0:
             return None
 
         price_list_rate = flt(item.get("price_list_rate") or item.get("rate"), precision)
-        source_name = item.get("pos_invoice_item") or item.get("sales_invoice_item")
         source = sources.get(source_name) or {
             "qty": original_qty,
             "net_amount": abs(flt(item.get("net_rate") or item.get("rate"))) * original_qty,

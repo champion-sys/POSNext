@@ -67,12 +67,95 @@ class TestReturnPrice(NoSiteTestCase):
         net = round(2 * priced["rate"], 2)
         self.assertAlmostEqual(net + round(net * priced["tax_fraction"], 2), 209.99, places=2)
 
+    def test_a_unit_that_does_not_split_evenly_is_rounded_down_so_returns_never_refund_more(self):
+        # 2 of 223 shared over 230 of goods: 193.91 for the row, 96.955 a unit
+        priced = invoices._price_return_row({"qty": 2, "net_amount": 168.62}, {"amount": 25.29, "rate": 15}, True, 100, 2)
+
+        self.assertEqual(priced["rate"], 96.95)
+
+    def test_a_unit_that_splits_evenly_keeps_its_cent(self):
+        priced = invoices._price_return_row({"qty": 3, "net_amount": 260.87}, {"amount": 39.13, "rate": 15}, True, 100, 2)
+
+        self.assertEqual(priced["rate"], 100)
+
     def test_a_fixed_tax_counts_by_its_share_of_the_row(self):
         source = {"qty": 4, "net_amount": 100}
         priced = invoices._price_return_row(source, {"amount": 10, "rate": 0}, False, 25, 2)
 
         self.assertEqual(priced["rate"], 25)
         self.assertAlmostEqual(priced["tax_fraction"], 0.1)
+
+
+class TestPrepareReturn(NoSiteTestCase):
+    """Return the second of 2 x 100, sold with 20 off and 15% VAT added, at another branch."""
+
+    def setUp(self):
+        super().setUp()
+
+        def sql(query, *_args, **_kwargs):
+            query = str(query)
+            if "key_field" in query:
+                return [frappe._dict(key_field="row-1", returned_qty=1)]
+            if "tabSales Invoice Payment" in query:
+                return [frappe._dict(mode_of_payment="Cash", amount=210, base_amount=210, account="Cash")]
+            return [
+                frappe._dict(
+                    docstatus=1, is_return=0, pos_profile="Head Office", posting_date=date(2026, 11, 8), is_pos=1,
+                    grand_total=210, paid_amount=210, outstanding_amount=0, customer="C", customer_name="C",
+                    net_total=182.61, total_taxes_and_charges=27.39, conversion_rate=1,
+                )
+            ]
+
+        def get_value(doctype, filters=None, fieldname=None, *_args, **_kwargs):
+            return {
+                ("POS Settings", "allow_return"): 1,
+                ("POS Settings", "return_validity_days"): 0,
+                ("POS Opening Shift", "pos_profile"): "Branch",
+                ("POS Profile", "warehouse"): "Branch - RT",
+            }.get((doctype, fieldname))
+
+        frappe.local.db.sql.side_effect = sql
+        frappe.local.db.get_value.side_effect = get_value
+        frappe.local.db.exists.return_value = True
+
+        # What ERPNext's make_sales_return maps: it already took the earlier return off qty
+        mapped = MagicMock()
+        mapped.as_dict.return_value = frappe._dict(
+            doctype="Sales Invoice",
+            return_against="SINV-1",
+            taxes=[{"charge_type": "On Net Total", "included_in_print_rate": 0}],
+            items=[
+                {"item_code": "A", "qty": -1, "rate": 100, "price_list_rate": 100, "net_rate": 91.3,
+                 "sales_invoice_item": "row-1", "warehouse": "Stores - RT"}
+            ],
+        )
+        sources = (
+            [frappe._dict(name="row-1", item_code="A", qty=2, net_amount=182.61)],
+            [{"item_row": "row-1", "rate": 15, "amount": 27.39}],
+        )
+        for target, kwargs in (
+            ("erpnext.accounts.doctype.sales_invoice.sales_invoice.make_sales_return", {"return_value": mapped}),
+            ("pos_next.api.invoices._get_return_sources", {"return_value": sources}),
+            ("pos_next.api.invoices._remap_foreign_payment_modes", {"side_effect": lambda payments, *_a: payments}),
+            ("frappe.get_cached_value", {"return_value": 2}),
+        ):
+            patcher = patch(target, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        self.row = invoices._prepare_return_invoice("SINV-1", "POS-OPE-1")["items"][0]
+
+    def test_what_is_left_after_an_earlier_return_is_counted_once(self):
+        self.assertEqual(self.row["remaining_qty"], 1)
+        self.assertEqual(self.row["qty"], -1)
+
+    def test_the_unit_is_priced_after_the_invoice_discount_with_its_own_tax(self):
+        self.assertEqual(self.row["rate"], 91.3)
+        self.assertAlmostEqual(self.row["tax_fraction"], 0.15)
+        self.assertGreater(self.row["rate_with_tax"], 104.9)
+
+    def test_the_goods_go_back_at_the_branch_taking_the_return(self):
+        self.assertEqual(self.row["warehouse"], "Branch - RT")
 
 
 class TestItemTaxMap(NoSiteTestCase):
