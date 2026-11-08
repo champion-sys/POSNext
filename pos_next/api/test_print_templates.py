@@ -629,6 +629,7 @@ HELPERS = {
 	"barcode",
 	"money_in_words",
 	"pos_print_context",
+	"format_time",
 }
 KEYWORDS = {"and", "or", "not", "in", "is", "if", "else", "elif"}
 CONTEXT = {
@@ -688,6 +689,7 @@ class TestDefaultTemplateSource(unittest.TestCase):
 			"qr": lambda text: "data:image/png;base64,QR",
 			"barcode": lambda text: "data:image/png;base64,BAR",
 			"money_in_words": lambda value, currency=None: f"{value} in words",
+			"format_time": str,
 		}
 		context = {
 			"doc": {

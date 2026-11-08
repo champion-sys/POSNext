@@ -17,6 +17,7 @@ import mimetypes
 import os
 import re
 from datetime import timedelta
+from types import SimpleNamespace
 
 import frappe
 from frappe import _
@@ -153,6 +154,7 @@ def pos_print_context(doc=None):
 
 	currency = (doc and doc.get("currency")) or (parts["company"] or {}).get("currency")
 	lang = frappe.local.lang or "en"
+	translate = _pos_translator(lang)
 
 	def format_currency(value, currency_code=None, precision=None):
 		return frappe.utils.fmt_money(flt(value), precision=precision, currency=currency_code or currency)
@@ -164,7 +166,15 @@ def pos_print_context(doc=None):
 		return text[:-1] if text.endswith(".") else text
 
 	def money_in_words(value, currency_code=None):
-		return frappe.utils.money_in_words(flt(value), currency_code or currency)
+		# Frappe writes nothing for a negative amount, and a return's total is one
+		return frappe.utils.money_in_words(abs(flt(value)), currency_code or currency)
+
+	def format_time(value):
+		"""HH:MM:SS, as the device has it: a posted invoice's time is a timedelta with microseconds."""
+		if isinstance(value, timedelta):
+			seconds = int(value.total_seconds())
+			return f"{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+		return cstr(value).split(".")[0]
 
 	def qr(text):
 		from pos_next.api.thermal_print import get_qr_data_uri
@@ -180,16 +190,11 @@ def pos_print_context(doc=None):
 
 	return {
 		**parts,
-		"print": {
-			"paper": None,
-			"rtl": bool(is_rtl()),
-			"lang": lang,
-			"copy": 1,
-			"copies": 1,
-			"reprint": False,
-		},
-		"_": _,
+		# Not a dict: Jinja would read print.copy as dict.copy
+		"print": SimpleNamespace(paper=None, rtl=bool(is_rtl()), lang=lang, copy=1, copies=1, reprint=False),
+		"_": translate,
 		"format_currency": format_currency,
+		"format_time": format_time,
 		"format_number": format_number,
 		"format_date": lambda value, fmt=None: frappe.utils.formatdate(value, fmt) if value else "",
 		"format_datetime": lambda value, fmt=None: frappe.utils.format_datetime(value, fmt) if value else "",
@@ -197,6 +202,28 @@ def pos_print_context(doc=None):
 		"qr": qr,
 		"barcode": barcode,
 	}
+
+
+def _pos_translator(lang):
+	"""The POS's own wording before the site's, as the device translates: _(text, args)."""
+	from pos_next.api.localization import _get_pos_screen_translations
+
+	screens = {}
+	if not lang.startswith("en"):
+		try:
+			screens = _get_pos_screen_translations(lang)
+		except Exception:
+			screens = {}
+
+	def translate_text(text, args=None):
+		source = cstr(text)
+		translated = screens.get(source) or _(source)
+		if args:
+			for index, value in enumerate(args if isinstance(args, list | tuple) else [args]):
+				translated = translated.replace("{" + str(index) + "}", cstr(value))
+		return translated
+
+	return translate_text
 
 
 def validate_print_format(doc, method=None):

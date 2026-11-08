@@ -426,6 +426,7 @@ export function createHelpers(options = {}) {
 		format_date,
 		format_datetime,
 		money_in_words,
+		format_time: (value) => (value == null ? "" : String(value).split(".")[0]),
 		qr: (text) => qrDataUri(text),
 		barcode: (text, barcodeOptions) => barcodeDataUri(text, barcodeOptions || {}),
 	}

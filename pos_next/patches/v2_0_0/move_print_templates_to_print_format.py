@@ -30,7 +30,12 @@ def execute():
 		):
 			if row.name in RENAMED:
 				continue  # a shipped one: after_migrate makes it as a Print Format
-			name = row.name if not frappe.db.exists("Print Format", row.name) else f"{row.name} (POS)"
+			name = row.name
+			# A Print Format of that name ticked for devices is this one, moved on an earlier run
+			if frappe.db.exists("Print Format", name) and not frappe.db.get_value(
+				"Print Format", name, "pos_next_offline"
+			):
+				name = f"{row.name} (POS)"
 			if not frappe.db.exists("Print Format", name):
 				frappe.get_doc(
 					{
@@ -65,3 +70,5 @@ def execute():
 
 	if frappe.db.exists("DocType", OLD):
 		frappe.delete_doc("DocType", OLD, force=True, ignore_missing=True)
+	# Deleting the DocType keeps its table; every row in it is a Print Format now
+	frappe.db.sql_ddl(f"drop table if exists `tab{OLD}`")

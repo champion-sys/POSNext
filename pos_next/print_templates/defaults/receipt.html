@@ -1,5 +1,6 @@
 {#- POS devices print this offline and Desk prints it online: pos_print_context gives both the same names -#}
 {%- set pos = pos_print_context(doc) -%}
+{%- set _ = pos._ -%}
 {%- set company = pos.company or {} -%}
 {%- set customer = pos.customer -%}
 {%- set cashier = pos.cashier or {} -%}
@@ -8,6 +9,7 @@
 {%- set format_currency = pos.format_currency -%}
 {%- set format_number = pos.format_number -%}
 {%- set format_date = pos.format_date -%}
+{%- set format_time = pos.format_time -%}
 {%- set money_in_words = pos.money_in_words -%}
 {%- set qr = pos.qr -%}
 {%- set barcode = pos.barcode -%}
@@ -29,7 +31,7 @@
 	<table class="meta">
 		<tr><td>{{ _("Invoice") }}</td><td class="end"><bdi>{{ doc.name }}</bdi></td></tr>
 		{% if doc.is_return and doc.return_against %}<tr><td>{{ _("Against") }}</td><td class="end"><bdi>{{ doc.return_against }}</bdi></td></tr>{% endif %}
-		<tr><td>{{ _("Date") }}</td><td class="end"><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ doc.posting_time }}{% endif %}</bdi></td></tr>
+		<tr><td>{{ _("Date") }}</td><td class="end"><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ format_time(doc.posting_time) }}{% endif %}</bdi></td></tr>
 		<tr><td>{{ _("Cashier") }}</td><td class="end">{{ cashier.full_name or cashier.user }}</td></tr>
 		{% if customer %}
 		<tr><td>{{ _("Customer") }}</td><td class="end">{{ customer.customer_name or customer.name }}</td></tr>
