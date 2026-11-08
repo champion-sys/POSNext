@@ -163,11 +163,13 @@ before_uninstall = "pos_next.uninstall.before_uninstall"
 permission_query_conditions = {
 	"POS Opening Shift": "pos_next.permissions.get_shift_query_conditions",
 	"POS Closing Shift": "pos_next.permissions.get_shift_query_conditions",
+	"POS Settings": "pos_next.permissions.get_shift_query_conditions",
 }
 
 has_permission = {
 	"POS Opening Shift": "pos_next.permissions.has_shift_permission",
 	"POS Closing Shift": "pos_next.permissions.has_shift_permission",
+	"POS Settings": "pos_next.permissions.has_shift_permission",
 }
 
 # Standard Queries

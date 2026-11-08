@@ -69,14 +69,56 @@ class TestShiftPermission(Base):
     def test_lists_of_a_manager_are_not_narrowed(self):
         self.assertEqual(permissions.get_shift_query_conditions(MANAGER, doctype="POS Opening Shift"), "")
 
-    def test_the_hooks_are_registered_for_both_shift_doctypes(self):
+    def test_the_hooks_are_registered_for_the_shifts_and_pos_settings(self):
         from pos_next import hooks
 
-        for doctype in permissions.SHIFT_DOCTYPES:
+        self.assertIn("POS Settings", permissions.PROFILE_DOCTYPES)
+        for doctype in permissions.PROFILE_DOCTYPES:
             self.assertEqual(hooks.has_permission[doctype], "pos_next.permissions.has_shift_permission")
             self.assertEqual(
                 hooks.permission_query_conditions[doctype], "pos_next.permissions.get_shift_query_conditions"
             )
+
+
+class TestPOSSettingsAccess(Base):
+    """Every cashier has read on the POS Settings doctype; only their own profiles' records reach them."""
+
+    def test_a_cashier_reads_only_their_profiles_settings(self):
+        self.assertTrue(permissions.has_shift_permission(frappe._dict(pos_profile="SI Main"), "read", CASHIER))
+        self.assertFalse(permissions.has_shift_permission(frappe._dict(pos_profile="PI Main"), "read", CASHIER))
+
+    def test_the_settings_list_keeps_to_their_profiles(self):
+        with patch("frappe.db", Mock(escape=lambda value: f"'{value}'")):
+            condition = permissions.get_shift_query_conditions(CASHIER, doctype="POS Settings")
+
+        self.assertIn("`tabPOS Settings`.`pos_profile` in", condition)
+
+    def _get_settings(self, function, profile, assigned):
+        def exists(doctype, filters=None, *_args, **_kwargs):
+            return assigned if doctype == "POS Profile User" else None
+
+        db = Mock(exists=Mock(side_effect=exists), get_value=Mock(return_value=None))
+        with (
+            patch("frappe.db", db),
+            patch("frappe.has_permission", return_value=False),
+            patch("pos_next.api.sync_pull.assert_device_allows_profile"),
+        ):
+            return function(profile)
+
+    def test_the_settings_api_refuses_another_profile(self):
+        from pos_next.api import pos_profile
+        from pos_next.pos_next.doctype.pos_settings import pos_settings
+
+        for function in (pos_settings.get_pos_settings, pos_profile.get_pos_settings):
+            with self.subTest(function=function.__module__), self.assertRaises(frappe.PermissionError):
+                self._get_settings(function, "PI Main", assigned=None)
+
+    def test_a_refusal_is_not_swallowed_into_default_settings(self):
+        from pos_next.api import pos_profile
+
+        with patch("frappe.log_error") as log_error, self.assertRaises(frappe.PermissionError):
+            self._get_settings(pos_profile.get_pos_settings, "PI Main", assigned=None)
+        log_error.assert_not_called()
 
 
 class TestCancelClosing(Base):

@@ -285,19 +285,14 @@ def get_pos_settings(pos_profile):
 	source of truth, preventing confusion when the checkbox appears enabled
 	but the global setting was changed elsewhere.
 	"""
-	from frappe import _
-
 	if not pos_profile:
 		return None
 
-	# Check if user has access to this POS Profile
-	has_access = frappe.db.exists(
-		"POS Profile User",
-		{"parent": pos_profile, "user": frappe.session.user}
-	)
+	# Every cashier may read the POS Settings doctype, so that says nothing about this
+	# profile: only its own cashiers, a POS Profile manager and a device enrolled for it
+	from pos_next.api.sync_pull import _assert_profile_access
 
-	if not has_access and not frappe.has_permission("POS Settings", "read"):
-		frappe.throw(_("You don't have access to this POS Profile"))
+	_assert_profile_access(pos_profile)
 
 	settings = frappe.db.get_value(
 		"POS Settings",

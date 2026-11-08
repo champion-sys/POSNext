@@ -78,6 +78,11 @@ def get_pos_settings(pos_profile):
 	if not pos_profile:
 		return DEFAULT_POS_SETTINGS.copy()
 
+	# Outside the try: a refusal must not turn into the default settings
+	from pos_next.api.sync_pull import _assert_profile_access
+
+	_assert_profile_access(pos_profile)
+
 	try:
 		# Get POS Settings linked to this POS Profile
 		pos_settings = frappe.db.get_value(

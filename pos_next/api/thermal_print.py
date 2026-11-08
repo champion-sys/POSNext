@@ -180,9 +180,12 @@ def _generate_or_update_print_format(doc):
 
 @frappe.whitelist()
 def get_pos_settings_list():
+    from pos_next.permissions import is_pos_manager
+
     filters = {"enabled": 1}
 
-    if not frappe.has_permission("POS Settings", ptype="read"):
+    # Every cashier may read the POS Settings doctype, so that gives no list of all of them
+    if not is_pos_manager() and not frappe.has_permission("POS Profile", "write"):
         user_profiles = frappe.get_all(
             "POS Profile User",
             filters={"user": frappe.session.user},
