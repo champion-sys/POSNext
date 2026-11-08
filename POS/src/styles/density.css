@@ -1,0 +1,30 @@
+/*
+ * Density of the selling screen, its payment dialog and the shift dialogs.
+ *
+ * The till is compact by default: more items, more cart lines and less empty space on
+ * one screen. Every size below is a Tailwind spacing key of the same name (see
+ * tailwind.config.js), so `h-pos-control`, `size-pos-tap`, `py-pos-row` and so on read
+ * from here, and one value here resizes every control that uses it.
+ *
+ * --pos-tap is the floor for anything a finger presses: Android tablets run this screen
+ * too, so no target goes under 32px. density.test.js holds every target size to it.
+ */
+:root {
+	/* The header bar along the top of the screen */
+	--pos-bar: 2.25rem;
+	/* Toolbars, search fields, filter chips and dialog fields */
+	--pos-control: 2.25rem;
+	/* Buttons and fields inside a row: quantity steppers, remove, cart view switch */
+	--pos-tap: 2rem;
+	/* The buttons that finish a sale: checkout, hold, complete payment */
+	--pos-action: 2.5rem;
+	/* A key of the payment numpad */
+	--pos-key: 2.75rem;
+	/* Item pictures in the cart and in the item list */
+	--pos-thumb: 2rem;
+	/* The narrowest item tile in the grid; the grid fits as many as the panel holds */
+	--pos-tile: 7.5rem;
+	/* Space above and below the content of a row, and inside panels */
+	--pos-row: 0.25rem;
+	--pos-pad: 0.5rem;
+}

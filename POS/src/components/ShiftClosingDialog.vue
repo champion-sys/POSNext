@@ -1,14 +1,14 @@
 <template>
   <Dialog v-model="open" :options="{ title: __('Close POS Shift'), size: '4xl' }">
     <template #body-content>
-      <div class="flex flex-col gap-3 md:gap-6">
+      <div class="flex flex-col gap-2">
         <div v-if="closingDataResource.loading || !isLoaded" class="text-center py-8 md:py-12">
           <div class="inline-block animate-spin rounded-full h-12 w-12 md:h-16 md:w-16 border-b-4 border-blue-600"></div>
-          <p class="mt-3 md:mt-4 text-base md:text-lg font-medium text-gray-600">{{ __('Loading shift data...') }}</p>
+          <p class="mt-3 md:mt-4 text-base font-medium text-gray-600">{{ __('Loading shift data...') }}</p>
           <p class="text-xs md:text-sm text-gray-500">{{ __('Calculating totals and reconciliation...') }}</p>
         </div>
 
-        <div v-else-if="closingData && isLoaded" class="flex flex-col gap-3 md:gap-6">
+        <div v-else-if="closingData && isLoaded" class="flex flex-col gap-2">
           <!-- Idle Warning -->
           <div v-if="showIdleWarning" class="rounded-lg bg-amber-50 border border-amber-300 p-3 flex items-center gap-2">
             <FeatherIcon name="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0" />
@@ -16,53 +16,53 @@
           </div>
 
           <!-- Shift Summary Header (hidden in entry mode when hideExpectedAmount is enabled) -->
-          <div v-if="shouldShowSummary" class="bg-white border border-gray-200 rounded-lg p-3 md:p-6 shadow-sm">
-            <div class="flex flex-col sm:flex-row justify-start items-start gap-3 mb-3 md:mb-6">
+          <div v-if="shouldShowSummary" class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+            <div class="flex flex-col sm:flex-row justify-start items-start gap-3 mb-2">
               <div class="flex-1">
                 <h3 class="text-start text-sm md:text-base font-medium text-gray-900">{{ closingData.pos_profile }}</h3>
                 <p class="text-start text-xs md:text-sm text-gray-500 mt-1">{{ formatDateTime(closingData.period_start_date) }}</p>
               </div>
               <div class="text-start sm:text-end">
                 <div class="text-start text-xs text-gray-500 uppercase">{{ __('Duration') }}</div>
-                <div class="text-base md:text-lg font-semibold text-gray-900">{{ getShiftDuration() }}</div>
+                <div class="text-base font-semibold text-gray-900">{{ getShiftDuration() }}</div>
               </div>
             </div>
 
             <!-- Key Metrics Grid -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
               <!-- Gross Sales (before returns) -->
-              <div class="text-start bg-blue-50 border border-blue-200 rounded-lg p-3 md:p-4">
+              <div class="text-start bg-blue-50 border border-blue-200 rounded-lg p-2.5">
                 <div class="text-blue-600 text-xs uppercase font-medium mb-1">{{ __('Gross Sales') }}</div>
-                <div class="text-lg md:text-2xl font-bold text-blue-900 mb-0.5 md:mb-1 truncate">{{ formatCurrency(grossSales) }}</div>
+                <div class="text-lg font-bold text-blue-900 mb-0.5 truncate">{{ formatCurrency(grossSales) }}</div>
                 <div class="text-blue-600 text-xs">{{ __('{0} invoices', [closingData.sales_count || salesInvoiceCount]) }}</div>
               </div>
 
               <!-- Returns -->
-              <div v-if="hasReturns" class="text-start bg-red-50 border border-red-200 rounded-lg p-3 md:p-4">
+              <div v-if="hasReturns" class="text-start bg-red-50 border border-red-200 rounded-lg p-2.5">
                 <div class="text-red-600 text-xs uppercase font-medium mb-1">{{ __('Returns') }}</div>
-                <div class="text-lg md:text-2xl font-bold text-red-700 mb-0.5 md:mb-1 truncate">-{{ formatCurrency(closingData.returns_total) }}</div>
+                <div class="text-lg font-bold text-red-700 mb-0.5 truncate">-{{ formatCurrency(closingData.returns_total) }}</div>
                 <div class="text-red-600 text-xs">{{ __('{0} returns', [closingData.returns_count]) }}</div>
               </div>
 
               <!-- Net Sales (after returns) -->
-              <div class="text-start bg-green-50 border border-green-200 rounded-lg p-3 md:p-4">
+              <div class="text-start bg-green-50 border border-green-200 rounded-lg p-2.5">
                 <div class="text-green-600 text-xs uppercase font-medium mb-1">{{ __('Net Sales') }}</div>
-                <div class="text-lg md:text-2xl font-bold text-green-900 mb-0.5 md:mb-1 truncate">{{ formatCurrency(closingData.grand_total) }}</div>
+                <div class="text-lg font-bold text-green-900 mb-0.5 truncate">{{ formatCurrency(closingData.grand_total) }}</div>
                 <div class="text-green-600 text-xs">{{ __('After returns') }}</div>
               </div>
 
               <!-- Tax Collected -->
-              <div class="text-start bg-gray-50 border border-gray-200 rounded-lg p-3 md:p-4">
+              <div class="text-start bg-gray-50 border border-gray-200 rounded-lg p-2.5">
                 <div class="text-gray-600 text-xs uppercase font-medium mb-1">{{ __('Tax Collected') }}</div>
-                <div class="text-lg md:text-2xl font-bold text-gray-900 mb-0.5 md:mb-1 truncate">{{ formatCurrency(totalTax) }}</div>
+                <div class="text-lg font-bold text-gray-900 mb-0.5 truncate">{{ formatCurrency(totalTax) }}</div>
                 <div class="text-gray-600 text-xs">{{ __('Net tax') }}</div>
               </div>
             </div>
           </div>
 
           <!-- No Sales Warning (hidden in entry mode when hideExpectedAmount is enabled) -->
-          <div v-if="shouldShowSummary && invoiceCount === 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 md:p-4">
-            <div class="flex items-start gap-2 md:gap-3">
+          <div v-if="shouldShowSummary && invoiceCount === 0" class="bg-yellow-50 border border-yellow-200 rounded-lg p-2.5">
+            <div class="flex items-start gap-2">
               <div class="flex-shrink-0">
                 <svg class="h-4 w-4 md:h-5 md:w-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
@@ -70,7 +70,7 @@
               </div>
               <div>
                 <h3 class="text-xs md:text-sm font-medium text-yellow-900">{{ __('No Sales During This Shift') }}</h3>
-                <p class="text-xs md:text-sm text-yellow-700 mt-1 md:mt-2">
+                <p class="text-xs md:text-sm text-yellow-700 mt-1">
                   {{ __('No invoices were created. Closing amounts should match opening amounts.') }}
                 </p>
               </div>
@@ -83,10 +83,10 @@
               @click="showInvoiceDetails = !showInvoiceDetails"
               :aria-label="`${showInvoiceDetails ? 'Hide' : 'Show'} invoice details for ${invoiceCount} transactions`"
               :aria-expanded="showInvoiceDetails"
-              class="w-full px-3 py-3 md:px-6 md:py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              class="w-full px-3 py-2 flex items-center justify-between hover:bg-gray-50 transition-colors"
             >
               <div class="text-start">
-                <h3 class="text-sm md:text-lg font-medium text-gray-900">{{ __('Invoice Details') }}</h3>
+                <h3 class="text-sm md:text-base font-medium text-gray-900">{{ __('Invoice Details') }}</h3>
                 <p class="text-xs md:text-sm text-gray-500">{{ __('{0} transactions • {1}', [
                   invoiceCount,
                   formatCurrency(closingData.grand_total)
@@ -140,22 +140,22 @@
                 <table class="min-w-full divide-y divide-gray-200">
                   <thead class="bg-gray-50">
                     <tr>
-                      <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Invoice') }}</th>
-                      <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Type') }}</th>
-                      <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Customer') }}</th>
-                      <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Time') }}</th>
-                      <th class="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Amount') }}</th>
+                      <th class="px-3 py-2 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Invoice') }}</th>
+                      <th class="px-3 py-2 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Type') }}</th>
+                      <th class="px-3 py-2 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Customer') }}</th>
+                      <th class="px-3 py-2 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Time') }}</th>
+                      <th class="px-3 py-2 text-start text-xs font-medium text-gray-500 uppercase">{{ __('Amount') }}</th>
                     </tr>
                   </thead>
                   <tbody class="bg-white divide-y divide-gray-200">
                     <tr v-for="(invoice, idx) in closingData.pos_transactions" :key="idx"
                         :class="invoice.is_return ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'">
-                      <td class="text-start px-6 py-4 whitespace-nowrap">
+                      <td class="text-start px-3 py-2 whitespace-nowrap">
                         <span :class="['text-sm font-medium', invoice.is_return ? 'text-red-700' : 'text-gray-900']">
                           {{ invoice.pos_invoice || invoice.sales_invoice || __('N/A') }}
                         </span>
                       </td>
-                      <td class="text-start px-6 py-4 whitespace-nowrap">
+                      <td class="text-start px-3 py-2 whitespace-nowrap">
                         <span v-if="invoice.is_return" class="px-2 py-1 text-xs font-medium bg-red-200 text-red-800 rounded">
                           {{ __('Return') }}
                         </span>
@@ -163,13 +163,13 @@
                           {{ __('Sale') }}
                         </span>
                       </td>
-                      <td class="text-start px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td class="text-start px-3 py-2 whitespace-nowrap text-sm text-gray-600">
                         {{ invoice.customer }}
                       </td>
-                      <td class="text-start px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td class="text-start px-3 py-2 whitespace-nowrap text-sm text-gray-500">
                         {{ formatTime(invoice.posting_date) }}
                       </td>
-                      <td class="text-start px-6 py-4 whitespace-nowrap">
+                      <td class="text-start px-3 py-2 whitespace-nowrap">
                         <span :class="['text-sm font-semibold', invoice.is_return ? 'text-red-700' : 'text-gray-900']">
                           {{ formatCurrency(invoice.grand_total) }}
                         </span>
@@ -178,10 +178,10 @@
                   </tbody>
                   <tfoot class="bg-gray-50">
                     <tr>
-                      <td colspan="4" class="px-6 py-4 text-start text-sm font-semibold text-gray-700">
+                      <td colspan="4" class="px-3 py-2 text-start text-sm font-semibold text-gray-700">
                         {{ __('Net Total:') }}
                       </td>
-                      <td class="px-6 py-4 whitespace-nowrap text-start">
+                      <td class="px-3 py-2 whitespace-nowrap text-start">
                         <span class="text-base font-bold text-gray-900">
                           {{ formatCurrency(closingData.grand_total) }}
                         </span>
@@ -196,13 +196,13 @@
           <!-- Payment Reconciliation -->
           <div class="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
             <div :class="[
-              'px-3 py-3 md:px-6 md:py-4 border-b border-gray-200',
+              'px-3 py-2 border-b border-gray-200',
               hideExpectedAmount && showSuccessReport ? 'bg-green-50 border-green-200' : 'bg-gray-50'
             ]">
               <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div>
                   <div class="text-start flex items-center gap-2">
-                    <h3 class="text-sm md:text-lg font-semibold text-gray-900">{{ __('Payment Reconciliation') }}</h3>
+                    <h3 class="text-sm md:text-base font-semibold text-gray-900">{{ __('Payment Reconciliation') }}</h3>
                     <span v-if="hideExpectedAmount && showSuccessReport" class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                       {{ __('✓ Shift Closed') }}
                     </span>
@@ -223,19 +223,19 @@
               </div>
             </div>
 
-            <div class="p-3 md:p-6">
+            <div class="p-3">
               <!-- ENTRY MODE: Simple blind input list (when hideExpectedAmount is enabled) -->
-              <div v-if="countsOnly" class="flex flex-col gap-3 md:gap-4">
+              <div v-if="countsOnly" class="flex flex-col gap-2">
                 <div
                   v-for="(payment, idx) in closingData.payment_reconciliation"
                   :key="idx"
-                  class="border border-gray-200 rounded-lg p-3 md:p-4 bg-white hover:border-gray-300 transition-colors"
+                  class="border border-gray-200 rounded-lg p-2.5 bg-white hover:border-gray-300 transition-colors"
                 >
                   <div class="flex items-center justify-between gap-3">
                     <!-- Payment Method Name with Icon -->
-                    <div class="flex items-center gap-2 md:gap-3 flex-1">
-                      <div :class="['rounded-lg p-1.5 md:p-2 flex-shrink-0', getPaymentIcon(payment.mode_of_payment).color]">
-                        <span class="text-base md:text-xl">{{ getPaymentIcon(payment.mode_of_payment).icon }}</span>
+                    <div class="flex items-center gap-2 flex-1">
+                      <div :class="['rounded-lg p-1 flex-shrink-0', getPaymentIcon(payment.mode_of_payment).color]">
+                        <span class="text-base md:text-lg">{{ getPaymentIcon(payment.mode_of_payment).icon }}</span>
                       </div>
                       <label :for="`payment-${idx}`" class="text-start text-sm md:text-base font-semibold text-gray-900 cursor-pointer">
                         {{ payment.mode_of_payment }}
@@ -252,9 +252,10 @@
                         step="10"
                         min="0"
                         placeholder="0.00"
+                        input-class="h-pos-tap"
                         :disabled="showSuccessReport || submitResource.loading"
                         :aria-label="__('Enter actual amount for {0}', [payment.mode_of_payment])"
-                        class="text-base md:text-lg text-center font-semibold"
+                        class="text-base text-center font-semibold"
                       />
                     </div>
                   </div>
@@ -262,7 +263,7 @@
               </div>
 
               <!-- REVIEW MODE: Full payment method cards (when not in entry mode) -->
-              <div v-else class="flex flex-col gap-4 md:gap-5">
+              <div v-else class="flex flex-col gap-3">
                 <div
                   v-for="(payment, idx) in closingData.payment_reconciliation"
                   :key="idx"
@@ -273,11 +274,11 @@
                     'border-red-200 bg-red-50'
                   ]"
                 >
-                  <div class="flex items-start justify-between mb-3 md:mb-4 gap-2">
-                    <div class="flex items-center gap-2 md:gap-3">
+                  <div class="flex items-start justify-between mb-2 gap-2">
+                    <div class="flex items-center gap-2">
                       <!-- Payment Method Icon -->
-                      <div :class="['rounded-lg p-1.5 md:p-2', getPaymentIcon(payment.mode_of_payment).color]">
-                        <span class="text-base md:text-xl">{{ getPaymentIcon(payment.mode_of_payment).icon }}</span>
+                      <div :class="['rounded-lg p-1', getPaymentIcon(payment.mode_of_payment).color]">
+                        <span class="text-base md:text-lg">{{ getPaymentIcon(payment.mode_of_payment).icon }}</span>
                       </div>
                       <div>
                         <h4 class="text-start text-sm md:text-base font-semibold text-gray-900">{{ payment.mode_of_payment }}</h4>
@@ -304,23 +305,23 @@
                   </div>
 
                   <!-- Amount Entry Grid -->
-                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <!-- Opening Amount -->
-                    <div class="text-start bg-white rounded-lg p-2 md:p-3 border border-gray-200">
-                      <label class="block text-xs font-medium text-gray-500 uppercase mb-0.5 md:mb-1">{{ __('Opening') }}</label>
-                      <div class="text-base md:text-lg font-semibold text-gray-900">
+                    <div class="text-start bg-white rounded-lg p-2 border border-gray-200">
+                      <label class="block text-xs font-medium text-gray-500 uppercase mb-0.5">{{ __('Opening') }}</label>
+                      <div class="text-base font-semibold text-gray-900">
                         {{ formatCurrency(payment.opening_amount) }}
                       </div>
-                      <div class="text-xs text-gray-500 mt-0.5 md:mt-1 hidden sm:block">{{ __('Shift start') }}</div>
+                      <div class="text-xs text-gray-500 mt-0.5 hidden sm:block">{{ __('Shift start') }}</div>
                     </div>
 
                     <!-- Expected Amount -->
-                    <div class="text-start bg-white rounded-lg p-2 md:p-3 border border-gray-200">
-                      <label class="block text-xs font-medium text-gray-500 uppercase mb-0.5 md:mb-1">{{ __('Expected') }}</label>
-                      <div class="text-base md:text-lg font-semibold text-gray-900">
+                    <div class="text-start bg-white rounded-lg p-2 border border-gray-200">
+                      <label class="block text-xs font-medium text-gray-500 uppercase mb-0.5">{{ __('Expected') }}</label>
+                      <div class="text-base font-semibold text-gray-900">
                         {{ formatCurrency(payment.expected_amount) }}
                       </div>
-                      <div class="text-xs text-gray-500 mt-0.5 md:mt-1 hidden sm:block">
+                      <div class="text-xs text-gray-500 mt-0.5 hidden sm:block">
                         <span v-if="getSalesForPayment(payment) > 0">
                           +{{ formatCurrency(getSalesForPayment(payment)) }}
                         </span>
@@ -329,8 +330,8 @@
                     </div>
 
                     <!-- Actual/Closing Amount -->
-                    <div class="text-start bg-white rounded-lg p-2 md:p-3 border border-gray-300">
-                      <label class="block text-xs font-medium text-gray-700 uppercase mb-0.5 md:mb-1">
+                    <div class="text-start bg-white rounded-lg p-2 border border-gray-300">
+                      <label class="block text-xs font-medium text-gray-700 uppercase mb-0.5">
                         {{ __('Actual Amount *') }}
                       </label>
                       <Input
@@ -340,11 +341,12 @@
                         step="0.01"
                         min="0"
                         placeholder="0.00"
+                        input-class="h-pos-tap"
                         :disabled="showSuccessReport || submitResource.loading"
-                        :aria-label="`Enter actual amount for ${payment.mode_of_payment}`"
-                        class="text-base md:text-lg"
+                        :aria-label="__('Enter actual amount for {0}', [payment.mode_of_payment])"
+                        class="text-base"
                       />
-                      <div class="text-xs text-gray-500 mt-0.5 md:mt-1 hidden sm:block">
+                      <div class="text-xs text-gray-500 mt-0.5 hidden sm:block">
                         {{ showSuccessReport ? __('Final Amount') : __('Count & enter') }}
                       </div>
                     </div>
@@ -352,7 +354,7 @@
 
                   <!-- Difference Alert -->
                   <div v-if="payment.closing_amount !== null && payment.closing_amount !== undefined && payment.difference !== 0"
-                       class="text-start mt-2 md:mt-3 p-2 md:p-3 rounded-lg" :class="[
+                       class="text-start mt-2 p-2 rounded-lg" :class="[
                     payment.difference > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'
                   ]">
                     <div class="flex items-center justify-between gap-2">
@@ -367,7 +369,7 @@
                           }}
                         </p>
                       </div>
-                      <div :class="['text-base md:text-xl font-bold', payment.difference > 0 ? 'text-blue-700' : 'text-red-700']">
+                      <div :class="['text-base md:text-lg font-bold', payment.difference > 0 ? 'text-blue-700' : 'text-red-700']">
                         {{ payment.difference > 0 ? '+' : '' }}{{ formatCurrency(payment.difference) }}
                       </div>
                     </div>
@@ -377,20 +379,20 @@
             </div>
 
             <!-- Reconciliation Summary (hidden in entry mode when hideExpectedAmount is enabled) -->
-            <div v-if="shouldShowSummary" class="text-start bg-gray-50 px-3 py-3 md:px-6 md:py-4 border-t border-gray-200">
-              <div class="grid grid-cols-3 gap-2 md:gap-4">
+            <div v-if="shouldShowSummary" class="text-start bg-gray-50 px-3 py-2 border-t border-gray-200">
+              <div class="grid grid-cols-3 gap-2">
                 <div>
                   <p class="text-xs md:text-sm text-gray-600">{{ __('Total Expected') }}</p>
-                  <p class="text-base md:text-xl font-semibold text-gray-900">{{ formatCurrency(getTotalExpected) }}</p>
+                  <p class="text-base md:text-lg font-semibold text-gray-900">{{ formatCurrency(getTotalExpected) }}</p>
                 </div>
                 <div>
                   <p class="text-xs md:text-sm text-gray-600">{{ __('Total Actual') }}</p>
-                  <p class="text-base md:text-xl font-semibold text-gray-900">{{ formatCurrency(getTotalActual) }}</p>
+                  <p class="text-base md:text-lg font-semibold text-gray-900">{{ formatCurrency(getTotalActual) }}</p>
                 </div>
                 <div>
                   <p class="text-xs md:text-sm text-gray-600">{{ __('Net Variance') }}</p>
                   <p :class="[
-                    'text-base md:text-xl font-bold',
+                    'text-base md:text-lg font-bold',
                     getTotalDifference === 0 ? 'text-green-600' :
                     getTotalDifference > 0 ? 'text-blue-600' : 'text-red-600'
                   ]">
@@ -403,12 +405,12 @@
 
           <!-- Tax Summary (hidden in entry mode when hideExpectedAmount is enabled) -->
           <div v-if="shouldShowSummary && closingData.taxes && closingData.taxes.length > 0" class="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-            <div class="px-3 py-3 md:px-6 md:py-4 bg-gray-50 border-b border-gray-200">
-              <h3 class="text-sm md:text-lg font-medium text-gray-900">{{ __('Tax Summary') }}</h3>
+            <div class="px-3 py-2 bg-gray-50 border-b border-gray-200">
+              <h3 class="text-sm md:text-base font-medium text-gray-900">{{ __('Tax Summary') }}</h3>
             </div>
-            <div class="p-3 md:p-6">
-              <div class="flex flex-col gap-2 md:gap-3">
-                <div v-for="(tax, idx) in closingData.taxes" :key="idx" class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+            <div class="p-3">
+              <div class="flex flex-col gap-2">
+                <div v-for="(tax, idx) in closingData.taxes" :key="idx" class="flex items-center justify-between py-1.5 border-b border-gray-100 last:border-0">
                   <div>
                     <p class="text-xs md:text-sm font-medium text-gray-900">{{ tax.account_head }}</p>
                     <p class="text-xs text-gray-500">{{ formatQuantity(tax.rate) }}%</p>
@@ -418,18 +420,18 @@
                   </div>
                 </div>
               </div>
-              <div class="mt-3 md:mt-4 pt-3 md:pt-4 border-t border-gray-200">
+              <div class="mt-2 pt-2 border-t border-gray-200">
                 <div class="flex items-center justify-between">
                   <span class="text-xs md:text-sm font-medium text-gray-700">{{ __('Total Tax Collected') }}</span>
-                  <span class="text-base md:text-lg font-bold text-gray-900">{{ formatCurrency(totalTax) }}</span>
+                  <span class="text-base font-bold text-gray-900">{{ formatCurrency(totalTax) }}</span>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Error Display -->
-          <div v-if="submitResource.error || (errorMessage && !closingDataResource.error)" class="rounded-lg bg-red-50 border border-red-200 p-3 md:p-4">
-            <div class="flex gap-2 md:gap-3">
+          <div v-if="submitResource.error || (errorMessage && !closingDataResource.error)" class="rounded-lg bg-red-50 border border-red-200 p-2.5">
+            <div class="flex gap-2">
               <svg class="h-4 w-4 md:h-5 md:w-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
               </svg>
@@ -449,8 +451,8 @@
         </div>
 
         <!-- Error State -->
-        <div v-else-if="closingDataResource.error || errorMessage" class="rounded-lg bg-red-50 border border-red-200 p-3 md:p-4">
-          <div class="flex gap-2 md:gap-3">
+        <div v-else-if="closingDataResource.error || errorMessage" class="rounded-lg bg-red-50 border border-red-200 p-2.5">
+          <div class="flex gap-2">
             <svg class="h-4 w-4 md:h-5 md:w-5 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
             </svg>
@@ -467,6 +469,7 @@
       <div class="flex flex-col sm:flex-row justify-between w-full items-stretch sm:items-center gap-2 sm:gap-0">
         <!-- Left side - Cancel/Close button -->
         <Button
+          size="md"
           variant="subtle"
           @click="closeDialog"
           :disabled="submitResource.loading"
@@ -488,6 +491,7 @@
 
           <!-- Submit/Close button (only shown in entry mode) -->
           <Button
+          size="md"
             v-if="!showSuccessReport"
             variant="solid"
             theme="blue"

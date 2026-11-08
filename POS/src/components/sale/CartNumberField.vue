@@ -11,7 +11,7 @@
 		:aria-label="label"
 		:title="label"
 		:style="{ minWidth: `calc(${draft.length} * 0.65em + 14px)` }"
-		class="w-full h-11 px-1.5 text-right text-sm font-mono font-bold text-gray-900 bg-white border border-gray-400 rounded-none focus:outline-none focus:border-black focus:ring-1 focus:ring-black touch-manipulation"
+		class="w-full h-pos-tap px-1.5 text-right text-sm font-mono font-bold text-gray-900 bg-white border border-gray-400 rounded-none focus:outline-none focus:border-black focus:ring-1 focus:ring-black touch-manipulation"
 		@click.stop
 		@focus="handleFocus"
 		@mouseup="handleMouseUp"

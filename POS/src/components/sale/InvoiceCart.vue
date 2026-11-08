@@ -64,7 +64,7 @@
 <template>
 	<div ref="cartRoot" class="flex flex-col h-full">
 		<!-- Header with Customer -->
-		 <div v-if="showPosOrderType" class="mb-0 p-2 px-2 bg-gray-200 pb-0 flex items-center gap-2 w-full">
+		 <div v-if="showPosOrderType" class="mb-0 px-2 pt-1.5 bg-gray-200 pb-0 flex items-center gap-2 w-full">
 			<div class="flex-1 min-w-0">
 				<OrderType
 					data-testid="pos-order-type-no-customer"
@@ -90,7 +90,7 @@
 				</div>
 			</transition>
 		</div>
-		<div class="px-2 py-2 border-b border-gray-200 bg-gray-200 pb-0">
+		<div class="px-2 pt-1.5 border-b border-gray-200 bg-gray-200 pb-0">
 			<!-- Inline Customer Search/Selection -->
 			<div ref="customerSearchContainer" class="relative">
 				<!-- Unified Service Control Panel: Order Type + Table Selector -->
@@ -100,10 +100,10 @@
 					<!-- Two Cards Layout: Customer Card + Document Type Card -->
 					<div class="flex items-stretch gap-2">
 						<!-- Customer Card -->
-						<div class="flex-1 flex items-center gap-1.5 bg-white  rounded-none p-1.5 min-w-0">
+						<div class="flex-1 flex items-center gap-1 bg-white rounded-none p-0.5 min-w-0">
 							<!-- Customer Avatar & Info -->
-							<div class="flex items-center gap-2 min-w-0 flex-1 px-1.5 py-1">
-								<div class="w-8 h-8 bg-black rounded-sm flex items-center justify-center flex-shrink-0">
+							<div class="flex items-center gap-2 min-w-0 flex-1 px-1">
+								<div class="w-7 h-7 bg-black rounded-sm flex items-center justify-center flex-shrink-0">
 									<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 									</svg>
@@ -123,7 +123,7 @@
 								<button
 									type="button"
 									@click.stop="$emit('edit-customer', customer)"
-									class="w-11 h-11 flex items-center justify-center text-blue-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
+									class="size-pos-tap flex items-center justify-center text-blue-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Edit customer details')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
@@ -133,7 +133,7 @@
 								<button
 									type="button"
 									@click.stop="$emit('create-customer', '')"
-									class="w-11 h-11 flex items-center justify-center text-green-700 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
+									class="size-pos-tap flex items-center justify-center text-green-700 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Create new customer')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
@@ -143,7 +143,7 @@
 								<button
 									type="button"
 									@click.stop="removeCustomer"
-									class="w-11 h-11 flex items-center justify-center text-red-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
+									class="size-pos-tap flex items-center justify-center text-red-600 hover:bg-gray-100 active:bg-gray-200 rounded-none border border-transparent transition-colors touch-manipulation"
 									:title="__('Remove customer')"
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
@@ -156,13 +156,13 @@
 						<!-- Document Type Card -->
 						<div
 							v-if="settingsStore.allowSalesOrder"
-							class="flex items-center bg-white border border-black rounded-none p-1 flex-shrink-0"
+							class="flex items-center bg-white border border-black rounded-none p-0.5 flex-shrink-0"
 						>
 							<div class="flex items-center bg-gray-200 rounded-none p-0.5">
 								<button
 									type="button"
 									@click="selectDocType(settingsStore.invoiceType)"
-									class="px-2.5 min-h-[44px] text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
+									class="px-2 min-h-pos-tap text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
 									:class="cartStore.targetDoctype === settingsStore.invoiceType
 										? 'bg-black text-white'
 										: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
@@ -176,7 +176,7 @@
 								<button
 									type="button"
 									@click="selectDocType('Sales Order')"
-									class="px-2.5 min-h-[44px] text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
+									class="px-2 min-h-pos-tap text-[11px] font-bold rounded-none transition-colors flex items-center gap-1"
 									:class="cartStore.targetDoctype === 'Sales Order'
 										? 'bg-black text-white'
 										: 'text-gray-900 hover:bg-gray-100 active:bg-gray-200'"
@@ -230,7 +230,7 @@
 								@blur="handleSearchBlur"
 								type="text"
 								:placeholder="__('Search or add customer...')"
-								class="w-full h-11 ps-9 pe-3 text-xs rounded-none bg-white focus:outline-none focus:border-blue-600 shadow-none transition-all border border-white"
+								class="w-full h-pos-control ps-9 pe-3 text-xs rounded-none bg-white focus:outline-none focus:border-blue-600 shadow-none transition-all border border-white"
 								:disabled="!customersLoaded"
 								@keydown="handleKeydown"
 								autocomplete="off"
@@ -242,7 +242,7 @@
 						<button
 							type="button"
 							@click="createNewCustomer"
-							class="flex items-center justify-center w-11 h-11 bg-black hover:bg-black active:bg-black rounded-none text-white border border-black transition-colors touch-manipulation flex-shrink-0"
+							class="flex items-center justify-center size-pos-control bg-black hover:bg-black active:bg-black rounded-none text-white border border-black transition-colors touch-manipulation flex-shrink-0"
 							:title="__('Create new customer')"
 							:aria-label="__('Create new customer')"
 						>
@@ -264,7 +264,7 @@
 						<!-- Document Type Toggle (Sales Invoice / Sales Order) -->
 						<div
 							v-if="settingsStore.allowSalesOrder"
-							class="flex items-center bg-gray-200 rounded-none p-0.5 h-11 border border-black"
+							class="flex items-center bg-gray-200 rounded-none p-0.5 h-pos-control border border-black"
 						>
 							<button
 								type="button"
@@ -323,7 +323,7 @@
 							:key="cust.name"
 							@mousedown.prevent="selectCustomer(cust)"
 							:class="[
-								'w-full min-h-[44px] text-start px-2 py-1.5 flex items-center gap-1.5 border-b border-gray-100 last:border-0 touch-manipulation select-none cursor-pointer active:bg-blue-100',
+								'w-full min-h-pos-control text-start px-2 py-1 flex items-center gap-1.5 border-b border-gray-100 last:border-0 touch-manipulation select-none cursor-pointer active:bg-blue-100',
 								index === selectedIndex ? 'bg-blue-50 text-blue-700' : 'text-gray-900 hover:bg-gray-50 active:bg-gray-200',
 							]"
 						>
@@ -359,7 +359,7 @@
 						type="button"
 						v-if="customerSearch.trim().length >= 2"
 						@mousedown.prevent="createNewCustomer"
-						class="w-full min-h-[44px] text-start px-2 py-1.5 hover:bg-green-50 active:bg-green-100 flex items-center gap-1.5 border-t border-black touch-manipulation select-none cursor-pointer"
+						class="w-full min-h-pos-control text-start px-2 py-1 hover:bg-green-50 active:bg-green-100 flex items-center gap-1.5 border-t border-black touch-manipulation select-none cursor-pointer"
 					>
 						<div
 							class="w-5 h-5 bg-green-600 text-white rounded-none flex items-center justify-center flex-shrink-0 pointer-events-none"
@@ -391,10 +391,11 @@
 		</div>
 
 		<!-- Action Buttons Section -->
-		<div v-if="items.length > 0" class="px-3 py-1 bg-gray-200">
-			<div class="flex items-center justify-between mb-0">
-				<h2 class="text-base font-bold text-gray-900 uppercase tracking-wider">{{ __("Cart Items") }}</h2>
-				<div class="flex items-center gap-2">
+		<div v-if="items.length > 0" class="px-2 py-1 bg-gray-200">
+			<!-- The buttons drop under the title when a narrow cart has no room for both -->
+			<div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-0">
+				<h2 class="text-sm font-bold text-gray-900 uppercase tracking-wider whitespace-nowrap">{{ __("Cart Items") }}</h2>
+				<div class="flex items-center gap-1.5 flex-shrink-0 ms-auto">
 					<CartViewSwitch
 						:active="activeCartView"
 						:table-available="tableAvailable"
@@ -403,7 +404,7 @@
 					<!-- Clear Cart Button -->
 					<button
 						@click="$emit('clear-cart')"
-						class="inline-flex items-center gap-1.5 rounded-none border border-red-600 px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider text-red-600 hover:bg-red-600 hover:text-white transition-colors touch-manipulation"
+						class="inline-flex items-center gap-1 rounded-none border border-red-600 px-2 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider text-red-600 hover:bg-red-600 hover:text-white transition-colors touch-manipulation"
 						type="button"
 						:title="__('Clear all items')"
 					>
@@ -417,7 +418,7 @@
 						<button
 							@click="toggleCartSortDropdown"
 							:class="[
-								'inline-flex items-center gap-1.5 rounded-none border px-3 min-h-[44px] text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors touch-manipulation',
+								'inline-flex items-center gap-1 rounded-none border px-2 min-h-pos-tap text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors touch-manipulation',
 								cartSortBy
 									? 'text-blue-600 border-blue-600 bg-blue-50 hover:bg-blue-100'
 									: 'text-gray-800 border-black hover:bg-gray-100'
@@ -451,7 +452,7 @@
 									<button
 										@click="handleCartSortToggle(null)"
 										:class="[
-											'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group rounded-none',
+											'w-full px-3 min-h-pos-control text-sm transition-colors flex items-center justify-between group rounded-none',
 											!cartSortBy ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-100'
 										]"
 										type="button"
@@ -472,7 +473,7 @@
 										:key="option.field"
 										@click="handleCartSortToggle(option.field)"
 										:class="[
-											'w-full px-3 min-h-[44px] text-sm transition-colors flex items-center justify-between group rounded-none',
+											'w-full px-3 min-h-pos-control text-sm transition-colors flex items-center justify-between group rounded-none',
 											cartSortBy === option.field ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-100'
 										]"
 										type="button"
@@ -506,13 +507,13 @@
 			</p>
 
 			<!-- Offers & Coupon Buttons -->
-			<div v-if="settingsStore.showOffers || settingsStore.showCoupon" class="flex gap-2">
+			<div v-if="settingsStore.showOffers || settingsStore.showCoupon" class="flex gap-1.5 mt-1">
 				<!-- View All Offers Button -->
 				<button
 					type="button"
 					v-if="settingsStore.showOffers"
 					@click="$emit('show-offers')"
-					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 min-h-[44px] rounded-none bg-green-50 border border-black hover:bg-green-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
+					class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-pos-tap rounded-none bg-green-50 border border-black hover:bg-green-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
 					:aria-label="__('View all available offers')"
 				>
 					<svg
@@ -544,7 +545,7 @@
 					type="button"
 					v-if="settingsStore.showCoupon"
 					@click="$emit('apply-coupon')"
-					class="relative flex-1 flex items-center justify-center gap-1.5 px-2.5 min-h-[44px] rounded-none bg-purple-50 border border-black hover:bg-purple-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
+					class="relative flex-1 flex items-center justify-center gap-1.5 px-2 min-h-pos-tap rounded-none bg-purple-50 border border-black hover:bg-purple-100 hover:shadow-none transition-colors min-w-0 touch-manipulation"
 					:aria-label="__('Apply coupon code')"
 				>
 					<svg
@@ -570,13 +571,13 @@
 		</div>
 
 		<!-- Cart Items -->
-		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1.5 pt-0 sm:pt-0 bg-gray-100" ref="cartContainer">
+		<div class="flex-1 overflow-y-auto p-0.5 sm:p-1 pt-0 sm:pt-0 bg-gray-100" ref="cartContainer">
 			<div
 				v-if="items.length === 0"
-				class="flex flex-col items-center justify-center h-full p-3 sm:p-4  max-w-[450px] mx-auto  -mt-[5%]"
+				class="flex flex-col items-center justify-center h-full p-2 sm:p-3 max-w-[450px] mx-auto -mt-[5%]"
 			>
 				<!-- Enhanced Empty Cart Container -->
-				<div class="w-full max-w-lg bg-white p-4 sm:p-4 rounded-none flex flex-row items-center justify-center text-center mb-4 select-none gap-3">
+				<div class="w-full max-w-lg bg-white p-3 rounded-none flex flex-row items-center justify-center text-center mb-2 select-none gap-3">
 					<div class="w-12 h-12 flex items-center justify-center bg-gray-100  rounded-none">
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-shopping-cart-exclamation stroke-gray-600"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4 19a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" /><path d="M15 17h-9v-14h-2" /><path d="M6 5l14 1l-.854 5.976m-2.646 1.024h-10.5" /><path d="M19 16v3" /><path d="M19 22v.01" /></svg>
 					</div>
@@ -597,7 +598,7 @@
 						type="button"
 						@click="$emit('view-shift')"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-blue-50/40 active:bg-blue-100 transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white hover:bg-blue-50/40 active:bg-blue-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('View current shift details')"
 					>
 						<kbd class="absolute top-1 end-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-blue-500 bg-blue-50 border border-blue-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+W</kbd>
@@ -631,7 +632,7 @@
 						type="button"
 						@click="$emit('show-drafts')"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-purple-50/40 active:bg-purple-100 transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white hover:bg-purple-50/40 active:bg-purple-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('View draft invoices')"
 					>
 						<kbd class="absolute top-1 end-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-purple-500 bg-purple-50 border border-purple-100 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+D</kbd>
@@ -660,7 +661,7 @@
 						type="button"
 						@click="$emit('show-history')"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation group rounded-none"
 						:title="__('View invoice history')"
 					>
 						<kbd class="absolute top-1 end-1 px-1 py-0.5 text-[12px] font-mono font-bold tracking-wider text-gray-500 bg-gray-100 border border-gray-200 rounded-none uppercase scale-90 leading-none select-none pointer-events-none">Alt+H</kbd>
@@ -689,7 +690,7 @@
 						type="button"
 						@click="settingsStore.allowReturn ? $emit('show-return') : null"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white transition-colors touch-manipulation group rounded-none"
 						:class="settingsStore.allowReturn
 							? 'hover:bg-red-50/40 active:bg-red-100 cursor-pointer'
 							: 'opacity-40 cursor-not-allowed'
@@ -722,7 +723,7 @@
 						type="button"
 						@click="$emit('create-customer', '')"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white hover:bg-green-50/40 active:bg-green-100 transition-colors touch-manipulation group rounded-none"
 						:title="__('Create new customer')"
 					>
 						<div class="text-green-600 mb-1.5 flex justify-center items-center">
@@ -750,7 +751,7 @@
 						type="button"
 						@click="isCloseShiftAllowed ? $emit('close-shift') : null"
 						data-nav="quick-action"
-						class="relative aspect-square w-full flex flex-col items-center justify-center p-2 bg-white transition-colors touch-manipulation group rounded-none"
+						class="relative aspect-[3/2] w-full flex flex-col items-center justify-center p-1.5 bg-white transition-colors touch-manipulation group rounded-none"
 						:class="isCloseShiftAllowed
 							? 'hover:bg-orange-50/40 active:bg-orange-100 cursor-pointer'
 							: 'opacity-40 cursor-not-allowed'
@@ -817,9 +818,9 @@
 					:key="item.item_code + '-' + (item.uom || '') + (item.is_free_item ? '-free' : '')"
 					@click.stop="handleCartItemRowClick(item, index)"
 					:class="[
-						'cart-item-row px-3 py-2 transition-all items-center duration-75 flex gap-3 cursor-pointer group select-none border-s-4',
+						'cart-item-row px-2 py-pos-row transition-all items-center duration-75 flex gap-2 cursor-pointer group select-none border-s-4',
 						index === focusedCartItemIndex
-							? 'bg-gray-100/90 border-s-black font-semibold ps-2.5 shadow-sm'
+							? 'bg-gray-100/90 border-s-black font-semibold ps-1.5 shadow-sm'
 							: 'border-s-transparent',
 						item.is_free_item
 							? 'bg-green-50/30 cursor-default'
@@ -827,22 +828,22 @@
 					]"
 				>
 					<!-- Row Index -->
-					<span class="text-[14px] font-mono font-bold text-gray-900 w-5 text-center flex-shrink-0 select-none leading-none self-start pt-0.5">
+					<span class="text-xs font-mono font-bold text-gray-900 w-5 text-center flex-shrink-0 select-none leading-none self-start pt-1">
 						{{ String(index + 1).padStart(2, '0') }}
 					</span>
 
 					<!-- Item Image Thumbnail -->
 					<div
 						v-if="!settingsStore.hideImages"
-						class="w-12 h-12 sm:w-12 sm:h-12 bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
+						class="size-pos-thumb bg-gray-50 flex-shrink-0 flex items-center justify-center overflow-hidden border border-gray-200"
 					>
 						<img
 							v-if="item.image"
 							:src="imageUrl(item.image)"
 							:alt="item.item_name"
 							loading="lazy"
-							width="52"
-							height="52"
+							width="32"
+							height="32"
 							decoding="async"
 							class="w-full h-full object-cover"
 						/>
@@ -877,7 +878,10 @@
 								</div>
 								
 								<!-- Badges row below title for cleaner spacing -->
-								<div class="flex items-center gap-1.5 mt-1 flex-wrap">
+								<div
+									v-if="(item.free_qty && item.free_qty > 0) || (item.discount_amount && item.discount_amount > 0)"
+									class="flex items-center gap-1.5 mt-0.5 flex-wrap"
+								>
 									<!-- Free Item Badge -->
 									<span
 										v-if="item.free_qty && item.free_qty > 0"
@@ -905,7 +909,7 @@
 								v-if="!item.is_free_item"
 								type="button"
 								@click.stop="$emit('remove-item', item.item_code, item.uom)"
-								class="w-11 h-11 -mt-2 -me-3 flex items-center justify-center text-gray-600 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 touch-manipulation"
+								class="size-pos-tap -my-1 -me-1.5 flex items-center justify-center text-gray-600 hover:text-red-600 active:text-red-700 transition-colors flex-shrink-0 touch-manipulation"
 								:aria-label="__('Remove {0}', [item.item_name])"
 								:title="__('Remove item')"
 							>
@@ -932,7 +936,7 @@
 								<!-- For free items, show static quantity badge -->
 								<div
 									v-if="item.is_free_item"
-									class="flex items-center bg-green-50 border border-green-200 rounded-none px-2 h-11 font-mono"
+									class="flex items-center bg-green-50 border border-green-200 rounded-none px-2 h-pos-tap font-mono"
 								>
 									<span class="text-xs font-bold text-green-700">{{ item.quantity }}</span>
 								</div>
@@ -944,7 +948,7 @@
 								>
 									<!-- Serial count badge -->
 									<div
-										class="flex items-center bg-gray-50 border border-gray-400 rounded-none px-1.5 h-11 font-mono"
+										class="flex items-center bg-gray-50 border border-gray-400 rounded-none px-1.5 h-pos-tap font-mono"
 									>
 										<FeatherIcon
 											name="hash"
@@ -956,7 +960,7 @@
 									<button
 										type="button"
 										@click="openEditDialog(item)"
-										class="flex items-center justify-center w-11 h-11 bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-900 rounded-none border border-black transition-colors touch-manipulation"
+										class="flex items-center justify-center size-pos-tap bg-white hover:bg-gray-50 active:bg-gray-100 text-gray-900 rounded-none border border-black transition-colors touch-manipulation"
 										:title="__('Edit serials')"
 									>
 										<FeatherIcon name="edit-2" class="w-3 h-3" />
@@ -975,7 +979,7 @@
 										@click.stop="decrementQuantity(item)"
 										:disabled="item.is_resolved_barcode"
 										:class="[
-											'w-11 h-11 flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-gray-400',
+											'size-pos-tap flex items-center justify-center font-bold transition-colors touch-manipulation border-e border-gray-400',
 											item.is_resolved_barcode
 												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
@@ -1007,7 +1011,7 @@
 										inputmode="decimal"
 										:disabled="item.is_resolved_barcode"
 										:class="[
-											'w-12 h-11 text-center border-0 text-sm font-mono font-bold focus:outline-none p-0',
+											'w-10 h-pos-tap text-center border-0 text-sm font-mono font-bold focus:outline-none p-0',
 											item.is_resolved_barcode
 												? 'bg-amber-50/50 text-amber-700 cursor-not-allowed'
 												: 'bg-white text-gray-900'
@@ -1020,7 +1024,7 @@
 										@click.stop="incrementQuantity(item)"
 										:disabled="item.is_resolved_barcode"
 										:class="[
-											'w-11 h-11 flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-gray-400',
+											'size-pos-tap flex items-center justify-center font-bold transition-colors touch-manipulation border-s border-gray-400',
 											item.is_resolved_barcode
 												? 'bg-gray-50 text-gray-600 cursor-not-allowed border-amber-200'
 												: 'bg-white hover:bg-gray-100 text-gray-900'
@@ -1053,7 +1057,7 @@
 											item.is_resolved_barcode || !item.item_uoms || item.item_uoms.length === 0
 										"
 										:class="[
-											'h-11 text-[10px] sm:text-xs font-bold rounded-none ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
+											'h-pos-tap text-[10px] sm:text-xs font-bold rounded-none ps-2 pe-5 transition-all touch-manipulation flex items-center justify-center min-w-[45px]',
 											item.is_resolved_barcode
 												? 'bg-amber-50 text-amber-700 border border-amber-300 cursor-not-allowed'
 												: item.item_uoms && item.item_uoms.length > 0
@@ -1110,7 +1114,7 @@
 											type="button"
 											@click="selectUom(item, item.stock_uom)"
 											:class="[
-												'w-full min-h-[44px] text-start px-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
+												'w-full min-h-pos-tap text-start px-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
 												(item.uom || item.stock_uom) === item.stock_uom
 													? 'bg-gray-100 text-gray-900 font-extrabold'
 													: 'text-gray-700 hover:bg-gray-100',
@@ -1124,7 +1128,7 @@
 											type="button"
 											@click="selectUom(item, uomData.uom)"
 											:class="[
-												'w-full min-h-[44px] text-start px-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
+												'w-full min-h-pos-tap text-start px-2 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors border-b border-gray-300 last:border-0 rounded-none',
 												(item.uom || item.stock_uom) === uomData.uom
 													? 'bg-gray-100 text-gray-900 font-extrabold'
 													: 'text-gray-700 hover:bg-gray-100',
@@ -1158,21 +1162,22 @@
 		</div>
 
 		<!-- Totals Summary -->
-		<div v-if="items.length > 0" class="p-3 bg-white select-none border-t border-gray-300">
+		<div v-if="items.length > 0" class="px-2 py-1.5 bg-white select-none border-t border-gray-300">
 			<!-- Summary Details Table -->
-			<div class="flex flex-col gap-1.5 !text-[14px] sm:text-xs text-gray-900 mb-3">
+			<!-- Two figures a line when the cart is wide enough, one when it is not -->
+			<div class="grid grid-cols-[repeat(auto-fit,minmax(12.5rem,1fr))] gap-x-4 gap-y-0.5 !text-[13px] leading-5 text-gray-900 mb-1">
 				<!-- Total Qty Row -->
-				<div class="flex items-center justify-between">
-					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Total Qty") }}</span>
-					<span class="text-gray-900 font-bold text-end font-mono">{{
+				<div class="flex items-center justify-between gap-2">
+					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Total Qty") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono whitespace-nowrap">{{
 						formatQuantity(totalQuantity)
 					}}</span>
 				</div>
 				
 				<!-- Subtotal Row -->
-				<div class="flex items-center justify-between">
-					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Subtotal") }}</span>
-					<span class="text-gray-900 font-bold text-end font-mono">{{
+				<div class="flex items-center justify-between gap-2">
+					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Subtotal") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono whitespace-nowrap">{{
 						formatCurrency(displaySubtotal)
 					}}</span>
 				</div>
@@ -1180,34 +1185,34 @@
 				<!-- Discount Row (if any) -->
 				<div
 					v-if="discountAmount > 0"
-					class="flex items-center justify-between text-red-600 font-semibold"
+					class="flex items-center justify-between gap-2 text-red-600 font-semibold"
 				>
 					<span class="uppercase tracking-wider flex items-center gap-1">
 						<span class="w-1.5 h-1.5 rounded-full bg-red-500 inline-block animate-pulse"></span>
 						{{ __("Discount") }}
 					</span>
-					<span class="font-bold text-end font-mono">-{{
+					<span class="font-bold text-end font-mono whitespace-nowrap">-{{
 						formatCurrency(discountAmount)
 					}}</span>
 				</div>
 
 				<!-- Tax Row -->
-				<div class="flex items-center justify-between">
-					<span class="text-gray-900 uppercase tracking-wider font-semibold">{{ __("Tax") }}</span>
-					<span class="text-gray-900 font-bold text-end font-mono">{{
+				<div class="flex items-center justify-between gap-2">
+					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Tax") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono whitespace-nowrap">{{
 						formatCurrency(taxAmount)
 					}}</span>
 				</div>
 			</div>
 
 			<!-- Grand Total Line -->
-			<div class="border-t border-black pt-3.5 pb-1 mb-3.5">
+			<div class="border-t border-black pt-1 mb-1.5">
 				<div class="flex items-baseline justify-between">
-					<span class="text-[14px] !font-bold text-gray-900 uppercase tracking-wider font-bold">{{
+					<span class="text-[13px] !font-bold text-gray-900 uppercase tracking-wider font-bold">{{
 						__("Total to Pay")
 					}}</span>
 					<span
-						class="text-2xl !font-bold text-black text-end font-mono tracking-tight"
+						class="text-xl !font-bold text-black text-end font-mono tracking-tight"
 					>
 						{{ formatCurrency(displayGrandTotal) }}
 					</span>
@@ -1215,14 +1220,14 @@
 			</div>
 
 			<!-- Action Buttons -->
-			<div class="flex gap-2">
+			<div class="flex gap-1.5">
 				<!-- Checkout Button (Primary) -->
 				<button
 					type="button"
 					@click="handleProceedToPayment"
 					:disabled="items.length === 0"
 					:class="[
-						'flex-1 py-3.5 px-4 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
+						'flex-1 h-pos-action px-3 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
 						items.length === 0
 							? 'bg-gray-100 border-gray-300 text-gray-600 cursor-not-allowed shadow-none'
 							: 'bg-black text-white hover:bg-gray-900 active:bg-black',
@@ -1249,7 +1254,7 @@
 				<button
 					type="button"
 					@click="$emit('save-draft')"
-					class="flex-1 py-3.5 px-4 rounded-none font-black text-xs text-orange-600 bg-white border border-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
+					class="flex-1 h-pos-action px-3 rounded-none font-black text-xs text-orange-600 bg-white border border-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
 					:aria-label="__('Hold order as draft')"
 				>
 					<svg
