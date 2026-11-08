@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "field:template_name",
+ "creation": "2026-11-08 10:00:00.000000",
+ "description": "A print template written in HTML, CSS and Jinja. The POS device renders it itself, so it prints offline.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "template_name",
+  "paper",
+  "column_break_main",
+  "enabled",
+  "copies",
+  "section_break_template",
+  "html",
+  "css",
+  "section_break_preview",
+  "preview_doctype",
+  "column_break_preview",
+  "preview_invoice",
+  "section_break_preview_area",
+  "preview_html",
+  "section_break_help",
+  "help_html",
+  "section_break_notes",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "80mm",
+   "fieldname": "paper",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Paper",
+   "options": "80mm\n58mm\nA4\nA5",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Enabled"
+  },
+  {
+   "default": "1",
+   "description": "How many copies print each time",
+   "fieldname": "copies",
+   "fieldtype": "Int",
+   "label": "Copies",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "section_break_template",
+   "fieldtype": "Section Break",
+   "label": "Template"
+  },
+  {
+   "description": "Jinja syntax. The device renders it with Nunjucks. Help below lists the names and helpers you can use.",
+   "fieldname": "html",
+   "fieldtype": "Code",
+   "label": "HTML",
+   "options": "Jinja"
+  },
+  {
+   "fieldname": "css",
+   "fieldtype": "Code",
+   "label": "CSS",
+   "options": "CSS"
+  },
+  {
+   "fieldname": "section_break_preview",
+   "fieldtype": "Section Break",
+   "label": "Preview"
+  },
+  {
+   "default": "Sales Invoice",
+   "fieldname": "preview_doctype",
+   "fieldtype": "Link",
+   "label": "Preview Invoice Type",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_preview",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Leave empty to preview the latest submitted POS invoice you can read",
+   "fieldname": "preview_invoice",
+   "fieldtype": "Dynamic Link",
+   "label": "Preview Invoice",
+   "options": "preview_doctype"
+  },
+  {
+   "fieldname": "section_break_preview_area",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "preview_html",
+   "fieldtype": "HTML",
+   "label": "Preview Area"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_help",
+   "fieldtype": "Section Break",
+   "label": "Help"
+  },
+  {
+   "fieldname": "help_html",
+   "fieldtype": "HTML",
+   "label": "Help Text"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_notes",
+   "fieldtype": "Section Break",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text",
+   "label": "Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "links": [],
+ "modified": "2026-11-08 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "POS Next",
+ "name": "POS Print Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Nexus POS Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "POSNext Cashier"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "template_name",
+ "track_changes": 1
+}

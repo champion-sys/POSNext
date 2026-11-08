@@ -1,0 +1,76 @@
+<div class="receipt" dir="{{ 'rtl' if print.rtl else 'ltr' }}" lang="{{ print.lang or 'en' }}">
+	<header class="head">
+		{% if company.logo %}<img class="logo" src="{{ company.logo }}" alt="">{% endif %}
+		<div class="company">{{ company.company_name or doc.company }}</div>
+		{% if company.address %}<div class="address">{{ company.address }}</div>{% endif %}
+		{% if company.phone %}<div>{{ _("Phone") }}: <bdi>{{ company.phone }}</bdi></div>{% endif %}
+		{% if company.tax_id %}<div>{{ _("Tax ID") }}: <bdi>{{ company.tax_id }}</bdi></div>{% endif %}
+	</header>
+
+	<div class="title">
+		{% if doc.is_return %}{{ _("Return") }}{% elif company.tax_id %}{{ _("Simplified Tax Invoice") }}{% else %}{{ _("Receipt") }}{% endif %}
+	</div>
+	{% if print.reprint %}<div class="mark">{{ _("Reprint") }}</div>{% endif %}
+	{% if print.copy and print.copy > 1 %}<div class="mark">{{ _("Copy No.") }} {{ print.copy }}</div>{% endif %}
+
+	<table class="meta">
+		<tr><td>{{ _("Invoice") }}</td><td class="end"><bdi>{{ doc.name }}</bdi></td></tr>
+		{% if doc.is_return and doc.return_against %}<tr><td>{{ _("Against") }}</td><td class="end"><bdi>{{ doc.return_against }}</bdi></td></tr>{% endif %}
+		<tr><td>{{ _("Date") }}</td><td class="end"><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ doc.posting_time }}{% endif %}</bdi></td></tr>
+		<tr><td>{{ _("Cashier") }}</td><td class="end">{{ cashier.full_name or cashier.user }}</td></tr>
+		{% if customer %}
+		<tr><td>{{ _("Customer") }}</td><td class="end">{{ customer.customer_name or customer.name }}</td></tr>
+		{% if customer.mobile_no %}<tr><td>{{ _("Mobile") }}</td><td class="end"><bdi>{{ customer.mobile_no }}</bdi></td></tr>{% endif %}
+		{% if customer.tax_id %}<tr><td>{{ _("Customer Tax ID") }}</td><td class="end"><bdi>{{ customer.tax_id }}</bdi></td></tr>{% endif %}
+		{% endif %}
+	</table>
+	{% if customer and customer.address %}<div class="address small">{{ customer.address }}</div>{% endif %}
+
+	<table class="items">
+		<thead>
+			<tr><th>{{ _("Item") }}</th><th class="end">{{ _("Amount") }}</th></tr>
+		</thead>
+		<tbody>
+			{% for item in doc.items %}
+			<tr class="item-name"><td colspan="2">{{ item.item_name or item.item_code }}</td></tr>
+			<tr class="item-line">
+				<td><bdi>{{ format_number(item.qty) }} {{ item.uom }} &times; {{ format_currency(item.rate, doc.currency) }}</bdi></td>
+				<td class="end"><bdi>{{ format_currency(item.amount, doc.currency) }}</bdi></td>
+			</tr>
+			{% if item.discount_amount %}
+			<tr class="small">
+				<td>{{ _("Discount") }}{% if item.discount_percentage %} <bdi>{{ format_number(item.discount_percentage) }}%</bdi>{% endif %}</td>
+				<td class="end"><bdi>-{{ format_currency(item.discount_amount * item.qty, doc.currency) }}</bdi></td>
+			</tr>
+			{% endif %}
+			{% endfor %}
+		</tbody>
+	</table>
+
+	<table class="totals">
+		<tr><td>{{ _("Subtotal") }}</td><td class="end"><bdi>{{ format_currency(doc.total, doc.currency) }}</bdi></td></tr>
+		{% if doc.discount_amount %}
+		<tr><td>{{ _("Discount") }}{% if doc.additional_discount_percentage %} <bdi>{{ format_number(doc.additional_discount_percentage) }}%</bdi>{% endif %}</td><td class="end"><bdi>-{{ format_currency(doc.discount_amount, doc.currency) }}</bdi></td></tr>
+		{% endif %}
+		{% for tax in doc.taxes %}{% if tax.tax_amount %}
+		<tr><td>{{ tax.description or tax.account_head }}{% if tax.rate and not ('%' in (tax.description or '')) %} <bdi>{{ format_number(tax.rate) }}%</bdi>{% endif %}{% if tax.included_in_print_rate %} ({{ _("Included") }}){% endif %}</td><td class="end"><bdi>{{ format_currency(tax.tax_amount, doc.currency) }}</bdi></td></tr>
+		{% endif %}{% endfor %}
+		<tr class="grand"><td>{{ _("Total") }}</td><td class="end"><bdi>{{ format_currency(doc.rounded_total or doc.grand_total, doc.currency) }}</bdi></td></tr>
+	</table>
+
+	<table class="payments">
+		{% for payment in doc.payments %}{% if payment.amount %}
+		<tr><td>{{ payment.mode_of_payment }}</td><td class="end"><bdi>{{ format_currency(payment.amount, doc.currency) }}</bdi></td></tr>
+		{% endif %}{% endfor %}
+		{% if doc.change_amount %}<tr><td>{{ _("Change Due") }}</td><td class="end"><bdi>{{ format_currency(doc.change_amount, doc.currency) }}</bdi></td></tr>{% endif %}
+		{% if doc.outstanding_amount and doc.outstanding_amount > 0 %}<tr><td>{{ _("Amount Due") }}</td><td class="end"><bdi>{{ format_currency(doc.outstanding_amount, doc.currency) }}</bdi></td></tr>{% endif %}
+	</table>
+
+	<div class="qr"><img src="{{ qr(doc.name) }}" alt=""></div>
+
+	<footer class="foot">
+		<div>{{ _("Thank you for your purchase") }}</div>
+		{% if company.website %}<div><bdi>{{ company.website }}</bdi></div>{% endif %}
+		{% if doc.offline_id %}<div class="small"><bdi>{{ doc.offline_id }}</bdi></div>{% endif %}
+	</footer>
+</div>

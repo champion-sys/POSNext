@@ -1,0 +1,101 @@
+<div class="invoice" dir="{{ 'rtl' if print.rtl else 'ltr' }}" lang="{{ print.lang or 'en' }}">
+	<header class="head">
+		<div class="seller">
+			{% if company.logo %}<img class="logo" src="{{ company.logo }}" alt="">{% endif %}
+			<div class="company">{{ company.company_name or doc.company }}</div>
+			{% if company.address %}<div class="address">{{ company.address }}</div>{% endif %}
+			{% if company.tax_id %}<div>{{ _("Tax ID") }}: <bdi>{{ company.tax_id }}</bdi></div>{% endif %}
+			{% if company.phone %}<div>{{ _("Phone") }}: <bdi>{{ company.phone }}</bdi></div>{% endif %}
+			{% if company.email %}<div>{{ _("Email") }}: <bdi>{{ company.email }}</bdi></div>{% endif %}
+		</div>
+		<div class="doc-box">
+			<div class="title">{% if doc.is_return %}{{ _("Credit Note") }}{% else %}{{ _("Tax Invoice") }}{% endif %}</div>
+			{% if print.reprint %}<div class="mark">{{ _("Reprint") }}</div>{% endif %}
+			{% if print.copy and print.copy > 1 %}<div class="mark">{{ _("Copy No.") }} {{ print.copy }}</div>{% endif %}
+			<table class="meta">
+				<tr><td>{{ _("Invoice") }}</td><td><bdi>{{ doc.name }}</bdi></td></tr>
+				{% if doc.is_return and doc.return_against %}<tr><td>{{ _("Against") }}</td><td><bdi>{{ doc.return_against }}</bdi></td></tr>{% endif %}
+				<tr><td>{{ _("Date") }}</td><td><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ doc.posting_time }}{% endif %}</bdi></td></tr>
+				<tr><td>{{ _("Cashier") }}</td><td>{{ cashier.full_name or cashier.user }}</td></tr>
+				{% if pos_profile and pos_profile.name %}<tr><td>{{ _("POS Profile") }}</td><td>{{ pos_profile.name }}</td></tr>{% endif %}
+			</table>
+		</div>
+	</header>
+
+	{% if customer %}
+	<section class="buyer">
+		<div class="label">{{ _("Bill To") }}</div>
+		<div class="strong">{{ customer.customer_name or customer.name }}</div>
+		{% if customer.address %}<div class="address">{{ customer.address }}</div>{% endif %}
+		{% if customer.tax_id %}<div>{{ _("Customer Tax ID") }}: <bdi>{{ customer.tax_id }}</bdi></div>{% endif %}
+		{% if customer.mobile_no %}<div>{{ _("Mobile") }}: <bdi>{{ customer.mobile_no }}</bdi></div>{% endif %}
+	</section>
+	{% endif %}
+
+	<table class="items">
+		<thead>
+			<tr>
+				<th class="n">#</th>
+				<th>{{ _("Item") }}</th>
+				<th class="end">{{ _("Qty") }}</th>
+				<th class="end">{{ _("Rate") }}</th>
+				<th class="end">{{ _("Discount") }}</th>
+				<th class="end">{{ _("Amount") }}</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for item in doc.items %}
+			<tr>
+				<td class="n">{{ loop.index }}</td>
+				<td>{{ item.item_name or item.item_code }}{% if item.item_name and item.item_code and item.item_name != item.item_code %}<div class="small"><bdi>{{ item.item_code }}</bdi></div>{% endif %}</td>
+				<td class="end"><bdi>{{ format_number(item.qty) }} {{ item.uom }}</bdi></td>
+				<td class="end"><bdi>{{ format_currency(item.price_list_rate or item.rate, doc.currency) }}</bdi></td>
+				<td class="end">{% if item.discount_amount %}<bdi>{{ format_currency(item.discount_amount * item.qty, doc.currency) }}</bdi>{% endif %}</td>
+				<td class="end"><bdi>{{ format_currency(item.amount, doc.currency) }}</bdi></td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+
+	<div class="bottom">
+		<div class="side">
+			<div class="qr"><img src="{{ qr(doc.name) }}" alt=""></div>
+			{% if doc.payments %}
+			<table class="payments">
+				<tr><th colspan="2">{{ _("Payments") }}</th></tr>
+				{% for payment in doc.payments %}{% if payment.amount %}
+				<tr><td>{{ payment.mode_of_payment }}</td><td class="end"><bdi>{{ format_currency(payment.amount, doc.currency) }}</bdi></td></tr>
+				{% endif %}{% endfor %}
+				{% if doc.change_amount %}<tr><td>{{ _("Change Due") }}</td><td class="end"><bdi>{{ format_currency(doc.change_amount, doc.currency) }}</bdi></td></tr>{% endif %}
+			</table>
+			{% endif %}
+		</div>
+		<table class="totals">
+			<tr><td>{{ _("Subtotal") }}</td><td class="end"><bdi>{{ format_currency(doc.total, doc.currency) }}</bdi></td></tr>
+			{% if doc.discount_amount %}
+			<tr><td>{{ _("Discount") }}{% if doc.additional_discount_percentage %} <bdi>{{ format_number(doc.additional_discount_percentage) }}%</bdi>{% endif %}</td><td class="end"><bdi>-{{ format_currency(doc.discount_amount, doc.currency) }}</bdi></td></tr>
+			{% endif %}
+			{% if doc.net_total and doc.net_total != doc.total %}
+			<tr><td>{{ _("Net Total") }}</td><td class="end"><bdi>{{ format_currency(doc.net_total, doc.currency) }}</bdi></td></tr>
+			{% endif %}
+			{% for tax in doc.taxes %}{% if tax.tax_amount %}
+			<tr><td>{{ tax.description or tax.account_head }}{% if tax.rate and not ('%' in (tax.description or '')) %} <bdi>{{ format_number(tax.rate) }}%</bdi>{% endif %}{% if tax.included_in_print_rate %} ({{ _("Included") }}){% endif %}</td><td class="end"><bdi>{{ format_currency(tax.tax_amount, doc.currency) }}</bdi></td></tr>
+			{% endif %}{% endfor %}
+			<tr class="grand"><td>{{ _("Grand Total") }}</td><td class="end"><bdi>{{ format_currency(doc.grand_total, doc.currency) }}</bdi></td></tr>
+			{% if doc.rounded_total and doc.rounded_total != doc.grand_total %}
+			<tr><td>{{ _("Rounded Total") }}</td><td class="end"><bdi>{{ format_currency(doc.rounded_total, doc.currency) }}</bdi></td></tr>
+			{% endif %}
+			{% if doc.outstanding_amount and doc.outstanding_amount > 0 %}
+			<tr><td>{{ _("Amount Due") }}</td><td class="end"><bdi>{{ format_currency(doc.outstanding_amount, doc.currency) }}</bdi></td></tr>
+			{% endif %}
+		</table>
+	</div>
+
+	<div class="words">{{ _("In Words") }}: {{ money_in_words(doc.rounded_total or doc.grand_total, doc.currency) }}</div>
+
+	<footer class="foot">
+		<div>{{ _("Thank you for your business") }}</div>
+		{% if company.website %}<div><bdi>{{ company.website }}</bdi></div>{% endif %}
+		{% if doc.offline_id %}<div class="small"><bdi>{{ doc.offline_id }}</bdi></div>{% endif %}
+	</footer>
+</div>
