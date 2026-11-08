@@ -6,6 +6,7 @@ import {
 	formatLocalPosting,
 	getQueueUpdateForResult,
 	getRetryDelayMs,
+	getQueuedEditBlocker,
 	getSaleSignature,
 	getShiftCloseDecision,
 	isVoidPending,
@@ -368,6 +369,25 @@ describe("shouldQueueCheckout", () => {
 	it("keeps Sales Orders and customer credit on the server", () => {
 		expect(shouldQueueCheckout({ mode: SYNC_PERIODIC, doctype: "Sales Order", usesCustomerCredit: false })).toBe(false)
 		expect(shouldQueueCheckout({ ...sale, mode: SYNC_PERIODIC, usesCustomerCredit: true })).toBe(false)
+	})
+
+	// Its original may have reached the server unanswered, and only the queue carries edited_from
+	it("queues an edit of a queued sale in realtime mode too", () => {
+		expect(shouldQueueCheckout({ ...sale, mode: SYNC_REALTIME, editsQueuedSale: true })).toBe(true)
+	})
+})
+
+describe("getQueuedEditBlocker", () => {
+	const sale = { doctype: "Sales Invoice", usesCustomerCredit: false, usesGiftCard: false }
+
+	it("lets an ordinary payment through", () => {
+		expect(getQueuedEditBlocker(sale)).toBeNull()
+	})
+
+	it("refuses what the queue cannot carry", () => {
+		expect(getQueuedEditBlocker({ ...sale, usesCustomerCredit: true })).toBe("customer_credit")
+		expect(getQueuedEditBlocker({ ...sale, usesGiftCard: true })).toBe("gift_card")
+		expect(getQueuedEditBlocker({ ...sale, doctype: "Sales Order" })).toBe("doctype")
 	})
 })
 

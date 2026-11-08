@@ -38,6 +38,8 @@ const SYNC_CONFIG = {
 	STATUS_POLL_DELAY_MS: 2000,
 	// get_status in pos_next/api/sync.py ignores ids past this many
 	STATUS_ID_LIMIT: 200,
+	// Rows in review wait for a manager, so asking about them each run only crowds out the rest
+	REVIEW_STATUS_INTERVAL_MS: 5 * 60 * 1000,
 }
 
 export const SYNC_PROTOCOL_VERSION = 1
@@ -395,30 +397,67 @@ const resendForgottenRows = async (asked, statuses) => {
 }
 
 /**
- * Update rows the server already holds with how they ended
+ * Ask the server about rows it already holds, one page at a time
  * @param {Array} rows - Queue rows
  * @param {Object} result - Totals to update
  * @returns {Promise<number>} How many are still being processed
  */
-const refreshServerStatus = async (rows, result) => {
-	const asked = rows.slice(0, SYNC_CONFIG.STATUS_ID_LIMIT)
-	const byOfflineId = new Map(asked.map((row) => [row.offline_id, row]))
-	const statuses = await call("pos_next.api.sync.get_status", {
-		offline_ids: Array.from(byOfflineId.keys()),
-	})
+const refreshStatusPages = async (rows, result) => {
+	let waiting = 0
+	for (let start = 0; start < rows.length; start += SYNC_CONFIG.STATUS_ID_LIMIT) {
+		const asked = rows.slice(start, start + SYNC_CONFIG.STATUS_ID_LIMIT)
+		const byOfflineId = new Map(asked.map((row) => [row.offline_id, row]))
+		const statuses = await call("pos_next.api.sync.get_status", {
+			offline_ids: Array.from(byOfflineId.keys()),
+		})
 
-	let waiting = rows.length - (statuses?.length || 0)
-	for (const status of statuses || []) {
-		const row = byOfflineId.get(status.offline_id)
-		const newStatus = row ? await applyResult(row, status) : null
+		waiting += asked.length - (statuses?.length || 0)
+		for (const status of statuses || []) {
+			const row = byOfflineId.get(status.offline_id)
+			const newStatus = row ? await applyResult(row, status) : null
 
-		if (newStatus === "received" || newStatus === "processing") {
-			waiting++
-		} else if (newStatus) {
-			countEnding(result, row, newStatus, status.message)
+			if (newStatus === "received" || newStatus === "processing") {
+				waiting++
+			} else if (newStatus) {
+				countEnding(result, row, newStatus, status.message)
+			}
 		}
+		waiting -= await resendForgottenRows(asked, statuses)
 	}
-	return waiting - (await resendForgottenRows(asked, statuses))
+	return waiting
+}
+
+// When rows in review were last asked about. In memory: a reload asks again at once.
+let reviewStatusAskedAt = 0
+
+/**
+ * Update rows the server already holds with how they ended. Rows still on their way come
+ * first and are all asked about, however many sit in review: those are the oldest, and
+ * would otherwise fill every page. Rows in review are asked about on a slower cycle.
+ * @param {Array} rows - Queue rows
+ * @param {Object} result - Totals to update
+ * @param {Object} [options]
+ * @param {boolean} [options.includeReviews] - May ask about rows in review, if they are due
+ * @returns {Promise<number>} How many are still being processed
+ */
+const refreshServerStatus = async (rows, result, { includeReviews = true } = {}) => {
+	const inReview = rows.filter((row) => row.server_status === "needs_review")
+	const active = rows.filter((row) => row.server_status !== "needs_review")
+
+	const waiting = await refreshStatusPages(active, result)
+
+	const now = Date.now()
+	if (includeReviews && inReview.length && now - reviewStatusAskedAt >= SYNC_CONFIG.REVIEW_STATUS_INTERVAL_MS) {
+		reviewStatusAskedAt = now
+		// A row in review the server has forgotten is sent again, so it counts as waiting
+		return waiting + (await refreshStatusPages(inReview, result))
+	}
+	return waiting
+}
+
+/** For tests: ask about rows in review on the next run */
+export const resetReviewStatusCycle = () => {
+	reviewStatusAskedAt = 0
 }
 
 /**
@@ -518,7 +557,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 			if (!held.length) break
 
 			try {
-				result.waiting = await refreshServerStatus(held, result)
+				result.waiting = await refreshServerStatus(held, result, { includeReviews: poll === 0 })
 				if (result.waiting === 0) break
 			} catch (error) {
 				log.warn("Could not read sync status", { error })

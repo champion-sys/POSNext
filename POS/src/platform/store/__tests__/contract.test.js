@@ -2158,7 +2158,7 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				expect((await store.getQueuedInvoice(offline_id)).server_status).toBe("received")
 			})
 
-			it("keeps its status when it is past what the server reads in one call", async () => {
+			it("is asked about in a page of its own when it is past what the server reads in one call", async () => {
 				const rows = []
 				for (let i = 0; i < 201; i++) rows.push(await heldByServer())
 				const last = rows.at(-1)
@@ -2171,7 +2171,9 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 				await syncWithoutWaiting()
 
 				expect(Math.max(...reads)).toBe(200)
-				expect((await store.getQueuedInvoice(last.offline_id)).server_status).toBe("received")
+				expect(reads.slice(0, 2)).toEqual([200, 1])
+				// Answered, so neither left behind nor sent again as forgotten
+				expect((await store.getQueuedInvoice(last.offline_id)).server_status).toBe("processing")
 			})
 
 			it("cannot reopen a sale that has finished", async () => {
