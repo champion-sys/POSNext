@@ -296,6 +296,7 @@ class TestReturnLock(NoSiteTestCase):
         with (
             patch("frappe.get_doc", return_value=draft),
             patch.object(invoice_processor, "_assert_invoice_write_access"),
+            patch.object(invoice_processor, "assert_shift_takes_sale"),
             patch.object(invoice_processor, "assert_return_quantities", side_effect=stop) as check,
         ):
             frappe.local.db.exists.return_value = True
