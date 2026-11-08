@@ -1,5 +1,5 @@
 /**
- * The renderer for the POS Print Template preview in Desk, built on its own as
+ * The renderer for the POS Device Preview of a Print Format in Desk, built on its own as
  * /assets/pos_next/js/pos_print_template.js. It is the device's renderer, so the
  * preview is what the device prints.
  *

@@ -161,6 +161,22 @@ class POSSettings(Document):
 
 		self.validate_sync_housekeeping()
 		self.validate_who_may_change()
+		self.validate_print_template()
+
+	def validate_print_template(self):
+		"""Devices only get formats ticked for them, so another one would never print."""
+		if not self.print_template:
+			return
+		ticked = frappe.db.get_value(
+			"Print Format", self.print_template, ["pos_next_offline", "disabled"], as_dict=True
+		)
+		if not ticked or not cint(ticked.pos_next_offline) or cint(ticked.disabled):
+			frappe.throw(
+				frappe._(
+					"Print Format {0} is not ticked for POS devices. Open it and tick Print on POS Devices, or choose another."
+				).format(self.print_template),
+				title=frappe._("Print Template"),
+			)
 
 	def validate_sync_housekeeping(self):
 		before = self.get_doc_before_save()

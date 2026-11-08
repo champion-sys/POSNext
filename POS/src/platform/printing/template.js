@@ -8,9 +8,10 @@
  */
 
 import nunjucks from "nunjucks"
+import { frappeShim, withDocMethods } from "./frappeCompat"
 import { createHelpers } from "./templateHelpers"
 
-/** Paper by the names POS Print Template uses */
+/** Paper by the names the device uses; the server maps Print Format's Paper Size to them */
 export const PAPERS = {
 	"58mm": { widthMm: 58, roll: true },
 	"80mm": { widthMm: 80, roll: true },
@@ -100,9 +101,31 @@ export function renderTemplate(template, context = {}, options = {}) {
 	const currency = context.doc?.currency || context.company?.currency || context.pos_profile?.currency
 	const helpers = createHelpers({ lang, currency, ...options })
 
+	// What Frappe's renderer gets from pos_print_context(doc), so one template prints alike there
+	const parts = {
+		company: context.company ?? null,
+		pos_profile: context.pos_profile ?? null,
+		cashier: context.cashier ?? null,
+		customer: context.customer ?? null,
+	}
+	const posContext = { ...parts, print, ...helpers }
+	const names = {
+		// Frappe's own print context, empty: the device prints no letter head
+		letter_head: "",
+		footer: "",
+		no_letterhead: 1,
+		print_settings: {},
+		...helpers,
+		...context,
+		doc: withDocMethods(context.doc, helpers),
+		frappe: frappeShim(helpers, currency),
+		pos_print_context: () => posContext,
+		print,
+	}
+
 	let body
 	try {
-		body = getEnvironment().renderString(template.html, { ...helpers, ...context, print })
+		body = getEnvironment().renderString(template.html, names)
 	} catch (error) {
 		const where = template.template_name || template.name || ""
 		const detail = String(error?.message || error).replace(/^\(unknown path\)\s*/, "")

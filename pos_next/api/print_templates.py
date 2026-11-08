@@ -3,26 +3,51 @@
 
 """Print templates the POS device renders itself.
 
-A manager writes a POS Print Template in Desk with HTML, CSS and Jinja. The device renders it
-with Nunjucks, so it prints offline. This module hands the device what it needs for that: the
-templates, the company with its logo embedded, and the POS Profile. Desk preview and online
-reprints read one invoice's full context from here too.
+A template is a Frappe Print Format with "Print on POS Devices" ticked: HTML, CSS and Jinja
+written in Desk. The device renders it with Nunjucks, so it prints offline, and Frappe renders
+the same format online for Desk's print button and PDF.
+
+This module hands the device what it needs for that: the formats, the company with its logo
+embedded, and the POS Profile. It also gives Frappe's renderer the same names the device has,
+through pos_print_context, so one template prints alike in both places.
 """
 
 import base64
 import mimetypes
 import os
+import re
 from datetime import timedelta
 
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr, get_datetime
+from frappe.utils import cint, cstr, flt, get_datetime
 
 from pos_next.api.sync_pull import _assert_profile_access
 
-TEMPLATE_DOCTYPE = "POS Print Template"
+TEMPLATE_DOCTYPE = "Print Format"
 INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
 TEMPLATE_FIELDS = ("name", "template_name", "paper", "html", "css", "copies", "modified")
+
+#: Print Format's paper sizes the device prints on, by the names the device uses
+PAPER_SIZES = {"Receipt 80 mm": "80mm", "Receipt 58 mm": "58mm", "A4": "A4", "A5": "A5"}
+
+#: What a template may call on `frappe`: the device has these, and nothing that reads the database
+DEVICE_FRAPPE_NAMES = (
+	"frappe._",
+	"frappe.format",
+	"frappe.format_value",
+	"frappe.format_date",
+	"frappe.utils.fmt_money",
+	"frappe.utils.formatdate",
+	"frappe.utils.format_date",
+	"frappe.utils.format_datetime",
+	"frappe.utils.money_in_words",
+	"frappe.utils.flt",
+	"frappe.utils.cint",
+	"frappe.utils.cstr",
+)
+FRAPPE_NAME = re.compile(r"\bfrappe\.[A-Za-z_][\w.]*")
+TEMPLATE_TAGS = re.compile(r"{%-?\s*(include|extends|import|from)\b")
 
 #: The logo travels in the bootstrap and sits on every device, so a big one is left out
 LOGO_MAX_BYTES = 300 * 1024
@@ -84,16 +109,7 @@ def get_print_context(invoice, doctype="Sales Invoice"):
 	if doc.get("pos_profile"):
 		_assert_profile_access(doc.pos_profile)
 
-	profile = frappe.get_doc("POS Profile", doc.pos_profile) if doc.get("pos_profile") else None
-	letter_head = doc.get("letter_head") or (profile and profile.get("letter_head"))
-
-	return {
-		"doc": _invoice_dict(doc),
-		"company": _company_info(doc.company, letter_head),
-		"pos_profile": _profile_info(profile) if profile else None,
-		"cashier": _cashier_info(doc.owner),
-		"customer": _customer_info(doc),
-	}
+	return {"doc": _invoice_dict(doc), **_context_parts(doc)}
 
 
 @frappe.whitelist()
@@ -118,15 +134,142 @@ def get_preview_invoice(doctype="Sales Invoice"):
 
 
 # ---------------------------------------------------------------------------
+# Frappe's renderer
+# ---------------------------------------------------------------------------
+
+
+def pos_print_context(doc=None):
+	"""The names a POS template uses, for Frappe's own renderer. A Jinja method, see hooks.py.
+
+	The device has the same function, so a template that starts with
+	`{% set pos = pos_print_context(doc) %}` prints alike online and offline.
+	"""
+	parts = {"company": None, "pos_profile": None, "cashier": None, "customer": None}
+	if doc is not None:
+		try:
+			parts = _context_parts(doc)
+		except Exception:
+			frappe.log_error(title="POS print context")
+
+	currency = (doc and doc.get("currency")) or (parts["company"] or {}).get("currency")
+	lang = frappe.local.lang or "en"
+
+	def format_currency(value, currency_code=None, precision=None):
+		return frappe.utils.fmt_money(flt(value), precision=precision, currency=currency_code or currency)
+
+	def format_number(value, precision=None):
+		if precision is not None:
+			return f"{flt(value):,.{cint(precision)}f}"
+		text = f"{flt(value):,.3f}".rstrip("0")
+		return text[:-1] if text.endswith(".") else text
+
+	def money_in_words(value, currency_code=None):
+		return frappe.utils.money_in_words(flt(value), currency_code or currency)
+
+	def qr(text):
+		from pos_next.api.thermal_print import get_qr_data_uri
+
+		return get_qr_data_uri(cstr(text))
+
+	def barcode(text, options=None):
+		from pos_next.api.thermal_print import get_barcode_data_uri
+
+		return get_barcode_data_uri(cstr(text))
+
+	from frappe.utils.jinja_globals import is_rtl
+
+	return {
+		**parts,
+		"print": {
+			"paper": None,
+			"rtl": bool(is_rtl()),
+			"lang": lang,
+			"copy": 1,
+			"copies": 1,
+			"reprint": False,
+		},
+		"_": _,
+		"format_currency": format_currency,
+		"format_number": format_number,
+		"format_date": lambda value, fmt=None: frappe.utils.formatdate(value, fmt) if value else "",
+		"format_datetime": lambda value, fmt=None: frappe.utils.format_datetime(value, fmt) if value else "",
+		"money_in_words": money_in_words,
+		"qr": qr,
+		"barcode": barcode,
+	}
+
+
+def validate_print_format(doc, method=None):
+	"""A format ticked for POS devices must be one the device can render offline."""
+	if not cint(doc.get("pos_next_offline")):
+		return
+
+	label = _("Print on POS Devices")
+	if not cint(doc.custom_format) or doc.print_format_type != "Jinja" or cint(doc.raw_printing):
+		frappe.throw(
+			_("{0} needs a Custom Format of type Jinja, written in HTML.").format(label),
+			title=_("Not a POS template"),
+		)
+	if doc.doc_type not in INVOICE_DOCTYPES:
+		frappe.throw(
+			_("{0} works for Sales Invoice or POS Invoice formats only.").format(label),
+			title=_("Not a POS template"),
+		)
+	if doc.paper_size not in PAPER_SIZES:
+		frappe.throw(
+			_("Choose a Paper Size for POS devices: {0}.").format(", ".join(PAPER_SIZES)),
+			title=_("Paper Size needed"),
+		)
+	if cint(doc.get("pos_next_copies")) < 1:
+		doc.pos_next_copies = 1
+
+	problems = template_problems(doc.html)
+	if problems:
+		frappe.throw(
+			_("POS devices print this format without a connection, so it cannot use: {0}").format(
+				", ".join(problems)
+			)
+			+ "<br><br>"
+			+ _("Use pos_print_context(doc) for the company, customer and cashier instead."),
+			title=_("Not available offline"),
+		)
+
+
+def template_problems(html):
+	"""What in a template the device cannot do: database reads and loading other templates."""
+	found = []
+	for name in FRAPPE_NAME.findall(html or ""):
+		if not any(name == allowed or name.startswith(allowed + ".") for allowed in DEVICE_FRAPPE_NAMES):
+			if name not in found:
+				found.append(name)
+	for tag in TEMPLATE_TAGS.findall(html or ""):
+		if "{% " + tag + " %}" not in found:
+			found.append("{% " + tag + " %}")
+	return found
+
+
+def device_paper(paper_size):
+	return PAPER_SIZES.get(paper_size) or "80mm"
+
+
+# ---------------------------------------------------------------------------
 # Bundle
 # ---------------------------------------------------------------------------
+
+DEVICE_FILTERS = {
+	"pos_next_offline": 1,
+	"disabled": 0,
+	"custom_format": 1,
+	"print_format_type": "Jinja",
+	"doc_type": ["in", INVOICE_DOCTYPES],
+}
 
 
 def has_print_templates(pos_profile_name):
 	"""Whether a POS Profile has anything to print with. Bootstrap skips the bundle otherwise."""
 	if frappe.db.get_value("POS Settings", {"pos_profile": pos_profile_name, "enabled": 1}, "print_template"):
 		return True
-	return bool(frappe.db.exists(TEMPLATE_DOCTYPE, {"enabled": 1}))
+	return bool(frappe.db.exists(TEMPLATE_DOCTYPE, DEVICE_FILTERS))
 
 
 def build_print_bundle(profile, since=None):
@@ -158,15 +301,24 @@ def build_print_bundle(profile, since=None):
 	if since and modified and get_datetime(since) >= get_datetime(modified):
 		return {"unchanged": True, "modified": modified}
 
-	templates = frappe.get_all(
+	rows = frappe.get_all(
 		TEMPLATE_DOCTYPE,
-		filters={"enabled": 1},
-		fields=list(TEMPLATE_FIELDS),
-		order_by="template_name asc",
+		filters=DEVICE_FILTERS,
+		fields=["name", "paper_size", "html", "css", "pos_next_copies", "modified"],
+		order_by="name asc",
 	)
-	for template in templates:
-		template["copies"] = max(cint(template.get("copies")), 1)
-		template["modified"] = cstr(template["modified"])
+	templates = [
+		{
+			"name": row.name,
+			"template_name": row.name,
+			"paper": device_paper(row.paper_size),
+			"html": row.html or "",
+			"css": row.css or "",
+			"copies": max(cint(row.pos_next_copies), 1),
+			"modified": cstr(row.modified),
+		}
+		for row in rows
+	]
 
 	enabled = {template["name"] for template in templates}
 	default = settings.get("print_template")
@@ -181,8 +333,10 @@ def build_print_bundle(profile, since=None):
 
 
 def _templates_changed_at():
-	"""Last change to any template, disabled and deleted ones included, so a device drops them."""
-	changed = frappe.db.sql(f"select max(modified) from `tab{TEMPLATE_DOCTYPE}`")[0][0]
+	"""Last change to any invoice format, unticked and deleted ones included, so a device drops them."""
+	changed = frappe.db.sql(
+		f"select max(modified) from `tab{TEMPLATE_DOCTYPE}` where doc_type in %s", (INVOICE_DOCTYPES,)
+	)[0][0]
 	deleted = frappe.db.sql(
 		"select max(creation) from `tabDeleted Document` where deleted_doctype = %s", (TEMPLATE_DOCTYPE,)
 	)[0][0]
@@ -197,6 +351,19 @@ def _latest(*stamps):
 # ---------------------------------------------------------------------------
 # Context parts
 # ---------------------------------------------------------------------------
+
+
+def _context_parts(doc):
+	"""company, pos_profile, cashier and customer for an invoice document."""
+	profile_name = doc.get("pos_profile")
+	profile = frappe.get_doc("POS Profile", profile_name) if profile_name else None
+	letter_head = doc.get("letter_head") or (profile and profile.get("letter_head"))
+	return {
+		"company": _company_info(doc.get("company"), letter_head),
+		"pos_profile": _profile_info(profile) if profile else None,
+		"cashier": _cashier_info(doc.get("owner")),
+		"customer": _customer_info(doc),
+	}
 
 
 def _profile_info(profile):

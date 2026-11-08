@@ -98,11 +98,12 @@ def revoke_cashier_rights():
 
 
 def ensure_default_print_templates():
-	"""Make the shipped POS Print Templates a site lacks, leaving any it has as they are."""
-	from pos_next.pos_next.doctype.pos_print_template.pos_print_template import ensure_default_templates
+	"""Let a POS manager write Print Formats, and make the shipped POS formats a site lacks."""
+	from pos_next.print_templates import ensure_default_formats, ensure_print_format_setup
 
-	for name in ensure_default_templates():
-		log_message(f"Created print template {name}", level="info", indent=1)
+	ensure_print_format_setup()
+	for name in ensure_default_formats():
+		log_message(f"Created print format {name}", level="info", indent=1)
 
 
 def after_install():

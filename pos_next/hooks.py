@@ -51,7 +51,8 @@ app_include_js = f"/assets/pos_next/js/grid_row_rtl.js?v={_asset_version}"
 
 # include js in doctype views
 doctype_js = {
-	"POS Profile": "public/js/pos_profile.js"
+	"POS Profile": "public/js/pos_profile.js",
+	"Print Format": "public/js/print_format_pos.js",
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -91,6 +92,7 @@ jinja = {
     "methods": [
         "pos_next.api.thermal_print.get_qr_data_uri",
         "pos_next.api.thermal_print.get_barcode_data_uri",
+        "pos_next.api.print_templates.pos_print_context",
     ]
 }
 
@@ -195,6 +197,9 @@ extend_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+	"Print Format": {
+		"validate": "pos_next.api.print_templates.validate_print_format",
+	},
 	"Item": {
 		"validate": "pos_next.validations.validate_item",
 		"after_rename": "pos_next.api.sync_pull.record_rename"

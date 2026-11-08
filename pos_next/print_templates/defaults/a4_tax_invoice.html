@@ -1,3 +1,16 @@
+{#- POS devices print this offline and Desk prints it online: pos_print_context gives both the same names -#}
+{%- set pos = pos_print_context(doc) -%}
+{%- set company = pos.company or {} -%}
+{%- set customer = pos.customer -%}
+{%- set cashier = pos.cashier or {} -%}
+{%- set pos_profile = pos.pos_profile or {} -%}
+{%- set print = pos.print -%}
+{%- set format_currency = pos.format_currency -%}
+{%- set format_number = pos.format_number -%}
+{%- set format_date = pos.format_date -%}
+{%- set money_in_words = pos.money_in_words -%}
+{%- set qr = pos.qr -%}
+{%- set barcode = pos.barcode -%}
 <div class="invoice" dir="{{ 'rtl' if print.rtl else 'ltr' }}" lang="{{ print.lang or 'en' }}">
 	<header class="head">
 		<div class="seller">

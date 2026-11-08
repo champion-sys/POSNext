@@ -1,6 +1,6 @@
 /**
  * The print template renderer for Desk, as one script that sets window.posPrintTemplate.
- * The POS Print Template form loads it to preview a template with the very code the
+ * The Print Format form loads it to preview a template with the very code the
  * device prints with. `npm run build` builds it after the POS app.
  */
 import path from "node:path"

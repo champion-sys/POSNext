@@ -13,8 +13,8 @@ from unittest.mock import Mock, patch
 
 import frappe
 
+from pos_next import print_templates as shipped_formats
 from pos_next.api import bootstrap, print_templates
-from pos_next.pos_next.doctype.pos_print_template import pos_print_template
 
 PNG = base64.b64decode(
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -29,6 +29,12 @@ def keep_local(case, *names):
 	"""Put back what the site runner had in frappe.local once the test ends."""
 	for name in names:
 		case.addCleanup(setattr, frappe.local, name, getattr(frappe.local, name, None))
+
+
+def _matches(actual, wanted):
+	if isinstance(wanted, list) and len(wanted) == 2 and wanted[0] == "in":
+		return actual in wanted[1]
+	return actual == wanted
 
 
 class FakeDb:
@@ -46,7 +52,7 @@ class FakeDb:
 		return [
 			row
 			for row in table.values()
-			if all(row.get(key) == value for key, value in (filters or {}).items())
+			if all(_matches(row.get(key), value) for key, value in (filters or {}).items())
 		]
 
 	def get_value(self, doctype, filters, fields="name", as_dict=False, **_kwargs):
@@ -68,20 +74,28 @@ class FakeDb:
 		if "Deleted Document" in query:
 			return [[self.deleted]]
 		if "max(modified)" in query:
-			stamps = [row["modified"] for row in self.tables.get("POS Print Template", {}).values()]
+			assert "tabPrint Format" in query and "doc_type in" in query, query
+			stamps = [
+				row["modified"]
+				for row in self.tables.get("Print Format", {}).values()
+				if row["doc_type"] in values[0]
+			]
 			return [[max(stamps) if stamps else None]]
 		raise AssertionError(f"unexpected query {query}")
 
 
-def _template(name, enabled=1, modified="2026-11-01 10:00:00", **values):
+def _template(name, offline=1, modified="2026-11-01 10:00:00", **values):
 	return {
 		"name": name,
-		"template_name": name,
-		"enabled": enabled,
-		"paper": "80mm",
+		"doc_type": "Sales Invoice",
+		"pos_next_offline": offline,
+		"disabled": 0,
+		"custom_format": 1,
+		"print_format_type": "Jinja",
+		"paper_size": "Receipt 80 mm",
 		"html": "<p>{{ doc.name }}</p>",
 		"css": "p{}",
-		"copies": 1,
+		"pos_next_copies": 1,
 		"modified": datetime.fromisoformat(modified),
 		**values,
 	}
@@ -99,9 +113,11 @@ def site_tables():
 				"modified": datetime(2026, 11, 2, 9, 0),
 			}
 		},
-		"POS Print Template": {
-			"Receipt": _template("Receipt", copies=2),
-			"Old": _template("Old", enabled=0, modified="2026-11-03 12:00:00"),
+		"Print Format": {
+			"Receipt": _template("Receipt", pos_next_copies=2),
+			"Old": _template("Old", offline=0, modified="2026-11-03 12:00:00"),
+			"Order": _template("Order", doc_type="Sales Order", modified="2026-11-20 00:00:00"),
+			"A5 Sheet": _template("A5 Sheet", paper_size="A5", disabled=1),
 		},
 		"Company": {
 			"Co": {
@@ -180,7 +196,7 @@ class PrintTestCase(unittest.TestCase):
 		rows = self.db.rows(doctype, filters)
 		if pluck:
 			return [row[pluck] for row in rows]
-		rows = sorted(rows, key=lambda row: row["template_name"])
+		rows = sorted(rows, key=lambda row: row["name"])
 		return [frappe._dict({field: row.get(field) for field in fields}) for row in rows]
 
 
@@ -202,6 +218,14 @@ class TestPrintBundle(PrintTestCase):
 
 		self.assertEqual([template["name"] for template in bundle["templates"]], ["Receipt"])
 		self.assertEqual(bundle["templates"][0]["copies"], 2)
+		self.assertEqual(bundle["templates"][0]["paper"], "80mm")
+		self.assertEqual(bundle["templates"][0]["template_name"], "Receipt")
+
+	def test_paper_sizes_become_the_device_names(self):
+		self.assertEqual(
+			[print_templates.device_paper(size) for size in ("Receipt 80 mm", "Receipt 58 mm", "A4", "A5")],
+			["80mm", "58mm", "A4", "A5"],
+		)
 
 	def test_the_address_is_plain_lines(self):
 		address = print_templates.get_print_bundle("Main")["company"]["address"]
@@ -222,7 +246,7 @@ class TestPrintBundle(PrintTestCase):
 		self.assertEqual(bundle, {"unchanged": True, "modified": "2026-11-03 12:00:00"})
 
 	def test_a_disabled_default_is_not_named(self):
-		self.db.tables["POS Print Template"]["Receipt"]["enabled"] = 0
+		self.db.tables["Print Format"]["Receipt"]["pos_next_offline"] = 0
 
 		bundle = print_templates.get_print_bundle("Main")
 
@@ -230,7 +254,7 @@ class TestPrintBundle(PrintTestCase):
 		self.assertIsNone(bundle["default_template"])
 
 	def test_a_profile_without_templates_gets_an_empty_bundle(self):
-		self.db.tables["POS Print Template"] = {}
+		self.db.tables["Print Format"] = {}
 		self.db.tables["POS Settings"]["S1"]["print_template"] = None
 
 		bundle = print_templates.get_print_bundle("Main")
@@ -258,7 +282,7 @@ class TestPrintBundle(PrintTestCase):
 
 class TestBootstrapBundle(PrintTestCase):
 	def test_no_bundle_when_there_is_nothing_to_print_with(self):
-		self.db.tables["POS Print Template"] = {}
+		self.db.tables["Print Format"] = {}
 		self.db.tables["POS Settings"]["S1"]["print_template"] = None
 
 		self.assertIsNone(bootstrap._get_print_bundle(self.profile))
@@ -437,15 +461,13 @@ class TestLogo(unittest.TestCase):
 
 class TestDefaultTemplates(unittest.TestCase):
 	def setUp(self):
-		self.db = FakeDb({"POS Print Template": {}, "Deleted Document": {}})
+		self.db = FakeDb({"Print Format": {}, "Deleted Document": {}})
 		self.inserted = []
 
 		def make(values):
 			doc = Mock()
 			doc.insert.side_effect = lambda **_kwargs: (
-				self.db.tables["POS Print Template"].__setitem__(
-					values["template_name"], dict(values, name=values["template_name"])
-				)
+				self.db.tables["Print Format"].__setitem__(values["name"], dict(values))
 				or self.inserted.append(values)
 			)
 			return doc
@@ -457,43 +479,53 @@ class TestDefaultTemplates(unittest.TestCase):
 		frappe.local.db = self.db
 
 	def test_the_three_are_made_once(self):
-		first = pos_print_template.ensure_default_templates()
-		second = pos_print_template.ensure_default_templates()
+		first = shipped_formats.ensure_default_formats()
+		second = shipped_formats.ensure_default_formats()
 
-		self.assertEqual(first, ["POS Receipt 80mm", "POS Receipt 58mm", "A4 Tax Invoice"])
+		self.assertEqual(first, ["POS Next Receipt 80mm", "POS Next Receipt 58mm", "POS Next A4 Tax Invoice"])
 		self.assertEqual(second, [])
 		self.assertEqual(len(self.inserted), 3)
 
-	def test_an_edited_template_is_left_as_it_is(self):
-		self.db.tables["POS Print Template"]["POS Receipt 80mm"] = {
-			"name": "POS Receipt 80mm",
+	def test_an_edited_format_is_left_as_it_is(self):
+		self.db.tables["Print Format"]["POS Next Receipt 80mm"] = {
+			"name": "POS Next Receipt 80mm",
 			"html": "mine",
 		}
 
-		made = pos_print_template.ensure_default_templates()
+		made = shipped_formats.ensure_default_formats()
 
-		self.assertNotIn("POS Receipt 80mm", made)
-		self.assertEqual(self.db.tables["POS Print Template"]["POS Receipt 80mm"]["html"], "mine")
+		self.assertNotIn("POS Next Receipt 80mm", made)
+		self.assertEqual(self.db.tables["Print Format"]["POS Next Receipt 80mm"]["html"], "mine")
 
-	def test_a_deleted_template_stays_deleted(self):
+	def test_a_deleted_format_stays_deleted(self):
 		self.db.tables["Deleted Document"]["D1"] = {
 			"name": "D1",
-			"deleted_doctype": "POS Print Template",
-			"deleted_name": "A4 Tax Invoice",
+			"deleted_doctype": "Print Format",
+			"deleted_name": "POS Next A4 Tax Invoice",
 		}
 
-		self.assertNotIn("A4 Tax Invoice", pos_print_template.ensure_default_templates())
+		self.assertNotIn("POS Next A4 Tax Invoice", shipped_formats.ensure_default_formats())
 
-	def test_each_has_its_paper_html_and_css(self):
-		pos_print_template.ensure_default_templates()
+	def test_each_is_a_jinja_invoice_format_ticked_for_devices(self):
+		shipped_formats.ensure_default_formats()
 
-		papers = {values["template_name"]: values["paper"] for values in self.inserted}
+		papers = {values["name"]: values["paper_size"] for values in self.inserted}
 		self.assertEqual(
-			papers, {"POS Receipt 80mm": "80mm", "POS Receipt 58mm": "58mm", "A4 Tax Invoice": "A4"}
+			papers,
+			{
+				"POS Next Receipt 80mm": "Receipt 80 mm",
+				"POS Next Receipt 58mm": "Receipt 58 mm",
+				"POS Next A4 Tax Invoice": "A4",
+			},
 		)
 		for values in self.inserted:
+			self.assertEqual(values["doc_type"], "Sales Invoice")
+			self.assertEqual((values["custom_format"], values["print_format_type"]), (1, "Jinja"))
+			self.assertEqual((values["pos_next_offline"], values["standard"]), (1, "No"))
+			self.assertIn("pos_print_context(doc)", values["html"])
 			self.assertIn("doc.items", values["html"])
 			self.assertIn("@page", values["css"])
+			self.assertEqual(print_templates.template_problems(values["html"]), [])
 
 	def test_migrate_and_install_make_them(self):
 		from pos_next import install
@@ -515,6 +547,70 @@ class TestDefaultTemplates(unittest.TestCase):
 		self.assertEqual(ensure.call_count, 2)
 
 
+class TestPrintFormatValidation(unittest.TestCase):
+	def setUp(self):
+		patcher = patch("frappe.throw", _raise)
+		patcher.start()
+		self.addCleanup(patcher.stop)
+
+	def fmt(self, **values):
+		base = {
+			"pos_next_offline": 1,
+			"custom_format": 1,
+			"print_format_type": "Jinja",
+			"raw_printing": 0,
+			"doc_type": "Sales Invoice",
+			"paper_size": "Receipt 80 mm",
+			"pos_next_copies": 1,
+			"html": "{% set pos = pos_print_context(doc) %}{{ pos.company.name }}",
+		}
+		return frappe._dict({**base, **values})
+
+	def test_an_unticked_format_is_not_checked(self):
+		print_templates.validate_print_format(
+			self.fmt(pos_next_offline=0, html="{{ frappe.db.get_value('x') }}")
+		)
+
+	def test_a_format_the_device_can_print_passes(self):
+		doc = self.fmt(pos_next_copies=0)
+		print_templates.validate_print_format(doc)
+		self.assertEqual(doc.pos_next_copies, 1)
+
+	def test_database_reads_are_refused(self):
+		for html in (
+			"{{ frappe.db.get_value('Company', doc.company, 'tax_id') }}",
+			"{% set c = frappe.get_doc('Customer', doc.customer) %}",
+			"{{ frappe.session.user }}",
+			"{% include 'templates/x.html' %}",
+		):
+			with self.subTest(html=html), self.assertRaises(frappe.ValidationError):
+				print_templates.validate_print_format(self.fmt(html=html))
+
+	def test_the_formatting_parts_of_frappe_pass(self):
+		html = "{{ frappe.utils.fmt_money(doc.grand_total) }} {{ frappe.format_date(doc.posting_date) }} {{ frappe._('x') }}"
+		self.assertEqual(print_templates.template_problems(html), [])
+
+	def test_the_problems_are_named(self):
+		self.assertEqual(
+			print_templates.template_problems(
+				"{{ frappe.db.sql('x') }}{{ frappe.db.sql('y') }}{{ frappe.get_url() }}"
+			),
+			["frappe.db.sql", "frappe.get_url"],
+		)
+
+	def test_only_jinja_invoice_formats_with_a_device_paper(self):
+		for values in (
+			{"custom_format": 0},
+			{"print_format_type": "JS"},
+			{"raw_printing": 1},
+			{"doc_type": "Sales Order"},
+			{"paper_size": "Letter"},
+			{"paper_size": None},
+		):
+			with self.subTest(values=values), self.assertRaises(frappe.ValidationError):
+				print_templates.validate_print_format(self.fmt(**values))
+
+
 def as_objects(value):
 	if isinstance(value, dict):
 		return SimpleNamespace(**{key: as_objects(item) for key, item in value.items()})
@@ -532,17 +628,30 @@ HELPERS = {
 	"qr",
 	"barcode",
 	"money_in_words",
+	"pos_print_context",
 }
 KEYWORDS = {"and", "or", "not", "in", "is", "if", "else", "elif"}
-CONTEXT = {"doc", "company", "pos_profile", "cashier", "customer", "print", "loop", "item", "tax", "payment"}
+CONTEXT = {
+	"pos",
+	"doc",
+	"company",
+	"pos_profile",
+	"cashier",
+	"customer",
+	"print",
+	"loop",
+	"item",
+	"tax",
+	"payment",
+}
 
 
 class TestDefaultTemplateSource(unittest.TestCase):
 	"""The device renders these with Nunjucks, so they keep to the names and helpers it has."""
 
 	def sources(self):
-		for spec in pos_print_template.DEFAULT_TEMPLATES:
-			yield spec["template_name"], pos_print_template._read_default(spec["html"])
+		for spec in shipped_formats.DEFAULT_FORMATS:
+			yield spec["name"], shipped_formats._read(spec["html"])
 
 	def code(self, html, pattern):
 		"""The code inside the tags, without the text of string literals."""
@@ -604,10 +713,16 @@ class TestDefaultTemplateSource(unittest.TestCase):
 			"customer": {"name": "Walk In", "customer_name": "Walk In"},
 			"print": {"rtl": True, "lang": "ar", "paper": "80mm", "copy": 1},
 		}
+		objects = {key: as_objects(value) for key, value in context.items()}
+		# What Frappe's renderer and the device both answer pos_print_context(doc) with
+		pos = SimpleNamespace(
+			**helpers,
+			**{key: objects[key] for key in ("company", "pos_profile", "cashier", "customer", "print")},
+		)
 		for name, html in self.sources():
 			# Attributes like Nunjucks reads them: doc.items is the rows, not dict.items
 			output = environment.from_string(html).render(
-				**helpers, **{key: as_objects(value) for key, value in context.items()}
+				doc=objects["doc"], _=helpers["_"], pos_print_context=lambda doc: pos
 			)
 			self.assertIn('dir="rtl"', output, name)
 			for expected in ("SINV-1", "Tea", "VAT", "Cash", "Lina", "Co Ltd", "data:image/png;base64,QR"):

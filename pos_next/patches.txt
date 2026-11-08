@@ -9,3 +9,4 @@ pos_next.patches.v2_0_0.migrate_offline_invoice_sync_statuses
 pos_next.patches.v2_0_0.add_sync_pull_indexes
 pos_next.patches.v2_0_0.add_stock_pull_index
 pos_next.patches.v2_0_0.fill_offline_sync_edited_from
+pos_next.patches.v2_0_0.move_print_templates_to_print_format

@@ -7,13 +7,13 @@ import { renderTemplate } from "../template"
 import { bundle, queuedSale, saleTotals } from "./fixtures"
 
 /** The templates the server installs, read from the app, so both halves stay in step */
-const DEFAULTS = path.resolve(__dirname, "../../../../../pos_next/pos_next/doctype/pos_print_template/defaults")
+const DEFAULTS = path.resolve(__dirname, "../../../../../pos_next/print_templates/defaults")
 const file = (name) => readFileSync(path.join(DEFAULTS, name), "utf8")
 
 const defaults = [
-	{ name: "POS Receipt 80mm", paper: "80mm", html: file("receipt.html"), css: file("receipt_80mm.css") },
-	{ name: "POS Receipt 58mm", paper: "58mm", html: file("receipt.html"), css: file("receipt_58mm.css") },
-	{ name: "A4 Tax Invoice", paper: "A4", html: file("a4_tax_invoice.html"), css: file("a4_tax_invoice.css") },
+	{ name: "POS Next Receipt 80mm", paper: "80mm", html: file("receipt.html"), css: file("receipt_80mm.css") },
+	{ name: "POS Next Receipt 58mm", paper: "58mm", html: file("receipt.html"), css: file("receipt_58mm.css") },
+	{ name: "POS Next A4 Tax Invoice", paper: "A4", html: file("a4_tax_invoice.html"), css: file("a4_tax_invoice.css") },
 ]
 
 const offlineDoc = buildOfflinePrintDoc({

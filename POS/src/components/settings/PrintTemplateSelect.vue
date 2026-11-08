@@ -15,7 +15,7 @@
 			<option v-if="missing" :value="modelValue">{{ __('{0} (no longer available)', [modelValue]) }}</option>
 		</select>
 		<p class="text-xs text-gray-500 mt-0.5 leading-tight">
-			{{ __('Templates are designed in Desk under POS Print Template, and print without a connection.') }}
+			{{ __('Templates are Print Formats in Desk with Print on POS Devices ticked, and print without a connection.') }}
 		</p>
 	</div>
 </template>
