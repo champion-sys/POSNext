@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, time_diff_in_hours, get_datetime
+from frappe.utils import flt, get_datetime, time_diff_in_hours
 
 
 def execute(filters=None):
@@ -143,7 +143,7 @@ def get_data(filters):
 	conditions = get_conditions(filters)
 
 	# Get payment reconciliation details from closing shifts
-	query = """
+	query = f"""
 		SELECT
 			pcs.name as shift,
 			pcs.pos_profile,
@@ -167,7 +167,7 @@ def get_data(filters):
 			{conditions}
 		ORDER BY
 			pcs.period_end_date DESC, pr.mode_of_payment
-	""".format(conditions=conditions)
+	"""
 
 	raw = frappe.db.sql(query, filters, as_dict=1)
 
@@ -262,7 +262,7 @@ def _get_transaction_counts(data):
 
 	placeholders = ", ".join(["%s"] * len(shift_names))
 
-	rows = frappe.db.sql("""
+	rows = frappe.db.sql(f"""
 		SELECT
 			sir.parent as shift,
 			COUNT(DISTINCT sir.sales_invoice) as cnt
@@ -270,7 +270,7 @@ def _get_transaction_counts(data):
 		WHERE sir.parenttype = 'POS Closing Shift'
 		AND sir.parent IN ({placeholders})
 		GROUP BY sir.parent
-	""".format(placeholders=placeholders), shift_names, as_dict=1)
+	""", shift_names, as_dict=1)
 
 	return {r.shift: r.cnt for r in rows}
 

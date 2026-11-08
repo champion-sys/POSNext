@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2024, POS Next and contributors
 # For license information, please see license.txt
 
-from __future__ import unicode_literals
 import frappe
 from frappe import _
-from pos_next.api.utilities import check_user_company
-from pos_next.api.utilities import _parse_list_parameter
+
+from pos_next.api.utilities import _parse_list_parameter, check_user_company
 
 
 @frappe.whitelist()
@@ -75,7 +73,7 @@ def _get_profile_data(pos_profile):
 @frappe.whitelist()
 def get_pos_settings(pos_profile):
 	"""Get POS Settings for a given POS Profile"""
-	from pos_next.api.constants import POS_SETTINGS_FIELDS, DEFAULT_POS_SETTINGS
+	from pos_next.api.constants import DEFAULT_POS_SETTINGS, POS_SETTINGS_FIELDS
 
 	if not pos_profile:
 		return DEFAULT_POS_SETTINGS.copy()
@@ -186,7 +184,7 @@ def get_taxes(pos_profile):
 			return []
 
 		return _get_tax_rows(pos_profile)
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get Taxes Error")
 		# Return empty array instead of throwing - taxes are optional
 		return []
@@ -220,7 +218,7 @@ def get_warehouses(pos_profile):
 
 		# Return warehouses with human-readable names
 		return warehouses
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get Warehouses Error")
 		return []
 
@@ -245,7 +243,7 @@ def get_default_customer(pos_profile):
 			}
 
 		return {"customer": None}
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get Default Customer Error")
 		return {"customer": None}
 
@@ -367,7 +365,7 @@ def get_sales_persons(pos_profile=None):
 		)
 
 		return sales_persons
-	except Exception as e:
+	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get Sales Persons Error")
 		return []
 
@@ -405,17 +403,17 @@ def get_create_pos_profile(*args, **kwargs):
 			"Customer",
 			filters={"disabled": 0},
 		)
-		
+
 		currencies = frappe.get_list(
 			"Currency",
 			filters={"enabled": 1},
 			fields=["name", "currency_name", "symbol"],
 		)
-		
+
 		payments = frappe.get_list("Mode of Payment")
-		
+
 		posa_cash_mode_of_payment = payments
-	
+
 		write_off_accounts = frappe.get_list(
 			"Account",
 			filters={
@@ -447,7 +445,7 @@ def get_create_pos_profile(*args, **kwargs):
 			"Item Group",
 			filters={"is_group": 0},
 		)
-		
+
 		customer_groups = frappe.get_list(
 			"Customer Group",
 			filters={"is_group": 0},
@@ -474,7 +472,7 @@ def get_create_pos_profile(*args, **kwargs):
 			]
 		}
 		return data
-		
+
 	except Exception as e:
 		frappe.throw(_("Error getting create POS profile: {0}").format(str(e)))
 
@@ -503,24 +501,24 @@ def create_pos_profile(*arg ,**parameters):
 	"""
 
 
-		# Extract list parameters 
+		# Extract list parameters
 	payments = parameters.pop("payments", [])
 	applicable_for_users = parameters.pop("applicable_for_users", [])
 	item_groups = parameters.pop("item_groups", [])
 	customer_groups = parameters.pop("customer_groups", [])
 	brands = parameters.pop("brands", [])
-	
+
 	# parse list parameters
 	payments = _parse_list_parameter(payments, "payments")
 	applicable_for_users = _parse_list_parameter(applicable_for_users, "applicable_for_users")
 	item_groups = _parse_list_parameter(item_groups, "item_groups")
 	customer_groups = _parse_list_parameter(customer_groups, "customer_groups")
 	brands = _parse_list_parameter(brands, "brands")
-	
+
 	# Get user's company
 	user_company_data = check_user_company()
 	user_company = user_company_data.get("company")
-	
+
 	if not user_company:
 		frappe.throw(_("User must have a company assigned"))
 
@@ -532,7 +530,7 @@ def create_pos_profile(*arg ,**parameters):
 	# Child tables
 	if not payments or len(payments) == 0:
 		frappe.throw(_("At least one payment method is required"))
-	
+
 	for payment in payments:
 		if isinstance(payment, dict):
 			pos_profile.append("payments", {
@@ -572,7 +570,7 @@ def create_pos_profile(*arg ,**parameters):
 	pos_profile.insert()
 	return pos_profile
 
-@frappe.whitelist()		
+@frappe.whitelist()
 def update_pos_profile(*args, **parameters):
 	"""
 		Update an existing POS Profile
@@ -594,15 +592,15 @@ def update_pos_profile(*args, **parameters):
 	item_groups = _parse_list_parameter(item_groups, "item_groups")
 	customer_groups = _parse_list_parameter(customer_groups, "customer_groups")
 	brands = _parse_list_parameter(brands, "brands")
-	
+
 	pos_profile = frappe.get_doc("POS Profile", pos_profile_name)
-	
+
 	# Update main fields
 	if parameters:
 		pos_profile.update(parameters)
 
 	if payments is not None:
-		pos_profile.payments = []		
+		pos_profile.payments = []
 		for payment in payments:
 			if isinstance(payment, dict):
 				mode_of_payment = payment.get("mode_of_payment")
@@ -614,21 +612,21 @@ def update_pos_profile(*args, **parameters):
 					})
 			elif isinstance(payment, str) and payment:
 				pos_profile.append("payments", {"mode_of_payment": payment})
-					
-	
+
+
 	if applicable_for_users is not None:
 		pos_profile.applicable_for_users = []
 		for user in applicable_for_users:
 			if isinstance(user, dict):
 				user_name = user.get("user") or user.get("name")
-				if user_name:			
+				if user_name:
 					pos_profile.append("applicable_for_users", {
 						"user": user_name,
 						"default": user.get("default", 0)
 					})
 			elif isinstance(user, str):
 				pos_profile.append("applicable_for_users", {"user": user, "default": 0})
-	
+
 	if item_groups is not None:
 		pos_profile.item_groups = []
 		for item_group in item_groups:
@@ -636,7 +634,7 @@ def update_pos_profile(*args, **parameters):
 			if item_group_name:
 				pos_profile.append("item_groups", {"item_group": item_group_name})
 
-	
+
 	if customer_groups is not None:
 		pos_profile.customer_groups = []
 		for customer_group in customer_groups:
@@ -650,7 +648,7 @@ def update_pos_profile(*args, **parameters):
 			brand_name = brand if isinstance(brand, str) else brand.get("brand") or brand.get("name")
 			if brand_name:
 				pos_profile.append("custom_brands_table", {"brand": brand_name})
-		
+
 	pos_profile.save()
 
 	# Invalidate cached POS filters so changes are reflected immediately in POS UI
@@ -665,7 +663,7 @@ def update_pos_profile(*args, **parameters):
 		frappe.log_error(frappe.get_traceback(), "POS Profile Cache Invalidation Error")
 
 	return pos_profile
-	
+
 @frappe.whitelist()
 def delete_pos_profile(pos_profile):
 	"""
@@ -686,13 +684,14 @@ def get_rendered_print_format(doc, name, print_format, paper_size="80"):
 	if not frappe.has_permission(doc, "print", name):
 		frappe.throw(_("No permission to print this document"), frappe.PermissionError)
 
-	import json
-	from frappe.www.printview import get_html_and_style
-	import pdfkit
-	import fitz
-	from PIL import Image, ImageChops
-	import io
 	import base64
+	import io
+	import json
+
+	import fitz
+	import pdfkit
+	from frappe.www.printview import get_html_and_style
+	from PIL import Image, ImageChops
 
 	# Unique cache key for print format rendering
 	cache_key = f"pos_print_image:{doc}:{name}:{print_format}:{paper_size}"

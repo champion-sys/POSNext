@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2020, Youssef Restom and contributors
 # For license information, please see license.txt
 
-from __future__ import unicode_literals
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, nowdate
 from frappe.model.document import Document
+from frappe.utils import cint, getdate, nowdate
 
 from pos_next.services.sync_classifier import ShiftConflictError
 

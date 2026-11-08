@@ -6,11 +6,12 @@ BrainWise Branding API
 Provides secure branding configuration and validation endpoints
 """
 
-import frappe
-from frappe import _
-import json
 import base64
 import hashlib
+import json
+
+import frappe
+from frappe import _
 
 
 @frappe.whitelist(allow_guest=False)
@@ -53,16 +54,16 @@ def get_branding_config():
 
 		return config
 	except Exception as e:
-		frappe.log_error(f"Error fetching branding config: {str(e)}", "BrainWise Branding API")
+		frappe.log_error(f"Error fetching branding config: {e!s}", "BrainWise Branding API")
 		return get_default_config()
 
 
 def get_default_config():
 	"""Return default branding configuration"""
 	return {
-		"_t": base64.b64encode("Powered by".encode()).decode(),
-		"_l": base64.b64encode("BrainWise".encode()).decode(),
-		"_u": base64.b64encode("https://nexus.brainwise.me".encode()).decode(),
+		"_t": base64.b64encode(b"Powered by").decode(),
+		"_l": base64.b64encode(b"BrainWise").decode(),
+		"_u": base64.b64encode(b"https://nexus.brainwise.me").decode(),
 		"_i": 10000,
 		"_v": True,
 		"_c": "pos-footer-component",
@@ -118,5 +119,5 @@ def get_tampering_stats():
 			"logging_enabled": doc.log_tampering_attempts
 		}
 	except Exception as e:
-		frappe.log_error(f"Error getting tampering stats: {str(e)}", "BrainWise Branding Stats")
+		frappe.log_error(f"Error getting tampering stats: {e!s}", "BrainWise Branding Stats")
 		return {"error": str(e)}

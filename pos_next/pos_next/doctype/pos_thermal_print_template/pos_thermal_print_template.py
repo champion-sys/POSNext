@@ -5,7 +5,6 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 
-
 ALLOWED_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
 ALLOWED_PAPER_SIZES = ("58", "80")
 

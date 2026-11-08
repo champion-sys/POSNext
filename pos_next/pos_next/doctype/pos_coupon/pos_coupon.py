@@ -1,13 +1,10 @@
 # Copyright (c) 2021, Youssef Restom and contributors
 # For license information, please see license.txt
 
-from __future__ import unicode_literals
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import strip, flt
-from frappe.utils import getdate, today
-
+from frappe.utils import flt, getdate, strip, today
 
 ONE_USE_COUPON_DOCTYPES = ("Sales Invoice", "POS Invoice", "Sales Order")
 

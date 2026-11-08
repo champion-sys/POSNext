@@ -10,8 +10,9 @@ This module relies on Frappe's fixture system for:
 The fixtures are defined in hooks.py and synced automatically during install/migrate.
 This module handles post-fixture tasks like setting defaults and clearing cache.
 """
-import frappe
 import logging
+
+import frappe
 
 from pos_next.patches.v2_0_0 import add_stock_pull_index, add_sync_pull_indexes
 
@@ -88,7 +89,7 @@ def after_install():
 			title="POS Next Installation Error",
 			message=frappe.get_traceback()
 		)
-		log_message(f"POS Next: Installation error - {str(e)}", level="error")
+		log_message(f"POS Next: Installation error - {e!s}", level="error")
 		raise
 
 
@@ -115,7 +116,7 @@ def after_migrate():
 			title="POS Next Migration Error",
 			message=frappe.get_traceback()
 		)
-		log_message(f"POS Next: Migration error - {str(e)}", level="error")
+		log_message(f"POS Next: Migration error - {e!s}", level="error")
 		raise
 
 
@@ -155,13 +156,13 @@ def setup_default_print_format(quiet=False):
 						log_message(f"Set default print format for: {profile.name}", level="info", indent=1)
 					updated_count += 1
 				except Exception as e:
-					log_message(f"Error updating POS Profile {profile.name}: {str(e)}", level="error", indent=1)
+					log_message(f"Error updating POS Profile {profile.name}: {e!s}", level="error", indent=1)
 
 			if updated_count > 0 and not quiet:
 				log_message(f"Updated {updated_count} POS Profile(s) with default print format", level="success")
 
 	except Exception as e:
-		log_message(f"Error setting up default print format: {str(e)}", level="error")
+		log_message(f"Error setting up default print format: {e!s}", level="error")
 		frappe.log_error(
 			title="Default Print Format Setup Error",
 			message=frappe.get_traceback()

@@ -6,7 +6,6 @@ import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
 
-
 ALLOWED_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
 ALLOWED_PAPER_SIZES = ("58", "80")
 
@@ -111,7 +110,7 @@ def _get_template_doc(template):
 
 
 def _get_print_format_name(template_name):
-    return "POS Thermal - {0}".format(template_name)
+    return f"POS Thermal - {template_name}"
 
 
 def _apply_thermal_print_format_settings(print_format):
@@ -149,12 +148,12 @@ def _generate_or_update_print_format(doc):
         print_format.custom_format = 1
         print_format.disabled = 0
         print_format.html = doc.generated_html
-        
+
         if frappe.get_meta("Print Format").has_field("print_format_name"):
             print_format.print_format_name = print_format_name
 
         _apply_thermal_print_format_settings(print_format)
-    
+
         print_format.save(ignore_permissions=True)
     else:
         print_format = frappe.new_doc("Print Format")
@@ -578,7 +577,7 @@ def duplicate_template(template, new_template_name=None):
     new_template_name = str(new_template_name or "").strip()
 
     if not new_template_name:
-        new_template_name = "{0} Copy".format(source.template_name)
+        new_template_name = f"{source.template_name} Copy"
 
     if frappe.db.exists("POS Thermal Print Template", new_template_name):
         frappe.throw(_("Template {0} already exists").format(new_template_name))
@@ -781,7 +780,7 @@ def get_qr_data_uri(value, box_size=4, border=2):
 
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    return "data:image/png;base64,{0}".format(encoded)
+    return f"data:image/png;base64,{encoded}"
 
 
 @frappe.whitelist()
@@ -844,7 +843,7 @@ def get_barcode_data_uri(value, barcode_type="code128"):
         code.write(buffer, options=options)
 
         encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
-        return "data:image/png;base64,{0}".format(encoded)
+        return f"data:image/png;base64,{encoded}"
 
     except Exception:
         return ""

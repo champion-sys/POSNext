@@ -11,7 +11,7 @@ Handles credit sale operations including:
 
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate, today, cint, get_datetime
+from frappe.utils import cint, flt, get_datetime, nowdate, today
 
 
 @frappe.whitelist()
@@ -46,7 +46,7 @@ def get_customer_balance(customer, company=None):
 
 	try:
 		from frappe.query_builder import DocType
-		from frappe.query_builder.functions import Sum, Abs, Coalesce
+		from frappe.query_builder.functions import Abs, Coalesce, Sum
 		from pypika import Case
 
 		SalesInvoice = DocType("Sales Invoice")
@@ -115,7 +115,7 @@ def get_customer_balance(customer, company=None):
 	except Exception as e:
 		frappe.log_error(
 			title="Customer Balance Error",
-			message=f"Customer: {customer}, Company: {company}, Error: {str(e)}\n{frappe.get_traceback()}"
+			message=f"Customer: {customer}, Company: {company}, Error: {e!s}\n{frappe.get_traceback()}"
 		)
 		return {
 			"total_outstanding": 0.0,
@@ -643,7 +643,7 @@ def cancel_credit_journal_entries(invoice_name):
 			cancelled_count += 1
 		except Exception as e:
 			frappe.log_error(
-				f"Failed to cancel Journal Entry {journal_entry_name}: {str(e)}",
+				f"Failed to cancel Journal Entry {journal_entry_name}: {e!s}",
 				"Credit Sale JE Cancellation"
 			)
 

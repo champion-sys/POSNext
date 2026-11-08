@@ -1,15 +1,15 @@
 # Copyright (c) 2025, BrainWise and contributors
 # For license information, please see license.txt
 
-import frappe
-from frappe.model.document import Document
+import base64
 import hashlib
 import hmac
 import json
-import base64
-from datetime import datetime
 import secrets
+from datetime import datetime
 
+import frappe
+from frappe.model.document import Document
 
 # MASTER KEY HASH - Only the person with the original key can disable branding
 # This hash was created from: secrets.token_urlsafe(32)
@@ -140,7 +140,7 @@ class BrainWiseBranding(Document):
 			return False
 
 		except Exception as e:
-			frappe.log_error(f"Master key validation error: {str(e)}", "BrainWise Branding")
+			frappe.log_error(f"Master key validation error: {e!s}", "BrainWise Branding")
 			return False
 
 	def generate_signature(self):
@@ -204,12 +204,12 @@ def get_branding_config():
 
 		return config
 	except Exception as e:
-		frappe.log_error(f"Error fetching branding config: {str(e)}", "BrainWise Branding")
+		frappe.log_error(f"Error fetching branding config: {e!s}", "BrainWise Branding")
 		# Return default config even on error
 		return {
-			"_t": base64.b64encode("Powered by".encode()).decode(),
-			"_l": base64.b64encode("BrainWise".encode()).decode(),
-			"_u": base64.b64encode("https://nexus.brainwise.me".encode()).decode(),
+			"_t": base64.b64encode(b"Powered by").decode(),
+			"_l": base64.b64encode(b"BrainWise").decode(),
+			"_u": base64.b64encode(b"https://nexus.brainwise.me").decode(),
 			"_i": 10000,
 			"_v": False,
 			"_e": 1
@@ -276,7 +276,7 @@ def verify_master_key(master_key_input):
 		}
 
 	except Exception as e:
-		frappe.log_error(f"Master key verification error: {str(e)}", "BrainWise Branding")
+		frappe.log_error(f"Master key verification error: {e!s}", "BrainWise Branding")
 		return {
 			"valid": False,
 			"error": str(e)

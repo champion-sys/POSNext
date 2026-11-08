@@ -78,7 +78,7 @@ stored at shift-close time — the authoritative source, no fuzzy matching.
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint, time_diff_in_hours, getdate
+from frappe.utils import cint, flt, getdate, time_diff_in_hours
 
 
 def execute(filters=None):
@@ -646,7 +646,7 @@ def fetch_shifts_with_invoices(filters):
 
 	conditions = build_conditions(filters)
 
-	query = """
+	query = f"""
 		SELECT
 			pcs.name AS shift_id,
 			pcs.pos_profile,
@@ -673,7 +673,7 @@ def fetch_shifts_with_invoices(filters):
 		{conditions}
 		GROUP BY pcs.name
 		ORDER BY pcs.period_start_date DESC
-	""".format(conditions=conditions)
+	"""
 
 	return frappe.db.sql(query, filters, as_dict=True)
 
@@ -1110,7 +1110,7 @@ def get_hourly_breakdown(filters):
 
 	where = " AND " + " AND ".join(conditions) if conditions else ""
 
-	return frappe.db.sql("""
+	return frappe.db.sql(f"""
 		SELECT
 			HOUR(si.posting_time) AS hour,
 			COUNT(*) AS invoice_count,
@@ -1120,7 +1120,7 @@ def get_hourly_breakdown(filters):
 		{where}
 		GROUP BY HOUR(si.posting_time)
 		ORDER BY hour
-	""".format(where=where), filters, as_dict=True)
+	""", filters, as_dict=True)
 
 
 @frappe.whitelist()
@@ -1140,7 +1140,7 @@ def get_payment_method_breakdown(filters):
 
 	where = " AND " + " AND ".join(conditions) if conditions else ""
 
-	return frappe.db.sql("""
+	return frappe.db.sql(f"""
 		SELECT
 			sip.mode_of_payment,
 			COUNT(DISTINCT si.name) AS transaction_count,
@@ -1151,7 +1151,7 @@ def get_payment_method_breakdown(filters):
 		{where}
 		GROUP BY sip.mode_of_payment
 		ORDER BY total_amount DESC
-	""".format(where=where), filters, as_dict=True)
+	""", filters, as_dict=True)
 
 
 @frappe.whitelist()
@@ -1171,7 +1171,7 @@ def get_daily_trend(filters):
 
 	where = " AND " + " AND ".join(conditions) if conditions else ""
 
-	return frappe.db.sql("""
+	return frappe.db.sql(f"""
 		SELECT
 			si.posting_date AS date,
 			COUNT(*) AS invoice_count,
@@ -1181,4 +1181,4 @@ def get_daily_trend(filters):
 		{where}
 		GROUP BY si.posting_date
 		ORDER BY si.posting_date
-	""".format(where=where), filters, as_dict=True)
+	""", filters, as_dict=True)
