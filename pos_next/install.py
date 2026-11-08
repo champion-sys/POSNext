@@ -97,6 +97,14 @@ def revoke_cashier_rights():
 			frappe.clear_cache(doctype=doctype)
 
 
+def ensure_default_print_templates():
+	"""Make the shipped POS Print Templates a site lacks, leaving any it has as they are."""
+	from pos_next.pos_next.doctype.pos_print_template.pos_print_template import ensure_default_templates
+
+	for name in ensure_default_templates():
+		log_message(f"Created print template {name}", level="info", indent=1)
+
+
 def after_install():
 	"""Hook that runs after app installation"""
 	try:
@@ -108,6 +116,8 @@ def after_install():
 		# Installing an app marks its patches as done without running them
 		add_sync_pull_indexes.execute()
 		add_stock_pull_index.execute()
+
+		ensure_default_print_templates()
 
 		# Clear cache to ensure changes take effect
 		frappe.clear_cache()
@@ -135,6 +145,8 @@ def after_migrate():
 		# A site installed before these ran at install has them marked done without having them
 		add_sync_pull_indexes.execute()
 		add_stock_pull_index.execute()
+
+		ensure_default_print_templates()
 
 		# Clear cache
 		frappe.clear_cache()

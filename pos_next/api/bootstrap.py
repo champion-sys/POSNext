@@ -21,6 +21,7 @@ Data Returned:
     - pos_profile: POS Profile configuration
     - pos_settings: POS-specific settings
     - payment_methods: Available payment methods
+    - print_bundle: Print templates, company and logo (None when the profile has no template)
 
 Performance: ~300-500ms faster than multiple API calls
 """
@@ -53,7 +54,8 @@ def get_initial_data():
 			shift: dict | None,
 			pos_profile: dict | None,
 			pos_settings: dict | None,
-			payment_methods: list
+			payment_methods: list,
+			print_bundle: dict | None
 		}
 
 	Raises:
@@ -76,6 +78,7 @@ def get_initial_data():
 		"pos_profile": None,
 		"pos_settings": None,
 		"payment_methods": [],
+		"print_bundle": None,
 	}
 
 	# Get open shift - if no shift, return early with defaults
@@ -111,6 +114,7 @@ def get_initial_data():
 
 	result["pos_settings"] = _get_pos_settings(pos_profile)
 	result["payment_methods"] = _get_payment_methods(pos_profile_name)
+	result["print_bundle"] = _get_print_bundle(pos_profile)
 
 	return result
 
@@ -234,6 +238,22 @@ def _get_pos_settings(pos_profile_doc):
 	except Exception:
 		frappe.log_error(frappe.get_traceback(), "Get POS Settings Error")
 		return DEFAULT_POS_SETTINGS.copy()
+
+
+def _get_print_bundle(pos_profile_doc):
+	"""Print templates, company and logo for printing offline. None when the profile has no template.
+
+	The shift is the user's own on this profile, so it needs no further access check.
+	"""
+	from pos_next.api.print_templates import build_print_bundle, has_print_templates
+
+	try:
+		if not has_print_templates(pos_profile_doc.name):
+			return None
+		return build_print_bundle(pos_profile_doc)
+	except Exception:
+		frappe.log_error(frappe.get_traceback(), "Get Print Bundle Error")
+		return None
 
 
 def _get_payment_methods(pos_profile_name):

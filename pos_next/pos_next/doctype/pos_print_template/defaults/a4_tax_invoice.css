@@ -1,0 +1,46 @@
+@page { size: A4; margin: 12mm; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+.invoice {
+	box-sizing: border-box;
+	width: 186mm;
+	margin: 0 auto;
+	font-family: Tahoma, Arial, "Segoe UI", sans-serif;
+	font-size: 3.4mm;
+	line-height: 1.4;
+	color: #000;
+	background: #fff;
+}
+.head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; padding-bottom: 4mm; border-bottom: 0.4mm solid #000; }
+.seller { flex: 1; }
+.logo { display: block; max-width: 50mm; max-height: 22mm; margin-bottom: 2mm; }
+.company { font-size: 5mm; font-weight: bold; }
+.address { white-space: pre-line; }
+.doc-box { width: 72mm; }
+.title { font-size: 6mm; font-weight: bold; text-align: end; margin-bottom: 2mm; }
+.mark { font-weight: bold; text-align: end; }
+.meta td { padding: 0.6mm 0; }
+.meta td:first-child { padding-inline-end: 3mm; white-space: nowrap; }
+.buyer { margin: 4mm 0; padding: 3mm; border: 0.3mm solid #000; }
+.label { font-size: 2.8mm; text-transform: uppercase; }
+.strong { font-weight: bold; }
+.small { font-size: 2.8mm; }
+table { border-collapse: collapse; }
+td, th { vertical-align: top; text-align: start; }
+.end { text-align: end; white-space: nowrap; }
+.items { width: 100%; margin-top: 4mm; }
+.items th { padding: 1.5mm 1.5mm; border-top: 0.4mm solid #000; border-bottom: 0.4mm solid #000; font-weight: bold; }
+.items td { padding: 1.5mm; border-bottom: 0.2mm solid #000; }
+.items .n { width: 7mm; }
+.bottom { display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm; margin-top: 4mm; }
+.side { flex: 1; }
+.qr img { width: 30mm; height: 30mm; }
+.payments { margin-top: 3mm; min-width: 60mm; }
+.payments th { font-weight: bold; padding-bottom: 1mm; }
+.payments td { padding: 0.6mm 0; }
+.payments td.end { padding-inline-start: 4mm; }
+.totals { width: 80mm; }
+.totals td { padding: 1mm 0; }
+.totals td.end { padding-inline-start: 4mm; }
+.totals .grand td { font-size: 4mm; font-weight: bold; border-top: 0.4mm solid #000; border-bottom: 0.4mm solid #000; }
+.words { margin-top: 4mm; }
+.foot { margin-top: 8mm; text-align: center; }

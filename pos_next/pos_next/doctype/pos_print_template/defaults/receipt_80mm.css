@@ -1,0 +1,30 @@
+@page { size: 80mm auto; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+.receipt {
+	box-sizing: border-box;
+	width: 72mm;
+	margin: 0 auto;
+	padding: 2mm 0 4mm;
+	font-family: Tahoma, Arial, "Segoe UI", sans-serif;
+	font-size: 3mm;
+	line-height: 1.35;
+	color: #000;
+	background: #fff;
+}
+.head, .title, .mark, .qr, .foot { text-align: center; }
+.logo { display: block; max-width: 40mm; max-height: 18mm; margin: 0 auto 1.5mm; }
+.company { font-size: 4mm; font-weight: bold; }
+.address { white-space: pre-line; }
+.small { font-size: 2.6mm; }
+.title { font-size: 3.6mm; font-weight: bold; margin: 2mm 0 1mm; padding: 1mm 0; border-top: 0.3mm dashed #000; border-bottom: 0.3mm dashed #000; }
+.mark { font-weight: bold; }
+table { width: 100%; border-collapse: collapse; margin-top: 1.5mm; }
+td, th { padding: 0.4mm 0; vertical-align: top; text-align: start; font-weight: normal; }
+.end { text-align: end; white-space: nowrap; padding-inline-start: 2mm; }
+.items thead th { border-bottom: 0.3mm solid #000; font-weight: bold; }
+.items .item-name td { padding-top: 1mm; font-weight: bold; }
+.totals { border-top: 0.3mm dashed #000; }
+.totals .grand td { font-size: 3.8mm; font-weight: bold; border-top: 0.3mm solid #000; padding-top: 1mm; }
+.payments { border-top: 0.3mm dashed #000; }
+.qr img { width: 26mm; height: 26mm; margin-top: 3mm; }
+.foot { margin-top: 2mm; }

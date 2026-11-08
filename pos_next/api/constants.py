@@ -61,7 +61,8 @@ POS_SETTINGS_FIELDS = [
 	"disable_offline_coupons",
 	"allow_offline_returns",
 	"allow_offline_shift_close",
-	"allow_offline_shift_open"
+	"allow_offline_shift_open",
+	"print_template"
 ]
 
 # Default POS Settings values
@@ -115,5 +116,6 @@ DEFAULT_POS_SETTINGS = {
 	"custom_allow_print_offline_invoice": 1,
 	"role_allowed_to_access_settings_in_pos": None,
 	"invoice_type": "Sales Invoice",
-	"hide_images": 0
+	"hide_images": 0,
+	"print_template": None
 }
