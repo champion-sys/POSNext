@@ -454,26 +454,39 @@ def create_payment_entry(
         from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
         from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
 
-        if payment_account:
-            if not frappe.db.exists("Account", payment_account):
-                frappe.throw(_("Payment account {0} does not exist").format(payment_account))
-        else:
-            account_info = get_bank_cash_account(mode_of_payment, invoice.company)
-            if not account_info or not account_info.get("account"):
-                frappe.throw(
-                    _("Could not determine payment account for {0}. Please specify payment_account parameter.").format(
-                        mode_of_payment
-                    )
-                )
-            payment_account = account_info.get("account")
+        from pos_next.utils import BOOKS_USER, session_of
 
-        pe = get_payment_entry(
-            "Sales Invoice",
-            invoice_name,
-            party_amount=amount,
-            bank_account=payment_account,
-            reference_date=posting_date,
-        )
+        # The money goes to the account of its payment method in the invoice's company.
+        # The cashier cannot read accounts, so they cannot name another one either.
+        account_info = get_bank_cash_account(mode_of_payment, invoice.company)
+        method_account = account_info.get("account") if account_info else None
+        if not method_account:
+            frappe.throw(
+                _("Payment method {0} has no account for company {1}. Set it on the Mode of Payment.").format(
+                    mode_of_payment, invoice.company
+                )
+            )
+        if payment_account and payment_account != method_account:
+            frappe.throw(
+                _("Account {0} is not the account of payment method {1} in company {2}.").format(
+                    payment_account, mode_of_payment, invoice.company
+                ),
+                frappe.PermissionError,
+            )
+        payment_account = method_account
+
+        # ERPNext reads the account's details with the user's rights, and a cashier holds
+        # none on Account. The invoice access was checked above, and the account is the
+        # payment method's own, so only this read runs as the books user. The entry is
+        # still saved in the cashier's name.
+        with session_of(BOOKS_USER):
+            pe = get_payment_entry(
+                "Sales Invoice",
+                invoice_name,
+                party_amount=amount,
+                bank_account=payment_account,
+                reference_date=posting_date,
+            )
         pe.posting_date = posting_date
         pe.reference_date = posting_date
         pe.mode_of_payment = mode_of_payment
@@ -499,6 +512,8 @@ def create_payment_entry(
 
         return pe.name
 
+    except frappe.PermissionError:
+        raise
     except frappe.ValidationError:
         frappe.log_error(
             title=f"Payment Entry Validation Failed for {invoice_name}",

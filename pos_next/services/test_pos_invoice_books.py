@@ -272,6 +272,46 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         entry = self._entry_of(closing)
         self.assertEqual(self._reconciliation("POS Closing Entry Detail", entry), shift_rows)
 
+    def _owed_invoice(self):
+        frappe.set_user("Administrator")
+        owed = frappe.get_doc(
+            {
+                "doctype": "Sales Invoice",
+                "company": self.company,
+                "customer": self.customer,
+                "items": [{"item_code": ITEM, "qty": 1, "rate": RATE, "warehouse": self.warehouse}],
+            }
+        )
+        owed.insert(ignore_permissions=True)
+        owed.submit()
+        return owed
+
+    def test_a_cashier_takes_a_payment_without_reading_accounts(self):
+        """ERPNext 16 reads the cash account with the user's rights, which a cashier lacks."""
+        from pos_next.api.partial_payments import create_payment_entry
+
+        owed = self._owed_invoice()
+        frappe.set_user(LINA)
+
+        entry = frappe.get_doc("Payment Entry", create_payment_entry(owed.name, 15, self.cash))
+
+        self.assertEqual(frappe.session.user, LINA)
+        self.assertEqual(entry.owner, LINA)
+        self.assertEqual(entry.docstatus, 1)
+        self.assertEqual(flt(entry.paid_amount), 15)
+        self.assertEqual(flt(frappe.db.get_value("Sales Invoice", owed.name, "outstanding_amount")), RATE - 15)
+
+    def test_a_cashier_cannot_send_the_money_to_another_account(self):
+        from pos_next.api.partial_payments import create_payment_entry
+
+        owed = self._owed_invoice()
+        other = frappe.db.get_value("Company", self.company, "default_receivable_account")
+        frappe.set_user(LINA)
+
+        with self.assertRaises(frappe.PermissionError):
+            create_payment_entry(owed.name, 15, self.cash, payment_account=other)
+        self.assertEqual(flt(frappe.db.get_value("Sales Invoice", owed.name, "outstanding_amount")), RATE)
+
     def _printed_draft(self, shift, amount):
         frappe.set_user(LINA)
         draft = frappe.get_doc(
