@@ -32,6 +32,10 @@ vi.mock("dexie", () => ({ default: FakeDexie }))
 const callServer = vi.hoisted(() => vi.fn())
 vi.mock("@/utils/apiWrapper", () => ({ call: callServer }))
 
+// Mocked for the whole file, like the store below and for the same reason
+const saveQueueFile = vi.hoisted(() => vi.fn())
+vi.mock("@/platform/queueFile", () => ({ saveQueueFile }))
+
 // frappe-ui does not load under vitest. This keeps what its createResource does: the
 // caller gets what transform returned, and onSuccess gets the server's own answer.
 vi.mock("frappe-ui", () => ({
@@ -68,29 +72,40 @@ class InProcessWorker {
 	terminate() {}
 }
 
+// Every test runs the real @/platform/store, which opens its implementation from ./web.
+// This takes the place of ./web once, for the whole file, and hands over the store the
+// test chose. A mock made per test with vi.doMock is not safe here: vitest 2.1 applies the
+// queued mocks again from any import that runs at the same time, and imports keep running
+// in the background, started by stores and timers that earlier tests left behind. Such an
+// import applies the last test's unmock and then this test's mock, with an await between
+// them, and a module loaded in that gap gets the real web store instead of this test's.
+const storeUnderTest = vi.hoisted(() => ({ current: null }))
+vi.mock("@/platform/store/web", () => ({
+	openStore: async () =>
+		storeUnderTest.current ?? (await vi.importActual("@/platform/store/web")).openStore(),
+}))
+
+/**
+ * Run the code under test on this store, or on the real web one when it is null. Each
+ * fresh @/platform/store opens the store once and keeps it, so modules are reset after the
+ * choice: a module loaded before it keeps the store it had, and nothing the test loads
+ * can have the last test's.
+ * @param {Object|null} store
+ */
+function runOn(store) {
+	storeUnderTest.current = store
+	vi.resetModules()
+}
+
 async function openWebStore() {
 	resetFakeDexie()
-	vi.doUnmock("@/platform/store")
 	vi.stubGlobal("Worker", InProcessWorker)
 	vi.stubGlobal("indexedDB", createFakeIndexedDB())
 	vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:worker" }))
+	runOn(null)
 
 	const { localStore } = await import("@/platform/store")
 	return localStore
-}
-
-// vitest 2.1 empties its list of pending mocks once it has finished awaiting that list, so
-// a doMock made while an import from the last test is running can be lost, and under load
-// the test then runs on the real store. Importing straight away applies the mock in time
-// and shows whether it held.
-async function replaceLocalStore(store) {
-	for (let attempt = 0; attempt < 5; attempt++) {
-		vi.doMock("@/platform/store", () => ({ localStore: store }))
-		const { localStore } = await import("@/platform/store")
-		if (localStore === store) return
-		vi.resetModules()
-	}
-	throw new Error("The store under test did not take the place of the real one")
 }
 
 function sqlImplementation(createExecutor) {
@@ -99,7 +114,7 @@ function sqlImplementation(createExecutor) {
 		await migrate(sql)
 		const database = createSqlStore(sql)
 		const store = createNativeStore(async () => database)
-		await replaceLocalStore(store)
+		runOn(store)
 		return store
 	}
 }
@@ -156,7 +171,7 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 
 	afterEach(() => {
 		vi.unstubAllGlobals()
-		vi.doUnmock("@/platform/store")
+		storeUnderTest.current = null
 	})
 
 	describe("the sales queue", () => {
@@ -1685,16 +1700,13 @@ describe.each(IMPLEMENTATIONS)("%s", (_name, openStore) => {
 	describe("exporting the queue", () => {
 		let exportQueue
 		let syncOfflineInvoices
-		let saveQueueFile
 
 		beforeEach(async () => {
-			saveQueueFile = vi.fn(async () => true)
-			vi.doMock("@/platform/queueFile", () => ({ saveQueueFile }))
+			saveQueueFile.mockReset()
+			saveQueueFile.mockImplementation(async () => true)
 			;({ exportQueue } = await import("@/utils/offline/queueFile"))
 			;({ syncOfflineInvoices } = await import("@/utils/offline/sync"))
 		})
-
-		afterEach(() => vi.doUnmock("@/platform/queueFile"))
 
 		async function exported() {
 			await exportQueue()
@@ -3733,7 +3745,7 @@ describe("reaching the server for stock", () => {
 
 	afterEach(() => {
 		vi.unstubAllGlobals()
-		vi.doUnmock("@/platform/store")
+		storeUnderTest.current = null
 	})
 
 	it("in the worker, goes to the given server with the grant, which fetch there cannot add", async () => {
