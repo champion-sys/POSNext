@@ -288,8 +288,6 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		// Reset table selection (table is tied to a specific order type)
 		resetPosTableNo()
 
-		console.log("isPosOrderTypeEnabled.value", isPosOrderTypeEnabled.value)
-		console.log("defaultPosOrderType.value", defaultPosOrderType.value)
 		// Reset offer processing state
 		offerProcessingState.value.lastCartHash = ""
 		offerProcessingState.value.error = null

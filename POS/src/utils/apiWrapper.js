@@ -14,7 +14,6 @@ export async function call(method, params) {
 			const refreshed = await forceRefreshCSRFToken()
 
 			if (refreshed) {
-				console.log("Retrying call after CSRF refresh...")
 				return await frappeCall(method, params)
 			}
 

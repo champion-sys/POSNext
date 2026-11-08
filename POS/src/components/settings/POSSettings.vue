@@ -651,6 +651,7 @@ import {
 } from "./settingsConfig"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
+import { errorText } from "@/utils/errorHandler"
 import { usePOSEvents } from "@/composables/usePOSEvents"
 import TranslatedHTML from "../common/TranslatedHTML.vue"
 import { useQzTray } from "@/composables/useQzTray"
@@ -973,7 +974,7 @@ async function saveSettings() {
 		showSuccess(successMessage)
 	} catch (error) {
 		log.error("Error saving settings:", error)
-		showError(error.message || __("Failed to save settings"))
+		showError(errorText(error, __("Failed to save settings")))
 	} finally {
 		saving.value = false
 	}

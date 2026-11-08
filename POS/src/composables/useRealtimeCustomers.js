@@ -90,7 +90,7 @@ async function executeHandlerSafely(handler, data) {
  */
 function handleCustomerUpdate(data) {
     if (!isValidEventPayload(data)) {
-        console.log("Invalid event payload", data)
+        log.debug("Invalid event payload", data)
         return
     }
 

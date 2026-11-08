@@ -1,6 +1,9 @@
 import { localStore } from "@/platform/store";
 import { ENTITY_INVOICE, getEntity } from "./entities";
 import { getSetting } from "./settings";
+import { logger } from "@/utils/logger";
+
+const log = logger.create("OfflineItems");
 
 // Cache items on the device
 export const cacheItems = async (items, priceList = null) => {
@@ -9,7 +12,7 @@ export const cacheItems = async (items, priceList = null) => {
 
 		await localStore.mergeCachedItems(items, priceList);
 
-		console.log(`Cached ${items.length} items`);
+		log.debug(`Cached ${items.length} items`);
 		return true;
 	} catch (error) {
 		console.error("Error caching items:", error);
@@ -156,7 +159,7 @@ export const updateItemBatchSerialData = async (batchSerialDataMap) => {
 			serial_no_data: batchSerialDataMap[item.item_code].serial_no_data || [],
 		}));
 
-		console.log(`Updated batch/serial data for ${Object.keys(batchSerialDataMap).length} items`);
+		log.debug(`Updated batch/serial data for ${Object.keys(batchSerialDataMap).length} items`);
 		return true;
 	} catch (error) {
 		console.error("Error updating batch/serial data:", error);
@@ -297,7 +300,7 @@ export const cacheCustomers = async (customers) => {
 
 		await localStore.cacheCustomers(customers);
 
-		console.log(`Cached ${customers.length} customers`);
+		log.debug(`Cached ${customers.length} customers`);
 		return true;
 	} catch (error) {
 		console.error("Error caching customers:", error);
@@ -339,7 +342,7 @@ export const isCacheFresh = async (type = "items") => {
 export const clearItemsCache = async () => {
 	try {
 		await localStore.clearItemsCache();
-		console.log("Items cache cleared");
+		log.debug("Items cache cleared");
 		return true;
 	} catch (error) {
 		console.error("Error clearing items cache:", error);
@@ -350,7 +353,7 @@ export const clearItemsCache = async () => {
 export const clearCustomersCache = async () => {
 	try {
 		await localStore.clearCustomersCache();
-		console.log("Customers cache cleared");
+		log.debug("Customers cache cleared");
 		return true;
 	} catch (error) {
 		console.error("Error clearing customers cache:", error);

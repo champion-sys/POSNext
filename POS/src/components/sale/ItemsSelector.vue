@@ -839,6 +839,7 @@ import {
 	addPassiveListener,
 	runWhenIdle,
 } from "@/utils/lowEndOptimizations"
+import { errorText } from "@/utils/errorHandler"
 import { performanceConfig } from "@/utils/performanceConfig"
 import { shouldValidateItemStock } from "@/utils/stockValidator"
 
@@ -1305,7 +1306,7 @@ function adjustFocusedItemQty(adjustment) {
 					cartItem.uom,
 				)
 			} catch (error) {
-				showError(error.message || __("Failed to update quantity"))
+				showError(errorText(error, __("Failed to update quantity")))
 			}
 		}
 	} else if (adjustment > 0) {
@@ -1409,7 +1410,7 @@ function setFocusedItemQty(qty) {
 		try {
 			cartStore.updateItemQuantity(focusedItem.item_code, qty, cartItem.uom)
 		} catch (error) {
-			showError(error.message || __("Failed to update quantity"))
+			showError(errorText(error, __("Failed to update quantity")))
 		}
 	} else {
 		// Route through the same flow as mouse click (POSSale.handleItemSelected)

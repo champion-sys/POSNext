@@ -376,6 +376,7 @@ import { computed, onMounted, ref } from "vue"
 import { Button } from "frappe-ui"
 import { call } from "@/utils/apiWrapper"
 import { useToast } from "@/composables/useToast"
+import { errorText } from "@/utils/errorHandler"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { printerService } from "@/services/printerService"
@@ -447,7 +448,7 @@ async function handleConnectPrinter(printer) {
 			showError(__("Could not connect automatically. Please turn on printer and scan again."))
 		}
 	} catch (error) {
-		showError(error.message || __("Failed to connect to saved printer."))
+		showError(errorText(error, __("Failed to connect to saved printer.")))
 	} finally {
 		isConnecting.value = false
 	}
@@ -462,7 +463,7 @@ async function handleScanBluetooth() {
 		showSuccess(__("Connected and saved Bluetooth printer successfully."))
 	} catch (error) {
 		console.error("Bluetooth pairing error:", error)
-		showError(error.message || __("Bluetooth pairing failed or was cancelled."))
+		showError(errorText(error, __("Bluetooth pairing failed or was cancelled.")))
 	} finally {
 		isScanning.value = false
 	}
@@ -479,7 +480,7 @@ async function handleScanUsb() {
 		showSuccess(__("Connected and saved USB printer successfully."))
 	} catch (error) {
 		console.error("USB pairing error:", error)
-		showError(error.message || __("USB pairing failed or was cancelled."))
+		showError(errorText(error, __("USB pairing failed or was cancelled.")))
 	} finally {
 		isScanning.value = false
 	}
@@ -575,7 +576,7 @@ async function handlePrintTest() {
 		showSuccess(__("Test receipt sent successfully."))
 	} catch (error) {
 		console.error("Printing error:", error)
-		showError(error.message || __("Failed to print test receipt."))
+		showError(errorText(error, __("Failed to print test receipt.")))
 	} finally {
 		isPrintingTest.value = false
 	}

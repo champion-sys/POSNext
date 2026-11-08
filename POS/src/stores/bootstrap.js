@@ -12,6 +12,7 @@
  */
 
 import { call } from "@/utils/apiWrapper"
+import { errorText } from "@/utils/errorHandler"
 import { logger } from "@/utils/logger"
 import { defineStore } from "pinia"
 import { ref } from "vue"
@@ -69,7 +70,7 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 			}
 		} catch (err) {
 			log.error("Failed to load bootstrap data", err)
-			error.value = err.message || "Failed to load initial data"
+			error.value = errorText(err, "Failed to load initial data")
 			return null
 		} finally {
 			loading.value = false

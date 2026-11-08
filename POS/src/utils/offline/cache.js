@@ -1,8 +1,11 @@
 import { isDeviceKey } from "@/platform/runtime"
 import { localStore } from "@/platform/store"
 import { call } from "@/utils/apiWrapper"
+import { logger } from "@/utils/logger"
 import { getSetting, setSetting } from "./settings"
 import { offlineState } from "./offlineState"
+
+const log = logger.create("OfflineCache")
 
 // Cache structure definition - modify this when cache structure changes
 const CACHE_STRUCTURE = {
@@ -42,7 +45,7 @@ function getCacheVersion() {
 
 	if (storedHash !== structureHash.toString()) {
 		const newVersion = storedVersion + 1
-		console.log(
+		log.debug(
 			`Cache structure changed. Upgrading from v${storedVersion} to v${newVersion}`,
 		)
 		localStorage.setItem(
@@ -87,12 +90,10 @@ export const memory = {
 // Initialize memory cache from the device
 export const initMemoryCache = async () => {
 	try {
-		console.log("Initializing memory cache...")
-
 		// Load cache version
 		const storedVersion = await getSetting("cache_version", CACHE_VERSION)
 		if (storedVersion !== CACHE_VERSION) {
-			console.log("Cache version mismatch, clearing cache...")
+			log.debug("Cache version mismatch, clearing cache")
 			await clearAllCache()
 			await setSetting("cache_version", CACHE_VERSION)
 			memory.cache_version = CACHE_VERSION
@@ -113,10 +114,10 @@ export const initMemoryCache = async () => {
 		// Load items count (don't load all items into memory, too heavy)
 		const stats = await localStore.getCacheStats()
 
-		console.log(
+		log.debug(
 			`Cache initialized: ${stats.items} items, ${stats.customers} customers`,
 		)
-		console.log(
+		log.debug(
 			`Cache ready: ${memory.cache_ready}, Stock ready: ${memory.stock_cache_ready}`,
 		)
 
@@ -161,8 +162,6 @@ export const toggleManualOffline = async () => {
 // Load items from server (returns data for worker to cache)
 export const cacheItemsFromServer = async (posProfile) => {
 	try {
-		console.log("Fetching items from server...")
-
 		const response = await call("pos_next.api.items.get_items", {
 			pos_profile: posProfile,
 			start: 0,
@@ -182,7 +181,7 @@ export const cacheItemsFromServer = async (posProfile) => {
 					: [],
 			}))
 
-			console.log(`Fetched ${processedItems.length} items from server`)
+			log.debug(`Fetched ${processedItems.length} items from server`)
 			return { items: processedItems }
 		}
 
@@ -196,8 +195,6 @@ export const cacheItemsFromServer = async (posProfile) => {
 // Load customers from server (returns data for worker to cache)
 export const cacheCustomersFromServer = async (posProfile) => {
 	try {
-		console.log("Fetching customers from server...")
-
 		const response = await call("pos_next.api.customers.get_customers", {
                         pos_profile: posProfile,
                         start: 0,
@@ -207,7 +204,7 @@ export const cacheCustomersFromServer = async (posProfile) => {
 		if (response.message && Array.isArray(response.message)) {
 			const customers = response.message
 
-			console.log(`Fetched ${customers.length} customers from server`)
+			log.debug(`Fetched ${customers.length} customers from server`)
 			return { customers }
 		}
 
@@ -270,8 +267,6 @@ export const needsCacheRefresh = () => {
 // Clear all cached data
 export const clearAllCache = async () => {
 	try {
-		console.log("Clearing all cache...")
-
 		const result = await localStore.clearCachedData({ preservePaymentMethods: true })
 		if (!result.success) throw new Error(result.error)
 
@@ -291,7 +286,7 @@ export const clearAllCache = async () => {
 		await setSetting("cache_ready", false)
 		await setSetting("stock_cache_ready", false)
 
-		console.log("Cache cleared successfully")
+		log.debug("Cache cleared")
 		return true
 	} catch (error) {
 		console.error("Error clearing cache:", error)
@@ -348,7 +343,7 @@ export async function cachePaymentMethodsFromServer(posProfile) {
 		await localStore.cachePaymentMethods(methodsWithProfile)
 		memory.payment_methods_last_sync = Date.now()
 
-		console.log(
+		log.debug(
 			`Cached ${paymentMethods.length} payment methods for ${posProfile}`,
 		)
 
@@ -393,7 +388,7 @@ export async function cacheSalesPersonsFromServer(posProfile) {
 
 		await localStore.cacheSalesPersons(personsWithProfile)
 
-		console.log(
+		log.debug(
 			`Cached ${salesPersons.length} sales persons for ${posProfile}`,
 		)
 
@@ -457,7 +452,7 @@ export const clearBrowserCache = () => {
 			results.sessionStorage++
 		})
 
-		console.log("Browser cache cleared:", results)
+		log.debug("Browser cache cleared:", results)
 		return { success: true, cleared: results }
 	} catch (error) {
 		console.error("Error clearing browser cache:", error)

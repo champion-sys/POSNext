@@ -441,7 +441,7 @@
               </svg>
               <div class="flex-1">
                 <h4 class="text-xs md:text-sm font-medium text-red-800">{{ __('Error Closing Shift') }}</h4>
-                <p class="text-xs md:text-sm text-red-700 mt-1">{{ errorMessage || submitResource.error }}</p>
+                <p class="text-xs md:text-sm text-red-700 mt-1">{{ errorMessage || errorText(submitResource.error) }}</p>
                 <button
                   v-if="errorMessage"
                   @click="errorMessage = ''"
@@ -462,7 +462,7 @@
             </svg>
             <div>
               <h3 class="text-xs md:text-sm font-medium text-red-800">{{ __('Failed to Load Shift Data') }}</h3>
-              <p class="text-xs md:text-sm text-red-700 mt-1">{{ errorMessage || closingDataResource.error }}</p>
+              <p class="text-xs md:text-sm text-red-700 mt-1">{{ errorMessage || errorText(closingDataResource.error) }}</p>
             </div>
           </div>
         </div>
@@ -523,6 +523,7 @@ import { useOfflineStatus } from "../composables/useOfflineStatus"
 import { usePOSSettingsStore } from "../stores/posSettings"
 import { usePOSShiftStore } from "../stores/posShift"
 import { usePOSSyncStore } from "../stores/posSync"
+import { errorText } from "../utils/errorHandler"
 import { buildClosingDraft } from "../utils/offline/entities"
 import { offlineWorker } from "../utils/offline/workerClient"
 import TranslatedHTML from "./common/TranslatedHTML.vue"

@@ -1,5 +1,6 @@
 import { localStore } from "@/platform/store"
 import { call } from "@/utils/apiWrapper"
+import { errorText } from "@/utils/errorHandler"
 import { logger } from "@/utils/logger"
 import { CoalescingMutex } from "@/utils/mutex"
 import { offlineState } from "./offlineState"
@@ -499,7 +500,7 @@ export const syncOfflineInvoices = async ({ force = false } = {}) => {
 				}
 
 				for (const row of unanswered) {
-					await handleSyncFailure(row, error.message)
+					await handleSyncFailure(row, errorText(error))
 					result.errors.push({
 						invoiceId: row.id,
 						offlineId: row.offline_id,

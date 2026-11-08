@@ -212,6 +212,7 @@
 
 <script setup>
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import { errorText } from "@/utils/errorHandler"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
@@ -220,8 +221,11 @@ import { usePOSSyncStore } from "@/stores/posSync"
 import { useToast } from "@/composables/useToast"
 import { useFormatters } from "@/composables/useFormatters"
 import { getCachedUnpaidInvoices } from "@/utils/offline/sync"
+import { logger } from "@/utils/logger"
 import { Button, call } from "frappe-ui"
 import { onMounted, ref, watch } from "vue"
+
+const log = logger.create("PartialPayments")
 
 const posSettingsStore = usePOSSettingsStore()
 const offlineStore = usePOSSyncStore()
@@ -291,7 +295,7 @@ async function loadInvoices() {
 		invoices.value = await offlineStore.withQueuedPayments(result || [])
 	} catch (error) {
 		console.error("Error loading partial payments:", error)
-		showError(error.message || __("Failed to load partial payments"))
+		showError(errorText(error, __("Failed to load partial payments")))
 	} finally {
 		loading.value = false
 	}
@@ -321,17 +325,16 @@ async function loadSummary() {
 }
 
 function selectInvoice(invoice) {
-	console.log('[PartialPayments] Select invoice:', {
+	log.debug("Select invoice:", {
 		invoice: invoice.name,
 		allowPartialPayment: posSettingsStore.allowPartialPayment,
-		posSettings: posSettingsStore.settings
 	})
 	selectedInvoice.value = invoice
 	showPaymentDialog.value = true
 }
 
 async function handlePaymentCompleted(paymentData) {
-	console.log('[PartialPayments] Payment completed:', {
+	log.debug("Payment completed:", {
 		selectedInvoice: selectedInvoice.value?.name,
 		paymentData: paymentData
 	})
@@ -351,25 +354,23 @@ async function handlePaymentCompleted(paymentData) {
 			return
 		}
 
-		console.log('[PartialPayments] Calling API to add payment...')
 		const result = await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
 			payments: paymentData.payments,
 		})
 
-		console.log('[PartialPayments] API response:', result)
+		log.debug("Add payment response:", result)
 
 		showSuccess(__("Payment added successfully"))
 
 		// Reload invoices and summary
-		console.log('[PartialPayments] Reloading invoices and summary...')
 		await loadInvoices()
 		await loadSummary()
 
 		selectedInvoice.value = null
 	} catch (error) {
 		console.error("[PartialPayments] Error adding payment:", error)
-		showError(error.message || __("Failed to add payment"))
+		showError(errorText(error, __("Failed to add payment")))
 	}
 }
 
