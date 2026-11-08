@@ -11,6 +11,7 @@
  * Performance improvement: ~300-500ms faster initial load
  */
 
+import { savePrintBundle } from "@/platform/printing/bundle"
 import { call } from "@/utils/apiWrapper"
 import { errorText } from "@/utils/errorHandler"
 import { logger } from "@/utils/logger"
@@ -60,6 +61,8 @@ export const useBootstrapStore = defineStore("bootstrap", () => {
 			if (result?.success) {
 				data.value = result
 				loaded.value = true
+				// Kept on the device, so receipts print from the profile's template offline
+				if (result.print_bundle) savePrintBundle(result.print_bundle)
 				log.success("Bootstrap data loaded", {
 					hasShift: !!result.shift,
 					locale: result.locale,

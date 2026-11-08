@@ -51,6 +51,7 @@ declare module 'vue' {
     POSHeader: typeof import('./src/components/pos/POSHeader.vue')['default']
     POSSettings: typeof import('./src/components/settings/POSSettings.vue')['default']
     PrinterManagement: typeof import('./src/components/settings/PrinterManagement.vue')['default']
+    PrintTemplateSelect: typeof import('./src/components/settings/PrintTemplateSelect.vue')['default']
     PromotionManagement: typeof import('./src/components/sale/PromotionManagement.vue')['default']
     QueueExport: typeof import('./src/components/settings/QueueExport.vue')['default']
     ReturnInvoiceDialog: typeof import('./src/components/sale/ReturnInvoiceDialog.vue')['default']

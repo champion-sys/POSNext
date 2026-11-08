@@ -164,6 +164,14 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		}
 	})
 
+	/** The print template this printer prints; empty for the profile's default */
+	const printTemplate = computed({
+		get: () => activePrinter.value?.printTemplate || "",
+		set: (val) => {
+			if (activePrinter.value) activePrinter.value.printTemplate = val
+		}
+	})
+
 	// Actions
 	function setSavedPrinter(deviceId, name, type = "bluetooth") {
 		const uniqueId = `printer_${Date.now()}_${Math.floor(Math.random() * 1000)}`
@@ -180,7 +188,8 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 			interJobDelay: 1500,
 			usbWriteDelay: 5,
 			isDefault: printers.value.length === 0,
-			printFormat: ""
+			printFormat: "",
+			printTemplate: ""
 		}
 		printers.value.push(newPrinter)
 		activePrinterId.value = uniqueId
@@ -208,6 +217,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		if (config.interJobDelay !== undefined) activePrinter.value.interJobDelay = parseInt(config.interJobDelay, 10)
 		if (config.usbWriteDelay !== undefined) activePrinter.value.usbWriteDelay = parseInt(config.usbWriteDelay, 10)
 		if (config.printFormat !== undefined) activePrinter.value.printFormat = config.printFormat
+		if (config.printTemplate !== undefined) activePrinter.value.printTemplate = config.printTemplate
 	}
 
 	function setConnected(deviceId, connectedState) {
@@ -277,6 +287,7 @@ export const useBluetoothPrinterStore = defineStore("bluetoothPrinter", () => {
 		interJobDelay,
 		usbWriteDelay,
 		printFormat,
+		printTemplate,
 
 		// Actions
 		setSavedPrinter,

@@ -1133,6 +1133,7 @@ import { usesNativeLink } from "@/platform/printing/transport";
 import { PLATFORM } from "@/platform/runtime";
 import { deductCachedBatchQty } from "@/utils/offline/items";
 import { cacheOfflineReceiptPayload } from "@/utils/offline/offlineReceiptCache";
+import { buildOfflinePrintDoc } from "@/utils/offline/offlinePrintDoc";
 import { useSerialNumberStore } from "@/stores/serialNumber";
 import { ENTITY_CUSTOMER, getDependentRows, isLocalName } from "@/utils/offline/entities";
 import {
@@ -1153,8 +1154,11 @@ import {
 	hydrateLocalOnlyInvoice,
 	printInvoice,
 	printInvoiceByName,
+	printTemplateJob,
 	printWithSilentFallback,
 } from "@/utils/printInvoice";
+import { getDevicePrintTemplate, refreshPrintBundle } from "@/platform/printing/bundle";
+import { prepareTemplatePrint } from "@/platform/printing/templatePrint";
 import { qzConnected, connect as qzConnect, disconnect as qzDisconnect } from "@/utils/qzTray";
 
 import { Button, Dialog, createResource, FeatherIcon } from "frappe-ui";
@@ -1497,6 +1501,15 @@ const canAccessPOSSettings = computed(() => {
 	}
 	return Boolean(bootstrapStore.data?.is_system_manager);
 });
+
+// The profile's print templates, kept on the device for offline receipts
+watch(
+	() => shiftStore.profileName,
+	(profile) => {
+		if (profile) refreshPrintBundle(profile).catch(() => {});
+	},
+	{ immediate: true },
+);
 
 // Resize state
 let resizeState = null;
@@ -2399,32 +2412,25 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		customerValue ||
 		shiftStore.profileCustomer;
 
-	const offlinePrintDoc = {
-		name: offlineReceiptName,
-		doctype: cartStore.targetDoctype || "Sales Invoice",
-		is_offline: true,
-		pos_profile: cartStore.posProfile,
-		owner: userName.value || undefined,
-		pos_order_type: invoiceData.pos_order_type || undefined,
-		posting_date: invoiceData.posting_date,
-		company: shiftStore.profileCompany || undefined,
-		customer_name: customerLabel,
-		items: invoiceData.items.map((item) => ({
-			...item,
-			quantity: item.qty ?? item.quantity,
-		})),
-		grand_total: grandTotal,
-		rounded_total: amountDue,
-		rounding_adjustment: cartStore.roundingAdjustment,
-		total_taxes_and_charges: cartStore.totalTax,
-		payments: invoiceData.payments,
-		paid_amount: paidAmount,
-		change_amount: paymentData.change_amount || 0,
-		outstanding_amount: Math.max(0, amountDue - paidAmount),
-		status: Math.max(0, amountDue - paidAmount) < 0.01 ? "Paid" : "Unpaid",
-		remarks: invoiceData.remarks,
-		docstatus: 0,
-	};
+	const offlinePrintDoc = buildOfflinePrintDoc({
+		invoiceData,
+		paymentData,
+		totals: {
+			grandTotal,
+			roundedTotal: amountDue,
+			roundingAdjustment: cartStore.roundingAdjustment,
+			totalTax: cartStore.totalTax,
+			totalDiscount: cartStore.totalDiscount,
+			taxLines: cartStore.taxLines,
+		},
+		doctype: cartStore.targetDoctype,
+		posProfile: cartStore.posProfile,
+		company: shiftStore.profileCompany,
+		currency: shiftStore.profileCurrency,
+		customerLabel,
+		customer: cartStore.customer,
+		cashier: { user: session.user, full_name: userName.value },
+	});
 	uiStore.setLastOfflinePrintDoc(offlinePrintDoc);
 	cacheOfflineReceiptPayload(offlineReceiptName, offlinePrintDoc);
 	uiStore.lastInvoiceName = offlineReceiptName;
@@ -3460,10 +3466,18 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 			return;
 		}
 
+		// Print templates designed in Desk, rendered here so they print offline too
+		const templateOptions = {
+			profile: shiftStore.profileName,
+			cashier: { user: session.user, full_name: userName.value },
+			reprint: !isCheckout,
+			onError: showError,
+		};
+
 		// Thermal printer routing path — routes print job to all configured printers
 		if (printRoute === THERMAL) {
 			try {
-				await printInvoiceToAllPrinters(invoiceData);
+				await printInvoiceToAllPrinters(invoiceData, templateOptions);
 				return;
 			} catch (error) {
 				log.error("Thermal print routing failed, falling back to browser/silent:", error);
@@ -3473,6 +3487,19 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 				}
 				showWarning(__("Thermal printing failed. Attempting browser/silent fallback..."));
 			}
+		}
+
+		// This device's template: the desktop printer, QZ Tray or the browser's dialog
+		const templateJob = await prepareTemplatePrint(invoiceData, {
+			...templateOptions,
+			printerTemplate: getDevicePrintTemplate(),
+		});
+		if (templateJob) {
+			await printTemplateJob(templateJob, {
+				silent: printRoute === SILENT || posSettingsStore.silentPrint,
+				invoiceName: invoiceData.name,
+			});
+			return;
 		}
 
 		// Silent print path — QZ Tray on the web, the system printer on desktop

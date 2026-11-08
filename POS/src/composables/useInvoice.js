@@ -226,6 +226,43 @@ export function useInvoice() {
 			),
 		)
 	})
+	/**
+	 * The tax lines of the sale, one per rated rule, for the receipt. They add up to
+	 * totalTax: exclusive lines are each rounded as totalTax rounds them, and inclusive
+	 * or single lines share totalTax with the rounding left on the last.
+	 */
+	const taxLines = computed(() => {
+		const rules = (taxRules.value || []).filter(
+			(rule) =>
+				(rule.charge_type === "On Net Total" ||
+					rule.charge_type === "On Previous Row Total") &&
+				rule.rate,
+		)
+		const totalRate = rules.reduce((sum, rule) => sum + (Number(rule.rate) || 0), 0)
+		if (!rules.length || !totalRate) return []
+		const line = (rule, tax_amount) => ({
+			description: rule.description || rule.account_head || "",
+			account_head: rule.account_head || "",
+			charge_type: rule.charge_type,
+			rate: Number(rule.rate) || 0,
+			included_in_print_rate: taxInclusive.value ? 1 : 0,
+			tax_amount,
+		})
+		if (!taxInclusive.value && rules.length > 1) {
+			return rules.map((rule) =>
+				line(rule, roundCurrency((_cachedTotalTax.value * (Number(rule.rate) || 0)) / totalRate)),
+			)
+		}
+		let given = 0
+		return rules.map((rule, index) => {
+			const amount =
+				index === rules.length - 1
+					? roundCurrency(totalTax.value - given)
+					: roundCurrency((totalTax.value * (Number(rule.rate) || 0)) / totalRate)
+			given += amount
+			return line(rule, amount)
+		})
+	})
 	const totalDiscount = computed(() =>
 		roundCurrency(_cachedTotalDiscount.value + (additionalDiscount.value || 0)),
 	)
@@ -1582,6 +1619,7 @@ export function useInvoice() {
 		// Computed
 		subtotal,
 		totalTax,
+		taxLines,
 		totalDiscount,
 		grandTotal,
 		roundedTotal,
