@@ -32,6 +32,9 @@ class TestAppTranslations(unittest.TestCase):
     def test_other_strings_keep_the_site_translation(self):
         self.assertEqual(self.translations()["Status"], "الحالة")
 
+    def test_says_which_language_it_is_in(self):
+        self.assertEqual(self.translations()[localization.LANGUAGE_KEY], "ar")
+
     def test_the_dictionary_of_the_site_stays_as_it_was(self):
         self.translations()
 

@@ -146,7 +146,7 @@ class TestRequireDevice(NoSiteTestCase):
 class TestValidate(NoSiteTestCase):
     def setUp(self):
         super().setUp()
-        for target in ("pos_next.auth.frappe.set_user", "pos_next.auth._record_last_seen"):
+        for target in ("pos_next.auth.frappe.set_user", "pos_next.auth._record_last_seen", "pos_next.auth.get_user_lang"):
             patcher = patch(target)
             setattr(self, target.rsplit(".", 1)[1], patcher.start())
             self.addCleanup(patcher.stop)
@@ -213,6 +213,17 @@ class TestValidate(NoSiteTestCase):
         auth.validate()
 
         self.assertEqual(frappe.session.data.last_updated, NOW)
+
+    def test_speaks_the_cashiers_language_not_the_devices(self):
+        frappe.local.lang = "en"
+        self.addCleanup(setattr, frappe.local, "lang", "en")
+        self.get_user_lang.return_value = "ar"
+        self._grant(_device())
+
+        auth.validate()
+
+        self.get_user_lang.assert_called_once_with("cashier@example.com")
+        self.assertEqual(frappe.local.lang, "ar")
 
     def test_records_last_seen(self):
         self._grant(_device())
@@ -284,6 +295,7 @@ class TestThroughFrappeAuth(NoSiteTestCase):
         for target, replacement in (
             ("frappe.auth.validate_ip_address", Mock()),
             ("pos_next.auth._record_last_seen", Mock()),
+            ("pos_next.auth.get_user_lang", Mock(return_value="ar")),
             ("frappe.get_hooks", lambda *_args, **_kwargs: ["pos_next.auth.validate"]),
         ):
             patcher = patch(target, replacement)

@@ -57,6 +57,17 @@ let _versionDebounce: ReturnType<typeof setTimeout> | null = null
 /** Default locale when none is configured */
 const FALLBACK_LOCALE = "en"
 
+/** Where the server says which language it answered in. See pos_next/api/localization.py */
+const LANGUAGE_KEY = "__lang__"
+
+/**
+ * Whether a kept dictionary is in the locale asked for. One kept before the server named its
+ * language, or kept from an answer in another one, is fetched again.
+ */
+export const isInLocale = (messages: Messages | null | undefined, locale: string) =>
+  Boolean(messages?.[LANGUAGE_KEY]) &&
+  messages![LANGUAGE_KEY].toLowerCase().split("-")[0] === locale.toLowerCase().split("-")[0]
+
 /** Options for locale loading behavior */
 type LoadOptions = {
   /** Try cached translations first before network */
@@ -182,9 +193,11 @@ async function loadLocale(locale: string, options: LoadOptions = {}) {
   const target = locale || FALLBACK_LOCALE
   let appliedFromCache = false
 
+  let wrongLanguage = false
   if (preferCache) {
     const cached = await translationCache.get(target)
-    if (cached?.messages) {
+    wrongLanguage = Boolean(cached?.messages) && !isInLocale(cached!.messages, target)
+    if (cached?.messages && !wrongLanguage) {
       applyMessages(cached.messages)
       appliedFromCache = true
 
@@ -195,7 +208,7 @@ async function loadLocale(locale: string, options: LoadOptions = {}) {
   }
 
   const entry = await translationCache.getFresh(target, () => requestTranslations(), {
-    force: forceNetwork,
+    force: forceNetwork || wrongLanguage,
   })
 
   if (entry?.messages) {

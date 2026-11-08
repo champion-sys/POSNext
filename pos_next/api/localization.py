@@ -5,6 +5,9 @@
 import frappe
 from frappe import translate
 
+# The language the dictionary is in, so a device can tell a copy kept in the wrong one
+LANGUAGE_KEY = "__lang__"
+
 
 @frappe.whitelist()
 def get_app_translations():
@@ -17,7 +20,11 @@ def get_app_translations():
 		dict: Translation dictionary {source: translated}
 	"""
 	lang = frappe.local.lang or "en"
-	return {**translate.get_all_translations(lang), **_get_pos_screen_translations(lang)}
+	return {
+		**translate.get_all_translations(lang),
+		**_get_pos_screen_translations(lang),
+		LANGUAGE_KEY: lang,
+	}
 
 
 def _get_pos_screen_translations(lang):

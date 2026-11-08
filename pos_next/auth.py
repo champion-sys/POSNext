@@ -17,6 +17,7 @@ import secrets
 
 import frappe
 from frappe import _
+from frappe.translate import get_user_lang
 from frappe.utils import get_datetime, now_datetime
 
 DEVICE_PREFIX = "posd_"
@@ -117,6 +118,9 @@ def validate():
     form_dict = frappe.local.form_dict
     frappe.set_user(device.cashier)
     frappe.local.form_dict = form_dict
+
+    # Frappe chose it while the request was still a guest's, from the device's own locale
+    frappe.local.lang = get_user_lang(device.cashier)
 
     # Without this, Session.update writes the user's row after every request
     frappe.session.data.last_updated = now_datetime()
