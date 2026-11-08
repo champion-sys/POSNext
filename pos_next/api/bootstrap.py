@@ -31,6 +31,7 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce
 
 from pos_next.api.constants import DEFAULT_POS_SETTINGS, POS_SETTINGS_FIELDS
+from pos_next.services.sale_limits import get_rounding_settings
 
 
 @frappe.whitelist()
@@ -219,11 +220,14 @@ def _get_pos_settings(pos_profile_doc):
 			as_dict=True
 		) or DEFAULT_POS_SETTINGS.copy()
 
-		# Derive from POS Profile (single source of truth)
+		# Derive from POS Profile (single source of truth). ERPNext refuses a POS Invoice
+		# paid short of its total even with a write-off, so its profiles get no write-off.
 		settings["allow_write_off_change"] = 1 if (
-			pos_profile_doc.write_off_account and (pos_profile_doc.write_off_limit or 0) > 0
+			pos_profile_doc.write_off_account
+			and (pos_profile_doc.write_off_limit or 0) > 0
+			and settings.get("invoice_type") != "POS Invoice"
 		) else 0
-		settings["disable_rounded_total"] = pos_profile_doc.disable_rounded_total or 0
+		settings.update(get_rounding_settings(pos_profile_doc))
 		settings["hide_images"] = pos_profile_doc.get("hide_images") or 0
 
 		return settings

@@ -300,6 +300,11 @@ def get_pos_settings(pos_profile):
 	# Tells the settings screen what its user may only look at
 	settings["_manager_only_fields"] = [] if _is_manager() else list(MANAGER_ONLY_FIELDS)
 
+	# The rounded total comes from the POS Profile, as bootstrap sends it
+	from pos_next.services.sale_limits import get_rounding_settings
+
+	settings.update(get_rounding_settings(pos_profile))
+
 	return _for_the_pos(settings)
 
 

@@ -31,6 +31,7 @@ from pos_next.api.invoices import (
     log_manual_rate_edit,
     save_invoice_draft,
 )
+from pos_next.services.sale_limits import cap_write_off, enforce_discount_limits, enforce_payment_limits
 
 
 def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued=False):
@@ -70,6 +71,14 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
         # A draft saved by an earlier request held its lock only until that request ended
         if invoice_doc.get("is_return") and invoice_doc.get("return_against"):
             assert_return_quantities(invoice_doc, queued)
+        # The submitted copy can differ from the draft that was checked
+        invoice_doc.calculate_taxes_and_totals()
+        coupon_code = invoice_doc.get("pos_coupon_code") or invoice.get("coupon_code")
+        enforce_discount_limits(
+            invoice_doc,
+            pos_profile or invoice_doc.get("pos_profile"),
+            coupon_code if coupon_code and frappe.db.table_exists("POS Coupon") else None,
+        )
 
     # Ensure update_stock is set for Sales/POS Invoice
     if doctype in ("Sales Invoice", "POS Invoice"):
@@ -124,11 +133,29 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
     # Auto-set batch numbers for returns
     _auto_set_return_batches(invoice_doc)
 
-    # Handle write-off amount if provided
+    customer_credit_dict = data.get("customer_credit_dict") or invoice.get("customer_credit_dict")
+    redeemed_customer_credit = data.get("redeemed_customer_credit") or invoice.get("redeemed_customer_credit")
+    is_paid_sale = doctype in ("Sales Invoice", "POS Invoice") and not invoice_doc.get("is_return")
+    if is_paid_sale:
+        invoice_doc.calculate_taxes_and_totals()
+
+    # Handle write-off amount if provided. ERPNext applies one on a Sales Invoice only, and
+    # never beyond what is left unpaid: more would leave the customer a credit.
     write_off_amount = flt(data.get("write_off_amount") or invoice.get("write_off_amount") or 0)
+    if write_off_amount > 0 and is_paid_sale:
+        write_off_amount = cap_write_off(invoice_doc, write_off_amount, redeemed_customer_credit)
     if write_off_amount > 0 and doctype == "Sales Invoice":
         if pos_profile:
             _apply_write_off(invoice_doc, write_off_amount, pos_profile)
+
+    # Paid in full unless the POS allows debt, and change only out of cash
+    if is_paid_sale:
+        enforce_payment_limits(
+            invoice_doc,
+            pos_profile or invoice_doc.get("pos_profile"),
+            write_off_amount=write_off_amount if doctype == "Sales Invoice" else 0,
+            redeemed_credit=redeemed_customer_credit,
+        )
 
     # Validate stock availability before submission
     # _validate_stock_on_invoice checks _should_block internally
@@ -136,8 +163,6 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
     _validate_stock_on_invoice(invoice_doc)
 
     # Allow pure customer-credit POS sales to submit without a payment row.
-    customer_credit_dict = data.get("customer_credit_dict") or invoice.get("customer_credit_dict")
-    redeemed_customer_credit = data.get("redeemed_customer_credit") or invoice.get("redeemed_customer_credit")
     if redeemed_customer_credit and not invoice_doc.payments:
         invoice_doc.flags.pos_next_redeemed_customer_credit = flt(redeemed_customer_credit)
 
@@ -201,6 +226,8 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
         "name": invoice_doc.name,
         "status": invoice_doc.docstatus,
         "grand_total": invoice_doc.grand_total,
+        # What the customer pays when rounding is on, 0 when it is off
+        "rounded_total": invoice_doc.get("rounded_total") or 0,
         "total": invoice_doc.total,
         "net_total": invoice_doc.net_total,
         "outstanding_amount": getattr(invoice_doc, "outstanding_amount", 0),

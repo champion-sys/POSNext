@@ -496,6 +496,11 @@
 								<span class="text-gray-600 text-start">{{ __('Discount') }}</span>
 								<span class="font-medium text-red-600 text-end">-{{ formatCurrency(discountAmount) }}</span>
 							</div>
+							<!-- Rounding (ERPNext's rounded total) -->
+							<div v-if="roundingAdjustment" class="flex items-center justify-between text-sm">
+								<span class="text-gray-600 text-start">{{ __('Rounding') }}</span>
+								<span class="font-medium text-gray-900 text-end">{{ formatCurrency(roundingAdjustment) }}</span>
+							</div>
 							<!-- Grand Total -->
 							<div class="flex items-center justify-between pt-2 mt-1 border-t border-gray-300">
 								<span :class="['font-bold text-gray-900 text-start', isCompactMode ? 'text-sm' : 'text-base']">{{ __('Grand Total') }}</span>
@@ -520,6 +525,12 @@
 								<div v-else-if="applyWriteOff && canWriteOff" :class="['bg-purple-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">{{ __('Write Off') }}</div>
 									<div :class="['font-bold text-purple-600', dynamicTextSize.amount]">{{ formatCurrency(writeOffAmount) }}</div>
+								</div>
+								<!-- Paid above the total with a card or another non-cash method: no change can come of it -->
+								<div v-else-if="nonCashOverpayment > 0" :class="['bg-red-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
+									<div class="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">{{ __('Overpayment') }}</div>
+									<div :class="['font-bold text-red-600', dynamicTextSize.amount]">{{ formatCurrency(overpaidAmount) }}</div>
+									<div class="text-xs text-red-600 mt-0.5">{{ __('Change is given only from cash. Lower the card amount.') }}</div>
 								</div>
 								<div v-else-if="changeAmount > 0 && allowsOverpayment" :class="['bg-green-50 text-center', isCompactMode ? 'p-1.5' : 'p-2']">
 									<div class="text-xs font-medium text-green-600 uppercase tracking-wide mb-1">{{ __('Change Due') }}</div>
@@ -1092,6 +1103,7 @@ import {
 	roundCurrency,
 } from "@/utils/currency"
 import { getPaymentIcon } from "@/utils/payment"
+import { getChangeBreakdown } from "@/utils/paymentChange"
 import { hasOnlineOnlyPayment, isLocalName } from "@/utils/offline/entities"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { logger } from "@/utils/logger"
@@ -1111,7 +1123,13 @@ const ONLINE_ONLY_MESSAGE = __("Wallet and customer credit need a connection, be
 
 const props = defineProps({
 	modelValue: Boolean,
+	/** The amount to collect: ERPNext's rounded total when rounding is on */
 	grandTotal: {
+		type: Number,
+		default: 0,
+	},
+	/** How far rounding moved the total, shown so the cashier sees why it differs */
+	roundingAdjustment: {
 		type: Number,
 		default: 0,
 	},
@@ -1837,10 +1855,19 @@ const remainingAmount = computed(() => {
 	return remaining > 0 ? roundCurrency(remaining) : 0
 })
 
-const changeAmount = computed(() => {
-	const change = totalPaid.value - roundCurrency(props.grandTotal)
-	return change > 0 ? roundCurrency(change) : 0
-})
+// ERPNext gives change only out of a Cash row. The part of an overpayment no cash
+// covers would leave the drawer without having gone in, or stay as customer credit.
+const changeBreakdown = computed(() =>
+	getChangeBreakdown({
+		entries: paymentEntries.value,
+		methods: paymentMethods.value,
+		total: props.grandTotal,
+		isCashMethod: isCashPaymentMethod,
+	}),
+)
+const overpaidAmount = computed(() => changeBreakdown.value.overpaid)
+const nonCashOverpayment = computed(() => changeBreakdown.value.nonCashOverpayment)
+const changeAmount = computed(() => changeBreakdown.value.change)
 
 // ===========================================
 // Write-Off Logic
@@ -1854,8 +1881,10 @@ const canWriteOff = computed(() => {
 	// 2. There is a remaining amount to write off
 	// 3. Remaining amount is within the write-off limit
 	// 4. There is at least one payment entry
+	// 5. The sale is not a POS Invoice: ERPNext refuses a write-off there as a partial payment
 	return (
 		props.allowWriteOff &&
+		props.targetDoctype !== "POS Invoice" &&
 		props.writeOffLimit > 0 &&
 		remainingAmount.value > 0 &&
 		remainingAmount.value <= props.writeOffLimit &&
@@ -2031,6 +2060,11 @@ const canComplete = computed(() => {
 
 	// Check exact amount validation
 	if (!isExactAmountValid.value) {
+		return false
+	}
+
+	// Change can only come out of cash
+	if (nonCashOverpayment.value > 0) {
 		return false
 	}
 

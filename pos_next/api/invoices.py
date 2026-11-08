@@ -1190,6 +1190,15 @@ def save_invoice_draft(data, queued=False):
             if frappe.db.table_exists("POS Coupon"):
                 coupon_overrun = _apply_coupon(invoice_doc, coupon_code, queued)
 
+        # The discounts the POS would have allowed, and a coupon worth only what it gives
+        from pos_next.services.sale_limits import enforce_discount_limits
+
+        enforce_discount_limits(
+            invoice_doc,
+            pos_profile,
+            coupon_code if coupon_code and frappe.db.table_exists("POS Coupon") else None,
+        )
+
         # Validate stock availability before saving draft
         # is_stock_item may not be set on unsaved doc items (frontend doesn't send it),
         # so look it up from Item master

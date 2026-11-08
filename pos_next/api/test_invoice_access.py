@@ -203,6 +203,9 @@ class TestEveryOnlinePathChecksTheShift(NoSiteTestCase):
             patch("pos_next.services.invoice_processor._set_payment_accounts"),
             patch("pos_next.services.invoice_processor._auto_set_return_batches"),
             patch("pos_next.services.invoice_processor._validate_stock_on_invoice"),
+            patch("pos_next.services.invoice_processor.enforce_discount_limits"),
+            patch("pos_next.services.invoice_processor.enforce_payment_limits"),
+            patch("pos_next.services.invoice_processor.cap_write_off", return_value=0),
         ):
             frappe.local.flags = frappe._dict()
             process_invoice({"name": "SINV-1"}, {}, "Sales Invoice", "Main", queued=True)

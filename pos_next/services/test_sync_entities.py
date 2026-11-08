@@ -566,6 +566,7 @@ class TestCouponUsage(NoSiteTestCase):
         invoice_doc.flags = frappe._dict()
         invoice_doc.save = Mock()
         invoice_doc.submit = Mock()
+        invoice_doc.calculate_taxes_and_totals = Mock()
         frappe.local.flags = frappe._dict()
         frappe.local.db.exists.return_value = bool(payload.get("name"))
 
@@ -581,6 +582,8 @@ class TestCouponUsage(NoSiteTestCase):
             patch(f"{processor}._auto_set_return_batches"),
             patch(f"{processor}._validate_stock_on_invoice"),
             patch(f"{processor}.assert_return_quantities"),
+            patch(f"{processor}.enforce_discount_limits"),
+            patch(f"{processor}.enforce_payment_limits"),
             patch(f"{wallet}.reverse_wallet_transactions_for_return"),
             patch(f"{coupon}.increment_coupon_usage") as increment,
         ):

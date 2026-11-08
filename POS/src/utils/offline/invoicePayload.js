@@ -198,6 +198,8 @@ export function buildSyncEnvelope(row, payload) {
 		created_at_device: row.timestamp ? new Date(row.timestamp).toISOString() : null,
 		client_totals: {
 			grand_total: payload.grand_total,
+			// What the cashier collected: ERPNext's rounded total when rounding was on
+			...(payload.rounded_total !== undefined ? { rounded_total: payload.rounded_total } : {}),
 			paid: payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0),
 		},
 		depends_on: row.depends_on || [],

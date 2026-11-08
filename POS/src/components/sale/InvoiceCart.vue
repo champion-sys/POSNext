@@ -1198,6 +1198,14 @@
 						formatCurrency(taxAmount)
 					}}</span>
 				</div>
+
+				<!-- Rounding Row (ERPNext's rounded total) -->
+				<div v-if="cartStore.roundingAdjustment" class="flex items-center justify-between gap-2">
+					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Rounding") }}</span>
+					<span class="text-gray-900 font-bold text-end font-mono whitespace-nowrap">{{
+						formatCurrency(cartStore.roundingAdjustment)
+					}}</span>
+				</div>
 			</div>
 
 			<!-- Grand Total Line -->
@@ -1771,9 +1779,14 @@ const displaySubtotal = computed(() => {
  * @returns {Number} Grand total amount to display
  */
 const displayGrandTotal = computed(() => {
-	// Always: displaySubtotal + tax - discount
-	// This makes the display consistent and intuitive
-	return displaySubtotal.value + props.taxAmount - props.discountAmount
+	// Always: displaySubtotal + tax - discount, then ERPNext's rounding when it is on,
+	// so the cashier sees the amount to collect
+	return (
+		displaySubtotal.value +
+		props.taxAmount -
+		props.discountAmount +
+		(cartStore.roundingAdjustment || 0)
+	)
 })
 
 /**

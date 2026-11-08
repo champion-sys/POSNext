@@ -11,7 +11,7 @@ import {
 import { useSerialNumberStore } from "@/stores/serialNumber"
 import { CoalescingMutex } from "@/utils/mutex"
 import { logger } from "@/utils/logger"
-import { roundCurrency } from "@/utils/currency"
+import { roundCurrency, roundToSmallestFraction } from "@/utils/currency"
 import { shiftState } from "@/composables/useShift"
 import { usePOSShiftStore } from "@/stores/posShift"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
@@ -47,6 +47,12 @@ export function useInvoice() {
 	const taxInclusive = ref(false) // Tax inclusive setting from POS Settings
 	const posOrderType = ref(null) // Optional Sales Invoice order type (from POS Profile)
 	const posTableNo = ref(null) // Table number for Sales Invoice (when order type supports tables)
+	// The coupon as it was defined, so its discount follows the cart instead of staying fixed
+	const couponRule = ref(null)
+	// Set when a coupon stops applying because the cart fell below its minimum
+	const couponDropped = ref(null)
+	// ERPNext's rounded total: on when the POS Profile does not disable it
+	const rounding = ref({ enabled: false, smallestFraction: 0 })
 
 	// Submission state - prevents duplicate submissions
 	const isSubmitting = ref(false)
@@ -205,7 +211,21 @@ export function useInvoice() {
 	// ========================================================================
 	// Use roundCurrency for monetary totals to match ERPNext's currency precision (from System Settings)
 	const subtotal = computed(() => roundCurrency(_cachedSubtotal.value))
-	const totalTax = computed(() => roundCurrency(_cachedTotalTax.value))
+	// ERPNext (round_row_wise_tax off, its default) adds every row's tax unrounded and
+	// rounds each tax line once. The lines share one base, so each takes its share.
+	const totalTax = computed(() => {
+		const rules = getRatedTaxRules()
+		const totalRate = rules.reduce((sum, rule) => sum + rule.rate, 0)
+		if (taxInclusive.value || rules.length < 2 || !totalRate) {
+			return roundCurrency(_cachedTotalTax.value)
+		}
+		return roundCurrency(
+			rules.reduce(
+				(sum, rule) => sum + roundCurrency((_cachedTotalTax.value * rule.rate) / totalRate),
+				0,
+			),
+		)
+	})
 	const totalDiscount = computed(() =>
 		roundCurrency(_cachedTotalDiscount.value + (additionalDiscount.value || 0)),
 	)
@@ -218,17 +238,22 @@ export function useInvoice() {
 			// Use roundCurrency to match ERPNext's currency precision (from System Settings)
 			return roundCurrency(_cachedSubtotal.value - discount)
 		} else {
-			// Tax exclusive: Add tax on top of subtotal
-			// Use roundCurrency to match ERPNext's currency precision (from System Settings)
-			return roundCurrency(
-				_cachedSubtotal.value + _cachedTotalTax.value - discount,
-			)
+			// Tax exclusive: Add tax on top of subtotal, the tax rounded once as ERPNext does
+			return roundCurrency(_cachedSubtotal.value + totalTax.value - discount)
 		}
 	})
+	// What the customer pays: ERPNext's rounded total when rounding is on
+	const roundedTotal = computed(() => {
+		if (!rounding.value.enabled) return grandTotal.value
+		return roundToSmallestFraction(grandTotal.value, rounding.value.smallestFraction)
+	})
+	const roundingAdjustment = computed(() =>
+		roundCurrency(roundedTotal.value - grandTotal.value),
+	)
 	const totalPaid = computed(() => _cachedTotalPaid.value)
 
 	const remainingAmount = computed(() => {
-		return grandTotal.value - totalPaid.value
+		return roundedTotal.value - totalPaid.value
 	})
 
 	const canSubmit = computed(() => {
@@ -236,6 +261,17 @@ export function useInvoice() {
 			invoiceItems.value.length > 0 && remainingAmount.value <= 0.01 // Allow small rounding differences
 		)
 	})
+
+	/**
+	 * The unit price the totals use: an edited rate, otherwise the list price.
+	 * @param {Object} item - Cart line
+	 * @returns {number}
+	 */
+	function getEffectiveRate(item) {
+		return item.is_rate_manually_edited === 1
+			? item.rate
+			: item.price_list_rate || item.rate
+	}
 
 	// Actions
 	function addItem(item, quantity = 1) {
@@ -246,11 +282,9 @@ export function useInvoice() {
 
 		if (existingItem) {
 			// Store old values before update for incremental cache adjustment
-			// Use price_list_rate for subtotal calculations (before discount)
-			// IMPORTANT: Calculate oldAmount using same rounding as cache to ensure consistency
-			const oldPriceListRate = existingItem.price_list_rate || existingItem.rate
+			// The same effective rate as the cache, so an edited rate is not replaced by the list price
 			const oldAmount = roundCurrency(
-				existingItem.quantity * roundCurrency(oldPriceListRate),
+				existingItem.quantity * roundCurrency(getEffectiveRate(existingItem)),
 			)
 			const oldTax = existingItem.tax_amount || 0
 			const oldDiscount = existingItem.discount_amount || 0
@@ -272,11 +306,10 @@ export function useInvoice() {
 			recalculateItem(existingItem)
 
 			// Update cache incrementally (new values - old values)
-			// Use rounded price_list_rate for subtotal to match ERPNext
-			const priceListRate = existingItem.price_list_rate || existingItem.rate
 			_cachedSubtotal.value +=
-				roundCurrency(existingItem.quantity * roundCurrency(priceListRate)) -
-				oldAmount
+				roundCurrency(
+					existingItem.quantity * roundCurrency(getEffectiveRate(existingItem)),
+				) - oldAmount
 			_cachedTotalTax.value += (existingItem.tax_amount || 0) - oldTax
 			_cachedTotalDiscount.value +=
 				(existingItem.discount_amount || 0) - oldDiscount
@@ -329,6 +362,7 @@ export function useInvoice() {
 			_cachedTotalTax.value += newItem.tax_amount || 0
 			_cachedTotalDiscount.value += newItem.discount_amount || 0
 		}
+		refreshCouponDiscount()
 	}
 
 	/**
@@ -376,6 +410,7 @@ export function useInvoice() {
 				(i) => i.item_code !== itemCode,
 			)
 		}
+		refreshCouponDiscount()
 	}
 
 	/**
@@ -440,6 +475,7 @@ export function useInvoice() {
 			_cachedTotalTax.value += (item.tax_amount || 0) - oldTax
 			_cachedTotalDiscount.value += (item.discount_amount || 0) - oldDiscount
 		}
+		refreshCouponDiscount()
 	}
 
 	function updateItemRate(itemCode, rate, isManualEdit = false) {
@@ -485,6 +521,7 @@ export function useInvoice() {
 			_cachedTotalTax.value += (item.tax_amount || 0) - oldTax
 			_cachedTotalDiscount.value += (item.discount_amount || 0) - oldDiscount
 		}
+		refreshCouponDiscount()
 	}
 
 	function updateItemDiscount(itemCode, discountPercentage) {
@@ -518,6 +555,7 @@ export function useInvoice() {
 			_cachedTotalTax.value += (item.tax_amount || 0) - oldTax
 			_cachedTotalDiscount.value += (item.discount_amount || 0) - oldDiscount
 		}
+		refreshCouponDiscount()
 	}
 
 	function calculateDiscountAmount(discount, baseAmount = null) {
@@ -556,40 +594,110 @@ export function useInvoice() {
 		return 0
 	}
 
+	/**
+	 * The amount a coupon's discount is taken from, before any invoice discount.
+	 * Same base as CouponDialog: Grand Total includes tax, Net Total does not.
+	 * @param {string} applyOn - "Grand Total" or "Net Total"
+	 * @returns {number}
+	 */
+	function getCouponBase(applyOn) {
+		const afterItemDiscounts = _cachedSubtotal.value - _cachedTotalDiscount.value
+		const gross = taxInclusive.value
+			? afterItemDiscounts
+			: afterItemDiscounts + totalTax.value
+		const base = applyOn === "Net Total" ? gross - totalTax.value : gross
+		return Math.max(roundCurrency(base), 0)
+	}
+
+	/**
+	 * Keep a coupon's discount true to its definition on the cart as it is now:
+	 * its percentage of what is left, at most its maximum, never more than the cart,
+	 * and none at all once the cart is below its minimum.
+	 */
+	function refreshCouponDiscount() {
+		const rule = couponRule.value
+		if (!rule) return
+
+		const base = getCouponBase(rule.applyOn)
+		if (rule.minAmount > 0 && base < rule.minAmount) {
+			couponRule.value = null
+			couponCode.value = null
+			additionalDiscount.value = 0
+			couponDropped.value = { code: rule.code, name: rule.name, minAmount: rule.minAmount }
+			return
+		}
+
+		let amount =
+			rule.percentage > 0
+				? roundCurrency((base * rule.percentage) / 100)
+				: roundCurrency(rule.fixedAmount)
+		if (rule.maxAmount > 0) amount = Math.min(amount, rule.maxAmount)
+		additionalDiscount.value = Math.max(0, Math.min(amount, base))
+	}
+
+	/**
+	 * What a coupon gives, read from what CouponDialog emits.
+	 * @param {Object} discount - { percentage, amount, code, name, apply_on, base_amount, coupon }
+	 * @returns {Object}
+	 */
+	function buildCouponRule(discount) {
+		const coupon = discount.coupon || {}
+		const percentage = Number.parseFloat(discount.percentage) || 0
+		const amount = Number.parseFloat(discount.amount) || 0
+		const applyOn = discount.apply_on || coupon.apply_on || "Grand Total"
+		const base =
+			typeof discount.base_amount === "number"
+				? discount.base_amount
+				: getCouponBase(applyOn)
+
+		let maxAmount = Number.parseFloat(coupon.max_amount) || 0
+		// Without the coupon itself, an amount below its percentage means the dialog capped it
+		if (
+			!maxAmount &&
+			percentage > 0 &&
+			amount > 0 &&
+			amount < roundCurrency((base * percentage) / 100)
+		) {
+			maxAmount = amount
+		}
+
+		return {
+			code: discount.code || discount.name,
+			name: discount.name || discount.code,
+			percentage,
+			fixedAmount: percentage > 0 ? 0 : amount,
+			maxAmount,
+			minAmount: Number.parseFloat(coupon.min_amount) || 0,
+			applyOn,
+		}
+	}
+
 	function applyDiscount(discount) {
 		/**
-		 * Apply discount as Additional Discount (grand total level)
-		 * This prevents conflicts with item-level pricing rules
-		 * @param {Object} discount - { percentage, amount, name, code, apply_on }
+		 * Apply a coupon as Additional Discount (grand total level).
+		 * The coupon's definition is kept, so its discount is worked out again on
+		 * every cart change.
+		 * @param {Object} discount - { percentage, amount, name, code, apply_on, coupon }
 		 */
 		if (!discount) return
 
-		// Store coupon code for tracking
 		couponCode.value = discount.code || discount.name
+		couponRule.value = buildCouponRule(discount)
+		couponDropped.value = null
 
-		const baseAmount =
-			typeof discount.base_amount === "number"
-				? discount.base_amount
-				: subtotal.value
+		// Rebuilding works the discount out from the rule
+		rebuildIncrementalCache()
+	}
 
-		// Use centralized calculation to handle percentage/amount and clamping
-		let discountAmount = calculateDiscountAmount(discount, baseAmount)
-
-		// Clamp discount to the same base the coupon was calculated against
-		if (discountAmount > baseAmount) {
-			discountAmount = baseAmount
-		}
-
-		// Ensure non-negative
-		if (discountAmount < 0) {
-			discountAmount = 0
-		}
-
-		// Apply discount as Additional Discount on grand total
-		// This preserves item-level pricing rules while applying coupon discount
-		additionalDiscount.value = discountAmount
-
-		// Rebuild cache after applying additional discount
+	/**
+	 * An invoice discount the cashier typed. It replaces any coupon, whose discount
+	 * would otherwise be worked out again over it.
+	 * @param {number} amount
+	 */
+	function setAdditionalDiscount(amount) {
+		couponRule.value = null
+		couponCode.value = null
+		additionalDiscount.value = Math.max(0, Number.parseFloat(amount) || 0)
 		rebuildIncrementalCache()
 	}
 
@@ -597,14 +705,27 @@ export function useInvoice() {
 		/**
 		 * Remove additional discount (coupon discount)
 		 */
-		// Clear additional discount
 		additionalDiscount.value = 0
-
-		// Clear coupon code
 		couponCode.value = null
+		couponRule.value = null
 
 		// Rebuild cache after removing discount
 		rebuildIncrementalCache()
+	}
+
+	/**
+	 * Turn ERPNext's rounded total on or off.
+	 * @param {boolean} enabled - The POS Profile does not disable the rounded total
+	 * @param {number|null} smallestFraction - The currency's smallest_currency_fraction_value.
+	 *   Unknown (null) leaves the total unrounded, as nothing says how the server rounds it.
+	 */
+	function setRounding(enabled, smallestFraction) {
+		const known =
+			smallestFraction !== null && smallestFraction !== undefined && smallestFraction !== ""
+		rounding.value = {
+			enabled: Boolean(enabled) && known,
+			smallestFraction: Number(smallestFraction) || 0,
+		}
 	}
 
 	// Performance: Cache tax calculation to avoid repeated loops
@@ -640,6 +761,18 @@ export function useInvoice() {
 		return totalRate
 	}
 
+	/** The tax lines charged as a rate, each of which ERPNext rounds on its own */
+	function getRatedTaxRules() {
+		return (taxRules.value || [])
+			.filter(
+				(rule) =>
+					(rule.charge_type === "On Net Total" ||
+						rule.charge_type === "On Previous Row Total") &&
+					rule.rate,
+			)
+			.map((rule) => ({ rate: Number(rule.rate) || 0 }))
+	}
+
 	function rebuildIncrementalCache() {
 		/**
 		 * Rebuild cache from scratch - used when bulk operations modify all items
@@ -666,6 +799,8 @@ export function useInvoice() {
 		for (const payment of payments.value) {
 			_cachedTotalPaid.value += payment.amount || 0
 		}
+
+		refreshCouponDiscount()
 	}
 
 	/**
@@ -729,9 +864,10 @@ export function useInvoice() {
 			netAmount = roundCurrency(grossAmount / (1 + totalTaxRate / 100))
 			taxAmount = roundCurrency(grossAmount - netAmount)
 		} else {
-			// Tax-exclusive: Calculate tax on top of net amount
+			// Tax-exclusive: Calculate tax on top of net amount. Left unrounded: ERPNext adds
+			// the unrounded tax of every row and rounds the total once.
 			netAmount = roundCurrency(baseAmount - discountAmount)
-			taxAmount = roundCurrency((netAmount * totalTaxRate) / 100)
+			taxAmount = (netAmount * totalTaxRate) / 100
 		}
 
 		// Update item fields with rounded values
@@ -1289,6 +1425,7 @@ export function useInvoice() {
 		payments.value = []
 		additionalDiscount.value = 0
 		couponCode.value = null
+		couponRule.value = null
 		invoiceRemarks.value = ""
 
 		// Reset incremental cache
@@ -1325,6 +1462,7 @@ export function useInvoice() {
 		payments.value = []
 		additionalDiscount.value = 0
 		couponCode.value = null
+		couponRule.value = null
 		invoiceRemarks.value = ""
 
 		// Reset incremental cache
@@ -1438,12 +1576,16 @@ export function useInvoice() {
 		posOrderType,
 		posTableNo,
 		isSubmitting,
+		couponRule,
+		couponDropped,
 
 		// Computed
 		subtotal,
 		totalTax,
 		totalDiscount,
 		grandTotal,
+		roundedTotal,
+		roundingAdjustment,
 		totalPaid,
 		remainingAmount,
 		canSubmit,
@@ -1457,6 +1599,8 @@ export function useInvoice() {
 		calculateDiscountAmount,
 		applyDiscount,
 		removeDiscount,
+		setAdditionalDiscount,
+		setRounding,
 		addPayment,
 		removePayment,
 		updatePayment,

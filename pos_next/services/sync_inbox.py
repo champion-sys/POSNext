@@ -623,25 +623,29 @@ def _create_invoice(row):
 
     data = {"offline_id": row.offline_id}
     result = process_invoice(payload, data, doctype, pos_profile, offline_id=row.offline_id, queued=True)
-    _assert_totals_match(row, result, pos_profile)
+    _assert_totals_match(row, result, pos_profile, payload)
     return {**result, "doctype": doctype, "customer": payload.get("customer")}
 
 
-def _assert_totals_match(row, result, pos_profile):
-    """A sale the customer paid must not silently become a different amount."""
-    client_total = flt(row.client_grand_total)
+def _assert_totals_match(row, result, pos_profile, payload=None):
+    """A sale the customer paid must not silently become a different amount.
+
+    Compares what was collected on each side: the rounded total when rounding is on,
+    as ERPNext collects it. A device too old to send its rounded total collected its
+    grand total.
+    """
+    client_total = flt((payload or {}).get("rounded_total")) or flt(row.client_grand_total)
     if not client_total or cint(row.accept_total_difference):
         return
 
     tolerance = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "sync_total_tolerance")
     tolerance = flt(tolerance) if tolerance is not None else DEFAULT_TOTAL_TOLERANCE
 
-    difference = abs(client_total - flt(result.get("grand_total")))
+    server_total = flt(result.get("rounded_total")) or flt(result.get("grand_total"))
+    difference = abs(client_total - server_total)
     if difference > tolerance:
         raise TotalMismatchError(
-            _("The server total {0} differs from the device total {1}").format(
-                flt(result.get("grand_total")), client_total
-            )
+            _("The server total {0} differs from the device total {1}").format(server_total, client_total)
         )
 
 

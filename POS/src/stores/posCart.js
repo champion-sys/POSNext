@@ -91,6 +91,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		totalTax,
 		totalDiscount,
 		grandTotal,
+		roundedTotal,
+		roundingAdjustment,
 		posProfile,
 		posOpeningShift,
 		posOrderType,
@@ -100,6 +102,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		taxInclusive,
 		invoiceRemarks,
 		isSubmitting,
+		couponDropped,
+		setAdditionalDiscount: setInvoiceAdditionalDiscount,
+		setRounding,
 		addItem: addItemToInvoice,
 		removeItem,
 		updateItemQuantity: baseUpdateItemQuantity,
@@ -146,6 +151,25 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		},
 		{ immediate: true },
 	)
+
+	// The cashier collects ERPNext's rounded total when the POS Profile does not disable it
+	watch(
+		() => [settingsStore.disableRoundedTotal, settingsStore.roundingFraction],
+		([disabled, fraction]) => setRounding?.(disabled === false, fraction),
+		{ immediate: true },
+	)
+
+	// A coupon whose minimum the cart no longer reaches stops applying
+	watch(() => couponDropped?.value, (dropped) => {
+		if (!dropped) return
+		appliedCoupon.value = null
+		showWarning(
+			__("Coupon {0} removed: the cart is below its minimum of {1}", [
+				dropped.name || dropped.code,
+				dropped.minAmount,
+			]),
+		)
+	})
 
 	// Sales from here on use the name the server gave a shift opened offline
 	watch(
@@ -336,6 +360,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		appliedOffers.value = []
 		appliedCoupon.value = null
 		currentDraftId.value = null
+		// A write-off belongs to one checkout, never to the next sale
+		writeOffAmount.value = 0
 		targetDoctype.value = settingsStore.invoiceType || "Sales Invoice"
 
 		// Reset order type selection back to default for the active profile
@@ -372,8 +398,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		deliveryDate.value = date
 	}
 
+	/**
+	 * Set on every checkout from what the payment dialog sent, 0 when it sent none,
+	 * so an amount from a checkout that failed never carries over.
+	 * @param {number} amount
+	 */
 	function setWriteOffAmount(amount) {
-		writeOffAmount.value = amount || 0
+		writeOffAmount.value = Number.parseFloat(amount) || 0
 	}
 
 	async function submitInvoice(options = {}) {
@@ -437,6 +468,76 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		showSuccess(__("Discount has been removed from cart"))
 	}
 
+	/**
+	 * An invoice discount the cashier typed in the payment dialog. It takes the place
+	 * of a coupon, so the coupon is no longer shown as applied.
+	 * @param {number} amount
+	 */
+	function setAdditionalDiscount(amount) {
+		setInvoiceAdditionalDiscount(amount)
+		appliedCoupon.value = null
+	}
+
+	/**
+	 * The price the server's offer calculation must start from: the list price before
+	 * any offer changed it, or the rate the cashier typed.
+	 * @param {Object} item - Cart line
+	 * @returns {number}
+	 */
+	function getPriceBeforeOffers(item) {
+		return item.offer_base_price_list_rate ?? item.price_list_rate ?? item.rate
+	}
+
+	/**
+	 * Price a line at an offer's rate (Pricing Rule "Rate"). The list price before it
+	 * is kept, so removing the offer can put it back.
+	 * @param {Object} item - Cart line
+	 * @param {number} offerRate - The price the offer sets
+	 */
+	function setOfferPrice(item, offerRate) {
+		const before = getPriceBeforeOffers(item)
+		const rate = Number.parseFloat(offerRate) || 0
+		if (rate > 0 && Math.abs(rate - before) > 0.000001) {
+			item.offer_base_price_list_rate = before
+			item.price_list_rate = rate
+			if (item.is_rate_manually_edited !== 1) item.rate = rate
+		} else {
+			restoreOfferPrice(item)
+		}
+	}
+
+	function restoreOfferPrice(item) {
+		if (item.offer_base_price_list_rate === undefined) return
+		item.price_list_rate = item.offer_base_price_list_rate
+		if (item.is_rate_manually_edited !== 1) item.rate = item.offer_base_price_list_rate
+		delete item.offer_base_price_list_rate
+	}
+
+	/**
+	 * Take off a line what offers gave it: their discount, their price and their names.
+	 * A discount the cashier gave a line without an offer is left alone.
+	 * @param {Object} item - Cart line
+	 * @returns {boolean} Whether the line had anything from an offer
+	 */
+	function clearOfferPricing(item) {
+		if (!hasPricingRules(item.pricing_rules) && item.offer_base_price_list_rate === undefined) {
+			return false
+		}
+		item.discount_percentage = 0
+		item.discount_amount = 0
+		item.pricing_rules = ""
+		restoreOfferPrice(item)
+		recalculateItem(item)
+		return true
+	}
+
+	/** Take every offer's effect off the cart. A coupon is not an offer and stays. */
+	function clearAllOfferPricing() {
+		processFreeItems([])
+		for (const item of invoiceItems.value) clearOfferPricing(item)
+		rebuildIncrementalCache()
+	}
+
 	function buildOfferEvaluationPayload(currentProfile) {
 		// Use toRaw() to ensure we get current, non-reactive values (prevents stale cached quantities)
 		const rawItems = toRaw(invoiceItems.value)
@@ -457,12 +558,13 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				item_code: item.item_code,
 				item_name: item.item_name,
 				qty: item.quantity,
-				rate: item.rate,
+				// From the price before any offer, so an offer is not applied over itself
+				rate: item.is_rate_manually_edited === 1 ? item.rate : getPriceBeforeOffers(item),
 				uom: item.uom,
 				warehouse: item.warehouse,
 				remarks: item.remarks || "",
 				conversion_factor: item.conversion_factor || 1,
-				price_list_rate: item.price_list_rate || item.rate,
+				price_list_rate: getPriceBeforeOffers(item),
 				discount_percentage: item.discount_percentage || 0,
 				discount_amount: item.discount_amount || 0,
 			})),
@@ -492,7 +594,6 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			const discountPct = Number.parseFloat(serverItem.discount_percentage) || 0
 			const discountAmt = Number.parseFloat(serverItem.discount_amount) || 0
 
-			// Only update if server applied a pricing rule or discount
 			if (
 				hasPricingRules(serverItem.pricing_rules) ||
 				discountPct > 0 ||
@@ -501,9 +602,14 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				item.discount_percentage = discountPct
 				item.discount_amount = discountAmt
 				item.pricing_rules = serverItem.pricing_rules
+				// A "Rate" rule comes back as the price itself
+				setOfferPrice(item, serverItem.price_list_rate)
 				hasDiscounts = discountPct > 0 || discountAmt > 0
+			} else if (clearOfferPricing(item)) {
+				// No offer applies to this line any more, so what one gave it goes
+				return
 			}
-			// Otherwise preserve existing manual discount
+			// A line no offer ever touched keeps the cashier's own discount
 
 			recalculateItem(item)
 		})
@@ -772,8 +878,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			offerQueue.cancel()
 
 			appliedOffers.value = []
-			processFreeItems([]) // Remove all free items
-			removeDiscount()
+			// Their discounts, prices and free items go. A coupon is not an offer and stays.
+			clearAllOfferPricing()
 			await nextTick()
 			showSuccess(__("Offer has been removed from cart"))
 			offersDialogRef?.resetApplyingState()
@@ -790,8 +896,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			offerQueue.cancel()
 
 			appliedOffers.value = []
-			processFreeItems([]) // Remove all free items
-			removeDiscount()
+			// Their discounts, prices and free items go. A coupon is not an offer and stays.
+			clearAllOfferPricing()
 			await nextTick()
 			showSuccess(__("Offer has been removed from cart"))
 			offersDialogRef?.resetApplyingState()
@@ -906,20 +1012,9 @@ export const usePOSCartStore = defineStore("posCart", () => {
 					.map((o) => o.code)
 
 				if (validOfferCodes.length === 0) {
-					// All offers invalid - clear everything
+					// All offers invalid - clear what they gave the lines
 					appliedOffers.value = []
-					processFreeItems([])
-
-					// Reset all item rates to original (remove discounts)
-					invoiceItems.value.forEach((item) => {
-						if (item.pricing_rules && item.pricing_rules.length > 0) {
-							item.discount_percentage = 0
-							item.discount_amount = 0
-							item.pricing_rules = []
-							recalculateItem(item)
-						}
-					})
-					rebuildIncrementalCache()
+					clearAllOfferPricing()
 				} else {
 					// Reapply only valid offers
 					const invoiceData = buildOfferEvaluationPayload(currentProfile)
@@ -1109,14 +1204,15 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				recalculateItem(item)
 				applied = true
 			} else if (discountType === "Discount Amount" && discountAmount > 0) {
-				// Apply fixed discount amount
-				item.discount_amount = discountAmount
+				// The rule's amount comes off each unit, as apply_offers does online
+				item.discount_percentage = 0
+				item.discount_amount = discountAmount * (item.quantity || 0)
 				item.pricing_rules = [offer.name]
 				recalculateItem(item)
 				applied = true
 			} else if (discountType === "Rate" && rate > 0) {
-				// Apply fixed rate (override price)
-				item.rate = rate
+				// The rule sets the price itself, through the price the totals use
+				setOfferPrice(item, rate)
 				item.pricing_rules = [offer.name]
 				recalculateItem(item)
 				applied = true
@@ -1705,15 +1801,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			// All applied offers became invalid and no new offers to apply.
 			if (combinedCodes.length === 0 && invalidOffers.length > 0) {
 				appliedOffers.value = []
-				processFreeItems([])
-				invoiceItems.value.forEach((item) => {
-					if (item.pricing_rules && item.pricing_rules.length > 0) {
-						item.discount_percentage = 0
-						item.discount_amount = 0
-						recalculateItem(item)
-					}
-				})
-				rebuildIncrementalCache()
+				clearAllOfferPricing()
 
 				const names = invalidOffers.map((o) => o.name).join(", ")
 				showWarning(
@@ -1964,6 +2052,8 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		totalTax,
 		totalDiscount,
 		grandTotal,
+		roundedTotal,
+		roundingAdjustment,
 		posProfile,
 		posOpeningShift,
 		posOrderType,
@@ -2007,6 +2097,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		submitInvoice,
 		applyDiscountToCart,
 		removeDiscountFromCart,
+		setAdditionalDiscount,
 		applyOffer,
 		removeOffer,
 		reapplyOffer,
