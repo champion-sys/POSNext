@@ -499,7 +499,13 @@ def _set_payment_accounts(payments, company):
 
 
 def _get_available_stock(item):
-    """Return available stock qty for an item row."""
+    """Return available stock qty for an item row.
+
+    Submitted POS Invoices that no closing has consolidated still sit in the Bin, so
+    their quantity comes off, the way ERPNext's own POS counts it.
+    """
+    from erpnext.accounts.doctype.pos_invoice.pos_invoice import get_pos_reserved_qty
+
     warehouse = item.get("warehouse")
     batch_no = item.get("batch_no")
     item_code = item.get("item_code")
@@ -514,7 +520,7 @@ def _get_available_stock(item):
     bin_qty = frappe.db.get_value(
         "Bin", {"item_code": item_code, "warehouse": warehouse}, "actual_qty"
     )
-    return flt(bin_qty) or 0
+    return flt(bin_qty) - flt(get_pos_reserved_qty(item_code, warehouse))
 
 
 def _collect_stock_errors(items):
@@ -596,14 +602,11 @@ def _should_block(pos_profile):
         if pos_settings_allow_negative:
             return False
 
-        # Try to get custom field (may not exist in vanilla ERPNext)
-        block_sale = cint(
-            frappe.db.get_value(
-                "POS Profile", pos_profile, "posa_block_sale_beyond_available_qty"
-            )
-            or 1
+        # An explicit 0 turns blocking off. Only a missing value keeps the default, which blocks.
+        block_sale = frappe.db.get_value(
+            "POS Profile", pos_profile, "posa_block_sale_beyond_available_qty"
         )
-        return bool(block_sale)
+        return True if block_sale is None else bool(cint(block_sale))
 
     # Default to blocking if no profile specified
     return True
@@ -702,12 +705,15 @@ def validate_return_items(original_invoice_name, return_items, doctype="Sales In
     return _validate_return_items(original_invoice_name, return_items, doctype)
 
 
-def _validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice", as_of=None):
+def _validate_return_items(original_invoice_name, return_items, doctype="Sales Invoice", as_of=None, lock=False):
     """The checks of validate_return_items.
 
     Args:
         as_of: The day of a queued return, which is when the return period counts.
             Kept out of the whitelisted method, so a request cannot set it.
+        lock: Lock the original invoice until the transaction ends, for a return about
+            to be saved. Two returns of one invoice then take turns: the second waits for
+            the first to commit, and its count of what was already returned sees it.
     """
     from frappe.query_builder.functions import Abs, Sum
     from frappe.utils import date_diff, getdate
@@ -717,11 +723,12 @@ def _validate_return_items(original_invoice_name, return_items, doctype="Sales I
 
     # Fetch invoice pos_profile and posting_date for validation
     si = frappe.qb.DocType(doctype)
-    invoice_data = (
+    invoice_query = (
         frappe.qb.from_(si)
         .select(si.pos_profile, si.posting_date)
         .where(si.name == original_invoice_name)
-    ).run(as_dict=True)
+    )
+    invoice_data = (invoice_query.for_update() if lock else invoice_query).run(as_dict=True)
 
     if not invoice_data:
         return {"valid": False, "message": _("Invoice {0} not found").format(original_invoice_name)}
@@ -764,7 +771,7 @@ def _validate_return_items(original_invoice_name, return_items, doctype="Sales I
     ret_si = frappe.qb.DocType(doctype)
     ret_item = frappe.qb.DocType(f"{doctype} Item")
 
-    returned_qty_data = (
+    returned_qty_query = (
         frappe.qb.from_(ret_si)
         .inner_join(ret_item).on(ret_item.parent == ret_si.name)
         .select(ret_item.item_code, Sum(Abs(ret_item.qty)).as_("returned_qty"))
@@ -774,7 +781,10 @@ def _validate_return_items(original_invoice_name, return_items, doctype="Sales I
             & (ret_si.is_return == 1)
         )
         .groupby(ret_item.item_code)
-    ).run(as_dict=True)
+    )
+    # Under REPEATABLE READ a plain read sees the snapshot from before the lock wait,
+    # which misses a return committed meanwhile. A locking read sees the latest rows.
+    returned_qty_data = (returned_qty_query.for_update() if lock else returned_qty_query).run(as_dict=True)
 
     # Subtract returned quantities
     for row in returned_qty_data:
@@ -795,6 +805,53 @@ def _validate_return_items(original_invoice_name, return_items, doctype="Sales I
             }
 
     return {"valid": True}
+
+
+#: How far a device's refund may run over the return's total and still be rounding
+RETURN_REFUND_ROUNDING = 0.05
+
+
+def _trim_refund_rounding(invoice_doc):
+    """Bring a refund that runs a cent or two over the return's total back to the total.
+
+    A device adds the refund up per row, while ERPNext rounds each tax once over the whole
+    return, so the two can differ by rounding. ERPNext refuses a POS return whose refund is
+    larger than its total. A larger difference is left alone, for ERPNext to refuse.
+    """
+    payments = [payment for payment in invoice_doc.get("payments") or [] if flt(payment.amount)]
+    if not payments:
+        return
+
+    precision = invoice_doc.precision("grand_total")
+    total = flt(invoice_doc.get("rounded_total") or invoice_doc.get("grand_total"))
+    refunded = sum(flt(payment.amount) for payment in payments)
+    excess = flt(total - refunded, precision)
+    if excess <= 0 or excess > RETURN_REFUND_ROUNDING:
+        return
+
+    for payment in reversed(payments):
+        if -flt(payment.amount) >= excess:
+            payment.amount = flt(flt(payment.amount) + excess, precision)
+            if payment.get("base_amount"):
+                payment.base_amount = flt(payment.amount * flt(invoice_doc.get("conversion_rate") or 1), precision)
+            return
+
+
+def assert_return_quantities(invoice_doc, queued=False):
+    """Refuse a return of more than is left on its invoice, holding that invoice locked.
+
+    The lock lasts until the caller's transaction commits or rolls back, so it covers the
+    insert and the submit that follow in the same request or sync job.
+    """
+    validation = _validate_return_items(
+        invoice_doc.return_against,
+        [d.as_dict() for d in invoice_doc.items],
+        doctype=invoice_doc.doctype,
+        as_of=invoice_doc.get("posting_date") if queued else None,
+        lock=True,
+    )
+    if not validation.get("valid"):
+        frappe.throw(validation.get("message"))
 
 
 # ==========================================
@@ -933,14 +990,7 @@ def save_invoice_draft(data, queued=False):
         if (data.get("is_return") or invoice_doc.get("is_return")) and invoice_doc.get(
             "return_against"
         ):
-            validation = _validate_return_items(
-                invoice_doc.return_against,
-                [d.as_dict() for d in invoice_doc.items],
-                doctype=invoice_doc.doctype,
-                as_of=invoice_doc.get("posting_date") if queued else None,
-            )
-            if not validation.get("valid"):
-                frappe.throw(validation.get("message"))
+            assert_return_quantities(invoice_doc, queued)
 
         # Ensure customer exists
         customer_name = invoice_doc.get("customer")
@@ -1124,6 +1174,7 @@ def save_invoice_draft(data, queued=False):
                     payment.amount = -abs(payment.amount)
                     if payment.base_amount:
                         payment.base_amount = -abs(payment.base_amount)
+                _trim_refund_rounding(invoice_doc)
 
                 invoice_doc.paid_amount = flt(sum(p.amount for p in invoice_doc.payments))
                 invoice_doc.base_paid_amount = flt(
@@ -1909,31 +1960,132 @@ def _parse_item_wise_tax_detail(raw_detail):
     return raw_detail
 
 
-def _build_item_tax_map(taxes: list) -> dict:
-    """Build item_code -> tax_amount map from taxes child table.
+def _build_item_tax_map(taxes: list, rows: list, tax_details: list | None = None, conversion_rate=1) -> dict:
+    """The tax each item row of an invoice carried, in the invoice's currency.
+
+    ERPNext 16 keeps it in the Item Wise Tax Detail table: one row per item row and tax
+    row, keyed by item_row, with the amount in the company currency. Older versions kept
+    a JSON of item_code -> [rate, amount] on each tax row, which is used when the table
+    gives nothing; its amount for an item code is shared between that code's rows.
 
     Args:
-        taxes: List of tax row dicts containing item_wise_tax_detail
+        taxes: Tax rows of the invoice, for the older JSON
+        rows: Item rows of the invoice, with name, item_code and net_amount
+        tax_details: Item Wise Tax Detail rows, with item_row, rate and amount
+        conversion_rate: The invoice's, to turn company currency into its own
 
     Returns:
-        Dict mapping item_code to total tax amount (absolute value)
-
-    Note:
-        item_wise_tax_detail format: {"ITEM-CODE": [tax_rate, tax_amount]}
-        Return documents have negative amounts, hence abs() is used.
+        dict: item row name -> {"amount": tax (absolute), "rate": summed percentage, or 0
+            when a row has a tax that is not a percentage}
     """
-    from collections import defaultdict
-    tax_map = defaultdict(float)
+    tax_map = {}
+    conversion_rate = flt(conversion_rate) or 1
 
-    for tax_row in taxes:
-        try:
-            details = _parse_item_wise_tax_detail(tax_row.get("item_wise_tax_detail"))
-            for item_code, (_, tax_amount) in details.items():
-                tax_map[item_code] += abs(flt(tax_amount))
-        except (json.JSONDecodeError, TypeError, ValueError, KeyError):
-            continue
+    for detail in tax_details or []:
+        entry = tax_map.setdefault(detail.get("item_row"), {"amount": 0.0, "rate": 0.0, "fixed": False})
+        entry["amount"] += abs(flt(detail.get("amount"))) / conversion_rate
+        if flt(detail.get("rate")):
+            entry["rate"] += flt(detail.get("rate"))
+        elif flt(detail.get("amount")):
+            entry["fixed"] = True
 
-    return dict(tax_map)
+    if not tax_map:
+        by_code = {}
+        for tax_row in taxes:
+            try:
+                details = _parse_item_wise_tax_detail(tax_row.get("item_wise_tax_detail"))
+                for item_code, (tax_rate, tax_amount) in details.items():
+                    entry = by_code.setdefault(item_code, {"amount": 0.0, "rate": 0.0, "fixed": False})
+                    entry["amount"] += abs(flt(tax_amount))
+                    if flt(tax_rate):
+                        entry["rate"] += flt(tax_rate)
+                    else:
+                        entry["fixed"] = True
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+                continue
+
+        net_by_code = {}
+        for row in rows:
+            code = row.get("item_code")
+            net_by_code[code] = net_by_code.get(code, 0) + abs(flt(row.get("net_amount")))
+        for row in rows:
+            code = row.get("item_code")
+            entry = by_code.get(code)
+            if not entry:
+                continue
+            share = abs(flt(row.get("net_amount"))) / net_by_code[code] if net_by_code[code] else 0
+            tax_map[row.get("name")] = {**entry, "amount": entry["amount"] * share}
+
+    return {
+        row_name: {"amount": entry["amount"], "rate": 0.0 if entry["fixed"] else entry["rate"]}
+        for row_name, entry in tax_map.items()
+    }
+
+
+def _get_return_sources(doctype, invoice_name):
+    """The item rows of an invoice and the tax each carried, for pricing its return."""
+    rows = frappe.get_all(
+        f"{doctype} Item",
+        filters={"parent": invoice_name, "parenttype": doctype},
+        fields=["name", "item_code", "qty", "net_amount"],
+    )
+    tax_details = []
+    if frappe.get_meta(doctype).has_field("item_wise_tax_details"):
+        tax_details = frappe.get_all(
+            "Item Wise Tax Detail",
+            filters={"parent": invoice_name, "parenttype": doctype},
+            fields=["item_row", "rate", "amount"],
+        )
+    return rows, tax_details
+
+
+def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
+    """What one unit of an item row is worth back, after every discount of its sale.
+
+    The invoice discount is spread over the rows' net amounts, so a unit is its row's net
+    amount plus its row's tax, divided by its quantity. The sale's rate is the price
+    before the invoice discount, and a return at that rate would refund the discount too.
+
+    Args:
+        source: The sale's item row, with qty and net_amount
+        tax: Its entry of _build_item_tax_map, or None
+        tax_inclusive: Whether the sale's taxes were included in its rates
+        price_list_rate: The row's price list rate, for the discount shown
+        precision: Currency precision
+
+    Returns:
+        dict: rate, rate_with_tax, tax_per_unit, tax_fraction and discount_per_unit. The
+            device adds a refund up from these the way ERPNext totals the return:
+            exclusive tax is rounded once, on the sum of qty * rate * tax_fraction.
+    """
+    qty = abs(flt(source.get("qty"))) or 1
+    net_amount = abs(flt(source.get("net_amount")))
+    item_tax = flt(tax["amount"]) if tax else 0.0
+    unit_net = net_amount / qty
+    unit_tax = item_tax / qty
+
+    if tax_inclusive:
+        rate = flt(unit_net + unit_tax, precision)
+        return {
+            "rate": rate,
+            "rate_with_tax": rate,
+            "tax_per_unit": flt(unit_tax, precision),
+            "tax_fraction": 0.0,
+            "discount_per_unit": flt(price_list_rate - rate, precision),
+        }
+
+    rate = flt(unit_net, precision)
+    if tax and flt(tax["rate"]):
+        tax_fraction = flt(tax["rate"]) / 100
+    else:
+        tax_fraction = item_tax / net_amount if net_amount else 0.0
+    return {
+        "rate": rate,
+        "rate_with_tax": flt(rate * (1 + tax_fraction), precision),
+        "tax_per_unit": flt(rate * tax_fraction, precision),
+        "tax_fraction": tax_fraction,
+        "discount_per_unit": flt(price_list_rate - rate, precision),
+    }
 
 
 def _remap_foreign_payment_modes(payments_data, current_profile, original_profile):
@@ -2123,7 +2275,8 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
             si.customer,
             si.customer_name,
             si.net_total,
-            si.total_taxes_and_charges
+            si.total_taxes_and_charges,
+            si.conversion_rate
         )
         .where(si.name == invoice_name)
     ).run(as_dict=True)
@@ -2240,6 +2393,7 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
     # code have additional safety nets for cases where this remap doesn't run
     # (e.g. no pos_opening_shift provided) or for already-submitted invoices
     # with the wrong payment mode.
+    current_profile = None
     if pos_opening_shift:
         current_profile = frappe.db.get_value(
             "POS Opening Shift", pos_opening_shift, "pos_profile"
@@ -2248,6 +2402,12 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
             payments_data = _remap_foreign_payment_modes(
                 payments_data, current_profile, invoice_info.pos_profile
             )
+
+    # The goods of a return taken at another branch go back on that branch's shelves,
+    # where its refund also comes from, not into the warehouse of the branch that sold them.
+    branch_warehouse = None
+    if current_profile and current_profile != invoice_info.pos_profile:
+        branch_warehouse = frappe.db.get_value("POS Profile", current_profile, "warehouse")
 
     # Include original invoice data for reference (payments, amounts, etc.)
     return_dict["_original_invoice"] = {
@@ -2263,7 +2423,11 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
         "total_taxes_and_charges": invoice_info.total_taxes_and_charges,
     }
 
-    item_tax_map = _build_item_tax_map(return_dict.get("taxes", []))
+    source_rows, tax_details = _get_return_sources(doctype, invoice_name)
+    sources = {row.name: row for row in source_rows}
+    item_tax_map = _build_item_tax_map(
+        return_dict.get("taxes", []), source_rows, tax_details, invoice_info.conversion_rate
+    )
 
     # Check if taxes are inclusive by inspecting the tax rows copied from the original
     # invoice (immutable after submission, unlike POS Settings which can change later).
@@ -2288,23 +2452,16 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
         if remaining_qty <= 0:
             return None
 
-        # Get rate breakdown for display
         price_list_rate = flt(item.get("price_list_rate") or item.get("rate"), precision)
-        net_rate = flt(item.get("net_rate") or item.get("rate"), precision)
-        tax_per_unit = flt(item_tax_map.get(item.get("item_code"), 0) / original_qty, precision) if original_qty else 0
-
-        # For inclusive taxes, use the original rate (already includes tax) to prevent
-        # ERPNext from back-calculating and double-reducing the tax.
-        # For exclusive taxes, use net_rate as before.
-        if tax_inclusive:
-            item_rate = flt(item.get("rate"), precision)
-            rate_with_tax = item_rate
-            # Both price_list_rate and rate are tax-inclusive, so discount is their difference
-            discount_per_unit = flt(price_list_rate - item_rate, precision)
-        else:
-            item_rate = net_rate
-            rate_with_tax = flt(net_rate + tax_per_unit, precision)
-            discount_per_unit = flt(price_list_rate - net_rate, precision)
+        source_name = item.get("pos_invoice_item") or item.get("sales_invoice_item")
+        source = sources.get(source_name) or {
+            "qty": original_qty,
+            "net_amount": abs(flt(item.get("net_rate") or item.get("rate"))) * original_qty,
+        }
+        priced = _price_return_row(
+            source, item_tax_map.get(source_name), tax_inclusive, price_list_rate, precision
+        )
+        item_rate = priced["rate"]
 
         return {
             **item,
@@ -2314,11 +2471,13 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
             "qty": -remaining_qty,
             "price_list_rate": price_list_rate,
             "rate": item_rate,
-            "discount_per_unit": discount_per_unit,
+            "discount_per_unit": priced["discount_per_unit"],
             "amount": flt(item_rate * -remaining_qty, precision),
-            "tax_per_unit": tax_per_unit,
-            "rate_with_tax": rate_with_tax,
+            "tax_per_unit": priced["tax_per_unit"],
+            "rate_with_tax": priced["rate_with_tax"],
+            "tax_fraction": priced["tax_fraction"],
             "tax_included_in_rate": tax_inclusive,
+            "warehouse": branch_warehouse or item.get("warehouse"),
         }
 
     return_dict["items"] = [
@@ -2351,6 +2510,7 @@ _RETURN_ITEM_FIELDS = (
     "price_list_rate",
     "rate_with_tax",
     "tax_per_unit",
+    "tax_fraction",
     "tax_included_in_rate",
     "discount_per_unit",
     "uom",

@@ -574,6 +574,7 @@ class TestCouponUsage(NoSiteTestCase):
             patch(f"{processor}._set_payment_accounts"),
             patch(f"{processor}._auto_set_return_batches"),
             patch(f"{processor}._validate_stock_on_invoice"),
+            patch(f"{processor}.assert_return_quantities"),
             patch(f"{wallet}.reverse_wallet_transactions_for_return"),
             patch(f"{coupon}.increment_coupon_usage") as increment,
         ):
