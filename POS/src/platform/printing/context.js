@@ -140,6 +140,30 @@ export function normalizePrintDoc(source = {}, defaults = {}) {
  * @param {Object} [options.server] - {company, pos_profile, cashier, customer} from get_print_context
  * @returns {{doc: Object, company: Object, pos_profile: Object, cashier: Object, customer: Object, print: Object}}
  */
+/**
+ * An address as plain lines, as the server sends it. Frappe keeps address_display as HTML
+ * with <br>, which a template would print as text.
+ * @param {string} [value]
+ * @returns {string}
+ */
+export function addressLines(value) {
+	if (!value) return ""
+	const text = String(value)
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<[^>]*>/g, "")
+		.replace(/&nbsp;/g, " ")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, "&")
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean)
+		.join("\n")
+}
+
 export function buildPrintContext({ doc, bundle, template, cashier, customer, print, server } = {}) {
 	const company = { ...(bundle?.company || {}), ...(server?.company || {}) }
 	const posProfile = { ...(bundle?.pos_profile || {}), ...(server?.pos_profile || {}) }
@@ -161,7 +185,7 @@ export function buildPrintContext({ doc, bundle, template, cashier, customer, pr
 		customer_name: printDoc.customer_name,
 		tax_id: printDoc.customer_tax_id || printDoc.tax_id || "",
 		mobile_no: printDoc.customer_mobile || printDoc.contact_mobile || "",
-		address: printDoc.customer_address_display || printDoc.address_display || "",
+		address: addressLines(printDoc.customer_address_display || printDoc.address_display),
 		...(customer || {}),
 		...(server?.customer || {}),
 	}

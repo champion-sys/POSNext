@@ -25,6 +25,7 @@ const SYMBOLS = {
 	OMR: { ar: "ر.ع", en: "OMR" },
 	QAR: { ar: "ر.ق", en: "QAR" },
 	JOD: { ar: "د.أ", en: "JOD" },
+	YER: { ar: "ر.ي", en: "YER" },
 	USD: "$",
 	EUR: "€",
 	GBP: "£",
@@ -38,6 +39,13 @@ const THREE_DECIMALS = new Set(["KWD", "BHD", "OMR", "JOD", "TND", "LYD", "IQD"]
  * a plural from three to ten and the singular accusative from eleven on.
  */
 const MONEY_NAMES = {
+	YER: {
+		fractionEn: "Fils",
+		ar: [
+			["ريال يمني", "ريالان يمنيان", "ريالات يمنية", "ريالاً يمنياً"],
+			["فلس", "فلسان", "فلوس", "فلساً"],
+		],
+	},
 	SAR: {
 		fractionEn: "Halala",
 		ar: [
