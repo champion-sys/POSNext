@@ -1214,6 +1214,19 @@ def submit_invoice(invoice=None, data=None):
         if duplicate:
             return duplicate
 
+    # An edit of a queued sale goes through the queue, which can hold it for review. Sent
+    # here, as an older device does, it must not post beside an original the server holds.
+    if invoice.get("edited_from") and sync_inbox._get_edit_conflict({"offline_id": offline_id, "payload": invoice}):
+        from pos_next.services.sync_classifier import EditConflictError
+
+        frappe.throw(
+            _(
+                "This edits sale {0}, which the server already holds, so the edit was not saved. "
+                "Return or cancel the original sale instead."
+            ).format(invoice["edited_from"]),
+            EditConflictError,
+        )
+
     try:
         result = process_invoice(invoice, data, doctype, pos_profile, offline_id=offline_id)
     except Exception:

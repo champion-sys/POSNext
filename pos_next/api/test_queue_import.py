@@ -281,16 +281,33 @@ class TestWhatAnEditedFileCannotDo(ImportFlow):
         self.import_rows(self.item(cashier="sara@example.com"))
         self.assertEqual(self.stored().cashier, "sara@example.com")
 
-    def test_a_cashier_from_elsewhere_falls_to_the_manager(self):
+    def _process_stored(self):
+        users = []
+
+        def create(_row):
+            users.append(frappe.session.user)
+            return {"name": "SINV-1", "doctype": "Sales Invoice"}
+
+        with patch.dict(sync_inbox._ENTITIES, {"invoice": sync_inbox._Entity(create, Mock(return_value=None), ())}):
+            sync_inbox.process(self.stored().name)
+        return users
+
+    # The cashier may have left the profile since the file was made: a person decides
+    def test_a_cashier_from_elsewhere_is_not_given_to_the_manager(self):
         self.import_rows(self.item(cashier="omar@example.com"))
-        self.assertEqual(self.stored().cashier, MANAGER)
+
+        self.assertEqual(self.stored().cashier, "omar@example.com")
+        self.assertEqual(self._process_stored(), [])
+        self.assertEqual(self.stored().status, sync_inbox.REVIEW)
+        self.assertEqual(self.stored().error_code, "CashierNotOnProfileError")
 
     def test_a_name_with_high_roles_is_not_enough(self):
         self.profile_writers.add("Administrator")
 
         self.import_rows(self.item(cashier="Administrator"))
 
-        self.assertEqual(self.stored().cashier, MANAGER)
+        self.assertEqual(self._process_stored(), [])
+        self.assertEqual(self.stored().error_code, "CashierNotOnProfileError")
 
     def test_the_uploader_cannot_be_claimed(self):
         self.import_rows(self.item(uploaded_by="sara@example.com"))

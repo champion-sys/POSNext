@@ -18,17 +18,19 @@ from zoneinfo import ZoneInfo
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, flt, get_datetime, get_system_timezone, now_datetime
+from frappe.utils import add_to_date, cint, flt, get_datetime, get_system_timezone, getdate, now_datetime
 from frappe.utils.background_jobs import get_job_status
 from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
 from pos_next.services import sync_classifier, sync_entities, sync_retention
 from pos_next.services.sync_classifier import (
+    CashierNotOnProfileError,
     CashierUnavailableError,
     ClockSkewError,
     EditConflictError,
     ReplacedByEditError,
+    SaleOutsideShiftError,
     ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
@@ -67,6 +69,9 @@ VOLATILE_PAYLOAD_FIELDS = ("was_printed", "last_printed_at")
 DEFAULT_TOTAL_TOLERANCE = 0.05
 #: Past this a clock is wrong, not drifting: half a day can move a sale to another date.
 MAX_CLOCK_SKEW_SECONDS = 12 * 60 * 60
+
+#: How far outside its shift's hours a sale may be dated, for clocks that drift a little
+SHIFT_WINDOW_TOLERANCE_MINUTES = 30
 
 _NO_ERROR = {
     "error_class": None,
@@ -124,17 +129,15 @@ def _link_or_none(doctype, name):
     return name if name and frappe.db.exists(doctype, name) else None
 
 
-def _resolve_cashier(claimed, uploaded_by, pos_profile):
+def _resolve_cashier(claimed, uploaded_by):
     """Who a record belongs to.
 
-    A shared device can upload a colleague's sale, so the envelope may name someone else,
-    but only someone assigned to the POS Profile. Having high roles is not enough: the
-    claim comes from the request, and a role would let any POS user act as its holder.
+    A shared device can upload a colleague's sale, so the envelope may name someone else.
+    The name is kept even when that person is not on the POS Profile, as when they have left
+    it since: processing then holds the record for review (_as_cashier), instead of giving
+    the sale to whoever uploaded it. Only a name counts, so a claim cannot become a filter.
     """
-    is_colleague = isinstance(claimed, str) and frappe.db.exists(
-        "POS Profile User", {"parent": pos_profile, "user": claimed}
-    )
-    return claimed if is_colleague else uploaded_by
+    return claimed.strip() if isinstance(claimed, str) and claimed.strip() else uploaded_by
 
 
 def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_version):
@@ -144,7 +147,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
     pos_profile = get_item_profile(item)
     totals = item.get("client_totals") or {}
     entity = item.get("entity") or ENTITY_INVOICE
-    cashier = _resolve_cashier(item.get("cashier"), uploaded_by, pos_profile)
+    cashier = _resolve_cashier(item.get("cashier"), uploaded_by)
 
     return {
         "entity": entity,
@@ -354,6 +357,18 @@ def _as_cashier(row):
             _("The cashier of this record is disabled or no longer exists: {0}").format(row.cashier or "-")
         )
 
+    # A colleague's record runs as them only while they are on the profile. Having high roles
+    # is not enough: the name comes from the request, and a role would let any POS user act
+    # as its holder. The uploader's own access was checked when the record was stored.
+    is_colleague = row.cashier != row.uploaded_by
+    if is_colleague and not frappe.db.exists("POS Profile User", {"parent": row.pos_profile, "user": row.cashier}):
+        raise CashierNotOnProfileError(
+            _(
+                "The cashier of this record, {0}, is no longer on POS Profile {1}, so it was not given to {2}. "
+                "Add them back to the profile and press Reprocess, or void it."
+            ).format(row.cashier, row.pos_profile or "-", row.uploaded_by or "-")
+        )
+
     with session_of(row.cashier):
         yield
 
@@ -485,9 +500,18 @@ def _assert_shift_open(row, payload, doctype):
 
 
 def _assert_device_clock(row):
-    """A wrong clock puts a record on the wrong day, and nothing later would show it."""
+    """A wrong clock puts a record on the wrong day, and nothing later would show it.
+
+    The clock is read when a batch is sent, so a clock that was wrong when the sale was made
+    and right by then passes that reading. The sale's date still has to fall in its shift.
+    """
+    if cint(row.accept_device_date):
+        return
+
+    _assert_within_shift(row)
+
     skew = abs(cint(row.clock_skew_seconds))
-    if skew < MAX_CLOCK_SKEW_SECONDS or cint(row.accept_device_date):
+    if skew < MAX_CLOCK_SKEW_SECONDS:
         return
 
     if cint(row.clock_not_measured):
@@ -499,6 +523,89 @@ def _assert_device_clock(row):
     raise ClockSkewError(
         _("The device clock was {0} hour(s) away from the server when this was sent").format(flt(skew / 3600, 1))
     )
+
+
+def _get_shift_window(shift):
+    """When a shift took sales: from its start to its close, or to now while it is open.
+
+    Args:
+        shift: Its name, or filters that find it
+
+    Returns:
+        tuple[str, datetime, datetime] | None: Its name, start and end. None when the
+            server does not know it, or it says nothing usable
+    """
+    opening = frappe.db.get_value(
+        "POS Opening Shift", shift, ["name", "period_start_date", "status", "pos_closing_shift"], as_dict=True
+    )
+    if not isinstance(opening, dict) or not opening.get("period_start_date"):
+        return None
+
+    end = None
+    if opening.get("status") == "Closed" and opening.get("pos_closing_shift"):
+        end = frappe.db.get_value("POS Closing Shift", opening["pos_closing_shift"], "period_end_date")
+    start = get_datetime(opening["period_start_date"])
+    return opening.get("name") or shift, start, get_datetime(end) if end else now_datetime()
+
+
+def _get_sale_moment(payload):
+    """When the sale says it was made, as it will post. None when the server picks the date.
+
+    Returns:
+        tuple[date, datetime | None] | None: The date, and the moment when it has a time
+    """
+    posting_date = payload.get("posting_date")
+    if not posting_date:
+        return None
+    try:
+        day = getdate(posting_date)
+        moment = get_datetime(f"{day} {payload['posting_time']}") if payload.get("posting_time") else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return day, moment
+
+
+def _named_shift(payload):
+    return payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift")
+
+
+def _assert_within_shift(row):
+    """A sale dated outside the hours of the shift it was made in goes to a person.
+
+    Only the shift the device named counts. A manager who moved the sale to another shift,
+    or linked the shift it was made in to another one, has already decided where it goes.
+    """
+    if (row.get("entity") or ENTITY_INVOICE) != ENTITY_INVOICE or not row.get("payload"):
+        return
+
+    payload = sync_entities.load_payload(row)
+    named = _named_shift(payload)
+    sale = _get_sale_moment(payload)
+    try:
+        original = json.loads(row.get("original_payload") or row.payload)
+    except ValueError:
+        original = None
+    moved = isinstance(original, dict) and _named_shift(original) != named
+    if not named or not sale or moved:
+        return
+
+    # A shift opened on a device keeps the device's name. One linked to another was never created.
+    window = _get_shift_window({"offline_id": named} if sync_entities.is_local_name(named) else named)
+    if not window:
+        return
+
+    shift, opened, closed = window
+    start = add_to_date(opened, minutes=-SHIFT_WINDOW_TOLERANCE_MINUTES)
+    end = add_to_date(closed, minutes=SHIFT_WINDOW_TOLERANCE_MINUTES)
+    day, moment = sale
+    inside = start <= moment <= end if moment else start.date() <= day <= end.date()
+    if not inside:
+        raise SaleOutsideShiftError(
+            _(
+                "This sale is dated {0}, outside its shift {1}, which ran from {2} to {3}. "
+                "The device clock may have been wrong when it was made."
+            ).format(moment or day, shift, opened, closed)
+        )
 
 
 def _create_invoice(row):
@@ -828,6 +935,18 @@ def take_next_turn(pos_profile):
     enqueue_processing(pos_profile)
 
 
+def get_review_blockers(row):
+    """The records in review a record waits for. A person has to act before it can go on.
+
+    Args:
+        row: The record, with depends_on
+
+    Returns:
+        list[str]: Their offline_ids
+    """
+    return [offline_id for offline_id, status in _get_unfinished_dependencies(row).items() if status == REVIEW]
+
+
 def _flag_if_stuck(row):
     """Hand a waiting record to a person once what it needs will not come by itself."""
     if get_datetime(row.received_at) > add_to_date(now_datetime(), minutes=-MISSING_DEPENDENCY_MINUTES):
@@ -843,6 +962,11 @@ def _flag_if_stuck(row):
         )
     elif in_review and row.entity == ENTITY_SHIFT_CLOSE:
         message = _("{0} invoice(s) of this shift need review first: {1}").format(
+            len(in_review), ", ".join(in_review)
+        )
+    elif in_review:
+        # Nothing moves a review on but a person, so this record would wait unseen
+        message = _("This waits for {0} record(s) in review: {1}. Settle them first, and this goes on by itself.").format(
             len(in_review), ", ".join(in_review)
         )
     else:

@@ -54,12 +54,20 @@ class ClockSkewError(frappe.ValidationError):
     """The device's clock was so far off that the date of its sale cannot be trusted."""
 
 
+class SaleOutsideShiftError(ClockSkewError):
+    """A sale dated outside its shift's hours, as a clock that was wrong when it was made does."""
+
+
 class TotalMismatchError(frappe.ValidationError):
     """The server's total differs from what the customer was charged."""
 
 
 class CashierUnavailableError(frappe.ValidationError):
     """The cashier a record belongs to cannot be used, so a person has to look at it."""
+
+
+class CashierNotOnProfileError(CashierUnavailableError):
+    """A record names a colleague who is not on its POS Profile, as one who has left it since."""
 
 
 class EditConflictError(frappe.ValidationError):
