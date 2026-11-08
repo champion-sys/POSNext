@@ -104,6 +104,7 @@ import {
 } from "@/platform/printing/wifiPrinter"
 import { printerService } from "@/services/printerService"
 import { useBluetoothPrinterStore } from "@/stores/bluetoothPrinter"
+import { errorText } from "@/utils/errorHandler"
 
 const { showSuccess, showError } = useToast()
 const store = useBluetoothPrinterStore()
@@ -153,7 +154,7 @@ async function toggleBluetooth() {
 	try {
 		pairedPrinters.value = await printerService.listPairedPrinters()
 	} catch (error) {
-		showError(error.message)
+		showError(errorText(error))
 	} finally {
 		isListing.value = false
 	}
@@ -165,7 +166,7 @@ async function pair(device) {
 		await printerService.connectNative(device.id)
 		savePrinter(device.id, device.name)
 	} catch (error) {
-		showError(error.message)
+		showError(errorText(error))
 	} finally {
 		connectingId.value = ""
 	}
@@ -177,7 +178,7 @@ async function scanBle() {
 		const device = await printerService.scanAndConnect()
 		if (device) savePrinter(device.id, device.name)
 	} catch (error) {
-		showError(error.message)
+		showError(errorText(error))
 	} finally {
 		isScanning.value = false
 	}
@@ -201,7 +202,7 @@ async function addWifiPrinter() {
 		Object.assign(wifiForm, { name: "", host: "", port: DEFAULT_WIFI_PORT })
 		showWifi.value = false
 	} catch (error) {
-		showError(error.message)
+		showError(errorText(error))
 	} finally {
 		isAddingWifi.value = false
 	}

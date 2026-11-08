@@ -212,6 +212,7 @@
 
 <script setup>
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import { errorText } from "@/utils/errorHandler"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import PaymentDialog from "@/components/sale/PaymentDialog.vue"
 import { useOfflineStatus } from "@/composables/useOfflineStatus"
@@ -291,7 +292,7 @@ async function loadInvoices() {
 		invoices.value = await offlineStore.withQueuedPayments(result || [])
 	} catch (error) {
 		console.error("Error loading partial payments:", error)
-		showError(error.message || __("Failed to load partial payments"))
+		showError(errorText(error, __("Failed to load partial payments")))
 	} finally {
 		loading.value = false
 	}
@@ -369,7 +370,7 @@ async function handlePaymentCompleted(paymentData) {
 		selectedInvoice.value = null
 	} catch (error) {
 		console.error("[PartialPayments] Error adding payment:", error)
-		showError(error.message || __("Failed to add payment"))
+		showError(errorText(error, __("Failed to add payment")))
 	}
 }
 

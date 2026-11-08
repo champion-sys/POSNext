@@ -502,6 +502,7 @@ import { imageUrl } from "@/platform/runtime"
 import { ref, computed, watch, nextTick } from 'vue'
 import { call, Dialog } from 'frappe-ui'
 import { __ } from '@/utils/translation'
+import { errorText } from '@/utils/errorHandler'
 import HighlightedText from '@/components/common/HighlightedText.vue'
 
 const props = defineProps({
@@ -892,7 +893,7 @@ async function loadVariants() {
 		}
 	} catch (err) {
 		console.error('Error loading variants:', err)
-		error.value = err.message || __('Failed to load variants')
+		error.value = errorText(err, __('Failed to load variants'))
 		showVariantSelection.value = false
 	} finally {
 		loadingVariants.value = false
@@ -957,7 +958,7 @@ async function loadAvailability() {
 		}
 	} catch (err) {
 		console.error('Error loading warehouse availability:', err)
-		error.value = err.message || __('Failed to load warehouse availability')
+		error.value = errorText(err, __('Failed to load warehouse availability'))
 	} finally {
 		loading.value = false
 	}

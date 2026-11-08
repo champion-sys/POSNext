@@ -53,6 +53,52 @@ function cleanErrorMessage(rawMessage) {
 const STORAGE_FULL = /quota|disk is full/i
 
 /**
+ * The first message the server sent with a failed request, cleaned for the screen
+ * @param {Object} error - A frappe-ui request error, or the raw response body
+ * @returns {string} The message, or "" when there is none
+ */
+function serverMessage(error) {
+	if (Array.isArray(error.messages) && error.messages.length > 0) {
+		return cleanErrorMessage(error.messages[0])
+	}
+	if (error._server_messages) {
+		try {
+			const serverMessages = JSON.parse(error._server_messages)
+			if (serverMessages && serverMessages.length > 0) {
+				const firstMessage = JSON.parse(serverMessages[0])
+				return cleanErrorMessage(firstMessage.message || firstMessage.title)
+			}
+		} catch {
+			// Unreadable messages fall through to the caller's fallback
+		}
+	}
+	return ""
+}
+
+/**
+ * Text a cashier can read for an error.
+ *
+ * A failed server request carries "/api/method/<path> <ExcType>" in `message`, so its
+ * own words come from the server's messages instead. Any other error, such as a printer,
+ * Bluetooth, USB or storage error, keeps its own message unchanged.
+ * @param {*} error - What was thrown
+ * @param {string} [fallback] - Text for an error that says nothing
+ * @returns {string}
+ */
+export function errorText(error, fallback = "") {
+	if (!error) return fallback
+	if (typeof error === "string") return error || fallback
+
+	const fromServer =
+		error.exc_type ||
+		error._server_messages ||
+		(Array.isArray(error.messages) && error.messages.length > 0)
+	if (fromServer) return serverMessage(error) || fallback
+
+	return error.message || fallback
+}
+
+/**
  * Parse error and return structured error information
  * @param {Error} error - The error object from API call
  * @returns {Object} - Structured error information

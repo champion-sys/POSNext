@@ -1123,7 +1123,7 @@ import { usePOSEvents } from "@/composables/usePOSEvents";
 import { useLocale } from "@/composables/useLocale";
 import { session } from "@/data/session";
 import { useUserData } from "@/data/user";
-import { parseError } from "@/utils/errorHandler";
+import { errorText, parseError } from "@/utils/errorHandler";
 import { cleanupUserSession } from "@/utils/sessionCleanup";
 import { offlineWorker } from "@/utils/offline/workerClient";
 import { isPastOfflineSaleLimit } from "@/platform/auth";
@@ -1366,7 +1366,7 @@ async function reconnectBtPrinter() {
 			showSuccess(__("Connected and saved printer successfully."));
 		}
 	} catch (error) {
-		showError(error.message || __("Failed to connect to printer."));
+		showError(errorText(error, __("Failed to connect to printer.")));
 	} finally {
 		isBtReconnecting.value = false;
 	}
@@ -2704,7 +2704,7 @@ async function handleOptionSelected(option) {
 					cartStore.clearPendingItem();
 					showSuccess(__("{0} added to cart", [variant.item_name]));
 				} catch (error) {
-					showError(error.message);
+					showError(errorText(error));
 				}
 			}
 		} else if (option.type === "uom") {
@@ -2732,7 +2732,7 @@ async function handleOptionSelected(option) {
 					cartStore.clearPendingItem();
 					showSuccess(__("{0} ({1}) added to cart", [itemToAdd.item_name, option.uom]));
 				} catch (error) {
-					showError(error.message);
+					showError(errorText(error));
 				}
 			}
 		}
@@ -2961,7 +2961,7 @@ function handleBatchSerialSelected(batchSerial) {
 			cartStore.addItem(itemToAdd, qty, false, shiftStore.currentProfile);
 			cartStore.clearPendingItem();
 		} catch (error) {
-			showError(error.message);
+			showError(errorText(error));
 		}
 	}
 }
@@ -3460,7 +3460,7 @@ async function handlePrintInvoice(invoiceData, isCheckout = false) {
 			} catch (error) {
 				log.error("Thermal print routing failed, falling back to browser/silent:", error);
 				if (!canUseBrowserPrint(PLATFORM)) {
-					showError(error.message || __("Printing failed. Check the printer and try again."));
+					showError(errorText(error, __("Printing failed. Check the printer and try again.")));
 					return;
 				}
 				showWarning(__("Thermal printing failed. Attempting browser/silent fallback..."));

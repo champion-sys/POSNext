@@ -565,6 +565,7 @@ import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSSyncStore } from "@/stores/posSync"
 import { usePOSUIStore } from "@/stores/posUI"
 import { DEFAULT_CURRENCY, formatCurrency as formatCurrencyUtil } from "@/utils/currency"
+import { errorText } from "@/utils/errorHandler"
 import { getInvoiceStatusColor } from "@/utils/invoice"
 import { useFormatters } from "@/composables/useFormatters"
 import { useToast } from "@/composables/useToast"
@@ -880,7 +881,7 @@ async function loadUnpaidInvoices() {
 
 		// If we already have cached data, don't show error
 		if (unpaidInvoices.value.length === 0) {
-			showError(error.message || __("Failed to load unpaid invoices"))
+			showError(errorText(error, __("Failed to load unpaid invoices")))
 		}
 	} finally {
 		loading.value = false
@@ -968,7 +969,7 @@ async function queuePayment(paymentData) {
 		selectedInvoice.value = null
 	} catch (error) {
 		log.error("Error saving payment offline:", error)
-		showError(error.message || __("Failed to add payment"))
+		showError(errorText(error, __("Failed to add payment")))
 	}
 }
 
@@ -998,7 +999,7 @@ async function handlePaymentCompleted(paymentData) {
 		selectedInvoice.value = null
 	} catch (error) {
 		console.error("Error adding payment:", error)
-		showError(error.message || __("Failed to add payment"))
+		showError(errorText(error, __("Failed to add payment")))
 	}
 }
 

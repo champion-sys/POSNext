@@ -190,6 +190,7 @@ import { shiftState } from "@/composables/useShift"
 import { useToast } from "@/composables/useToast"
 import { useCountriesStore } from "@/stores/countries"
 import { usePOSSyncStore } from "@/stores/posSync"
+import { errorText } from "@/utils/errorHandler"
 import { logger } from "@/utils/logger"
 import { getSetting, setSetting } from "@/utils/offline/settings"
 import { isLocalName } from "@/utils/offline/entities"
@@ -360,7 +361,7 @@ const createCustomerResource = createResource({
 	},
 	onError: (error) => {
 		log.error("Error creating customer", error)
-		showError(error.message || __("Failed to create customer"))
+		showError(errorText(error, __("Failed to create customer")))
 	},
 })
 
@@ -384,7 +385,7 @@ const updateCustomerResource = createResource({
 	},
 	onError: (error) => {
 		log.error("Error updating customer", error)
-		showError(error.message || __("Failed to update customer"))
+		showError(errorText(error, __("Failed to update customer")))
 	},
 })
 
@@ -504,7 +505,7 @@ const createCustomerOffline = async () => {
 		show.value = false
 	} catch (error) {
 		log.error("Error saving customer offline", error)
-		showError(error.message || __("Failed to create customer"))
+		showError(errorText(error, __("Failed to create customer")))
 	} finally {
 		savingOffline.value = false
 	}

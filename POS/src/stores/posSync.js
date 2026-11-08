@@ -39,6 +39,7 @@ import {
 	releaseSoldBatchesAndSerials,
 } from "@/utils/offline"
 import { call } from "@/utils/apiWrapper"
+import { errorText } from "@/utils/errorHandler"
 import { logger } from "@/utils/logger"
 import { getSetting, setSetting } from "@/utils/offline/settings"
 import {
@@ -691,7 +692,7 @@ export const usePOSSyncStore = defineStore("posSync", () => {
 			}
 		} catch (error) {
 			log.error("Failed to request a void", error)
-			showError(error.message || __("Could not request the void"))
+			showError(errorText(error, __("Could not request the void")))
 			throw error
 		}
 	}
