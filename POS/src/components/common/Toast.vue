@@ -1,9 +1,10 @@
 <template>
 	<Teleport to="body">
 		<Transition :name="isRTL ? 'toast-slide-rtl' : 'toast-slide-ltr'">
+			<!-- Under the header bar, so the connection and sync status stay in view -->
 			<div
 				v-if="showToast && toastNotification"
-				class="fixed top-4 end-4 z-[9999] max-w-md"
+				class="fixed top-pos-bar mt-2 end-4 z-[9999] max-w-md"
 			>
 				<div
 					role="status"

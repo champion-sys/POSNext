@@ -1,9 +1,9 @@
 <template>
-  <Dialog v-model="open" :options="{ title: __('Open POS Shift'), size: 'xl' }">
+  <Dialog v-model="open" :options="{ title: viewOnly ? __('Current Shift') : __('Open POS Shift'), size: 'xl' }">
     <template #body-content>
       <div class="flex flex-col gap-3">
         <div v-if="opensOnDevice && step !== 3" class="rounded-md bg-amber-50 border border-amber-200 p-2.5">
-          <p class="text-sm text-amber-800 text-start">{{ offlineMessage }}</p>
+          <p dir="auto" class="text-sm text-amber-800 text-start">{{ offlineMessage }}</p>
         </div>
 
         <!-- Step 1: Select POS Profile -->
@@ -44,7 +44,7 @@
           </div>
 
           <div v-if="profilesResource.error && !opensOnDevice" class="rounded-md bg-red-50 p-2.5">
-            <p class="text-sm text-red-800">{{ parseError(profilesResource.error).message }}</p>
+            <p dir="auto" class="text-sm text-red-800 text-start">{{ parseError(profilesResource.error).message }}</p>
           </div>
         </div>
 
@@ -99,11 +99,11 @@
           </div>
 
           <div v-if="dialogDataResource.error" class="rounded-md bg-red-50 p-2.5">
-            <p class="text-sm text-red-800">{{ parseError(dialogDataResource.error).message }}</p>
+            <p dir="auto" class="text-sm text-red-800 text-start">{{ parseError(dialogDataResource.error).message }}</p>
           </div>
 
           <div v-if="createShiftResource.error" class="rounded-md bg-red-50 p-2.5">
-            <p class="text-sm text-red-800">{{ parseError(createShiftResource.error).message }}</p>
+            <p dir="auto" class="text-sm text-red-800 text-start">{{ parseError(createShiftResource.error).message }}</p>
           </div>
         </div>
 
@@ -115,10 +115,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 class="text-base font-medium text-gray-900 mb-1">{{ __('Existing Shift Found') }}</h3>
-            <p class="text-sm text-gray-500 mb-3">
-              {{ __('You have an open shift. Would you like to resume it or close it and open a new one?') }}
-            </p>
+            <template v-if="!viewOnly">
+              <h3 class="text-base font-medium text-gray-900 mb-1">{{ __('Existing Shift Found') }}</h3>
+              <p class="text-sm text-gray-500 mb-3">
+                {{ __('You have an open shift. Would you like to resume it or close it and open a new one?') }}
+              </p>
+            </template>
 
             <div v-if="existingShift" class="bg-gray-50 rounded-lg p-3 mb-3">
               <div class="text-sm text-gray-600">
@@ -134,7 +136,7 @@
               </div>
             </div>
 
-            <div class="flex gap-3 justify-center">
+            <div v-if="!viewOnly" class="flex gap-3 justify-center">
               <Button size="md" variant="solid" theme="blue" @click="resumeShift">
                 {{ __('Resume Shift') }}
               </Button>
@@ -161,8 +163,8 @@
         <div v-else></div>
 
         <div class="flex gap-2">
-          <Button size="md" variant="subtle" @click="closeDialog('cancelled')" :disabled="createShiftResource.loading">
-            {{ __('Cancel') }}
+          <Button size="md" variant="subtle" @click="closeDialog(viewOnly ? 'viewed' : 'cancelled')" :disabled="createShiftResource.loading">
+            {{ viewOnly && step === 3 ? __('Close') : __('Cancel') }}
           </Button>
           <Button size="md"
             v-if="step === 1"
@@ -179,6 +181,7 @@
             theme="blue"
             @click="openShift"
             :loading="createShiftResource.loading || savingOffline"
+            :disabled="refusedAsTaken"
           >
             {{ __('Open Shift') }}
           </Button>
@@ -222,6 +225,8 @@ import TranslatedHTML from "./common/TranslatedHTML.vue"
 
 const props = defineProps({
 	modelValue: Boolean,
+	// View Shift: show the shift that is open, with nothing to close or reopen
+	viewOnly: Boolean,
 })
 
 const emit = defineEmits(["update:modelValue", "shift-opened", "dialog-closed"])
@@ -296,6 +301,24 @@ const dialogDataResource = createResource({
 // Create shift resource
 const createShiftResource = createOpeningShift
 
+/**
+ * The server refused this very profile and these amounts because the profile is taken.
+ * Open Shift stays off until one of them changes, so Back or Change Profile is the way on.
+ */
+const refusedFor = ref(null)
+const openingKey = () =>
+	JSON.stringify([selectedProfile.value?.name ?? null, openingBalances.value])
+const refusedAsTaken = computed(
+	() => refusedFor.value !== null && refusedFor.value === openingKey(),
+)
+
+watch(
+	() => createShiftResource.error,
+	(error) => {
+		if (error?.exc_type === "ShiftConflictError") refusedFor.value = openingKey()
+	},
+)
+
 // Computed payment methods for selected profile
 const paymentMethods = computed(() => {
 	if (!selectedProfile.value) return []
@@ -342,7 +365,14 @@ async function initDialog() {
 	selectedProfile.value = null
 	existingShift.value = null
 	openingBalances.value = {}
+	refusedFor.value = null
 	dialogDataResource.reset()
+
+	if (props.viewOnly && shiftState.value.isOpen) {
+		existingShift.value = shiftState.value
+		step.value = 3
+		return
+	}
 
 	waitingForShift.value = !isOffline.value && (await hasCollidingShiftRecords())
 	if (waitingForShift.value && !shiftState.value.isOpen) {

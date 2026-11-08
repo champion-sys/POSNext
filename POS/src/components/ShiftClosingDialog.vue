@@ -20,7 +20,7 @@
             <div class="flex flex-col sm:flex-row justify-start items-start gap-3 mb-2">
               <div class="flex-1">
                 <h3 class="text-start text-sm md:text-base font-medium text-gray-900">{{ closingData.pos_profile }}</h3>
-                <p class="text-start text-xs md:text-sm text-gray-500 mt-1">{{ formatDateTime(closingData.period_start_date) }}</p>
+                <p class="text-start text-xs md:text-sm text-gray-500 mt-1"><bdi dir="ltr">{{ formatDateTime(closingData.period_start_date) }}</bdi></p>
               </div>
               <div class="text-start sm:text-end">
                 <div class="text-start text-xs text-gray-500 uppercase">{{ __('Duration') }}</div>
@@ -269,6 +269,7 @@
                   :key="idx"
                   :class="[
                     'border rounded-lg p-3 md:p-5 transition-all',
+                    !isCounted(payment) ? 'border-gray-200 bg-gray-50' :
                     payment.difference === 0 ? 'border-green-200 bg-green-50' :
                     payment.difference > 0 ? 'border-blue-200 bg-blue-50' :
                     'border-red-200 bg-red-50'
@@ -291,8 +292,11 @@
                     </div>
 
                     <!-- Status Badge -->
-                    <div v-if="payment.closing_amount !== null && payment.closing_amount !== undefined" class="flex-shrink-0">
-                      <span v-if="payment.difference === 0" class="inline-flex items-center px-2 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <div class="flex-shrink-0">
+                      <span v-if="!isCounted(payment)" data-not-counted class="inline-flex items-center px-2 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
+                        {{ __('Not counted') }}
+                      </span>
+                      <span v-else-if="payment.difference === 0" class="inline-flex items-center px-2 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         {{ __('✓ Balanced') }}
                       </span>
                       <span v-else-if="payment.difference > 0" class="inline-flex items-center px-2 md:px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -353,7 +357,7 @@
                   </div>
 
                   <!-- Difference Alert -->
-                  <div v-if="payment.closing_amount !== null && payment.closing_amount !== undefined && payment.difference !== 0"
+                  <div v-if="isCounted(payment) && payment.difference !== 0"
                        class="text-start mt-2 p-2 rounded-lg" :class="[
                     payment.difference > 0 ? 'bg-blue-50 border border-blue-200' : 'bg-red-50 border border-red-200'
                   ]">
@@ -498,6 +502,8 @@
             @click="submitClosing"
             :loading="submitResource.loading || savingOffline"
             :disabled="!canSubmit"
+            :class="canSubmit && !submitResource.loading && !savingOffline ? '!bg-blue-700 hover:!bg-blue-800 shadow-md ring-2 ring-blue-200' : ''"
+            data-close-shift
           >
             {{ submitResource.loading ? __('Closing Shift...') : __('Close Shift') }}
           </Button>
@@ -669,6 +675,11 @@ function calculateDifference(payment) {
 	payment.difference = closing - expected
 }
 
+/** The cashier typed an amount for this method; until then there is nothing to compare */
+function isCounted(payment) {
+	return Boolean(payment._touched) && payment.closing_amount !== null && payment.closing_amount !== undefined && payment.closing_amount !== ""
+}
+
 // New function to handle closing amount updates with proper reactivity
 function updateClosingAmount(payment, value) {
 	payment.closing_amount = value
@@ -768,12 +779,12 @@ const reconciliationMessage = computed(() => {
 		return __("Enter what you counted. The server works out the totals once every invoice has arrived.")
 	}
 	if (showSuccessReport.value && hideExpectedAmount.value) {
-		return 'Shift closed successfully'
+		return __("Shift closed successfully")
 	}
 	if (hideExpectedAmount.value) {
-		return 'Enter the actual counted amounts for each payment method'
+		return __("Enter the actual counted amounts for each payment method")
 	}
-	return 'Count your cash and enter actual amounts below'
+	return __("Count your cash and enter actual amounts below")
 })
 
 // Computed properties for real-time recalculation

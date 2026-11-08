@@ -394,7 +394,12 @@
 		<div v-if="items.length > 0" class="px-2 py-1 bg-gray-200">
 			<!-- The buttons drop under the title when a narrow cart has no room for both -->
 			<div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-0">
-				<h2 class="text-sm font-bold text-gray-900 uppercase tracking-wider whitespace-nowrap">{{ __("Cart Items") }}</h2>
+				<div class="flex items-baseline gap-2 min-w-0">
+					<h2 class="text-sm font-bold text-gray-900 uppercase tracking-wider whitespace-nowrap">{{ __("Cart Items") }}</h2>
+					<span data-total-qty class="text-[11px] font-semibold text-gray-700 whitespace-nowrap">
+						{{ __("Total Qty") }}: <bdi class="font-mono font-bold text-gray-900">{{ formatQuantity(totalQuantity) }}</bdi>
+					</span>
+				</div>
 				<div class="flex items-center gap-1.5 flex-shrink-0 ms-auto">
 					<CartViewSwitch
 						:active="activeCartView"
@@ -872,9 +877,7 @@
 									<h4 class="text-xs sm:text-[13px] font-bold text-gray-900 truncate leading-tight">
 										{{ item.item_name }}
 									</h4>
-									<span v-if="item.item_code" class="text-[9px] font-semibold text-gray-600 font-mono">
-										#{{ item.item_code }}
-									</span>
+									<bdi v-if="item.item_code" dir="ltr" class="text-[9px] font-semibold text-gray-600 font-mono">#{{ item.item_code }}</bdi>
 								</div>
 								
 								<!-- Badges row below title for cleaner spacing -->
@@ -1163,17 +1166,9 @@
 
 		<!-- Totals Summary -->
 		<div v-if="items.length > 0" class="px-2 py-1.5 bg-white select-none border-t border-gray-300">
-			<!-- Summary Details Table -->
-			<!-- Two figures a line when the cart is wide enough, one when it is not -->
-			<div class="grid grid-cols-[repeat(auto-fit,minmax(12.5rem,1fr))] gap-x-4 gap-y-0.5 !text-[13px] leading-5 text-gray-900 mb-1">
-				<!-- Total Qty Row -->
-				<div class="flex items-center justify-between gap-2">
-					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Total Qty") }}</span>
-					<span class="text-gray-900 font-bold text-end font-mono whitespace-nowrap">{{
-						formatQuantity(totalQuantity)
-					}}</span>
-				</div>
-				
+			<!-- The money lines, one column with the amounts at the end, kept narrow on a wide cart -->
+			<div data-cart-totals class="max-w-md ms-auto">
+			<div class="flex flex-col gap-y-0.5 !text-[13px] leading-5 text-gray-900 mb-1">
 				<!-- Subtotal Row -->
 				<div class="flex items-center justify-between gap-2">
 					<span class="text-gray-900 uppercase tracking-wider font-semibold truncate">{{ __("Subtotal") }}</span>
@@ -1207,16 +1202,18 @@
 
 			<!-- Grand Total Line -->
 			<div class="border-t border-black pt-1 mb-1.5">
-				<div class="flex items-baseline justify-between">
-					<span class="text-[13px] !font-bold text-gray-900 uppercase tracking-wider font-bold">{{
+				<div class="flex items-baseline justify-between gap-2">
+					<span class="text-sm !font-bold text-gray-900 uppercase tracking-wider font-bold">{{
 						__("Total to Pay")
 					}}</span>
 					<span
-						class="text-xl !font-bold text-black text-end font-mono tracking-tight"
+						data-total-to-pay
+						class="text-2xl !font-bold text-black text-end font-mono tracking-tight"
 					>
 						{{ formatCurrency(displayGrandTotal) }}
 					</span>
 				</div>
+			</div>
 			</div>
 
 			<!-- Action Buttons -->
@@ -1227,7 +1224,7 @@
 					@click="handleProceedToPayment"
 					:disabled="items.length === 0"
 					:class="[
-						'flex-1 h-pos-action px-3 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
+						'flex-[2] h-pos-action px-3 rounded-none font-black text-xs transition-all flex items-center justify-center touch-manipulation border border-black uppercase tracking-widest',
 						items.length === 0
 							? 'bg-gray-100 border-gray-300 text-gray-600 cursor-not-allowed shadow-none'
 							: 'bg-black text-white hover:bg-gray-900 active:bg-black',
@@ -1254,7 +1251,7 @@
 				<button
 					type="button"
 					@click="$emit('save-draft')"
-					class="flex-1 h-pos-action px-3 rounded-none font-black text-xs text-orange-600 bg-white border border-orange-600 hover:bg-orange-50 active:bg-orange-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
+					class="flex-1 h-pos-action px-3 rounded-none font-semibold text-xs text-gray-700 bg-white border border-gray-400 hover:bg-gray-50 active:bg-gray-100 transition-all touch-manipulation flex items-center justify-center uppercase tracking-widest"
 					:aria-label="__('Hold order as draft')"
 				>
 					<svg

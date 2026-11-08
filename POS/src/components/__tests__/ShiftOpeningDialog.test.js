@@ -108,9 +108,9 @@ const keepProfiles = (...entries) => {
 describe("the shift opening dialog, offline", () => {
 	let wrapper
 
-	async function open() {
+	async function open(props = {}) {
 		wrapper = mount(ShiftOpeningDialog, {
-			props: { modelValue: true },
+			props: { modelValue: true, ...props },
 			global: {
 				mocks: { __: (text) => text },
 				stubs: { ShiftClosingDialog: true, TranslatedHTML: true },
@@ -226,6 +226,37 @@ describe("the shift opening dialog, offline", () => {
 			expect(wrapper.text()).not.toContain("ShiftConflictError")
 		})
 
+		it("keeps Open Shift off after the server refused the profile as taken, until the amounts change", async () => {
+			await goToAmounts()
+			await wrapper.find("input").setValue("250")
+
+			server.resources.get("pos_next.api.shifts.create_opening_shift").error = Object.assign(
+				new Error("ShiftConflictError"),
+				{ exc_type: "ShiftConflictError", messages: ["POS Profile Main is already open by Administrator in shift SHIFT-1."] },
+			)
+			await flushPromises()
+
+			expect(button(wrapper, "Open Shift").attributes("disabled")).toBeDefined()
+			expect(button(wrapper, "Back").attributes("disabled")).toBeUndefined()
+			expect(button(wrapper, "Change Profile").attributes("disabled")).toBeUndefined()
+
+			await wrapper.find("input").setValue("300")
+
+			expect(button(wrapper, "Open Shift").attributes("disabled")).toBeUndefined()
+		})
+
+		it("does not hold back Open Shift for another refusal", async () => {
+			await goToAmounts()
+
+			server.resources.get("pos_next.api.shifts.create_opening_shift").error = Object.assign(
+				new Error("ValidationError"),
+				{ exc_type: "ValidationError", messages: ["Something else is wrong."] },
+			)
+			await flushPromises()
+
+			expect(button(wrapper, "Open Shift").attributes("disabled")).toBeUndefined()
+		})
+
 		it("offers only the profiles allowed to open offline", async () => {
 			keepProfiles(MAIN, { ...MAIN, pos_profile: { ...MAIN.pos_profile, name: "Branch" } })
 
@@ -279,6 +310,28 @@ describe("the shift opening dialog, offline", () => {
 			await open()
 
 			expect(button(wrapper, "Close & Open New")).toBeDefined()
+		})
+
+		it("shows the open shift from View Shift, with nothing to close or reopen", async () => {
+			const { usePOSSettingsStore } = await import("@/stores/posSettings")
+			usePOSSettingsStore().settings.allow_offline_shift_close = 1
+			shiftState.value = {
+				pos_opening_shift: { name: "pos_offline_mine", period_start_date: "2026-11-07 08:00:00" },
+				pos_profile: { name: "Main" },
+				isOpen: true,
+			}
+
+			await open({ viewOnly: true })
+
+			expect(button(wrapper, "Close & Open New")).toBeUndefined()
+			expect(button(wrapper, "Resume Shift")).toBeUndefined()
+			expect(wrapper.text()).not.toContain("Existing Shift Found")
+			expect(button(wrapper, "Close")).toBeDefined()
+
+			await button(wrapper, "Close").trigger("click")
+
+			expect(wrapper.emitted("shift-opened")).toBeUndefined()
+			expect(wrapper.emitted("update:modelValue").at(-1)).toEqual([false])
 		})
 
 		it("will not close it from here while a queued sale is in the cart for editing", async () => {
@@ -567,6 +620,21 @@ describe("the shift opening dialog, offline", () => {
 
 			expect(wrapper.find(".cursor-pointer").exists()).toBe(true)
 		})
+	})
+
+	it("shows the open shift from View Shift online without asking the server for profiles", async () => {
+		offlineState.isOffline = false
+		shiftState.value = {
+			pos_opening_shift: { name: "POS-OS-1", period_start_date: "2026-11-07 08:00:00" },
+			pos_profile: { name: "Main" },
+			isOpen: true,
+		}
+
+		await open({ viewOnly: true })
+
+		expect(button(wrapper, "Close & Open New")).toBeUndefined()
+		expect(wrapper.find(".cursor-pointer").exists()).toBe(false)
+		expect(server.resources.get("pos_next.api.pos_profile.get_pos_profiles").fetch).not.toHaveBeenCalled()
 	})
 
 	it("uses the server when it is online", async () => {
