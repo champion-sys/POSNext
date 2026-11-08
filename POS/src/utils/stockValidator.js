@@ -30,15 +30,32 @@ export function shouldValidateItemStock(item) {
 }
 
 /**
+ * The stock an item can still be sold from, in its stock UOM, before this cart.
+ *
+ * The server's quantity less what sales still waiting in the offline queue took. The
+ * cart's own rows are left out: the caller adds them to what it asks for. original_stock
+ * and a fresh actual_qty from the server are the server's quantity alone.
+ *
+ * @param {Object} item - Item or cart row
+ * @param {{serverQty?: number, queuedQty?: number}} [live] - The stock store's numbers, when it has the item
+ * @returns {number}
+ */
+export function availableStock(item, { serverQty, queuedQty = 0 } = {}) {
+	const server = serverQty ?? item.original_stock ?? item.actual_qty ?? item.stock_qty ?? 0
+	return Number(server) - (Number(queuedQty) || 0)
+}
+
+/**
  * Check if the requested quantity exceeds available stock.
  *
  * @param {Object}  item       - Item with actual_qty / stock_qty
- * @param {number}  requestedQty - Total quantity to validate against
+ * @param {number}  requestedQty - Total quantity to validate against, in the stock UOM
  * @param {string}  [warehouse]  - Warehouse name (for error message)
+ * @param {number}  [availableQty] - What can still be sold (availableStock); read from the item when left out
  * @returns {{ available: boolean, actualQty: number, error: string|null }}
  */
-export function checkStockAvailability(item, requestedQty, warehouse) {
-	const actualQty = item.original_stock ?? item.actual_qty ?? item.stock_qty ?? 0
+export function checkStockAvailability(item, requestedQty, warehouse, availableQty) {
+	const actualQty = availableQty ?? availableStock(item)
 	const wh = warehouse || item.warehouse || ''
 
 	if (actualQty >= requestedQty) {

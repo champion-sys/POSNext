@@ -344,6 +344,7 @@ export function buildReturnDocFromQueue(row, rules) {
 		customer: invoice.customer,
 		customer_name: invoice.customer_name,
 		company: invoice.company,
+		pos_profile: invoice.pos_profile || row.pos_profile,
 		sales_team: invoice.sales_team || [],
 		_offline_id: row.offline_id,
 		_return_rules: rules,

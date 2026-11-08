@@ -34,6 +34,7 @@ vi.mock("@/composables/useToast", () => ({
 vi.mock("@/data/session", () => ({ session: { user: "a@example.com" } }))
 vi.mock("@/stores/posSettings", () => ({ usePOSSettingsStore: () => settings }))
 vi.mock("@/stores/posSync", () => ({ usePOSSyncStore: () => store }))
+vi.mock("@/stores/posShift", () => ({ usePOSShiftStore: () => ({ profileWarehouse: "Main" }) }))
 vi.mock("@/utils/offline/workerClient", () => ({
 	offlineWorker: { getCachedPaymentMethods: async () => [] },
 }))

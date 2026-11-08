@@ -3,8 +3,10 @@ import { shiftState } from "@/composables/useShift"
 import { usePOSOffersStore } from "@/stores/posOffers"
 import { usePOSSettingsStore } from "@/stores/posSettings"
 import { usePOSShiftStore } from "@/stores/posShift"
+import { useStockStore } from "@/stores/stock"
 import { parseError } from "@/utils/errorHandler"
 import {
+	availableStock,
 	shouldValidateItemStock,
 	checkStockAvailability,
 } from "@/utils/stockValidator"
@@ -126,6 +128,7 @@ export const usePOSCartStore = defineStore("posCart", () => {
 
 	const offersStore = usePOSOffersStore()
 	const settingsStore = usePOSSettingsStore()
+	const stockStore = useStockStore()
 
 	// Additional cart state
 	const pendingItem = ref(null)
@@ -211,6 +214,71 @@ export const usePOSCartStore = defineStore("posCart", () => {
 	const isEmpty = computed(() => invoiceItems.value.length === 0)
 	const hasCustomer = computed(() => !!customer.value)
 
+	// ========================================================================
+	// STOCK CHECK - everything in the stock UOM, every row of an item together
+	// ========================================================================
+
+	function uomFactor(item, uom) {
+		if (uom && uom === item.uom && item.conversion_factor) {
+			return Number(item.conversion_factor) || 1
+		}
+		const row = item.item_uoms?.find((u) => u.uom === uom)
+		return Number(row?.conversion_factor) || (uom === item.stock_uom ? 1 : Number(item.conversion_factor) || 1)
+	}
+
+	/**
+	 * Stock-UOM quantity of an item over every cart row, with some rows changed.
+	 * @param {string} itemCode
+	 * @param {Map<Object, {quantity?: number, factor?: number}>} [changes] - Row -> its new values
+	 */
+	function cartStockQty(itemCode, changes = new Map()) {
+		return invoiceItems.value.reduce((sum, row) => {
+			if (row.item_code !== itemCode) return sum
+			const change = changes.get(row) || {}
+			const quantity = change.quantity ?? row.quantity
+			const factor = change.factor ?? (Number(row.conversion_factor) || 1)
+			return sum + (Number(quantity) || 0) * factor
+		}, 0)
+	}
+
+	/** What the server holds less what queued sales took, live from the stock store */
+	function stockLeft(item) {
+		return availableStock(item, {
+			serverQty: stockStore.server.get(item.item_code)?.qty,
+			queuedQty: stockStore.queued.get(item.item_code),
+		})
+	}
+
+	/**
+	 * Check a change to a cart row: a new quantity, a new unit, or a unit that merges it
+	 * into the item's row of that unit. Only a change that asks for more stock is checked.
+	 * @returns {{available: boolean, error: string}|null} The failed check, or null
+	 */
+	function checkRowChange(cartItem, { uom = cartItem.uom, quantity = cartItem.quantity } = {}) {
+		if (!settingsStore.shouldEnforceStockValidation() || !shouldValidateItemStock(cartItem)) {
+			return null
+		}
+
+		const changes = new Map()
+		const unitChanges = uom !== cartItem.uom
+		const target = unitChanges ? findItemWithUom(cartItem.item_code, uom, cartItem) : null
+		if (target) {
+			changes.set(cartItem, { quantity: 0 })
+			changes.set(target, { quantity: (Number(target.quantity) || 0) + (Number(quantity) || 0) })
+		} else {
+			changes.set(cartItem, {
+				quantity,
+				factor: unitChanges ? uomFactor(cartItem, uom) : Number(cartItem.conversion_factor) || 1,
+			})
+		}
+
+		const requested = cartStockQty(cartItem.item_code, changes)
+		if (requested <= cartStockQty(cartItem.item_code)) return null
+
+		const check = checkStockAvailability(cartItem, requested, cartItem.warehouse, stockLeft(cartItem))
+		return check.available ? null : check
+	}
+
 	// Actions
 	function addItem(item, qty = 1, _autoAdd = false, currentProfile = null) {
 		if (
@@ -218,16 +286,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			settingsStore.shouldEnforceStockValidation() &&
 			shouldValidateItemStock(item)
 		) {
-			// Account for quantity already in the cart for this item
-			const itemUom = item.uom || item.stock_uom
-			const existing = invoiceItems.value.find(
-				(i) => i.item_code === item.item_code && i.uom === itemUom,
-			)
-			const totalQty = (existing ? existing.quantity : 0) + qty
+			// Every row of this item already in the cart counts, whatever its unit
+			const factor = uomFactor(item, item.uom || item.stock_uom)
+			const totalQty = cartStockQty(item.item_code) + qty * factor
 			const warehouse = item.warehouse || currentProfile.warehouse
-			const remarks = item.remarks || currentProfile.remarks
 
-			const check = checkStockAvailability(item, totalQty, warehouse)
+			const check = checkStockAvailability(item, totalQty, warehouse, stockLeft(item))
 			if (!check.available) {
 				throw new Error(check.error)
 			}
@@ -253,16 +317,10 @@ export const usePOSCartStore = defineStore("posCart", () => {
 		const newQty = Number.parseFloat(quantity) || 1
 
 		// Only validate when quantity is increasing
-		if (
-			newQty > item.quantity &&
-			settingsStore.shouldEnforceStockValidation() &&
-			shouldValidateItemStock(item)
-		) {
-			const check = checkStockAvailability(item, newQty)
-			if (!check.available) {
-				showWarning(check.error)
-				return
-			}
+		const check = checkRowChange(item, { quantity: newQty })
+		if (check) {
+			showWarning(check.error)
+			return
 		}
 
 		baseUpdateItemQuantity(itemCode, quantity, uom)
@@ -1351,6 +1409,12 @@ export const usePOSCartStore = defineStore("posCart", () => {
 			const cartItem = findCartItem(itemCode, currentUom)
 			if (!cartItem || cartItem.uom === newUom) return
 
+			const check = checkRowChange(cartItem, { uom: newUom })
+			if (check) {
+				showWarning(check.error)
+				return
+			}
+
 			// Check for existing item to merge with
 			const existingItem = findItemWithUom(itemCode, newUom, cartItem)
 			if (existingItem) {
@@ -1385,6 +1449,15 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				throw new Error("Item not found in cart")
 			}
 
+			// A new unit, a merge or a larger quantity, before any of it is applied
+			const check = checkRowChange(cartItem, {
+				uom: updates.uom || cartItem.uom,
+				quantity: updates.quantity ?? cartItem.quantity,
+			})
+			if (check) {
+				throw new Error(check.error)
+			}
+
 			// Handle UOM change with potential merge
 			if (updates.uom && updates.uom !== cartItem.uom) {
 				const existingItem = findItemWithUom(itemCode, updates.uom, cartItem)
@@ -1407,19 +1480,6 @@ export const usePOSCartStore = defineStore("posCart", () => {
 				} catch {
 					// Fallback: just change UOM without rate update
 					cartItem.uom = updates.uom
-				}
-			}
-
-			// Validate stock if quantity is being increased
-			if (
-				updates.quantity !== undefined &&
-				updates.quantity > cartItem.quantity &&
-				settingsStore.shouldEnforceStockValidation() &&
-				shouldValidateItemStock(cartItem)
-			) {
-				const check = checkStockAvailability(cartItem, updates.quantity)
-				if (!check.available) {
-					throw new Error(check.error)
 				}
 			}
 
