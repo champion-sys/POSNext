@@ -1,6 +1,0 @@
-device profiles for sara: ['SI Main']
-control, sync push naming PI Main -> 200 {'server_time': '2026-11-08 20:31:31.855982', 'results': []}
-PASS a device enrolled for SI Main opens a shift on PI Main  [(200, 'POSA-OS-26-0000060')]
-close took 0.2s: {'name': 'POSA-CS-26-0000058', 'status': 'success'}
-device revoked: Active
-== 1 passed, 0 failed

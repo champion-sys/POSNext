@@ -47,7 +47,8 @@
    "hidden": 1,
    "label": "Status",
    "options": "Draft\nOpen\nClosed\nCancelled",
-   "read_only": 1
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "column_break_3",
@@ -84,7 +85,8 @@
    "in_list_view": 1,
    "label": "POS Profile",
    "options": "POS Profile",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "column_break_7",
@@ -95,7 +97,8 @@
    "fieldtype": "Link",
    "label": "Cashier",
    "options": "User",
-   "reqd": 1
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "opening_balance_details_section",
@@ -151,7 +154,7 @@
  ],
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-08 22:00:00.000000",
+ "modified": "2026-11-08 23:00:00.000000",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "POS Opening Shift",

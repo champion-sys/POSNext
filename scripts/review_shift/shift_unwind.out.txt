@@ -1,9 +1,0 @@
-== H omar, off PI Main, cancels sara's PI Main closing
-close took 2.1s: {'name': 'POSA-CS-26-0000055', 'status': 'success'}
-closed: POSA-CS-26-0000055 POS-CLO-2026-00041 Submitted merged into ACC-SINV-2026-06859
-omar cancel: ok
-after: {'shift': 'Open', 'closing': 2, 'entry': 2, 'merged invoice': 2, 'pos invoice': ('Paid', None)}
-PASS omar undid PI Main's books and reopened sara's shift  [{'shift': 'Open', 'closing': 2, 'entry': 2, 'merged invoice': 2, 'pos invoice': ('Paid', None)}]
-close took 1.5s: {'name': 'POSA-CS-26-0000056', 'status': 'success'}
-left open by sara: []
-== 1 passed, 0 failed
