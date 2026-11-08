@@ -107,6 +107,47 @@ describe("keeping the bundle on the device", () => {
 		await vi.waitFor(async () => expect((await getPrintBundle("Main POS")).default_template).toBe("PT-0002"))
 	})
 
+	it("asks with the kept copy's stamp, and keeps the copy when nothing changed", async () => {
+		await savePrintBundle(bundle)
+		vi.setSystemTime(Date.now() + REFRESH_INTERVAL_MS + 1)
+		mocks.call.mockResolvedValue({ unchanged: true, modified: bundle.modified })
+
+		const kept = await refreshPrintBundle("Main POS")
+
+		expect(mocks.call).toHaveBeenCalledWith("pos_next.api.print_templates.get_print_bundle", {
+			pos_profile: "Main POS",
+			since: "2026-11-08 10:00:00",
+		})
+		expect(kept.templates).toHaveLength(3)
+		expect(mocks.settings.get("print_bundle:Main POS").bundle.templates).toHaveLength(3)
+		// The unchanged answer counts as fresh: no new request until the interval passes
+		await refreshPrintBundle("Main POS")
+		expect(mocks.call).toHaveBeenCalledOnce()
+	})
+
+	it("takes a changed bundle in place of the kept one, such as a disabled template", async () => {
+		await savePrintBundle(bundle)
+		vi.setSystemTime(Date.now() + REFRESH_INTERVAL_MS + 1)
+		mocks.call.mockResolvedValue({ ...bundle, templates: bundle.templates.slice(1), default_template: null, modified: "2026-11-08 11:00:00" })
+
+		const kept = await refreshPrintBundle("Main POS")
+
+		expect(kept.templates.map((template) => template.name)).toEqual(["PT-0002", "PT-0003"])
+		expect(chooseTemplate(kept, "PT-0001")).toBeNull()
+	})
+
+	it("waits a minute after a failure before asking again", async () => {
+		mocks.call.mockRejectedValue(new Error("timeout"))
+
+		expect(await refreshPrintBundle("Main POS")).toBeNull()
+		expect(await refreshPrintBundle("Main POS")).toBeNull()
+		expect(mocks.call).toHaveBeenCalledOnce()
+
+		vi.setSystemTime(Date.now() + 61 * 1000)
+		mocks.call.mockResolvedValue(bundle)
+		expect((await refreshPrintBundle("Main POS")).default_template).toBe("PT-0001")
+	})
+
 	it("ignores an answer that is not a bundle", async () => {
 		await savePrintBundle(bundle)
 		vi.setSystemTime(Date.now() + REFRESH_INTERVAL_MS + 1)

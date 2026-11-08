@@ -81,7 +81,14 @@ export function buildOfflinePrintDoc({
 		cashier_name: cashier.full_name || undefined,
 		taxes: (totals.taxLines || []).map((line, index) => ({ idx: index + 1, ...line })),
 		net_total: netTotal,
-		total: round2(netTotal + additionalDiscount),
+		// As ERPNext adds it: the rows' amounts before the invoice discount, with tax
+		// for prices that include it
+		total: round2(
+			invoiceData.items.reduce(
+				(sum, item) => sum + (Number(item.qty ?? item.quantity) || 0) * (Number(item.rate) || 0),
+				0,
+			),
+		),
 		// discount_amount is left out: the built-in receipts would print it as a new line
 		additional_discount_amount: additionalDiscount,
 		total_discount: totals.totalDiscount || 0,

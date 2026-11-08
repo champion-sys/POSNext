@@ -38,12 +38,16 @@ export function currentPrintLanguage() {
 /**
  * One invoice row with the fields Frappe templates use, whatever kept it.
  * @param {Object} item
+ * @param {number} index
+ * @param {boolean} queued - A row the cart queued: its discount_amount is the whole
+ *   line's, where ERPNext's is per unit
  * @returns {Object}
  */
-function normalizeItem(item, index) {
+function normalizeItem(item, index, queued) {
 	const qty = num(item.qty ?? item.quantity)
 	const rate = num(item.rate ?? item.price_list_rate)
 	const amount = item.amount != null ? num(item.amount) : round(qty * rate)
+	const discount = num(item.discount_amount)
 	return {
 		...item,
 		idx: item.idx ?? index + 1,
@@ -54,7 +58,7 @@ function normalizeItem(item, index) {
 		price_list_rate: num(item.price_list_rate ?? rate),
 		amount,
 		net_amount: item.net_amount != null ? num(item.net_amount) : amount,
-		discount_amount: num(item.discount_amount),
+		discount_amount: queued && qty ? round(discount / qty, 6) : discount,
 		discount_percentage: num(item.discount_percentage),
 		uom: item.uom || item.stock_uom || "",
 	}
@@ -69,7 +73,8 @@ function normalizeItem(item, index) {
  * @returns {Object}
  */
 export function normalizePrintDoc(source = {}, defaults = {}) {
-	const items = (source.items || []).map(normalizeItem)
+	const queued = Boolean(source.is_offline)
+	const items = (source.items || []).map((item, index) => normalizeItem(item, index, queued))
 	const allPayments = (source.payments || []).map((payment) => ({ ...payment, amount: num(payment.amount) }))
 	// Modes of payment left at zero are not printed, unless none was used at all
 	const usedPayments = allPayments.filter((payment) => payment.amount !== 0)

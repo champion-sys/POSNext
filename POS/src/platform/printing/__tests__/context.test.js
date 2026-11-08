@@ -157,6 +157,20 @@ describe("the context of an offline sale", () => {
 		expect(context.doc.offline_id).toBeNull()
 	})
 
+	it("gives a queued row's discount per unit, as ERPNext and the server templates read it", () => {
+		const queued = normalizePrintDoc({
+			is_offline: true,
+			items: [{ item_code: "A", qty: 4, rate: 9, price_list_rate: 10, discount_amount: 4 }],
+		})
+		const posted = normalizePrintDoc({
+			items: [{ item_code: "A", qty: 4, rate: 9, price_list_rate: 10, discount_amount: 1 }],
+		})
+
+		expect(queued.items[0].discount_amount).toBe(1)
+		expect(posted.items[0].discount_amount).toBe(1)
+		expect(queued.items[0].amount).toBe(36)
+	})
+
 	it("works out totals a queued row does not carry", () => {
 		const doc = normalizePrintDoc({
 			name: "pos_offline_1",

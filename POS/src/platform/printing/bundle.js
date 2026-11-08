@@ -24,9 +24,13 @@ const DEVICE_TEMPLATE_KEY = "pos_next_print_template"
 
 const settingKey = (profile) => `print_bundle:${profile}`
 
+/** After a failed request, so a flaky connection does not hold up every print */
+const RETRY_AFTER_FAILURE_MS = 60 * 1000
+
 /** profile -> {bundle, fetchedAt} */
 const kept = new Map()
 const refreshing = new Map()
+const failedAt = new Map()
 
 /**
  * Keep a bundle on the device.
@@ -76,15 +80,27 @@ export async function refreshPrintBundle(profile, { force = false } = {}) {
 	if (!profile) return null
 	const entry = await readEntry(profile)
 	const fresh = entry && Date.now() - entry.fetchedAt < REFRESH_INTERVAL_MS
-	if ((fresh && !force) || !isOnline()) return entry?.bundle || null
+	const failedLately = Date.now() - (failedAt.get(profile) || 0) < RETRY_AFTER_FAILURE_MS
+	if ((fresh && !force) || (failedLately && !force) || !isOnline()) return entry?.bundle || null
 	if (refreshing.has(profile)) return refreshing.get(profile)
 
-	const request = call("pos_next.api.print_templates.get_print_bundle", { pos_profile: profile })
-		.then(async (bundle) => {
-			await savePrintBundle(bundle, profile)
+	// With the kept copy's stamp, the server answers {unchanged: true} when nothing moved
+	const since = entry?.bundle?.modified
+	const request = call("pos_next.api.print_templates.get_print_bundle", {
+		pos_profile: profile,
+		...(since ? { since } : {}),
+	})
+		.then(async (answer) => {
+			failedAt.delete(profile)
+			if (answer?.unchanged && entry) {
+				await savePrintBundle(entry.bundle, profile)
+			} else {
+				await savePrintBundle(answer, profile)
+			}
 			return kept.get(profile)?.bundle || entry?.bundle || null
 		})
 		.catch((error) => {
+			failedAt.set(profile, Date.now())
 			log.warn("Print bundle not refreshed, keeping the last copy:", error?.message || error)
 			return entry?.bundle || null
 		})
@@ -142,4 +158,5 @@ export function saveDevicePrintTemplate(name) {
 export function forgetKeptBundles() {
 	kept.clear()
 	refreshing.clear()
+	failedAt.clear()
 }

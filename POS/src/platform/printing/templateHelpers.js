@@ -348,8 +348,9 @@ export function createHelpers(options = {}) {
 	function translate(text, args) {
 		const source = text == null ? "" : String(text)
 		const own = options.translate || (typeof globalThis.__ === "function" ? globalThis.__ : null)
-		if (own) return own(source, args)
-		return args ? source.replace(/\{(\d+)\}/g, (match, index) => (args[index] ?? match)) : source
+		const translated = own ? String(own(source, args) ?? source) : source
+		// A plain (text) => string translator leaves the placeholders to fill here
+		return args ? translated.replace(/\{(\d+)\}/g, (match, index) => (args[index] ?? match)) : translated
 	}
 
 	function format_number(value, precision) {
