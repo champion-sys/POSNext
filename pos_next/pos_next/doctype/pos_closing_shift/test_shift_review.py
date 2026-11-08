@@ -70,8 +70,12 @@ class TestTheClosingRoleIsTheClosers(unittest.TestCase):
         frappe.local.session = frappe._dict(user=MANAGER)
         self.addCleanup(setattr, frappe.local, "session", None)
 
+        values = {"role_allowed_to_closing_shift": ROLE, "status": "Open", "pos_profile": "Main", "company": "Co"}
+
         def get_value(doctype, name, field, *args, **kwargs):
-            return {"role_allowed_to_closing_shift": ROLE, "status": "Open", "pos_profile": "Main"}.get(field)
+            if isinstance(field, list | tuple):
+                return frappe._dict({one: values.get(one) for one in field})
+            return values.get(field)
 
         roles = {MANAGER: [ROLE, "Desk User"], CASHIER: ["POSNext Cashier", "Desk User"]}
         patch("frappe.db", Mock(get_value=Mock(side_effect=get_value))).start()

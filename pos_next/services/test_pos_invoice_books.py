@@ -236,6 +236,97 @@ class TestPOSInvoiceBooks(IntegrationTestCase):
         self.assertEqual(entry.period_end_date, closing.period_end_date)
         self.assertGreater(entry.period_end_date, entry.period_start_date)
 
+    def _reconciliation(self, doctype, name):
+        rows = frappe.get_all(
+            doctype,
+            {"parent": name},
+            ["mode_of_payment", "opening_amount", "expected_amount", "closing_amount", "difference"],
+            order_by="mode_of_payment",
+        )
+        return [{key: flt(value) if key != "mode_of_payment" else value for key, value in row.items()} for row in rows]
+
+    def test_the_closing_entry_expects_the_payments_the_shift_took(self):
+        from pos_next.api.partial_payments import create_payment_entry
+
+        frappe.set_user("Administrator")
+        owed = frappe.get_doc(
+            {
+                "doctype": "Sales Invoice",
+                "company": self.company,
+                "customer": self.customer,
+                "items": [{"item_code": ITEM, "qty": 1, "rate": RATE, "warehouse": self.warehouse}],
+            }
+        )
+        owed.insert(ignore_permissions=True)
+        owed.submit()
+
+        shift = self._open_shift()
+        self._sell(LINA, shift)
+        frappe.set_user("Administrator")
+        create_payment_entry(owed.name, 40, self.cash, reference_no=shift)
+
+        closing = self._close(shift)
+
+        shift_rows = self._reconciliation("POS Closing Shift Detail", closing)
+        self.assertEqual(shift_rows[0]["expected_amount"], 10 + RATE + 40)
+        entry = self._entry_of(closing)
+        self.assertEqual(self._reconciliation("POS Closing Entry Detail", entry), shift_rows)
+
+    def _printed_draft(self, shift, amount):
+        frappe.set_user(LINA)
+        draft = frappe.get_doc(
+            {
+                "doctype": "POS Invoice",
+                "pos_profile": PROFILE,
+                "posa_pos_opening_shift": shift,
+                "posa_is_printed": 1,
+                "company": self.company,
+                "customer": self.customer,
+                "is_pos": 1,
+                "update_stock": 1,
+                "items": [{"item_code": ITEM, "qty": 1, "rate": amount, "warehouse": self.warehouse}],
+                "payments": [{"mode_of_payment": self.cash, "amount": amount}],
+            }
+        )
+        draft.insert(ignore_permissions=True)
+        return draft.name
+
+    def test_reading_a_closing_leaves_a_printed_draft_alone(self):
+        shift = self._open_shift()
+        draft = self._printed_draft(shift, RATE)
+
+        frappe.set_user(LINA)
+        opening = frappe.get_doc("POS Opening Shift", shift)
+        preview = build_closing_shift(json.dumps(opening.as_dict(), default=str))
+
+        self.assertEqual(frappe.db.get_value("POS Invoice", draft, "docstatus"), 0)
+        self.assertEqual(preview["payment_reconciliation"][0]["expected_amount"], 10 + RATE)
+
+    def test_closing_the_shift_submits_its_printed_draft(self):
+        shift = self._open_shift()
+        draft = self._printed_draft(shift, RATE)
+
+        entry = self._entry_of(self._close(shift))
+
+        self.assertEqual(frappe.db.get_value("POS Invoice", draft, "docstatus"), 1)
+        self.assertIn(draft, frappe.get_all("POS Invoice Reference", {"parent": entry}, pluck="pos_invoice"))
+        self.assertTrue(frappe.db.get_value("POS Invoice", draft, "consolidated_invoice"))
+
+    def test_a_closing_in_another_company_than_its_shifts_is_refused(self):
+        shift = self._open_shift()
+        frappe.set_user("Administrator")
+        if not frappe.db.exists("Company", "Books Other Co"):
+            frappe.get_doc(
+                {"doctype": "Company", "company_name": "Books Other Co", "abbr": "BOC", "default_currency": "USD"}
+            ).db_insert()
+        opening = frappe.get_doc("POS Opening Shift", shift)
+        closing = json.loads(json.dumps(build_closing_shift(json.dumps(opening.as_dict(), default=str)), default=str))
+        closing["company"] = "Books Other Co"
+
+        frappe.set_user(LINA)
+        with self.assertRaises(frappe.ValidationError):
+            save_closing_shift(closing)
+
     def test_a_colleagues_sale_does_not_stop_the_shift_from_closing(self):
         shift = self._open_shift()
         hers = self._sell(SARA, shift)

@@ -91,12 +91,16 @@ class POSClosingShift(Document):
                 title=_("Invalid Period"),
             )
 
-        if frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "status") != "Open":
+        opening = frappe.db.get_value(
+            "POS Opening Shift", self.pos_opening_shift, ["status", "company"], as_dict=True
+        ) or frappe._dict()
+        if opening.status != "Open":
             frappe.throw(
                 _("Selected POS Opening Shift should be open."),
                 title=_("Invalid Opening Entry"),
             )
 
+        self.set_company_of_shift(opening.company)
         self.validate_invoice_sync()
 
         if pos_profile:
@@ -109,6 +113,34 @@ class POSClosingShift(Document):
                 self.difference_mode_of_payment_account = frappe.db.get_value("POS Profile", pos_profile, "write_off_account")
 
         self.update_payment_reconciliation()
+
+    def set_company_of_shift(self, company):
+        """The closing books into the shift's company, whatever the client wrote.
+
+        The shift took its company from its POS Profile when it opened. A closing that
+        names another one is refused rather than corrected, so a wrong client is heard.
+        """
+        if self.company and self.company != company:
+            frappe.throw(
+                _("This closing names company {0}, but shift {1} belongs to company {2}.").format(
+                    self.company, self.pos_opening_shift, company
+                ),
+                title=_("Wrong Company"),
+            )
+        self.company = company
+
+    def before_submit(self):
+        self.submit_printed_drafts()
+
+    def submit_printed_drafts(self):
+        """A printed draft was handed to the customer, so closing the shift submits it.
+
+        Reading a closing counts these drafts without touching them, so the totals of the
+        closing already include them. Only the close itself turns them into sales.
+        """
+        invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type")
+        doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
+        submit_printed_invoices(self.pos_opening_shift, doctype)
 
     def validate_invoice_sync(self):
         """Closing totals only count invoices the server has finished.
@@ -220,42 +252,16 @@ class POSClosingShift(Document):
                 "return_against": inv.return_against
             })
 
-        # Calculate expected payments
-        from collections import defaultdict
-        expected_amounts = defaultdict(float)
-
-        for inv in pos_invoices:
-            inv_doc = frappe.get_doc("POS Invoice", inv.name)
-            for pay in inv_doc.payments:
-                if pay.amount:
-                    expected_amounts[pay.mode_of_payment] += pay.amount
-            if inv_doc.change_amount:
-                cash_mop = frappe.db.get_value("POS Profile", self.pos_profile, "posa_cash_mode_of_payment") or "Cash"
-                expected_amounts[cash_mop] -= inv_doc.change_amount
-
-        # Get opening balances from our custom Opening Shift
-        opening_shift_doc = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
-        opening_amounts = {d.mode_of_payment: d.amount for d in opening_shift_doc.balance_details}
-
-        # Populate standard closing reconciliation table
-        pos_profile_doc = frappe.get_doc("POS Profile", self.pos_profile)
-        for pm in pos_profile_doc.payments:
-            mop = pm.mode_of_payment
-            opening_amt = flt(opening_amounts.get(mop, 0.0))
-            expected_amt = flt(expected_amounts.get(mop, 0.0)) + opening_amt
-
-            closing_amt = 0.0
-            for d in self.payment_reconciliation:
-                if d.mode_of_payment == mop:
-                    closing_amt = flt(d.closing_amount)
-                    break
-
+        # The drawer is the shift's: its reconciliation also counts the payments taken
+        # against earlier invoices, change, and returns, so the entry copies it rather than
+        # counting the POS Invoices again
+        for row in self.payment_reconciliation:
             pce.append("payment_reconciliation", {
-                "mode_of_payment": mop,
-                "opening_amount": opening_amt,
-                "expected_amount": expected_amt,
-                "closing_amount": closing_amt,
-                "difference": closing_amt - expected_amt
+                "mode_of_payment": row.mode_of_payment,
+                "opening_amount": flt(row.opening_amount),
+                "expected_amount": flt(row.expected_amount),
+                "closing_amount": flt(row.closing_amount),
+                "difference": flt(row.difference),
             })
 
         pce.insert(ignore_permissions=True)
@@ -704,7 +710,7 @@ def _read_shift_invoices(pos_opening_shift, doctype=None):
         pos_profile = frappe.db.get_value("POS Opening Shift", pos_opening_shift, "pos_profile")
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
         doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
-    submit_printed_invoices(pos_opening_shift, doctype)
+    # A printed draft counts as sold, as the close will submit it. Reading changes nothing.
     cond = " and ifnull(consolidated_invoice,'') = ''" if doctype == "POS Invoice" else ""
     data = frappe.db.sql(
         f"""
@@ -713,7 +719,8 @@ def _read_shift_invoices(pos_opening_shift, doctype=None):
 	from
 		`tab{doctype}`
 	where
-		docstatus = 1 and posa_pos_opening_shift = %s{cond}
+		(docstatus = 1 or (docstatus = 0 and posa_is_printed = 1))
+		and posa_pos_opening_shift = %s{cond}
 	""",
         (pos_opening_shift),
         as_dict=1,
@@ -854,7 +861,7 @@ def _process_invoice(invoice, invoice_field, company_currency, cash_mode, paymen
 
     # Subtract change_amount once from the cash mode.  change_amount is an
     # invoice-level field — the customer overpaid and received change back,
-    # so the drawer's net gain is (sum of cash rows − change).  Handling it
+    # so the drawer's net gain is (sum of cash rows - change).  Handling it
     # outside the loop avoids double-subtraction when multiple payment rows
     # share the same cash mode.
     base_change = get_base_value(invoice, "change_amount", "base_change_amount", conversion_rate)
@@ -866,8 +873,12 @@ def _process_invoice(invoice, invoice_field, company_currency, cash_mode, paymen
 
 @frappe.whitelist()
 def make_closing_shift_from_opening(opening_shift):
-    assert_shift_access(json.loads(opening_shift).get("name"))
-    return build_closing_shift(opening_shift)
+    name = json.loads(opening_shift).get("name")
+    assert_shift_access(name)
+    # Only the name comes from the request. The profile, company and opening balances
+    # are the shift's own, as the server holds them.
+    opening = frappe.get_doc("POS Opening Shift", name)
+    return build_closing_shift(json.dumps(opening.as_dict(), default=str))
 
 
 def build_closing_shift(opening_shift):
@@ -884,8 +895,6 @@ def build_closing_shift(opening_shift):
     invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") or "Sales Invoice"
     doctype = "POS Invoice" if invoice_type == "POS Invoice" else "Sales Invoice"
     invoice_field = "pos_invoice" if invoice_type == "POS Invoice" else "sales_invoice"
-
-    submit_printed_invoices(opening_shift.get("name"), doctype)
 
     # Initialize closing shift document
     closing_shift = frappe.new_doc("POS Closing Shift")
@@ -1075,4 +1084,7 @@ def submit_printed_invoices(pos_opening_shift, doctype):
     )
     for invoice in invoices_list:
         invoice_doc = frappe.get_doc(doctype, invoice.name)
+        # Whoever may close the shift has been checked by now. A cashier submits sales
+        # through the invoice processor the same way, and holds no submit right of their own.
+        invoice_doc.flags.ignore_permissions = True
         invoice_doc.submit()

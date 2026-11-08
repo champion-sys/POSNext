@@ -219,7 +219,6 @@ class TestShiftReads(unittest.TestCase):
             patch.object(pos_closing_shift, "assert_shift_access") as check,
             patch.object(pos_closing_shift, "_read_shift_invoices", return_value=[]) as invoices,
             patch.object(pos_closing_shift, "_read_shift_payments", return_value=[]) as payments,
-            patch.object(pos_closing_shift, "submit_printed_invoices"),
             patch.object(pos_closing_shift, "_get_cash_mode_of_payment", return_value="Cash"),
             patch("frappe.new_doc"),
             patch("frappe.get_cached_value", return_value="SAR"),
@@ -274,3 +273,88 @@ class TestShiftReads(unittest.TestCase):
         self.assertIsNotNone(self._open_shift_of(None))
         self.assertIsNotNone(self._open_shift_of("lina@example.com"))
         self.mocks["write_access"].assert_not_called()
+
+
+class TestReadingAClosingChangesNothing(unittest.TestCase):
+    """Reading or previewing a closing must not submit printed drafts. Only the close does."""
+
+    def setUp(self):
+        frappe.local.flags = frappe._dict()
+        frappe.local.message_log = []
+        self.db = Mock(get_value=Mock(return_value="Sales Invoice"), sql=Mock(return_value=[]))
+        patch("frappe.db", self.db).start()
+        self.submit = patch.object(pos_closing_shift, "submit_printed_invoices").start()
+        self.addCleanup(patch.stopall)
+
+    def test_reading_the_invoices_submits_nothing(self):
+        pos_closing_shift._read_shift_invoices("POS-1")
+
+        self.submit.assert_not_called()
+
+    def test_a_printed_draft_is_counted_as_the_close_will_submit_it(self):
+        pos_closing_shift._read_shift_invoices("POS-1", "Sales Invoice")
+
+        query = " ".join(self.db.sql.call_args.args[0].split())
+        self.assertIn("docstatus = 1 or (docstatus = 0 and posa_is_printed = 1)", query)
+
+    def test_building_a_closing_submits_nothing(self):
+        with (
+            patch.object(pos_closing_shift, "_read_shift_invoices", return_value=[]),
+            patch.object(pos_closing_shift, "_read_shift_payments", return_value=[]),
+            patch.object(pos_closing_shift, "_get_cash_mode_of_payment", return_value="Cash"),
+            patch("frappe.new_doc"),
+            patch("frappe.get_cached_value", return_value="SAR"),
+            patch("frappe.utils.get_datetime"),
+        ):
+            pos_closing_shift.build_closing_shift(json.dumps({"name": "POS-1", "balance_details": []}))
+
+        self.submit.assert_not_called()
+
+    def test_submitting_the_closing_submits_the_printed_drafts(self):
+        for invoice_type, doctype in (("POS Invoice", "POS Invoice"), (None, "Sales Invoice")):
+            self.submit.reset_mock()
+            self.db.get_value.return_value = invoice_type
+            doc = Mock(pos_profile="Main", pos_opening_shift="POS-1")
+
+            pos_closing_shift.POSClosingShift.submit_printed_drafts(doc)
+
+            self.submit.assert_called_once_with("POS-1", doctype)
+
+
+class TestTheClosingsCompanyIsTheShifts(unittest.TestCase):
+    def setUp(self):
+        frappe.local.flags = frappe._dict()
+        frappe.local.message_log = []
+        patch.object(pos_closing_shift, "_", lambda text: text).start()
+        self.addCleanup(patch.stopall)
+
+    def _closing(self, company):
+        return Mock(company=company, pos_opening_shift="POS-1")
+
+    def test_a_closing_naming_another_company_is_refused(self):
+        doc = self._closing("Other Co")
+
+        with self.assertRaises(frappe.ValidationError):
+            pos_closing_shift.POSClosingShift.set_company_of_shift(doc, "Shift Co")
+
+        self.assertEqual(doc.company, "Other Co")
+
+    def test_a_closing_naming_no_company_takes_the_shifts(self):
+        doc = self._closing(None)
+
+        pos_closing_shift.POSClosingShift.set_company_of_shift(doc, "Shift Co")
+
+        self.assertEqual(doc.company, "Shift Co")
+
+    def test_a_closing_built_on_request_uses_the_shift_the_server_holds(self):
+        held = {"name": "POS-1", "company": "Shift Co", "pos_profile": "Main", "balance_details": []}
+        sent = {"name": "POS-1", "company": "Other Co", "pos_profile": "Theirs", "balance_details": [{"amount": 9}]}
+        with (
+            patch.object(pos_closing_shift, "assert_shift_access"),
+            patch("frappe.get_doc", return_value=Mock(as_dict=Mock(return_value=held))) as get_doc,
+            patch.object(pos_closing_shift, "build_closing_shift", return_value={}) as build,
+        ):
+            pos_closing_shift.make_closing_shift_from_opening(json.dumps(sent))
+
+        get_doc.assert_called_once_with("POS Opening Shift", "POS-1")
+        self.assertEqual(json.loads(build.call_args.args[0]), held)

@@ -38,7 +38,9 @@ frappe.ui.form.on("POS Closing Shift", {
 	set_opening_amounts(frm) {
 		return frappe
 			.db.get_doc("POS Opening Shift", frm.doc.pos_opening_shift)
-			.then(({ balance_details }) => {
+			.then(({ balance_details, company }) => {
+				// The server refuses a closing in any other company than its shift's
+				frm.set_value("company", company);
 				balance_details.forEach((detail) => {
 					frm.add_child("payment_reconciliation", {
 						mode_of_payment: detail.mode_of_payment,
