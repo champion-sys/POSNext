@@ -538,7 +538,8 @@
 			<!-- Payment Dialog -->
 		<PaymentDialog
 			v-model="uiStore.showPaymentDialog"
-			:grand-total="cartStore.grandTotal"
+			:grand-total="cartStore.roundedTotal"
+			:rounding-adjustment="cartStore.roundingAdjustment"
 			:subtotal="cartStore.subtotal"
 			:pos-profile="shiftStore.profileName"
 			:currency="shiftStore.profileCurrency"
@@ -2236,11 +2237,8 @@ async function handleEditItem(updatedItem) {
 }
 
 function handleAdditionalDiscountUpdate(discountAmount) {
-	// Update the additional discount value in the cart store
-	cartStore.additionalDiscount = discountAmount;
-
-	// Rebuild the cache to recalculate totals
-	cartStore.rebuildIncrementalCache();
+	// A typed invoice discount replaces a coupon, which would otherwise be worked out again over it
+	cartStore.setAdditionalDiscount(discountAmount);
 }
 
 function handleCustomerSelected(selectedCustomer) {
@@ -2368,6 +2366,8 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 		customer: customerValue || shiftStore.profileCustomer,
 		customer_name: cartStore.customer?.customer_name,
 		grand_total: cartStore.grandTotal,
+		// What the customer was asked to pay, which the server's total check compares
+		rounded_total: cartStore.roundedTotal,
 		total_tax: cartStore.totalTax,
 		total_discount: cartStore.totalDiscount,
 		write_off_amount: paymentData.write_off_amount || 0,
@@ -2389,8 +2389,9 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 
 	const offlineReceiptName = invoiceData.offline_id;
 
-	const paidAmount = paymentData.paid_amount ?? cartStore.grandTotal ?? 0;
+	const paidAmount = paymentData.paid_amount ?? cartStore.roundedTotal ?? 0;
 	const grandTotal = cartStore.grandTotal || 0;
+	const amountDue = cartStore.roundedTotal || 0;
 	const customerLabel =
 		cartStore.customer?.customer_name ||
 		cartStore.customer?.name ||
@@ -2412,12 +2413,14 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			quantity: item.qty ?? item.quantity,
 		})),
 		grand_total: grandTotal,
+		rounded_total: amountDue,
+		rounding_adjustment: cartStore.roundingAdjustment,
 		total_taxes_and_charges: cartStore.totalTax,
 		payments: invoiceData.payments,
 		paid_amount: paidAmount,
 		change_amount: paymentData.change_amount || 0,
-		outstanding_amount: Math.max(0, grandTotal - paidAmount),
-		status: Math.max(0, grandTotal - paidAmount) < 0.01 ? "Paid" : "Unpaid",
+		outstanding_amount: Math.max(0, amountDue - paidAmount),
+		status: Math.max(0, amountDue - paidAmount) < 0.01 ? "Paid" : "Unpaid",
 		remarks: invoiceData.remarks,
 		docstatus: 0,
 	};
@@ -2444,7 +2447,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			);
 		} catch (error) {
 			log.error("Offline auto-print error:", error);
-			uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
+			uiStore.showSuccess(offlineReceiptName, amountDue, paymentData.paid_amount);
 			showWarning(
 				__("Invoice {0} saved but print failed. Open Print from the success dialog", [
 					offlineReceiptName,
@@ -2452,7 +2455,7 @@ async function saveCheckoutOffline(paymentData, customerValue, draftIdToDelete, 
 			);
 		}
 	} else {
-		uiStore.showSuccess(offlineReceiptName, grandTotal, paymentData.paid_amount);
+		uiStore.showSuccess(offlineReceiptName, amountDue, paymentData.paid_amount);
 		showSuccess(__("Invoice saved. It will reach the server shortly"));
 	}
 }
@@ -2504,10 +2507,8 @@ async function handlePaymentCompleted(paymentData) {
 			cartStore.setDeliveryDate(paymentData.delivery_date);
 		}
 
-		// Set write-off amount if provided
-		if (paymentData.write_off_amount && paymentData.write_off_amount > 0) {
-			cartStore.setWriteOffAmount(paymentData.write_off_amount);
-		}
+		// Every checkout sets it, 0 when none, so one from a failed attempt cannot carry over
+		cartStore.setWriteOffAmount(paymentData.write_off_amount || 0);
 
 		// Delete draft if it exists (since we're submitting/saving invoice)
 		draftIdToDelete = cartStore.currentDraftId;
@@ -2559,7 +2560,7 @@ async function handlePaymentCompleted(paymentData) {
 				}
 
 				const invoiceName = result.name || result.message?.name || __("Unknown");
-				const invoiceTotal = result.grand_total || result.total || 0;
+				const invoiceTotal = result.rounded_total || result.grand_total || result.total || 0;
 				const paidAmount = paymentData.paid_amount || invoiceTotal;
 
 				uiStore.showPaymentDialog = false;

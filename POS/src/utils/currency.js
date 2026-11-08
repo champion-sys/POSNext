@@ -225,3 +225,36 @@ export function roundCurrency(value) {
 export function roundFloat(value) {
 	return round(value, settings.float)
 }
+
+/**
+ * Python's float remainder: the result takes the sign of the divisor
+ * Matches frappe remainder()
+ */
+function remainder(numerator, denominator, precision) {
+	const multiplier = 10 ** precision
+	const divisor = denominator * multiplier
+	const value = ((numerator * multiplier) % divisor + divisor) % divisor
+	return round(value / multiplier, precision)
+}
+
+/**
+ * The rounded total ERPNext posts when rounding is on.
+ * Matches frappe round_based_on_smallest_currency_fraction(): with no smallest
+ * fraction set on the currency, the total is rounded to a whole number.
+ * @param {number} value - Grand total
+ * @param {number} smallestFraction - The currency's smallest_currency_fraction_value
+ * @param {number} [precision] - Decimal places of the result
+ * @returns {number}
+ */
+export function roundToSmallestFraction(value, smallestFraction, precision = settings.currency) {
+	if (typeof value !== "number" || Number.isNaN(value)) return 0
+	const fraction = Number(smallestFraction) || 0
+	let result = value
+	if (fraction > 0) {
+		const rest = remainder(value, fraction, precision)
+		result = rest > fraction / 2 ? value + fraction - rest : value - rest
+	} else {
+		result = round(value, 0)
+	}
+	return round(result, precision)
+}

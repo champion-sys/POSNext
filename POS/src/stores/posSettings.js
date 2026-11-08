@@ -131,6 +131,11 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 	const disableRoundedTotal = computed(() =>
 		Boolean(settings.value.disable_rounded_total),
 	)
+	// The profile currency's smallest_currency_fraction_value, null when the server sent none
+	const roundingFraction = computed(() => {
+		const value = settings.value.smallest_currency_fraction_value
+		return value === undefined || value === null || value === "" ? null : Number(value) || 0
+	})
 	const allowCreditSale = computed(() =>
 		Boolean(settings.value.allow_credit_sale),
 	)
@@ -556,6 +561,7 @@ export const usePOSSettingsStore = defineStore("posSettings", () => {
 		allowItemDiscount,
 		allowUserToEditRate,
 		disableRoundedTotal,
+		roundingFraction,
 		allowCreditSale,
 		allowCustomerCreditPayment,
 		allowReturn,

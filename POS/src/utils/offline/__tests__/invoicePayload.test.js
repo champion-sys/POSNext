@@ -287,6 +287,15 @@ describe("buildSyncEnvelope", () => {
 			payload,
 		})
 	})
+
+	it("carries the rounded total the cashier collected, for the server's total check", () => {
+		const rounded = { ...payload, grand_total: 11.5, rounded_total: 12, payments: [{ amount: 12 }] }
+		expect(buildSyncEnvelope({ id: 8 }, rounded).client_totals).toEqual({
+			grand_total: 11.5,
+			rounded_total: 12,
+			paid: 12,
+		})
+	})
 })
 
 describe("getQueueUpdateForResult", () => {
