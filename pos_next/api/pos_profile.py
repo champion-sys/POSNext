@@ -373,7 +373,7 @@ def get_sales_persons(pos_profile=None):
 def get_create_pos_profile(*args, **kwargs):
 	"""
 	Get selection data for creating POS Profile
-	
+
 	Returns:
 		- warehouses: Available warehouses for user's company
 		- customers: Available customers
@@ -480,7 +480,7 @@ def get_create_pos_profile(*args, **kwargs):
 def create_pos_profile(*arg ,**parameters):
 	"""
 	Create a new POS Profile
-	
+
 	Required fields:
 		- __newname: POS Profile name
 		- currency: Currency code
@@ -489,7 +489,7 @@ def create_pos_profile(*arg ,**parameters):
 		- write_off_account: Account name for write-off
 		- write_off_cost_center: Cost center name
 		- write_off_limit: Write-off limit amount
-	
+
 	Optional fields:
 		- customer: Default customer
 		- applicable_for_users: List of users
@@ -574,7 +574,7 @@ def create_pos_profile(*arg ,**parameters):
 def update_pos_profile(*args, **parameters):
 	"""
 		Update an existing POS Profile
-		
+
 		Args:
 			pos_profile: POS Profile name
 			parameters: Update parameters (all optional)
@@ -668,7 +668,7 @@ def update_pos_profile(*args, **parameters):
 def delete_pos_profile(pos_profile):
 	"""
 		Delete a POS Profile
-		
+
 		Args:
 			pos_profile: POS Profile name
 	"""

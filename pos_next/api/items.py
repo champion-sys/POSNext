@@ -1003,11 +1003,11 @@ def _calculate_bundle_availability_bulk(bundle_codes, warehouse):
 def _get_bundle_warehouse_availability_bulk(bundle_codes, warehouses):
 	"""
 	Calculate Product Bundle availability across multiple warehouses efficiently.
-	
+
 	Args:
 		bundle_codes (list): List of bundle item codes
 		warehouses (list): List of warehouse dicts with 'name' key
-		
+
 	Returns:
 		dict: Nested mapping of bundle_code -> warehouse_name -> available_qty
 			  Example: {
@@ -1743,7 +1743,7 @@ def get_items_count(pos_profile, item_group=None, brand=None, include_variants=0
 
 
 @frappe.whitelist()
-def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):
+def get_item_details(item_code, pos_profile, customer=None, qty=1, uom=None):  # customer reserved for future use
 	"""Get detailed item info including price, tax, stock"""
 	try:
 		# Parse pos_profile if it's a JSON string
