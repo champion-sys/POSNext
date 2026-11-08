@@ -93,7 +93,8 @@ def assert_shift_takes_sale(shift, pos_profile, queued=False, offline_id=None):
     """Refuse a sale its shift's drawer cannot hold. Every invoice path passes here.
 
     The shift must be open, not closed on a device and still finishing, and on the
-    invoice's POS Profile. Online it must be the cashier's own. A queued record may go into
+    invoice's POS Profile. Online it must be the cashier's own, except on a POS Invoice
+    profile, where ERPNext allows one shift that every cashier sells into. A queued record may go into
     a colleague's shift on its profile: a shared device sells into the shift it has open.
 
     Args:
@@ -136,7 +137,8 @@ def assert_shift_takes_sale(shift, pos_profile, queued=False, offline_id=None):
             WrongShiftError,
         )
 
-    if not queued and found.user != frappe.session.user:
+    shared = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "invoice_type") == "POS Invoice"
+    if not queued and not shared and found.user != frappe.session.user:
         frappe.throw(
             _("Shift {0} belongs to {1}. Sell into your own shift.").format(shift, found.user),
             WrongShiftError,

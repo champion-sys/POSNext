@@ -141,6 +141,14 @@ class TestShiftTakesSale(NoSiteTestCase):
         with self.assertRaises(WrongShiftError):
             assert_shift_takes_sale("POSA-OS-1", "Main")
 
+    def test_online_a_pos_invoice_profiles_one_shift_takes_every_cashier(self):
+        # ERPNext allows one open POS Opening Entry there, so a colleague cannot open their own
+        self.shift.user = "lina@example.com"
+        frappe.local.db.get_value.side_effect = lambda doctype, *_args, **_kwargs: (
+            "POS Invoice" if doctype == "POS Settings" else self.shift
+        )
+        assert_shift_takes_sale("POSA-OS-1", "Main")
+
     def test_a_queued_colleagues_sale_goes_into_the_devices_shift(self):
         self.shift.user = "lina@example.com"
         assert_shift_takes_sale("POSA-OS-1", "Main", queued=True, offline_id="pos_offline_1")
