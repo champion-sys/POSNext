@@ -1,3 +1,5 @@
+> **Outdated.** This describes an early state of the project. For the current assessment and plan, see [docs/offline-multiplatform](../docs/offline-multiplatform/README.md).
+
 # ✅ Offline Implementation - COMPLETE
 
 ## Status: POS Can Now Work Without Backend

@@ -1,3 +1,5 @@
+> **Outdated.** This describes an early state of the project. For the current assessment and plan, see [docs/offline-multiplatform](docs/offline-multiplatform/README.md).
+
 # POS Awesome to POS Next Migration Plan
 
 ## Executive Summary
