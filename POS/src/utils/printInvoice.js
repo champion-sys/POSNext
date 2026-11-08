@@ -5,6 +5,7 @@ import { getOfflineInvoiceByOfflineId } from "@/utils/offline/sync"
 import { offlineWorker } from "@/utils/offline/workerClient"
 import { canUseBrowserPrint } from "@/platform/printing/routes"
 import { printSystemHTML } from "@/platform/printing/system"
+import { paperSizeMm, withCopies } from "@/platform/printing/templatePrint"
 import { ELECTRON, PLATFORM } from "@/platform/runtime"
 import { printHTML as qzPrintHTML } from "@/utils/qzTray"
 import { usePOSSettingsStore } from "@/stores/posSettings"
@@ -634,6 +635,52 @@ export async function printWithSilentFallback(invoiceData, printFormat = null) {
 		log.error("Browser print fallback also failed:", err)
 		return { method: "browser", success: false }
 	}
+}
+
+// ============================================================================
+// Print templates (rendered on the device, so they print offline too)
+// ============================================================================
+
+/**
+ * Open a rendered template in a window and print it with the browser's dialog.
+ * @param {import("@/platform/printing/templatePrint").TemplatePrintJob} job
+ */
+function openTemplateWindow(job) {
+	const roll = !paperSizeMm(job.paper).height
+	const printWindow = window.open("", "_blank", roll ? "width=400,height=700" : "width=900,height=900")
+	if (!printWindow) {
+		throw new Error(__("Popup blocked — check your browser settings."))
+	}
+	printWindow.document.write(withCopies(job.html, job.copies))
+	printWindow.document.close()
+	printWindow.onload = () => {
+		setTimeout(() => printWindow.print(), 250)
+	}
+}
+
+/**
+ * Print a rendered template: on the desktop to the saved printer, at the template's
+ * paper and copies; on the web through QZ Tray when silent printing is on, otherwise
+ * through the browser's dialog.
+ *
+ * @param {import("@/platform/printing/templatePrint").TemplatePrintJob} job
+ * @param {{silent?: boolean, invoiceName?: string}} [options]
+ */
+export async function printTemplateJob(job, { silent = false, invoiceName } = {}) {
+	if (PLATFORM === ELECTRON) {
+		await printSystemHTML(job.html, { paper: job.paper, copies: job.copies })
+	} else if (silent) {
+		try {
+			await qzPrintHTML(job.html, null, { ...paperSizeMm(job.paper), copies: job.copies })
+		} catch (err) {
+			if (!canUseBrowserPrint(PLATFORM)) throw err
+			log.warn("Silent template print failed, falling back to browser:", err?.message || err)
+			openTemplateWindow(job)
+		}
+	} else {
+		openTemplateWindow(job)
+	}
+	flagOfflineInvoicePrinted(invoiceName)
 }
 
 // ============================================================================

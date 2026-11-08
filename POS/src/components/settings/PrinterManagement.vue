@@ -215,6 +215,7 @@
 						]"
 						:description="__('Choose layout configuration printed by this printer.')"
 					/>
+					<PrintTemplateSelect v-model="store.printTemplate" :profile="posSettings.settings?.pos_profile || ''" />
 				</div>
 
 				<!-- Paper Size & Print Mode -->
@@ -384,6 +385,7 @@ import { usesNativeLink } from "@/platform/printing/transport"
 import { COMMANDS, encodeCP1256, reshapeArabic, renderReceiptToRaster } from "@/utils/escpos"
 import AndroidPrinterPairing from "@/components/settings/AndroidPrinterPairing.vue"
 import CheckboxField from "@/components/settings/CheckboxField.vue"
+import PrintTemplateSelect from "@/components/settings/PrintTemplateSelect.vue"
 import SelectField from "@/components/settings/SelectField.vue"
 
 const { showSuccess, showError } = useToast()

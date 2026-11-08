@@ -228,6 +228,8 @@ export async function findPrinters() {
  * @param {string} [printerName] - Target printer. Falls back to saved printer.
  * @param {Object} [options] - Extra print options
  * @param {number} [options.width] - Paper width in mm (default 80)
+ * @param {number} [options.height] - Page height in mm, for A4 and A5 templates (default auto)
+ * @param {number} [options.copies] - Copies (default 1)
  * @param {string} [options.orientation] - "portrait" | "landscape" (default "portrait")
  * @returns {Promise<boolean>} true if print was dispatched successfully
  */
@@ -247,13 +249,14 @@ export async function printHTML(html, printerName, options = {}) {
 	const config = qz.configs.create(printer, {
 		size: {
 			width: options.width || 80,
-			height: null, // auto height for receipts
+			height: options.height || null, // auto height for receipts
 		},
 		units: "mm",
 		orientation: options.orientation || "portrait",
 		margins: { top: 0, right: 0, bottom: 0, left: 0 },
 		colorType: "grayscale",
 		interpolation: "nearest-neighbor",
+		...(options.copies > 1 ? { copies: options.copies } : {}),
 	})
 
 	const data = [

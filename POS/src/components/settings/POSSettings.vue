@@ -429,6 +429,8 @@
 												:label="__('Silent Print')"
 												:description="__('Send receipts directly to a thermal printer via QZ Tray (no browser dialog)')"
 											/>
+											<!-- This device's own printing: the desktop printer, QZ Tray or the browser -->
+											<PrintTemplateSelect v-model="devicePrintTemplate" :profile="settings.pos_profile || posProfile || ''" />
 
 											<!-- QZ Tray Printer Settings (shown when silent print is enabled) -->
 											<div v-if="settings.silent_print && !isDesktop" class="ps-6 flex flex-col gap-3 border-s-2 border-teal-200">
@@ -640,6 +642,8 @@ import SelectField from "@/components/settings/SelectField.vue"
 import PrinterManagement from "@/components/settings/PrinterManagement.vue"
 import QueueExport from "@/components/settings/QueueExport.vue"
 import SystemPrinterSettings from "@/components/settings/SystemPrinterSettings.vue"
+import PrintTemplateSelect from "@/components/settings/PrintTemplateSelect.vue"
+import { getDevicePrintTemplate, saveDevicePrintTemplate } from "@/platform/printing/bundle"
 import { ELECTRON, PLATFORM } from "@/platform/runtime"
 import { useToast } from "@/composables/useToast"
 import { Button, call, createResource } from "frappe-ui"
@@ -658,6 +662,10 @@ import { useQzTray } from "@/composables/useQzTray"
 
 
 const isDesktop = PLATFORM === ELECTRON
+
+/** Kept on this device at once, like the desktop printer, not saved with the profile's settings */
+const devicePrintTemplate = ref(getDevicePrintTemplate())
+watch(devicePrintTemplate, (name) => saveDevicePrintTemplate(name))
 
 /** The server refuses a change to these from anyone but a manager, so the screen says so first */
 const isManagerOnly = (fieldname) => (settings.value._manager_only_fields || []).includes(fieldname)

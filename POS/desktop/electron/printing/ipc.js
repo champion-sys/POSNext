@@ -7,7 +7,7 @@ const { isAppPage } = require("../db/handler")
 
 /**
  * @param {Electron.IpcMain} ipc
- * @param {{list: () => Promise<Array>, print: (html: string, printerName: string) => Promise<Object>}} printers
+ * @param {{list: () => Promise<Array>, print: (html: string, printerName: string, options?: {paper?: string, copies?: number}) => Promise<Object>}} printers
  */
 function registerPrinterIpc(ipc, printers) {
 	for (const method of ["list", "print"]) {

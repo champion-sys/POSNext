@@ -8,6 +8,8 @@ __pycache__
 
 # Build artifacts
 pos_next/public/pos/
+# Built by `npm run build` from POS/src/platform/printing
+pos_next/public/js/pos_print_template.js
 pos_next/www/
 yarn.lock
 package-lock.json

@@ -28,7 +28,11 @@ export function listSystemPrinters() {
 /**
  * Print a document. With no saved printer, Electron shows the system's printer dialog.
  * @param {string} html
+ * @param {{paper?: string, copies?: number}} [options] - A print template's paper and
+ *   copies; without them the page is the built-in receipt's
  */
-export function printSystemHTML(html) {
-	return window.electronAPI.printReceipt(html, getSystemPrinter())
+export function printSystemHTML(html, options) {
+	return options
+		? window.electronAPI.printReceipt(html, getSystemPrinter(), options)
+		: window.electronAPI.printReceipt(html, getSystemPrinter())
 }

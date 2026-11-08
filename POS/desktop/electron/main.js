@@ -51,7 +51,7 @@ function createWindow() {
 
 registerPrinterIpc(ipcMain, {
 	list: () => getAvailablePrinters(mainWindow),
-	print: (html, printerName) => printHTML(html, printerName),
+	print: (html, printerName, options) => printHTML(html, printerName, options),
 })
 registerDatabaseIpc()
 registerSecretHandlers()
