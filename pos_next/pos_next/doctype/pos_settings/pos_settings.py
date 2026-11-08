@@ -60,6 +60,8 @@ MANAGER_ONLY_FIELDS = (
 	"allow_print_last_invoice",
 	"allow_print_previous_invoices",
 	"custom_allow_access_to_previous_invoices",
+	# What a receipt or tax invoice shows: the manager's Print Format
+	"print_template",
 	"custom_hide_stock_quantity",
 	"hide_expected_amount",
 	# Locking the screen
@@ -165,16 +167,17 @@ class POSSettings(Document):
 
 	def validate_print_template(self):
 		"""Devices only get formats ticked for them, so another one would never print."""
-		if not self.print_template:
+		template = self.get("print_template")
+		if not template:
 			return
 		ticked = frappe.db.get_value(
-			"Print Format", self.print_template, ["pos_next_offline", "disabled"], as_dict=True
+			"Print Format", template, ["pos_next_offline", "disabled"], as_dict=True
 		)
 		if not ticked or not cint(ticked.pos_next_offline) or cint(ticked.disabled):
 			frappe.throw(
 				frappe._(
 					"Print Format {0} is not ticked for POS devices. Open it and tick Print on POS Devices, or choose another."
-				).format(self.print_template),
+				).format(template),
 				title=frappe._("Print Template"),
 			)
 

@@ -800,7 +800,8 @@ class TestStockIndex(NoSiteTestCase):
         self.db.add_index = Mock()
         self.db.commit = Mock()
 
-        with patch("frappe.clear_cache"):
+        # Print Formats need a real site; this is about the indexes
+        with patch("frappe.clear_cache"), patch("pos_next.install.ensure_default_print_templates"):
             install.after_install()
 
         self.db.add_index.assert_any_call("Bin", ["warehouse", "modified", "name"], index_name="pos_sync_stock")
