@@ -9,6 +9,7 @@
   "status",
   "sales_invoice",
   "invoice_doctype",
+  "posa_local_number",
   "column_break_1",
   "pos_profile",
   "customer",
@@ -103,6 +104,16 @@
    "options": "DocType",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "description": "The number the device gave the invoice",
+   "fieldname": "posa_local_number",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Local Number",
+   "length": 140,
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "column_break_1",
@@ -466,7 +477,7 @@
  ],
  "index_web_pages_for_search": 0,
  "links": [],
- "modified": "2026-11-07 18:00:00",
+ "modified": "2026-11-09 12:00:00",
  "modified_by": "Administrator",
  "module": "POS Next",
  "name": "Offline Invoice Sync",

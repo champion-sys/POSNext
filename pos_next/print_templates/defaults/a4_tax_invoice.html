@@ -29,6 +29,7 @@
 			{% if print.copy and print.copy > 1 %}<div class="mark">{{ _("Copy No.") }} {{ print.copy }}</div>{% endif %}
 			<table class="meta">
 				<tr><td>{{ _("Invoice") }}</td><td><bdi>{{ doc.name }}</bdi></td></tr>
+				{% if doc.posa_local_number and doc.posa_local_number != doc.name %}<tr><td>{{ _("Local Number") }}</td><td><bdi>{{ doc.posa_local_number }}</bdi></td></tr>{% endif %}
 				{% if doc.is_return and doc.return_against %}<tr><td>{{ _("Against") }}</td><td><bdi>{{ doc.return_against }}</bdi></td></tr>{% endif %}
 				<tr><td>{{ _("Date") }}</td><td><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ format_time(doc.posting_time) }}{% endif %}</bdi></td></tr>
 				<tr><td>{{ _("Cashier") }}</td><td>{{ cashier.full_name or cashier.user }}</td></tr>

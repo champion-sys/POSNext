@@ -15,10 +15,19 @@ def free_offline_id_on_amend(doc, method=None):
 	"""An amendment is a new document with a new sale behind it.
 
 	Desk copies no_copy fields into an amendment, and the cancelled original keeps this unique
-	id, so without this no invoice from the POS could be amended.
+	id, so without this no invoice from the POS could be amended. The device's local number
+	stays with the original too: it names the invoice the device made.
 	"""
 	if doc.amended_from:
 		doc.offline_id = None
+		doc.posa_local_number = None
+
+
+def validate_local_number(doc, method=None):
+	"""Keep the local number a device sent exactly as it came, or refuse it. Old devices send none."""
+	from pos_next.services import local_numbering
+
+	doc.posa_local_number = local_numbering.check(doc.get("posa_local_number"))
 
 
 def validate(doc, method=None):
@@ -31,6 +40,7 @@ def validate(doc, method=None):
 		doc: Sales Invoice document
 		method: Hook method name (unused)
 	"""
+	validate_local_number(doc)
 	validate_return_invoice(doc)
 	apply_tax_inclusive(doc)
 	auto_assign_loyalty_program_on_invoice(doc)

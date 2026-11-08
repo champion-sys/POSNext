@@ -23,7 +23,7 @@ from frappe.utils.background_jobs import get_job_status
 from rq.job import JobStatus
 from rq.timeouts import JobTimeoutException
 
-from pos_next.services import sync_classifier, sync_entities, sync_retention
+from pos_next.services import local_numbering, sync_classifier, sync_entities, sync_retention
 from pos_next.services.sync_classifier import (
     CashierNotOnProfileError,
     CashierUnavailableError,
@@ -152,6 +152,7 @@ def _envelope_fields(item, uploaded_by, device_id, client_version, protocol_vers
     return {
         "entity": entity,
         "invoice_doctype": payload.get("doctype") or "Sales Invoice",
+        "posa_local_number": local_numbering.of_payload(payload) if entity == ENTITY_INVOICE else None,
         "pos_profile": _link_or_none("POS Profile", pos_profile),
         "customer": _link_or_none("Customer", payload.get("customer")),
         "shift": _link_or_none("POS Opening Shift", sync_entities.get_record_shift(entity, payload, cashier)),
@@ -827,6 +828,7 @@ def get_duplicate_response(offline_id):
         "change_amount": doc.get("change_amount") or 0,
         "duplicate_prevented": True,
         "offline_id": offline_id,
+        "posa_local_number": doc.get("posa_local_number"),
     }
 
 
@@ -842,6 +844,7 @@ def record_direct_sync(offline_id, invoice_name, doctype, invoice):
             "status": "Synced",
             "sales_invoice": invoice_name,
             "invoice_doctype": doctype,
+            "posa_local_number": local_numbering.of_payload(invoice),
             "pos_profile": invoice.get("pos_profile"),
             "customer": invoice.get("customer"),
             "cashier": frappe.session.user,

@@ -235,6 +235,8 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
         "outstanding_amount": getattr(invoice_doc, "outstanding_amount", 0),
         "paid_amount": getattr(invoice_doc, "paid_amount", 0),
         "change_amount": getattr(invoice_doc, "change_amount", 0),
+        # The number the device gave it, which the invoice keeps beside its own name
+        "posa_local_number": invoice_doc.get("posa_local_number"),
     }
 
     # Include offline_id in response for client-side tracking

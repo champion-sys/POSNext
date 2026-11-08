@@ -11,6 +11,7 @@ from erpnext.stock.doctype.batch.batch import get_batch_no, get_batch_qty
 from frappe import _
 from frappe.utils import cint, cstr, flt, get_datetime, nowdate, nowtime
 
+from pos_next.services.local_numbering import resolve_invoice_name
 from pos_next.services.sync_entities import is_local_name
 
 # ==========================================
@@ -1392,6 +1393,9 @@ def get_invoice(invoice_name):
 	if not invoice_name:
 		frappe.throw(_("Invoice name is required"))
 
+	# Or the number the device gave it
+	invoice_name = resolve_invoice_name(invoice_name)
+
 	doctype = "Sales Invoice"
 	if not frappe.db.exists("Sales Invoice", invoice_name) and frappe.db.exists("POS Invoice", invoice_name):
 		doctype = "POS Invoice"
@@ -1468,7 +1472,8 @@ def get_invoices(pos_profile, pos_opening_shift=None, limit=100):
 			status,
 			docstatus,
 			is_return,
-			return_against
+			return_against,
+			posa_local_number
 		FROM
 			`tab{doctype}`
 		WHERE
@@ -1709,7 +1714,7 @@ def get_returnable_invoices(limit=50, pos_profile=None):
     query = (
         frappe.qb.from_(si)
         .select(
-            si.name, si.customer, si.customer_name,
+            si.name, si.posa_local_number, si.customer, si.customer_name,
             si.contact_mobile, si.posting_date,
             si.grand_total, si.status,
         )
@@ -1742,9 +1747,10 @@ def get_returnable_invoices(limit=50, pos_profile=None):
 def search_invoice_by_number(search_term, pos_profile=None):
     """Search for invoices by invoice number across the entire database.
     No date restrictions - searches all returnable invoices matching the term.
+    The number is the ERPNext name or the local number the device gave the invoice.
 
     Two-step approach for performance:
-    1. Find matching POS invoices by name (fast indexed LIKE query)
+    1. Find matching POS invoices by name or local number (LIKE query)
     2. Filter out fully-returned ones via _filter_fully_returned
 
     Args:
@@ -1777,14 +1783,15 @@ def search_invoice_by_number(search_term, pos_profile=None):
         q = (
             frappe.qb.from_(si)
             .select(
-                si.name, si.customer, si.customer_name,
+                si.name, si.posa_local_number, si.customer, si.customer_name,
                 si.contact_mobile, si.posting_date,
                 si.grand_total, si.status,
             )
             .where(
                 (si.docstatus == 1)
                 & (si.is_return == 0)
-                & (si.name.like(f"%{search_term}%"))
+                # By the ERPNext name or the number the device gave it
+                & (si.name.like(f"%{search_term}%") | si.posa_local_number.like(f"%{search_term}%"))
             )
         )
         if doctype == "Sales Invoice":
@@ -1814,6 +1821,9 @@ def check_invoice_return_validity(invoice_name):
     - Additional context (invoice_date, days_since, allowed_days) for expired returns
     """
     from frappe.utils import date_diff, formatdate, getdate
+
+    # A cashier can type the number the device gave the invoice
+    invoice_name = resolve_invoice_name(invoice_name)
 
     # Fetch only the fields needed for validation
     doctype = "Sales Invoice"
@@ -1872,7 +1882,7 @@ def check_invoice_return_validity(invoice_name):
                     "message": _("Return period has expired")
                 }
 
-    return {"valid": True}
+    return {"valid": True, "invoice_name": invoice_name}
 
 
 @frappe.whitelist()
@@ -1885,6 +1895,9 @@ def get_invoice_for_return(invoice_name):
     """
     from frappe.query_builder.functions import Abs, Coalesce, Sum
     from frappe.utils import date_diff, getdate
+
+    # A cashier can type the number the device gave the invoice
+    invoice_name = resolve_invoice_name(invoice_name)
 
     # Validate invoice exists and get fields needed for return period check
     doctype = "Sales Invoice"
@@ -2482,7 +2495,8 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
     - Return is within the validity period (if configured in POS Settings)
 
     Args:
-        invoice_name: The original Sales Invoice name to create return against
+        invoice_name: The original invoice to create return against, by its name or by the
+            local number its device gave it
         pos_opening_shift: The current POS Opening Shift name
 
     Returns:
@@ -2491,7 +2505,7 @@ def prepare_return_invoice(invoice_name, pos_opening_shift=None):
             - _original_invoice: Reference data from original invoice (payments, amounts)
             - Each item includes original_qty, already_returned, and remaining_qty
     """
-    return _prepare_return_invoice(invoice_name, pos_opening_shift)
+    return _prepare_return_invoice(resolve_invoice_name(invoice_name), pos_opening_shift)
 
 
 def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
@@ -2526,7 +2540,8 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
             si.customer_name,
             si.net_total,
             si.total_taxes_and_charges,
-            si.conversion_rate
+            si.conversion_rate,
+            si.posa_local_number
         )
         .where(si.name == invoice_name)
     ).run(as_dict=True)
@@ -2662,6 +2677,8 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
     # Include original invoice data for reference (payments, amounts, etc.)
     return_dict["_original_invoice"] = {
         "name": invoice_name,
+        # The number its device gave it, so a device offline finds the sale by either number
+        "posa_local_number": invoice_info.posa_local_number,
         "grand_total": invoice_info.grand_total,
         "paid_amount": invoice_info.paid_amount,
         "outstanding_amount": invoice_info.outstanding_amount,
@@ -2870,7 +2887,7 @@ def search_invoices_for_return(
     """Search for invoices that can be returned with pagination.
 
     Supports filtering by:
-    - invoice_name: Partial match on invoice number
+    - invoice_name: Partial match on invoice number or local number
     - company: Exact match
     - customer_name, customer_id, mobile_no: Partial match (OR condition)
     - from_date, to_date: Date range
@@ -2892,6 +2909,7 @@ def search_invoices_for_return(
         frappe.qb.from_(si)
         .select(
             si.name,
+            si.posa_local_number,
             si.customer,
             si.customer_name,
             si.posting_date,
@@ -2912,9 +2930,9 @@ def search_invoices_for_return(
     if company:
         query = query.where(si.company == company)
 
-    # Add invoice name filter
+    # Add invoice name filter: the ERPNext name or the number the device gave it
     if invoice_name:
-        query = query.where(si.name.like(f"%{invoice_name}%"))
+        query = query.where(si.name.like(f"%{invoice_name}%") | si.posa_local_number.like(f"%{invoice_name}%"))
 
     # Add date range filters
     if from_date and to_date:
@@ -2983,7 +3001,9 @@ def search_invoices_for_return(
     if company:
         count_query = count_query.where(si.company == company)
     if invoice_name:
-        count_query = count_query.where(si.name.like(f"%{invoice_name}%"))
+        count_query = count_query.where(
+            si.name.like(f"%{invoice_name}%") | si.posa_local_number.like(f"%{invoice_name}%")
+        )
     if from_date and to_date:
         count_query = count_query.where(si.posting_date.between(from_date, to_date))
     elif from_date:

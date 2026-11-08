@@ -110,6 +110,8 @@ class ShiftFlow(test_sync_flow.Flow):
             ("frappe.throw", test_sync_flow._raise),
             ("pos_next.api.shifts._", lambda text: text),
             ("frappe.utils.data.now_datetime", datetime.now),
+            # Answers with the shift, which these do not look at; test_local_numbering covers it
+            ("pos_next.api.shifts.get_local_numbering_safely", Mock(return_value=None)),
         ):
             patcher = patch(target, replacement)
             patcher.start()
@@ -913,9 +915,11 @@ class TestOnlinePath(test_sync_entities.NoSiteTestCase):
 
     def _create(self):
         self.shift = Mock()
+        self.shift.name = "POSA-OS-26-0000003"
         with (
             patch("pos_next.api.shifts.insert_opening_shift", return_value=self.shift) as self.create,
             patch("pos_next.api.shifts.frappe.get_doc", side_effect=lambda doctype, name: f"{doctype} {name}"),
+            patch("pos_next.api.shifts.get_local_numbering_safely", return_value={"shift_number": "3"}) as self.numbering,
         ):
             return shifts.create_opening_shift("Main", "Acme", '[{"mode_of_payment": "Cash", "opening_amount": 5}]')
 
@@ -927,6 +931,13 @@ class TestOnlinePath(test_sync_entities.NoSiteTestCase):
         self.assertEqual(data["pos_opening_shift"], self.shift.as_dict())
         self.assertEqual(data["pos_profile"], "POS Profile Main")
         self.assertEqual(data["company"], "Company Acme")
+
+    def test_create_opening_shift_answers_with_how_to_number_its_invoices(self):
+        with patch("pos_next.api.invoices._assert_invoice_write_access"):
+            data = self._create()
+
+        self.numbering.assert_called_once_with("POS Profile Main", "POSA-OS-26-0000003")
+        self.assertEqual(data["local_numbering"], {"shift_number": "3"})
 
     def test_someone_outside_the_profile_opens_nothing_and_reads_nothing(self):
         with (

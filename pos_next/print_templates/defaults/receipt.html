@@ -30,6 +30,7 @@
 
 	<table class="meta">
 		<tr><td>{{ _("Invoice") }}</td><td class="end"><bdi>{{ doc.name }}</bdi></td></tr>
+		{% if doc.posa_local_number and doc.posa_local_number != doc.name %}<tr><td>{{ _("Local Number") }}</td><td class="end"><bdi>{{ doc.posa_local_number }}</bdi></td></tr>{% endif %}
 		{% if doc.is_return and doc.return_against %}<tr><td>{{ _("Against") }}</td><td class="end"><bdi>{{ doc.return_against }}</bdi></td></tr>{% endif %}
 		<tr><td>{{ _("Date") }}</td><td class="end"><bdi>{{ format_date(doc.posting_date) }}{% if doc.posting_time %} {{ format_time(doc.posting_time) }}{% endif %}</bdi></td></tr>
 		<tr><td>{{ _("Cashier") }}</td><td class="end">{{ cashier.full_name or cashier.user }}</td></tr>

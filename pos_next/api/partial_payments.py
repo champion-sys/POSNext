@@ -676,6 +676,7 @@ def get_partial_paid_invoices(pos_profile: str, limit: int = DEFAULT_INVOICE_LIM
         },
         fields=[
             "name",
+            "posa_local_number",
             "customer",
             "customer_name",
             "posting_date",
@@ -761,6 +762,7 @@ def get_unpaid_invoices(pos_profile: str, pos_opening_shift: str | None = None, 
         filters=filters,
         fields=[
             "name",
+            "posa_local_number",
             "customer",
             "customer_name",
             "posting_date",

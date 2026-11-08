@@ -235,6 +235,7 @@ doc_events = {
 	},
 	"POS Invoice": {
 		"before_insert": "pos_next.api.sales_invoice_hooks.free_offline_id_on_amend",
+		"validate": "pos_next.api.sales_invoice_hooks.validate_local_number",
 		"on_submit": [
 			"pos_next.services.pos_reserved_stock.touch_reserving_bins",
 			"pos_next.realtime_events.emit_stock_update_event"

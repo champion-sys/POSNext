@@ -22,6 +22,7 @@ Data Returned:
     - pos_settings: POS-specific settings
     - payment_methods: Available payment methods
     - print_bundle: Print templates, company and logo (None when the profile has no template)
+    - local_numbering: What the device numbers its invoices with (None without a shift)
 
 Performance: ~300-500ms faster than multiple API calls
 """
@@ -32,6 +33,7 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce
 
 from pos_next.api.constants import DEFAULT_POS_SETTINGS, POS_SETTINGS_FIELDS
+from pos_next.services.local_numbering import get_local_numbering_safely
 from pos_next.services.sale_limits import get_rounding_settings
 
 
@@ -55,7 +57,8 @@ def get_initial_data():
 			pos_profile: dict | None,
 			pos_settings: dict | None,
 			payment_methods: list,
-			print_bundle: dict | None
+			print_bundle: dict | None,
+			local_numbering: dict | None
 		}
 
 	Raises:
@@ -79,6 +82,7 @@ def get_initial_data():
 		"pos_settings": None,
 		"payment_methods": [],
 		"print_bundle": None,
+		"local_numbering": None,
 	}
 
 	# Get open shift - if no shift, return early with defaults
@@ -115,6 +119,7 @@ def get_initial_data():
 	result["pos_settings"] = _get_pos_settings(pos_profile)
 	result["payment_methods"] = _get_payment_methods(pos_profile_name)
 	result["print_bundle"] = _get_print_bundle(pos_profile)
+	result["local_numbering"] = get_local_numbering_safely(pos_profile, shift["name"])
 
 	return result
 

@@ -723,6 +723,7 @@ def get_credit_invoices(pos_profile, limit=100):
 	invoices = frappe.db.sql("""
 		SELECT
 			name,
+			posa_local_number,
 			customer,
 			customer_name,
 			posting_date,

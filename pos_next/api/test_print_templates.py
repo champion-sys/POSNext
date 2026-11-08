@@ -676,6 +676,44 @@ class TestDefaultTemplateSource(unittest.TestCase):
 				roots |= set(re.findall(r"(?<![\w.])([A-Za-z_]\w*)\.", block))
 			self.assertLessEqual(roots, CONTEXT, name)
 
+	def _render(self, **doc):
+		import jinja2
+
+		environment = jinja2.Environment(autoescape=True, undefined=jinja2.Undefined)
+		helpers = {
+			"_": lambda text: text,
+			"format_date": str,
+			"format_time": str,
+			"format_currency": lambda value, currency=None: f"{currency} {value}",
+			"format_number": str,
+			"qr": lambda text: "data:image/png;base64,QR",
+			"money_in_words": lambda value, currency=None: f"{value} in words",
+		}
+		document = as_objects({"name": "SINV-1", "items": [], "taxes": [], "payments": [], **doc})
+		pos = SimpleNamespace(
+			**helpers,
+			company=as_objects({"company_name": "Co Ltd"}),
+			pos_profile=as_objects({"name": "Main"}),
+			cashier=as_objects({"user": "lina@example.com"}),
+			customer=None,
+			print=as_objects({"rtl": False, "lang": "en", "paper": "80mm", "copy": 1}),
+		)
+		for name, html in self.sources():
+			yield name, environment.from_string(html).render(
+				doc=document, _=helpers["_"], pos_print_context=lambda _doc: pos
+			)
+
+	def test_the_local_number_prints_on_its_own_line(self):
+		for name, output in self._render(posa_local_number="LACC-SINV-2026-3-00001"):
+			self.assertIn("Local Number", output, name)
+			self.assertIn("LACC-SINV-2026-3-00001", output, name)
+			self.assertIn("SINV-1", output, name)
+
+	def test_no_local_number_line_without_one_or_when_it_is_the_name(self):
+		for value in (None, "", "SINV-1"):
+			for name, output in self._render(posa_local_number=value):
+				self.assertNotIn("Local Number", output, name)
+
 	def test_they_render_and_follow_the_direction(self):
 		import jinja2
 

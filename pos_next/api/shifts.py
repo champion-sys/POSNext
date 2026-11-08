@@ -8,6 +8,7 @@ from frappe import _
 from frappe.utils import get_datetime
 
 from pos_next.api.utilities import get_wallet_payment_modes
+from pos_next.services.local_numbering import get_local_numbering_safely
 from pos_next.services.sync_classifier import ShiftConflictError
 from pos_next.services.sync_entities import has_pending_close
 
@@ -105,6 +106,7 @@ def check_opening_shift(user=None):
 	data["pos_opening_shift"] = frappe.get_doc("POS Opening Shift", shift_data["name"])
 	data["pos_profile"] = frappe.get_doc("POS Profile", shift_data["pos_profile"])
 	data["company"] = frappe.get_doc("Company", data["pos_profile"].company)
+	data["local_numbering"] = get_local_numbering_safely(data["pos_profile"], shift_data["name"])
 	# Include server timestamp so frontend can compute shift duration
 	# without timezone mismatch (period_start_date is in server timezone)
 	data["server_now"] = str(get_datetime())
@@ -129,6 +131,7 @@ def create_opening_shift(pos_profile, company, balance_details):
 	data["pos_opening_shift"] = new_pos_opening.as_dict()
 	data["pos_profile"] = frappe.get_doc("POS Profile", pos_profile)
 	data["company"] = frappe.get_doc("Company", company)
+	data["local_numbering"] = get_local_numbering_safely(data["pos_profile"], new_pos_opening.name)
 
 	return data
 
