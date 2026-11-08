@@ -201,17 +201,25 @@ def align_return(payload):
             item[fieldname] = row[fieldname]
 
 
-def has_pending_close(opening_shift):
+def has_pending_close(opening_shift, waited_for_by=None):
     """Whether a shift was closed on a device and the server is still finishing it.
 
     A close that can never finish on it does not count: the shift stays with its holder.
+
+    Args:
+        waited_for_by: A queued record's offline_id. A close that waits for that record
+            does not count, since the record is part of what it counted.
     """
     closes = frappe.get_all(
         DOCTYPE,
         filters={"entity": ENTITY_SHIFT_CLOSE, "shift": opening_shift, "status": ["not in", FINAL_STATES]},
-        pluck="error_code",
+        fields=["error_code", "depends_on"],
     )
-    return any(code not in CLOSE_REFUSALS for code in closes)
+    return any(
+        close.error_code not in CLOSE_REFUSALS
+        and not (waited_for_by and waited_for_by in (close.depends_on or "").split())
+        for close in closes
+    )
 
 
 def _assert_target_access(row, pos_profile):
@@ -397,24 +405,6 @@ def find_shift_close(_offline_id):
     return None
 
 
-def _apply_counted_amounts(closing, counted):
-    amounts = {row.get("mode_of_payment"): flt(row.get("closing_amount")) for row in counted or []}
-
-    for detail in closing["payment_reconciliation"]:
-        detail["closing_amount"] = amounts.pop(detail["mode_of_payment"], 0)
-
-    # Counted money with nothing expected against it must still show up as a difference
-    for mode_of_payment, amount in amounts.items():
-        closing["payment_reconciliation"].append(
-            {
-                "mode_of_payment": mode_of_payment,
-                "opening_amount": 0,
-                "expected_amount": 0,
-                "closing_amount": amount,
-            }
-        )
-
-
 def close_shift(row):
     """Finalize a shift closed on a device, once everything it depends on has finished.
 
@@ -423,7 +413,7 @@ def close_shift(row):
     """
     from pos_next.api.shifts import assert_may_close_shift
     from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
-        build_closing_shift,
+        build_counted_closing,
         save_closing_shift,
     )
 
@@ -442,10 +432,12 @@ def close_shift(row):
     _assert_target_access(row, opening.pos_profile)
     assert_may_close_shift(opening, row.cashier)
 
-    closing = json.loads(json.dumps(build_closing_shift(json.dumps(opening.as_dict(), default=str)), default=str))
-    _apply_counted_amounts(closing, payload.get("closing_amounts"))
-    closing["period_end_date"] = payload.get("period_end_date") or closing["period_end_date"]
-    closing["posting_date"] = payload.get("posting_date") or closing["posting_date"]
+    closing = build_counted_closing(
+        opening.name,
+        payload.get("closing_amounts"),
+        period_end_date=payload.get("period_end_date"),
+        posting_date=payload.get("posting_date"),
+    )
 
     name = save_closing_shift(closing)
     return {"name": name, "doctype": "POS Closing Shift", "grand_total": closing.get("grand_total")}

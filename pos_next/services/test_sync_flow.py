@@ -72,7 +72,15 @@ class FakeInbox:
         if doctype == "User":
             return 0 if filters in self.disabled_users else 1
         if doctype == "POS Opening Shift":
-            return self.shifts.get(filters)
+            shift = self.shifts.get(filters)
+            if isinstance(shift, str):
+                shift = {"status": shift, "docstatus": 2 if shift == "Cancelled" else 1, "pos_profile": "Main",
+                         "user": "cashier@example.com"}
+            if not shift:
+                return None
+            if isinstance(fieldname, str):
+                return shift.get(fieldname)
+            return frappe._dict({field: shift.get(field) for field in fieldname})
         if doctype != DOCTYPE:
             return None
 
@@ -293,6 +301,7 @@ class TestCashierSession(Flow):
         name = self._stored_sale()
         with (
             patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.invoices.assert_shift_takes_sale"),
             patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
         ):
             process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}
@@ -374,6 +383,7 @@ class TestRecordWithoutPayload(Flow):
 
         with (
             patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.invoices.assert_shift_takes_sale"),
             patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
         ):
             process_invoice.return_value = {"name": "SINV-1", "grand_total": 25}
@@ -557,6 +567,7 @@ class TestEditOfASaleOnTheServer(Flow):
 
         with (
             patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.invoices.assert_shift_takes_sale"),
             patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
         ):
             process_invoice.return_value = {"name": "SINV-2", "grand_total": 0}
@@ -911,6 +922,13 @@ class TestQueueJob(Flow):
 
 
 class TestClosedShift(Flow):
+    def setUp(self):
+        super().setUp()
+        for target in ("frappe.throw", "pos_next.api.invoices._"):
+            patcher = patch(target, _raise if target == "frappe.throw" else (lambda text: text))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def _post(self, payload):
         name = self._send(SALE, {"pos_profile": "Main", **payload})
         with (
@@ -956,8 +974,56 @@ class TestClosedShift(Flow):
         self.process_invoice.assert_called_once()
         self.assertEqual(row.status, "Synced")
 
-    def test_a_sales_invoice_posts_on_submit_whatever_its_shift(self):
+    def test_a_sales_invoice_of_a_closed_shift_goes_to_a_person_too(self):
+        """Its drawer was counted without it, so it must not land there unseen."""
         self.inbox.shifts["SHIFT-1"] = "Closed"
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "ShiftClosedError")
+        self.assertIn("Change Shift", row.error_message)
+
+    def test_a_sales_invoice_of_an_open_shift_posts(self):
+        self.inbox.shifts["SHIFT-1"] = "Open"
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_called_once()
+        self.assertEqual(row.status, "Synced")
+
+    def test_a_sale_into_another_profiles_shift_goes_to_a_person(self):
+        self.inbox.shifts["SHIFT-1"] = {"status": "Open", "docstatus": 1, "pos_profile": "Other", "user": "omar@example.com"}
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.status, sync_inbox.REVIEW)
+        self.assertEqual(row.error_code, "WrongShiftError")
+        self.assertEqual(row.error_class, "business")
+
+    def test_a_colleagues_sale_into_the_devices_shift_on_its_profile_posts(self):
+        """A shared device sells into the shift it has open, whoever is signed in."""
+        self.inbox.shifts["SHIFT-1"] = {"status": "Open", "docstatus": 1, "pos_profile": "Main", "user": "sara@example.com"}
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_called_once()
+        self.assertEqual(row.status, "Synced")
+
+    def test_a_sale_into_a_shift_closed_on_a_device_goes_to_a_person(self):
+        self.inbox.shifts["SHIFT-1"] = "Open"
+        self.inbox.insert({"offline_id": CLOSE, "entity": "shift_close", "shift": "SHIFT-1", "status": "Blocked", "depends_on": ""})
+
+        row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
+
+        self.process_invoice.assert_not_called()
+        self.assertEqual(row.error_code, "ShiftClosedError")
+
+    def test_a_sale_the_pending_close_waits_for_still_posts(self):
+        self.inbox.shifts["SHIFT-1"] = "Open"
+        self.inbox.insert({"offline_id": CLOSE, "entity": "shift_close", "shift": "SHIFT-1", "status": "Blocked", "depends_on": SALE})
 
         row = self._post({"doctype": "Sales Invoice", "posa_pos_opening_shift": "SHIFT-1"})
 
@@ -1174,6 +1240,7 @@ class TestNewCustomerJourney(Flow):
 
         with (
             patch("pos_next.api.invoices._assert_invoice_write_access"),
+            patch("pos_next.api.invoices.assert_shift_takes_sale"),
             patch("pos_next.services.invoice_processor.process_invoice") as process_invoice,
         ):
             process_invoice.return_value = {"name": "SINV-1", "grand_total": 0}

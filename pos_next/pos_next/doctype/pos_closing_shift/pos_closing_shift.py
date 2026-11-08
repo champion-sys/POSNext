@@ -12,6 +12,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+from pos_next.permissions import is_pos_manager
 from pos_next.utils import BOOKS_USER, session_of
 
 
@@ -62,19 +63,15 @@ SHIFT_INVOICE_DOCTYPES = ("Sales Invoice", "POS Invoice")
 
 class POSClosingShift(Document):
     def validate(self):
-        # Check if the user is allowed to close shift based on POS Profile settings
+        from pos_next.api.shifts import assert_may_close_shift
+
         pos_profile = self.pos_profile
         if not pos_profile and self.pos_opening_shift:
             pos_profile = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_profile")
 
-        if pos_profile:
-            allowed_role = frappe.db.get_value("POS Profile", pos_profile, "role_allowed_to_closing_shift")
-            user_to_check = self.user or frappe.session.user
-            if user_to_check != "Administrator" and allowed_role and allowed_role not in frappe.get_roles(user_to_check):
-                frappe.throw(
-                    _("You are not allowed to close this shift. Only users with role '{0}' are allowed.").format(allowed_role),
-                    frappe.PermissionError
-                )
+        # The role says who may close a shift, so it is the closer's, not the holder's. A queued
+        # close runs as its cashier, who must be the holder.
+        assert_may_close_shift(frappe._dict(pos_profile=pos_profile))
 
         user = frappe.get_all(
             "POS Closing Shift",
@@ -369,6 +366,10 @@ class POSClosingShift(Document):
         self.db_set("journal_entry", je.name)
 
     def on_cancel(self):
+        # What follows reopens the shift and undoes the books as BOOKS_USER, whoever asked
+        if not is_pos_manager():
+            frappe.throw(_("Only a POS manager can cancel a POS Closing Shift"), frappe.PermissionError)
+
         if frappe.db.exists("POS Opening Shift", self.pos_opening_shift):
             opening_entry = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
             if opening_entry.pos_closing_shift == self.name:
@@ -659,7 +660,8 @@ def assert_shift_access(opening_shift):
     """Hold the session user to the rule for closing a shift.
 
     Reading a shift's money takes the same access as closing it. The shift's POS Profile
-    is read here, because the one in a request is whatever its sender wrote.
+    is read here, because the one in a request is whatever its sender wrote. Each cashier
+    holds their own shift, so only its holder or a manager may close it.
 
     Args:
         opening_shift: POS Opening Shift name
@@ -672,6 +674,13 @@ def assert_shift_access(opening_shift):
 
     opening = frappe.get_doc("POS Opening Shift", opening_shift)
     _assert_invoice_write_access("Sales Invoice", opening.pos_profile)
+    if opening.user != frappe.session.user and not is_pos_manager():
+        frappe.throw(
+            _("Shift {0} belongs to {1}. Only they or a POS manager can close it.").format(
+                opening_shift, opening.user
+            ),
+            frappe.PermissionError,
+        )
     assert_may_close_shift(opening)
 
 
@@ -953,19 +962,91 @@ def build_closing_shift(opening_shift):
     return result
 
 
+def apply_counted_amounts(closing, counted):
+    """Put what the cashier counted on a closing the server worked out.
+
+    Args:
+        closing: The closing, as build_closing_shift returns it
+        counted: Rows of mode_of_payment and closing_amount
+    """
+    amounts = {}
+    for row in counted or []:
+        mode_of_payment = row.get("mode_of_payment")
+        amounts[mode_of_payment] = amounts.get(mode_of_payment, 0) + flt(row.get("closing_amount"))
+
+    for detail in closing["payment_reconciliation"]:
+        detail["closing_amount"] = amounts.pop(detail["mode_of_payment"], 0)
+
+    # Counted money with nothing expected against it must still show up as a difference
+    for mode_of_payment, amount in amounts.items():
+        closing["payment_reconciliation"].append(
+            {
+                "mode_of_payment": mode_of_payment,
+                "opening_amount": 0,
+                "expected_amount": 0,
+                "closing_amount": amount,
+            }
+        )
+
+
+def build_counted_closing(opening_shift, counted, period_end_date=None, posting_date=None):
+    """The closing of a shift: its totals from the server, its count from the cashier.
+
+    Args:
+        opening_shift: POS Opening Shift name
+        counted: Rows of mode_of_payment and closing_amount
+        period_end_date: When the cashier closed, if not now
+        posting_date: The closing's date, if not today
+
+    Returns:
+        dict: The closing, ready for save_closing_shift
+    """
+    opening = frappe.get_doc("POS Opening Shift", opening_shift)
+    closing = json.loads(json.dumps(build_closing_shift(json.dumps(opening.as_dict(), default=str)), default=str))
+    apply_counted_amounts(closing, counted)
+    if period_end_date:
+        closing["period_end_date"] = period_end_date
+    if posting_date:
+        closing["posting_date"] = posting_date
+    return closing
+
+
+def _get_sent_period_end(opening_shift, value):
+    """The end of the period the POS sends, when it could be true: after the shift began, not later than now."""
+    from frappe.utils import get_datetime, now_datetime
+
+    if not value:
+        return None
+    try:
+        period_end = get_datetime(value)
+    except Exception:
+        return None
+
+    started = frappe.db.get_value("POS Opening Shift", opening_shift, "period_start_date")
+    if not period_end or not started or not get_datetime(started) <= period_end <= now_datetime():
+        return None
+    return str(period_end)
+
+
 @frappe.whitelist()
 def submit_closing_shift(closing_shift):
     """Close a shift for the session user.
 
-    The document comes from the request and is saved without permission checks, so nothing
-    but a closing of a shift this user may close can be allowed through.
+    The totals are worked out here from what the server holds, as for a close queued on a
+    device. The request only says what the cashier counted and when.
     """
-    closing_shift = json.loads(closing_shift)
-    if closing_shift.get("doctype") != "POS Closing Shift":
+    sent = json.loads(closing_shift)
+    if sent.get("doctype") != "POS Closing Shift":
         frappe.throw(_("Only a POS Closing Shift can be submitted here"), frappe.PermissionError)
 
-    assert_shift_access(closing_shift.get("pos_opening_shift"))
-    return save_closing_shift(closing_shift)
+    opening_shift = sent.get("pos_opening_shift")
+    assert_shift_access(opening_shift)
+    closing = build_counted_closing(
+        opening_shift,
+        sent.get("payment_reconciliation"),
+        period_end_date=_get_sent_period_end(opening_shift, sent.get("period_end_date")),
+    )
+    return save_closing_shift(closing)
 
 
 def save_closing_shift(closing_shift):

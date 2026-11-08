@@ -25,13 +25,21 @@ class POSOpeningShift(Document):
         A POS Invoice profile keeps one for everyone: ERPNext takes a single open POS Opening
         Entry on a POS Profile, and with a second it refuses the sales of both.
         """
+        from pos_next.api.shifts import lock_profile_for_opening
+
         pos_invoices = self.takes_pos_invoices()
+
+        # Wait for any other opening on this POS Profile to finish, then read past this
+        # transaction's snapshot, which a shift opened in the meantime is not in
+        lock_profile_for_opening(self.pos_profile)
 
         filters = {"pos_profile": self.pos_profile, "status": "Open", "name": ["!=", self.name], "docstatus": ["!=", 2]}
         if not pos_invoices:
             filters["user"] = self.user
 
-        existing_shift = frappe.db.get_value("POS Opening Shift", filters, ["name", "user"], as_dict=True)
+        existing_shift = frappe.db.get_value(
+            "POS Opening Shift", filters, ["name", "user"], as_dict=True, for_update=True
+        )
         if existing_shift:
             frappe.throw(
                 _("POS Profile {0} is already open by {1} in shift {2}. Close that shift before opening yours.")
