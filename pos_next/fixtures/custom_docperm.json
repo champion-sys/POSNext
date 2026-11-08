@@ -1391,5 +1391,29 @@
   "share": 0,
   "submit": 0,
   "write": 0
+ },
+ {
+  "amend": 0,
+  "cancel": 0,
+  "create": 0,
+  "delete": 0,
+  "docstatus": 0,
+  "doctype": "Custom DocPerm",
+  "email": 0,
+  "export": 0,
+  "if_owner": 0,
+  "import": 0,
+  "modified": "2026-11-08 23:30:00.000000",
+  "name": "sales_invoice_nexus_pos_manager",
+  "parent": "Sales Invoice",
+  "permlevel": 0,
+  "print": 1,
+  "read": 1,
+  "report": 1,
+  "role": "Nexus POS Manager",
+  "select": 0,
+  "share": 0,
+  "submit": 0,
+  "write": 0
  }
 ]
