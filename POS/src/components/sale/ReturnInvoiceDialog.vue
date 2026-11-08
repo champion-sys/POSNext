@@ -768,6 +768,7 @@ import { useOfflineStatus } from "@/composables/useOfflineStatus"
 import { useToast } from "@/composables/useToast"
 import { session } from "@/data/session"
 import { usePOSSettingsStore } from "@/stores/posSettings"
+import { usePOSShiftStore } from "@/stores/posShift"
 import { usePOSSyncStore } from "@/stores/posSync"
 import { checkReturnValidity, isLocalName } from "@/utils/offline/entities"
 import { formatLocalPosting, withOfflinePosting } from "@/utils/offline/invoicePayload"
@@ -780,12 +781,14 @@ import {
 	roundCurrency,
 } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
+import { computeReturnTotal, returnRowWarehouse } from "@/utils/returnInvoice"
 import { Button, Dialog, FeatherIcon, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 
 const { showSuccess, showError, showWarning } = useToast()
 const { mustQueue: isOffline } = useOfflineStatus()
 const settingsStore = usePOSSettingsStore()
+const shiftStore = usePOSShiftStore()
 const offlineStore = usePOSSyncStore()
 
 // ============================================
@@ -1054,6 +1057,11 @@ function buildReturnInvoiceData() {
 	// the sales_team entries from the original invoice.
 	const baseDoc = preparedReturnDoc.value || {}
 	const doctype = preparedReturnDoc.value?.doctype || "Sales Invoice"
+	const branch = {
+		originalProfile: baseDoc.pos_profile,
+		currentProfile: props.posProfile,
+		currentWarehouse: shiftStore.profileWarehouse,
+	}
 
 	return {
 		doctype: doctype,
@@ -1081,7 +1089,7 @@ function buildReturnInvoiceData() {
 			item_name: item.item_name,
 			qty: -Math.abs(item.return_qty),
 			rate: item.rate,
-			warehouse: item.warehouse,
+			warehouse: returnRowWarehouse(item, branch),
 			uom: item.uom,
 			conversion_factor: item.conversion_factor || 1,
 			// Link to original invoice item row for accurate return tracking in ERPNext.
@@ -1228,17 +1236,8 @@ const filteredReturnItems = computed(() => {
 
 const hasOpenShift = computed(() => Boolean(props.posOpeningShift))
 
-// Use rate_with_tax (includes tax) for accurate refund calculation
-const returnTotal = computed(() =>
-	roundCurrency(
-		selectedItems.value.reduce(
-			(sum, item) =>
-				sum +
-				roundCurrency(item.return_qty * (item.rate_with_tax || item.rate)),
-			0,
-		),
-	),
-)
+// Added up the way the server totals the return, so the refund matches it
+const returnTotal = computed(() => computeReturnTotal(selectedItems.value))
 
 const totalPaymentAmount = computed(() =>
 	roundCurrency(

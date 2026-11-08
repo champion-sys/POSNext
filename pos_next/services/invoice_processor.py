@@ -26,6 +26,7 @@ from pos_next.api.invoices import (
     _auto_set_return_batches,
     _set_payment_accounts,
     _validate_stock_on_invoice,
+    assert_return_quantities,
     assert_shift_takes_sale,
     log_manual_rate_edit,
     save_invoice_draft,
@@ -66,6 +67,9 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
         # A new draft was checked when save_invoice_draft made it, a queued record before that
         if not queued:
             assert_shift_takes_sale(invoice_doc.get("posa_pos_opening_shift"), invoice_doc.get("pos_profile"))
+        # A draft saved by an earlier request held its lock only until that request ended
+        if invoice_doc.get("is_return") and invoice_doc.get("return_against"):
+            assert_return_quantities(invoice_doc, queued)
 
     # Ensure update_stock is set for Sales/POS Invoice
     if doctype in ("Sales Invoice", "POS Invoice"):

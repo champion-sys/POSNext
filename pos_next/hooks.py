@@ -228,7 +228,15 @@ doc_events = {
 	},
 	"POS Invoice": {
 		"before_insert": "pos_next.api.sales_invoice_hooks.free_offline_id_on_amend",
-		"on_cancel": "pos_next.pos_next.doctype.pos_coupon.pos_coupon.return_coupon_use"
+		"on_submit": [
+			"pos_next.services.pos_reserved_stock.touch_reserving_bins",
+			"pos_next.realtime_events.emit_stock_update_event"
+		],
+		"on_cancel": [
+			"pos_next.pos_next.doctype.pos_coupon.pos_coupon.return_coupon_use",
+			"pos_next.services.pos_reserved_stock.touch_reserving_bins",
+			"pos_next.realtime_events.emit_stock_update_event"
+		]
 	},
 	"Sales Order": {
 		"on_cancel": "pos_next.pos_next.doctype.pos_coupon.pos_coupon.return_coupon_use"

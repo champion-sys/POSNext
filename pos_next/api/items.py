@@ -12,6 +12,8 @@ from frappe.query_builder import DocType
 from frappe.query_builder import functions as fn
 from frappe.utils import flt, nowdate
 
+from pos_next.services.pos_reserved_stock import get_reserved_qty_map, subtract_reserved
+
 ITEM_RESULT_FIELDS = [
 	"name as item_code",
 	"item_name",
@@ -51,7 +53,8 @@ def get_stock_availability(item_code, warehouse):
 		.run(as_dict=True)
 	)
 
-	return flt(result[0].actual_qty) if result and result[0].actual_qty else 0.0
+	actual_qty = flt(result[0].actual_qty) if result and result[0].actual_qty else 0.0
+	return actual_qty - flt(get_reserved_qty_map([item_code], warehouses).get(item_code))
 
 
 def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=None):
@@ -434,7 +437,9 @@ def get_item_stock(item_code, warehouse):
 			as_dict=True
 		) or {}
 
-		stock_qty = flt(bin_data.get("actual_qty", 0))
+		stock_qty = flt(bin_data.get("actual_qty", 0)) - flt(
+			get_reserved_qty_map([item_code], [warehouse]).get(item_code)
+		)
 		reserved_qty = flt(bin_data.get("reserved_qty", 0))
 
 		return {
@@ -629,7 +634,9 @@ def get_item_variants(template_item, pos_profile):
 				.where(Bin.warehouse == pos_profile_doc.warehouse)
 				.run(as_dict=True)
 			)
-			stock_map = {s["item_code"]: s["actual_qty"] for s in stocks}
+			stock_map = subtract_reserved(
+				{s["item_code"]: s["actual_qty"] for s in stocks}, [pos_profile_doc.warehouse]
+			)
 
 		# Enrich each variant with attributes, price, stock, and UOMs
 		for variant in variants:
@@ -962,6 +969,8 @@ def _calculate_bundle_availability_bulk(bundle_codes, warehouse):
 	# Build fast lookup map: item_code -> available_qty
 	# Components not in map are treated as having 0 stock
 	component_stock_map = {row["item_code"]: flt(row["available_qty"]) for row in component_stock}
+	# Components sold on POS Invoices that no closing has consolidated are gone already
+	subtract_reserved(component_stock_map, warehouses)
 
 	# ===========================================================================
 	# STEP 5: Calculate Bundle Availability (Limited by Most Constrained Component)
@@ -1294,7 +1303,9 @@ def get_items(pos_profile, search_term=None, item_group=None, start=0, limit=20,
 					.where(Bin.warehouse == pos_profile_doc.warehouse)
 					.run(as_dict=True)
 				)
-				stock_map = {s["item_code"]: s["actual_qty"] for s in stocks}
+				stock_map = subtract_reserved(
+					{s["item_code"]: s["actual_qty"] for s in stocks}, [pos_profile_doc.warehouse]
+				)
 
 		# ===================================================================
 		# PRODUCT BUNDLE AVAILABILITY: Calculate bundle stock (bulk optimized)
@@ -1572,7 +1583,7 @@ def _enrich_items_bulk(items, pos_profile_doc, exclude_variants):
 			.groupby(Bin.item_code)
 			.run(as_dict=True)
 		)
-		stock_map = {s.item_code: flt(s.qty) for s in stock_data}
+		stock_map = subtract_reserved({s.item_code: flt(s.qty) for s in stock_data}, warehouses)
 
 	# Bundle availability
 	bundle_availability_map = {}
@@ -1944,6 +1955,8 @@ def get_stock_quantities(item_codes, warehouse):
 
 		# Create a lookup for items that have stock entries
 		item_stock_map = {row["item_code"]: row for row in stock_rows}
+		# A submitted POS Invoice moves no stock until its closing consolidates it
+		pos_reserved_map = get_reserved_qty_map(normalized_codes, warehouses)
 
 		# Get bundle availability for non-stock items (bulk optimized)
 		bundle_availability_map = _calculate_bundle_availability_bulk(normalized_codes, warehouse)
@@ -1959,7 +1972,7 @@ def get_stock_quantities(item_codes, warehouse):
 			else:
 				# Regular item - use Bin data
 				row = item_stock_map.get(item_code)
-				actual_qty = flt(row["actual_qty"]) if row else 0.0
+				actual_qty = (flt(row["actual_qty"]) if row else 0.0) - flt(pos_reserved_map.get(item_code))
 				reserved_qty = flt(row["reserved_qty"]) if row else 0.0
 
 			result.append(
