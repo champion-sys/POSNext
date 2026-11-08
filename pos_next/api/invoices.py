@@ -1159,6 +1159,11 @@ def save_invoice_draft(data, queued=False):
         # ========================================================================
         invoice_doc.set_missing_values(for_validate=True)
 
+        # Before the first totals: priced at the device's rates, a return can come to less
+        # than its refund, and ERPNext would replace the refund rows
+        if invoice_doc.get("is_return") and invoice_doc.get("return_against"):
+            price_return(invoice_doc)
+
         # Calculate totals and apply discounts (with rounding disabled)
         invoice_doc.calculate_taxes_and_totals()
         if invoice_doc.grand_total is None:
@@ -2052,7 +2057,7 @@ def _get_return_sources(doctype, invoice_name):
     rows = frappe.get_all(
         f"{doctype} Item",
         filters={"parent": invoice_name, "parenttype": doctype},
-        fields=["name", "item_code", "qty", "net_amount"],
+        fields=["name", "item_code", "qty", "net_amount", "rate", "price_list_rate"],
     )
     tax_details = []
     if frappe.get_meta(doctype).has_field("item_wise_tax_details"):
@@ -2070,6 +2075,214 @@ def _round_down(value, precision):
     return math.floor(flt(value, precision + 4) * factor) / factor
 
 
+def _currency_precision():
+    return cint(frappe.get_cached_value("System Settings", None, "currency_precision")) or 2
+
+
+def _return_row_values(sources, item_tax_map, grand_total, precision):
+    """What a sale took for each of its item rows, in its smallest coin.
+
+    A row is its net amount, which is after the invoice discount, plus its tax. The coins
+    the rows' rounding leaves over go to the largest row, so the rows add up to the sale's
+    grand total exactly.
+
+    Args:
+        sources: The sale's item rows, with name and net_amount
+        item_tax_map: _build_item_tax_map of the sale
+        grand_total: The sale's
+        precision: Currency precision
+
+    Returns:
+        dict: item row name -> coins
+    """
+    factor = 10**precision
+    values = {}
+    for row in sources:
+        tax = item_tax_map.get(row.get("name"))
+        amount = abs(flt(row.get("net_amount"))) + (flt(tax["amount"]) if tax else 0.0)
+        values[row.get("name")] = round(flt(amount, precision) * factor)
+
+    left_over = round(abs(flt(grand_total, precision)) * factor) - sum(values.values())
+    if left_over and values:
+        largest = max(values, key=values.get)
+        values[largest] = max(0, values[largest] + left_over)
+    return values
+
+
+def _refund_for_units(value, qty_sold, units):
+    """What the first `units` units returned of a row give back, in coins.
+
+    Rounded down, so the coins a row's value does not divide into come back with its last
+    units, and all of its units give back exactly its value. The device works this out the
+    same way, in refundForUnits of POS/src/utils/returnInvoice.js.
+
+    Args:
+        value: What the sale took for the row, in coins (_return_row_values)
+        qty_sold: The row's quantity on the sale
+        units: How many of its units have been returned, counting this return
+    """
+    if units <= 0:
+        return 0
+    if units >= qty_sold:
+        return value
+    return math.floor(value * units / qty_sold + 1e-6)
+
+
+def _return_balance(values, qty_sold, returned, refunded):
+    """What the units returned so far were worth, less what their returns gave back, in coins.
+
+    Nothing, when every return went through this pricing. A return made otherwise, such as
+    one from before it or from the Desk, leaves the difference, which the next return of
+    the invoice settles.
+
+    Args:
+        values: item row name -> coins (_return_row_values)
+        qty_sold: item row name -> quantity sold
+        returned: item row name -> quantity already returned
+        refunded: What the earlier returns gave back, in coins
+    """
+    return sum(
+        _refund_for_units(value, qty_sold.get(row, 0), returned.get(row, 0)) for row, value in values.items()
+    ) - refunded
+
+
+def _get_refunded(doctype, invoice_name, lock=False):
+    """What the submitted returns of an invoice gave back, as a positive amount."""
+    from frappe.query_builder.functions import Abs, Sum
+
+    ret = frappe.qb.DocType(doctype)
+    query = (
+        frappe.qb.from_(ret)
+        .select(Sum(Abs(ret.grand_total)).as_("refunded"))
+        .where((ret.return_against == invoice_name) & (ret.docstatus == 1) & (ret.is_return == 1))
+    )
+    result = (query.for_update() if lock else query).run(as_dict=True)
+    return flt(result[0].get("refunded")) if result else 0.0
+
+
+def _get_returned_by_row(doctype, invoice_name, lock=False):
+    """How many units of each item row of an invoice its submitted returns took back."""
+    from frappe.query_builder.functions import Abs, Sum
+
+    ret = frappe.qb.DocType(doctype)
+    ret_item = frappe.qb.DocType(f"{doctype} Item")
+    link = getattr(ret_item, "pos_invoice_item" if doctype == "POS Invoice" else "sales_invoice_item")
+    query = (
+        frappe.qb.from_(ret)
+        .inner_join(ret_item)
+        .on(ret_item.parent == ret.name)
+        .select(link.as_("item_row"), Sum(Abs(ret_item.qty)).as_("returned_qty"))
+        .where(
+            (ret.return_against == invoice_name)
+            & (ret.docstatus == 1)
+            & (ret.is_return == 1)
+            & link.isnotnull()
+        )
+        .groupby(link)
+    )
+    rows = (query.for_update() if lock else query).run(as_dict=True)
+    return {row["item_row"]: flt(row["returned_qty"]) for row in rows}
+
+
+def _get_sale_taxes(doctype, invoice_name):
+    """The tax rows of a sale, for the item-wise tax JSON of ERPNext before 16."""
+    if not frappe.get_meta("Sales Taxes and Charges").has_field("item_wise_tax_detail"):
+        return []
+    return frappe.get_all(
+        "Sales Taxes and Charges",
+        filters={"parent": invoice_name, "parenttype": doctype},
+        fields=["item_wise_tax_detail"],
+    )
+
+
+def price_return(invoice_doc):
+    """Make a return give back exactly its share of what its sale took, to the cent.
+
+    ERPNext keeps a rate to the currency's precision, and a unit's share of a sale, after
+    the invoice discount and with its tax, rarely divides into whole cents. So the rows
+    keep the sale's own rates, as ERPNext's make_sales_return does, and the return carries
+    the difference as a discount on its grand total, which ERPNext keeps to the cent.
+
+    The share comes from _refund_for_units: the cents a row does not divide into come back
+    with its last units. However many returns it takes, returning everything gives back
+    the sale's grand total, and the returns never give back more than it in all. Each
+    return also settles _return_balance, which is nothing unless an earlier return of the
+    invoice was priced some other way. A refund is never below nothing.
+
+    Runs while assert_return_quantities holds the original invoice locked. A return with a
+    row not linked to a row of its sale is left as it came.
+
+    Args:
+        invoice_doc: The return, with its taxes set
+    """
+    from pos_next.api.sales_invoice_hooks import apply_tax_inclusive
+
+    if not (invoice_doc.get("is_return") and invoice_doc.get("return_against")):
+        return
+    doctype = invoice_doc.doctype
+    if doctype not in (DOCTYPE_SALES_INVOICE, "POS Invoice"):
+        return
+    link_field = "pos_invoice_item" if doctype == "POS Invoice" else "sales_invoice_item"
+    invoice_name = invoice_doc.return_against
+
+    sources, tax_details = _get_return_sources(doctype, invoice_name)
+    rows = {row.name: row for row in sources}
+    items = invoice_doc.get("items") or []
+    if not items or any(item.get(link_field) not in rows for item in items):
+        return
+
+    sale = frappe.db.get_value(doctype, invoice_name, ["grand_total", "conversion_rate"], as_dict=True)
+    precision = _currency_precision()
+    item_tax_map = _build_item_tax_map(
+        _get_sale_taxes(doctype, invoice_name) if not tax_details else [],
+        sources,
+        tax_details,
+        sale.conversion_rate,
+    )
+    values = _return_row_values(sources, item_tax_map, sale.grand_total, precision)
+    qty_sold = {name: abs(flt(row.qty)) for name, row in rows.items()}
+    returned = _get_returned_by_row(doctype, invoice_name, lock=True)
+    factor = 10**precision
+    refunded = round(flt(_get_refunded(doctype, invoice_name, lock=True), precision) * factor)
+
+    returning = {}
+    for item in items:
+        returning[item.get(link_field)] = returning.get(item.get(link_field), 0) + abs(flt(item.qty))
+
+    refund = _return_balance(values, qty_sold, returned, refunded)
+    for row, qty in returning.items():
+        before = returned.get(row, 0)
+        refund += _refund_for_units(values[row], qty_sold[row], before + qty) - _refund_for_units(
+            values[row], qty_sold[row], before
+        )
+    refund = max(0, refund) / factor
+
+    for item in items:
+        source = rows[item.get(link_field)]
+        item.rate = flt(source.rate)
+        item.price_list_rate = max(flt(source.price_list_rate), flt(source.rate))
+        item.discount_percentage = 0
+        item.discount_amount = 0
+
+    # On a POS return whose refund is over its total, ERPNext replaces the refund rows with
+    # one for the difference. The total before the discount can be below the refund, so the
+    # rows are kept aside while it is worked out. The caller totals the return again after.
+    payments = list(invoice_doc.get("payments") or [])
+
+    invoice_doc.apply_discount_on = "Grand Total"
+    invoice_doc.additional_discount_percentage = 0
+    invoice_doc.discount_amount = 0
+    if invoice_doc.meta.has_field("is_cash_or_non_trade_discount"):
+        invoice_doc.is_cash_or_non_trade_discount = 0
+    # The hook that marks taxes inclusive runs again on save, and must find nothing to change
+    apply_tax_inclusive(invoice_doc)
+    invoice_doc.calculate_taxes_and_totals()
+
+    invoice_doc.discount_amount = flt(flt(invoice_doc.grand_total) + refund, precision)
+    invoice_doc.calculate_taxes_and_totals()
+    invoice_doc.set("payments", payments)
+
+
 def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
     """What one unit of an item row is worth back, after every discount of its sale.
 
@@ -2085,13 +2298,15 @@ def _price_return_row(source, tax, tax_inclusive, price_list_rate, precision):
         precision: Currency precision
 
     ERPNext keeps a rate to the currency's precision, so a unit rarely carries its exact
-    share. It is rounded down: returns of a whole sale then refund at most a few cents
-    less than was paid, never more.
+    share. It is rounded down. These figures are what the return dialog shows a unit at;
+    the refund itself comes from the row's refund_value, and price_return makes the
+    return give back exactly that.
 
     Returns:
-        dict: rate, rate_with_tax, tax_per_unit, tax_fraction and discount_per_unit. The
-            device adds a refund up from these the way ERPNext totals the return:
-            exclusive tax is rounded once, on the sum of qty * rate * tax_fraction.
+        dict: rate, rate_with_tax, tax_per_unit, tax_fraction and discount_per_unit. A
+            device with a prepared return from before refund_value adds a refund up from
+            these the way ERPNext totals the return: exclusive tax is rounded once, on the
+            sum of qty * rate * tax_fraction.
     """
     qty = abs(flt(source.get("qty"))) or 1
     net_amount = abs(flt(source.get("net_amount")))
@@ -2476,7 +2691,23 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
         tax.get("included_in_print_rate") for tax in applicable_taxes
     )
 
-    precision = cint(frappe.get_cached_value("System Settings", None, "currency_precision")) or 2
+    precision = _currency_precision()
+
+    # What each row is worth back, and what earlier returns left to settle: the device adds
+    # a refund up from these the way price_return prices the return on the server
+    factor = 10**precision
+    row_values = _return_row_values(source_rows, item_tax_map, invoice_info.grand_total, precision)
+    return_dict["_original_invoice"]["refund_precision"] = precision
+    return_dict["_original_invoice"]["return_balance"] = flt(
+        _return_balance(
+            row_values,
+            {row.name: abs(flt(row.qty)) for row in source_rows},
+            {row.name: returned_qty_map.get(row.name, 0) for row in source_rows},
+            round(flt(_get_refunded(doctype, invoice_name), precision) * factor),
+        )
+        / factor,
+        precision,
+    )
 
     def process_return_item(item):
         """Process single item for return, returns None if not returnable."""
@@ -2514,6 +2745,8 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
             "rate_with_tax": priced["rate_with_tax"],
             "tax_fraction": priced["tax_fraction"],
             "tax_included_in_rate": tax_inclusive,
+            # What the whole row sold for, after every discount and with its tax
+            "refund_value": flt(row_values[source_name] / factor, precision) if source_name in row_values else None,
             "warehouse": branch_warehouse or item.get("warehouse"),
         }
 
@@ -2550,6 +2783,7 @@ _RETURN_ITEM_FIELDS = (
     "tax_fraction",
     "tax_included_in_rate",
     "discount_per_unit",
+    "refund_value",
     "uom",
     "warehouse",
     "conversion_factor",

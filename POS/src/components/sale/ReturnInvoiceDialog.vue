@@ -372,7 +372,7 @@
 								<!-- Rate & Amount -->
 								<div class="text-center min-w-[100px]">
 									<p class="text-sm font-bold text-gray-900">
-										{{ formatCurrency((item.rate_with_tax || item.rate) * item.return_qty) }}
+										{{ formatCurrency(returnRowRefund(item, refundLedger)) }}
 									</p>
 									<p class="text-xs text-gray-500 mt-0.5 flex items-center gap-1 flex-wrap justify-center">
 										<span>@ {{ formatCurrency(item.price_list_rate || item.rate) }}/{{ item.uom }}</span>
@@ -446,7 +446,7 @@
 									<span class="text-xs text-gray-600 text-start">{{ __('Amount:') }}</span>
 									<div class="text-end">
 										<p class="text-base font-bold text-gray-900">
-											{{ formatCurrency((item.rate_with_tax || item.rate) * item.return_qty) }}
+											{{ formatCurrency(returnRowRefund(item, refundLedger)) }}
 										</p>
 										<p class="text-xs text-gray-500 flex items-center gap-1 flex-wrap justify-end">
 											<span>@ {{ formatCurrency(item.price_list_rate || item.rate) }}/{{ item.uom }}</span>
@@ -781,7 +781,7 @@ import {
 	roundCurrency,
 } from "@/utils/currency"
 import { getInvoiceStatusColor } from "@/utils/invoice"
-import { computeReturnTotal, returnRowWarehouse } from "@/utils/returnInvoice"
+import { computeReturnTotal, returnRowRefund, returnRowWarehouse } from "@/utils/returnInvoice"
 import { Button, Dialog, FeatherIcon, createResource } from "frappe-ui"
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue"
 
@@ -1236,8 +1236,17 @@ const filteredReturnItems = computed(() => {
 
 const hasOpenShift = computed(() => Boolean(props.posOpeningShift))
 
-// Added up the way the server totals the return, so the refund matches it
-const returnTotal = computed(() => computeReturnTotal(selectedItems.value))
+// What earlier returns of the invoice left to settle, and the precision of its amounts
+const refundLedger = computed(() => {
+	const original = preparedReturnDoc.value?._original_invoice || {}
+	return {
+		balance: Number(original.return_balance) || 0,
+		precision: original.refund_precision ?? 2,
+	}
+})
+
+// Added up the way the server prices the return, so the refund matches it
+const returnTotal = computed(() => computeReturnTotal(selectedItems.value, refundLedger.value))
 
 const totalPaymentAmount = computed(() =>
 	roundCurrency(

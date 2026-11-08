@@ -29,6 +29,7 @@ from pos_next.api.invoices import (
     assert_return_quantities,
     assert_shift_takes_sale,
     log_manual_rate_edit,
+    price_return,
     save_invoice_draft,
 )
 from pos_next.services.sale_limits import cap_write_off, enforce_discount_limits, enforce_payment_limits
@@ -71,6 +72,7 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
         # A draft saved by an earlier request held its lock only until that request ended
         if invoice_doc.get("is_return") and invoice_doc.get("return_against"):
             assert_return_quantities(invoice_doc, queued)
+            price_return(invoice_doc)
         # The submitted copy can differ from the draft that was checked
         invoice_doc.calculate_taxes_and_totals()
         coupon_code = invoice_doc.get("pos_coupon_code") or invoice.get("coupon_code")

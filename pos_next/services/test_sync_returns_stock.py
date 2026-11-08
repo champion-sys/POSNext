@@ -96,6 +96,8 @@ class TestPrepareReturn(NoSiteTestCase):
             query = str(query)
             if "key_field" in query:
                 return [frappe._dict(key_field="row-1", returned_qty=1)]
+            if "refunded" in query:
+                return [frappe._dict(refunded=105)]
             if "tabSales Invoice Payment" in query:
                 return [frappe._dict(mode_of_payment="Cash", amount=210, base_amount=210, account="Cash")]
             return [
@@ -143,7 +145,8 @@ class TestPrepareReturn(NoSiteTestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-        self.row = invoices._prepare_return_invoice("SINV-1", "POS-OPE-1")["items"][0]
+        self.prepared = invoices._prepare_return_invoice("SINV-1", "POS-OPE-1")
+        self.row = self.prepared["items"][0]
 
     def test_what_is_left_after_an_earlier_return_is_counted_once(self):
         self.assertEqual(self.row["remaining_qty"], 1)
@@ -156,6 +159,14 @@ class TestPrepareReturn(NoSiteTestCase):
 
     def test_the_goods_go_back_at_the_branch_taking_the_return(self):
         self.assertEqual(self.row["warehouse"], "Branch - RT")
+
+    def test_the_row_carries_what_the_sale_took_for_it_to_add_the_refund_up_from(self):
+        self.assertEqual(self.row["refund_value"], 210)
+        self.assertEqual(self.row["already_returned"], 1)
+
+    def test_an_earlier_return_priced_to_its_share_leaves_nothing_to_settle(self):
+        self.assertEqual(self.prepared["_original_invoice"]["return_balance"], 0)
+        self.assertEqual(self.prepared["_original_invoice"]["refund_precision"], 2)
 
 
 class TestItemTaxMap(NoSiteTestCase):
@@ -230,6 +241,149 @@ class TestRefundRounding(NoSiteTestCase):
         invoices._trim_refund_rounding(doc)
 
         self.assertEqual(doc.payments[0].amount, -209.99)
+
+
+class TestRefundShares(NoSiteTestCase):
+    """What each returned unit gives back, so that all of them give back the sale's total."""
+
+    def test_rows_add_up_to_the_grand_total_with_the_left_over_coins_on_the_largest(self):
+        rows = [{"name": "row-1", "net_amount": 182.605}, {"name": "row-2", "net_amount": 10.0}]
+        tax = {"row-1": {"amount": 27.39, "rate": 15}, "row-2": {"amount": 1.5, "rate": 15}}
+        values = invoices._return_row_values(rows, tax, 221.51, 2)
+
+        self.assertEqual(sum(values.values()), 22151)
+        self.assertEqual(values["row-2"], 1150)
+
+    def test_the_last_unit_of_a_row_takes_the_coins_the_row_does_not_divide_into(self):
+        parts = [invoices._refund_for_units(22300, 3, n) - invoices._refund_for_units(22300, 3, n - 1) for n in (1, 2, 3)]
+
+        self.assertEqual(parts, [7433, 7433, 7434])
+
+    def test_more_units_than_were_sold_give_back_the_row_and_no_more(self):
+        self.assertEqual(invoices._refund_for_units(22300, 3, 5), 22300)
+        self.assertEqual(invoices._refund_for_units(22300, 3, 0), 0)
+
+    def test_nothing_is_left_to_settle_after_returns_priced_this_way(self):
+        values = {"row-1": 22300, "row-2": 999}
+        balance = invoices._return_balance(values, {"row-1": 3, "row-2": 1}, {"row-1": 2}, 14866)
+
+        self.assertEqual(balance, 0)
+
+    def test_an_earlier_return_that_gave_back_less_leaves_the_difference_to_settle(self):
+        balance = invoices._return_balance({"row-1": 22300}, {"row-1": 3}, {"row-1": 2}, 14865)
+
+        self.assertEqual(balance, 1)
+
+
+class FakeReturn(SimpleNamespace):
+    """A return whose totals come out as ERPNext's do with an inclusive tax and a grand total discount.
+
+    Like ERPNext, totalling a POS return whose refund is over its total replaces the
+    refund rows with one for the difference.
+    """
+
+    doctype = "Sales Invoice"
+    meta = SimpleNamespace(has_field=lambda _field: True)
+
+    def get(self, field, default=None):
+        return getattr(self, field, default)
+
+    def set(self, field, value):
+        setattr(self, field, value)
+
+    def calculate_taxes_and_totals(self):
+        total = sum(item.qty * item.rate for item in self.items)
+        self.grand_total = round(total - self.discount_amount, 2)
+        refunded = sum(payment.amount for payment in self.payments)
+        if self.grand_total - refunded > 0:
+            self.payments = [frappe._dict(amount=round(self.grand_total - refunded, 2))]
+
+
+class TestPriceReturn(NoSiteTestCase):
+    """3 x 80 with 17 off, VAT included: the customer paid 223.00."""
+
+    def setUp(self):
+        super().setUp()
+        sources = (
+            [frappe._dict(name="row-1", item_code="A", qty=3, net_amount=193.913, rate=80, price_list_rate=80)],
+            [{"item_row": "row-1", "rate": 15, "amount": 29.087}],
+        )
+        self.returned = {}
+        self.refunded = 0.0
+        for target, kwargs in (
+            ("pos_next.api.invoices._get_return_sources", {"return_value": sources}),
+            ("pos_next.api.invoices._get_returned_by_row", {"side_effect": lambda *_a, **_k: self.returned}),
+            ("pos_next.api.invoices._get_refunded", {"side_effect": lambda *_a, **_k: self.refunded}),
+            ("pos_next.api.sales_invoice_hooks.apply_tax_inclusive", {}),
+            ("frappe.get_cached_value", {"return_value": 2}),
+        ):
+            patcher = patch(target, **kwargs)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        frappe.local.db.get_value.return_value = frappe._dict(grand_total=223, conversion_rate=1)
+
+    def _return(self, qty, refund):
+        return FakeReturn(
+            is_return=1,
+            return_against="SINV-1",
+            discount_amount=0,
+            items=[frappe._dict(item_code="A", qty=-qty, rate=74.33, sales_invoice_item="row-1")],
+            payments=[frappe._dict(amount=-refund)],
+        )
+
+    def test_a_full_return_gives_back_exactly_what_was_paid(self):
+        doc = self._return(3, 223)
+        invoices.price_return(doc)
+
+        self.assertEqual(doc.items[0].rate, 80)
+        self.assertEqual(doc.apply_discount_on, "Grand Total")
+        self.assertEqual(doc.discount_amount, -17)
+        self.assertEqual(doc.grand_total, -223)
+
+    def test_the_last_unit_takes_the_cent_the_first_ones_left(self):
+        self.returned, self.refunded = {"row-1": 2}, 148.66
+        doc = self._return(1, 74.34)
+        invoices.price_return(doc)
+
+        self.assertEqual(doc.grand_total, -74.34)
+
+    def test_the_refund_rows_survive_a_total_below_them_on_the_way(self):
+        # Before its discount the row is worth 80 back, under the 223 refunded
+        doc = self._return(3, 223)
+        doc.items[0].qty = -1
+        invoices.price_return(doc)
+
+        self.assertEqual([payment.amount for payment in doc.payments], [-223])
+
+    def test_a_return_with_a_row_not_from_its_sale_is_left_as_it_came(self):
+        doc = self._return(3, 223)
+        doc.items[0].sales_invoice_item = "row-9"
+        invoices.price_return(doc)
+
+        self.assertEqual(doc.items[0].rate, 74.33)
+        self.assertEqual(doc.discount_amount, 0)
+
+    def test_saving_a_return_prices_it_before_its_first_totals(self):
+        calls = []
+        doc = MagicMock()
+        doc.get.side_effect = lambda field, default=None: {"is_return": 1, "return_against": "SINV-1"}.get(field, default)
+        doc.calculate_taxes_and_totals.side_effect = lambda: calls.append("totals")
+        stop = RuntimeError("stop after the totals")
+        doc.set_missing_values.side_effect = lambda **_k: calls.append("missing")
+        with (
+            patch("frappe.get_doc", return_value=doc),
+            patch("frappe.get_cached_doc"),
+            patch("frappe.log_error"),
+            patch.object(invoices, "_assert_invoice_write_access"),
+            patch.object(invoices, "assert_shift_takes_sale"),
+            patch.object(invoices, "assert_return_quantities"),
+            patch.object(invoices, "price_return", side_effect=lambda _doc: calls.append("price")),
+            patch.object(invoices, "_set_payment_accounts", side_effect=stop),
+        ):
+            with self.assertRaises(RuntimeError):
+                invoices.save_invoice_draft({"doctype": "Sales Invoice", "is_return": 1, "items": []})
+
+        self.assertEqual(calls[:3], ["missing", "price", "totals"])
 
 
 class TestShouldBlock(NoSiteTestCase):

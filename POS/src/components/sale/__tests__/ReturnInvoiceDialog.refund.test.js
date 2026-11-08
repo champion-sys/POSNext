@@ -41,7 +41,7 @@ vi.mock("@/utils/offline/workerClient", () => ({
 
 import ReturnInvoiceDialog from "../ReturnInvoiceDialog.vue"
 
-async function openReturn({ soldAt = "Branch", row = {} } = {}) {
+async function openReturn({ soldAt = "Branch", row = {}, original } = {}) {
 	const wrapper = shallowMount(ReturnInvoiceDialog, {
 		props: { modelValue: false, posProfile: "Branch", posOpeningShift: "POS-OPE-1" },
 		global: { mocks: { __: (text) => text } },
@@ -53,6 +53,7 @@ async function openReturn({ soldAt = "Branch", row = {} } = {}) {
 		return_against: "SINV-1",
 		customer: "CUST-1",
 		pos_profile: soldAt,
+		...(original ? { _original_invoice: original } : {}),
 	}
 	// 2 x 100 with 20 off the invoice and 15% VAT on top: the sale came to 210
 	vm.returnItems = [
@@ -86,6 +87,30 @@ describe("what the return dialog sends", () => {
 		// Adding 105.00 a unit came to 210.00, a cent over what ERPNext allows back.
 		const [payload] = store.saveReturnOffline.mock.calls[0]
 		expect(payload.grand_total).toBe(-209.99)
+	})
+
+	it("gives back exactly what the sale took when the row carries its refund_value", async () => {
+		const wrapper = await openReturn({
+			row: { refund_value: 210, original_qty: 2, already_returned: 0 },
+			original: { return_balance: 0, refund_precision: 2 },
+		})
+		await wrapper.vm.handleCreateReturn()
+
+		// The server prices the rows at 100 and takes 20 off the return: 210 back, not 209.99
+		const [payload] = store.saveReturnOffline.mock.calls[0]
+		expect(payload.grand_total).toBe(-210)
+	})
+
+	it("settles what an earlier return of the invoice left over", async () => {
+		const wrapper = await openReturn({
+			row: { refund_value: 223, original_qty: 3, already_returned: 1, quantity: 2, return_qty: 2 },
+			original: { return_balance: 0.01, refund_precision: 2 },
+		})
+		await wrapper.vm.handleCreateReturn()
+
+		// 148.67 for the last two of 223 over 3, and the cent an older return kept back
+		const [payload] = store.saveReturnOffline.mock.calls[0]
+		expect(payload.grand_total).toBe(-148.68)
 	})
 
 	it("puts the goods of a return taken at another branch into that branch's warehouse", async () => {
