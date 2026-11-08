@@ -1205,29 +1205,18 @@ export function useInvoice() {
 				} catch (error) {
 					// Preserve original error object with all its properties
 					console.error("Submit invoice error:", error)
-					console.log(
-						"submitInvoiceResource.error:",
-						submitInvoiceResource.error,
-					)
 
 					// If resource has error data, extract and attach it
 					if (submitInvoiceResource.error) {
 						const resourceError = submitInvoiceResource.error
-						console.log("Resource error details:", {
+						log.debug("Submit resource error details:", {
 							exc_type: resourceError.exc_type,
 							_server_messages: resourceError._server_messages,
 							httpStatus: resourceError.httpStatus,
 							messages: resourceError.messages,
-							messagesContent: JSON.stringify(resourceError.messages),
 							data: resourceError.data,
 							exception: resourceError.exception,
-							keys: Object.keys(resourceError),
 						})
-
-						// The messages array likely contains the detailed error info
-						if (resourceError.messages && resourceError.messages.length > 0) {
-							console.log("First message:", resourceError.messages[0])
-						}
 
 						// Attach all resource error properties to the error
 						error.exc_type = resourceError.exc_type || error.exc_type
@@ -1236,8 +1225,6 @@ export function useInvoice() {
 						error.messages = resourceError.messages
 						error.exception = resourceError.exception
 						error.data = resourceError.data
-
-						console.log("After attaching, error.messages:", error.messages)
 					}
 
 					throw error

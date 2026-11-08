@@ -221,8 +221,11 @@ import { usePOSSyncStore } from "@/stores/posSync"
 import { useToast } from "@/composables/useToast"
 import { useFormatters } from "@/composables/useFormatters"
 import { getCachedUnpaidInvoices } from "@/utils/offline/sync"
+import { logger } from "@/utils/logger"
 import { Button, call } from "frappe-ui"
 import { onMounted, ref, watch } from "vue"
+
+const log = logger.create("PartialPayments")
 
 const posSettingsStore = usePOSSettingsStore()
 const offlineStore = usePOSSyncStore()
@@ -322,17 +325,16 @@ async function loadSummary() {
 }
 
 function selectInvoice(invoice) {
-	console.log('[PartialPayments] Select invoice:', {
+	log.debug("Select invoice:", {
 		invoice: invoice.name,
 		allowPartialPayment: posSettingsStore.allowPartialPayment,
-		posSettings: posSettingsStore.settings
 	})
 	selectedInvoice.value = invoice
 	showPaymentDialog.value = true
 }
 
 async function handlePaymentCompleted(paymentData) {
-	console.log('[PartialPayments] Payment completed:', {
+	log.debug("Payment completed:", {
 		selectedInvoice: selectedInvoice.value?.name,
 		paymentData: paymentData
 	})
@@ -352,18 +354,16 @@ async function handlePaymentCompleted(paymentData) {
 			return
 		}
 
-		console.log('[PartialPayments] Calling API to add payment...')
 		const result = await call("pos_next.api.partial_payments.add_payment_to_partial_invoice", {
 			invoice_name: selectedInvoice.value.name,
 			payments: paymentData.payments,
 		})
 
-		console.log('[PartialPayments] API response:', result)
+		log.debug("Add payment response:", result)
 
 		showSuccess(__("Payment added successfully"))
 
 		// Reload invoices and summary
-		console.log('[PartialPayments] Reloading invoices and summary...')
 		await loadInvoices()
 		await loadSummary()
 

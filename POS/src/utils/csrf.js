@@ -1,3 +1,7 @@
+import { logger } from "./logger"
+
+const log = logger.create("CSRF")
+
 const CSRF_COOKIE = "csrf_token"
 const CSRF_PLACEHOLDER = "{{ csrf_token }}"
 const CSRF_TOKEN_ENDPOINT = "/api/method/pos_next.api.utilities.get_csrf_token"
@@ -30,11 +34,7 @@ function setGlobalToken(token, source) {
 	window.csrf_token = token
 
 	if (token !== lastKnownToken) {
-		const prefix = token.substring(0, 10)
-		const context = source === "response" ? "initialized" : "loaded"
-		if (import.meta.env.DEV) {
-			console.log(`CSRF token ${context}: ${prefix}...`)
-		}
+		log.debug(`CSRF token ${source === "response" ? "initialized" : "loaded"}`)
 		lastKnownToken = token
 
 		// Notify all registered callbacks about the token refresh
@@ -134,8 +134,8 @@ export async function ensureCSRFToken({
 			const { response, data } = await fetchCSRFToken()
 
 			if (response.status === 401 || response.status === 403) {
-				if (!silent && import.meta.env.DEV) {
-					console.log("User not authenticated, skipping CSRF token refresh")
+				if (!silent) {
+					log.debug("User not authenticated, skipping CSRF token refresh")
 				}
 				return false
 			}
@@ -151,8 +151,8 @@ export async function ensureCSRFToken({
 			// First check if the cookie was updated by the API call
 			const tokenFromCookie = getCSRFTokenFromCookie()
 			if (tokenFromCookie) {
-				if (!silent && forceRefresh && import.meta.env.DEV) {
-					console.log("CSRF token refreshed via cookie update")
+				if (!silent && forceRefresh) {
+					log.debug("CSRF token refreshed via cookie update")
 				}
 				return true
 			}
@@ -161,8 +161,8 @@ export async function ensureCSRFToken({
 			const tokenFromResponse = extractTokenFromResponse(data)
 			if (tokenFromResponse) {
 				setGlobalToken(tokenFromResponse, "response")
-				if (!silent && forceRefresh && import.meta.env.DEV) {
-					console.log("CSRF token refreshed from response payload")
+				if (!silent && forceRefresh) {
+					log.debug("CSRF token refreshed from response payload")
 				}
 				return true
 			}
@@ -231,8 +231,8 @@ export function createCSRFAwareRequest(
 
 				const refreshed = await forceRefreshCSRFToken({ silent })
 				if (refreshed) {
-					if (!silent && import.meta.env.DEV) {
-						console.log("Retrying request after CSRF token refresh...")
+					if (!silent) {
+						log.debug("Retrying request after CSRF token refresh")
 					}
 					return await originalRequest.apply(this, args)
 				}

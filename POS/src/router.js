@@ -8,8 +8,11 @@ import {
 	nativeRedirect,
 } from "@/platform/auth"
 import { isNative } from "@/platform/runtime"
+import { logger } from "@/utils/logger"
 import { createRouter, createWebHistory } from "vue-router"
 import { session } from "./data/session"
+
+const log = logger.create("Router")
 
 const nativeRoutes = [
 	{
@@ -52,12 +55,7 @@ router.beforeEach((to, from, next) => {
 	// Check authentication status (session.user is already set in main.js before app mount)
 	const isLoggedIn = session.isLoggedIn
 
-	// Only log during development
-	if (import.meta.env.DEV) {
-		console.log(
-			`[Router] ${to.name} (from: ${from.name || "initial"}), auth: ${isLoggedIn}`,
-		)
-	}
+	log.debug(`${to.name} (from: ${from.name || "initial"}), auth: ${isLoggedIn}`)
 
 	if (isNative) {
 		const redirect = nativeRedirect(to.name, {

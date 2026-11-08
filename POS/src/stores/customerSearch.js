@@ -351,7 +351,7 @@ export const useCustomerSearchStore = defineStore("customerSearch", () => {
 	const { onCustomerUpdate } = useRealtimeCustomers()
 	onCustomerUpdate(async (data) => {
 		const { name, action, customer_name, mobile_no, email_id, disabled } = data
-		console.log("Customer update via real-time:", data)
+		log.debug("Customer update via real-time:", data)
 		if (action === "delete" || disabled) {
 			// Remove from memory
 			allCustomers.value = allCustomers.value.filter((c) => c.name !== name)
