@@ -86,6 +86,8 @@ describe("printing a template on the desktop", () => {
 		await print("<p>receipt</p>", "", { paper: "80mm" })
 
 		expect(printed().silent).toBe(false)
+		// Still on the template's paper, for the dialog to offer
+		expect(printed().pageSize).toEqual({ width: 80000, height: Math.ceil((508 * 25400) / 96) })
 	})
 
 	it("loads the page as base64, so Arabic and a logo stay small", async () => {
@@ -113,5 +115,6 @@ describe("printing a template on the desktop", () => {
 
 		await expect(done).rejects.toThrow("Printer offline")
 		expect(windows[0].close).toHaveBeenCalled()
+		expect(windows[0].options.width).toBe(303)
 	})
 })

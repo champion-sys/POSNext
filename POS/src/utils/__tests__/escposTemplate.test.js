@@ -107,6 +107,8 @@ describe("a template on an ESC/POS printer", () => {
 
 		await printInvoiceToAllPrinters(invoice, {})
 
+		// The template was tried first
+		expect(htmlToRasterCanvas).toHaveBeenCalledOnce()
 		// One job: the built-in text receipt, not the template's two copies
 		expect(printerService.printRaw).toHaveBeenCalledOnce()
 		expect(vi.mocked(printerService.printRaw).mock.calls[0][0][2]).not.toBe(0x1d)
