@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2024, POS Next and contributors
 # For license information, please see license.txt
 
@@ -31,7 +30,7 @@ from frappe import _
 from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce
 
-from pos_next.api.constants import POS_SETTINGS_FIELDS, DEFAULT_POS_SETTINGS
+from pos_next.api.constants import DEFAULT_POS_SETTINGS, POS_SETTINGS_FIELDS
 
 
 @frappe.whitelist()

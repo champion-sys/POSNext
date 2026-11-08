@@ -1,18 +1,16 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2025, BrainWise and contributors
 # For license information, please see license.txt
 
-from __future__ import unicode_literals
 import json
 from functools import lru_cache
+
 import frappe
-from frappe import _
-from frappe.utils import flt, cint, nowdate, nowtime, get_datetime, cstr
-from erpnext.stock.doctype.batch.batch import get_batch_qty, get_batch_no
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import get_bank_cash_account
+from erpnext.stock.doctype.batch.batch import get_batch_no, get_batch_qty
+from frappe import _
+from frappe.utils import cint, cstr, flt, get_datetime, nowdate, nowtime
 
 from pos_next.services.sync_entities import is_local_name
-
 
 # ==========================================
 # Constants for field names (avoid typos and enable refactoring)
@@ -651,8 +649,8 @@ def _validate_return_items(original_invoice_name, return_items, doctype="Sales I
         as_of: The day of a queued return, which is when the return period counts.
             Kept out of the whitelisted method, so a request cannot set it.
     """
+    from frappe.query_builder.functions import Abs, Sum
     from frappe.utils import date_diff, getdate
-    from frappe.query_builder.functions import Sum, Abs
 
     if isinstance(return_items, str):
         return_items = json.loads(return_items)
@@ -1101,7 +1099,7 @@ def save_invoice_draft(data, queued=False):
         invoice_doc.save()
 
         return {**invoice_doc.as_dict(), "coupon_overrun": coupon_overrun}
-    except Exception as e:
+    except Exception:
         frappe.log_error(frappe.get_traceback(), "Update Invoice Error")
         raise
 
@@ -1422,9 +1420,9 @@ def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
     """
     return {
         "deleted": 0,
-        "message": f"Cleaned up old draft invoices is disabled for now",
+        "message": "Cleaned up old draft invoices is disabled for now",
     }
-    
+
     from datetime import datetime, timedelta
 
     doctype = "Sales Invoice"
@@ -1457,7 +1455,7 @@ def cleanup_old_drafts(pos_profile=None, max_age_hours=48):
             deleted_count += 1
         except Exception as e:
             frappe.log_error(
-                f"Failed to delete draft {draft['name']}: {str(e)}",
+                f"Failed to delete draft {draft['name']}: {e!s}",
                 "Draft Cleanup Error",
             )
 
@@ -1482,7 +1480,7 @@ def _filter_fully_returned(invoices):
     if not invoices:
         return []
 
-    from frappe.query_builder.functions import Sum, Abs
+    from frappe.query_builder.functions import Abs, Sum
 
     invoice_names = [inv["name"] for inv in invoices]
 
@@ -1668,7 +1666,7 @@ def check_invoice_return_validity(invoice_name):
     - error_type: 'not_found' or 'return_period_expired' if invalid
     - Additional context (invoice_date, days_since, allowed_days) for expired returns
     """
-    from frappe.utils import date_diff, getdate, formatdate
+    from frappe.utils import date_diff, formatdate, getdate
 
     # Fetch only the fields needed for validation
     doctype = "Sales Invoice"
@@ -1738,8 +1736,8 @@ def get_invoice_for_return(invoice_name):
     Returns the full invoice document with each item's qty adjusted to show
     only the remaining returnable quantity (original qty minus already returned).
     """
+    from frappe.query_builder.functions import Abs, Coalesce, Sum
     from frappe.utils import date_diff, getdate
-    from frappe.query_builder.functions import Sum, Abs, Coalesce
 
     # Validate invoice exists and get fields needed for return period check
     doctype = "Sales Invoice"
@@ -2035,9 +2033,9 @@ def _prepare_return_invoice(invoice_name, pos_opening_shift=None, as_of=None):
         as_of: The day of a queued return, which is when the return period counts.
             Kept out of the whitelisted method, so a request cannot set it.
     """
-    from frappe.utils import date_diff, getdate
-    from frappe.query_builder.functions import Sum, Abs, Coalesce
     from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
+    from frappe.query_builder.functions import Abs, Coalesce, Sum
+    from frappe.utils import date_diff, getdate
 
     doctype = "Sales Invoice"
     if not frappe.db.exists("Sales Invoice", invoice_name) and frappe.db.exists("POS Invoice", invoice_name):
@@ -2383,7 +2381,7 @@ def search_invoices_for_return(
 
     Returns invoices with their items adjusted to show remaining returnable quantities.
     """
-    from frappe.query_builder.functions import Sum, Abs, Count
+    from frappe.query_builder.functions import Abs, Count, Sum
 
     page = cint(page) or 1
     page_length = 100

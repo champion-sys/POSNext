@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2026, BrainWise and contributors
 # For license information, please see license.txt
 # bench --site dev-pos.sanad.digital execute pos_next.api.demo.generate_demo_data
 
 import frappe
+
 
 @frappe.whitelist()
 def generate_demo_data():

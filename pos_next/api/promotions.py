@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2025, POS Next and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe import _
-from frappe.utils import flt, nowdate, getdate, cstr, cint
-import re
+from frappe.utils import cint, cstr, flt, getdate, nowdate
 
 
 def check_promotion_permissions(action="read"):
@@ -265,7 +265,6 @@ def create_promotion(data):
 					scheme.append(applicable_key, {applicable_key: value})
 
 		# Add items/groups/brands based on apply_on
-		apply_on_key = frappe.scrub(data["apply_on"])
 		items_data = data.get("items", [])
 
 		if data["apply_on"] == "Item Code" and items_data:

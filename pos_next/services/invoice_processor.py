@@ -140,7 +140,6 @@ def process_invoice(invoice, data, doctype, pos_profile, offline_id=None, queued
 
     # Submit invoice
     invoice_doc.submit()
-    invoice_submitted = True
     # Everything below is part of the sale. A failure rolls back the invoice,
     # so the books can never hold an invoice with half of its effects.
     # _apply_coupon may have moved the code off coupon_code. A return inherits the field

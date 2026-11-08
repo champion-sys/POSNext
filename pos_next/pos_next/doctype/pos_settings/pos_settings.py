@@ -331,6 +331,7 @@ def _only_its_fields(settings):
 def update_pos_settings(pos_profile, settings):
 	"""Update POS Settings for a POS Profile"""
 	import json
+
 	from frappe import _
 
 	if isinstance(settings, str):

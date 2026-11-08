@@ -3,8 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, time_diff_in_hours, get_datetime
-
+from frappe.utils import flt, get_datetime, time_diff_in_hours
 
 OPEN_STATUSES = ("Received", "Processing", "Retry Scheduled", "Blocked")
 
@@ -91,7 +90,7 @@ def get_data(filters):
 	conditions = get_conditions(filters)
 
 	# Query to get offline sync records with related invoice data
-	query = """
+	query = f"""
 		SELECT
 			ois.offline_id,
 			ois.sales_invoice,
@@ -113,7 +112,7 @@ def get_data(filters):
 			{conditions}
 		ORDER BY
 			ois.creation DESC
-	""".format(conditions=conditions)
+	"""
 
 	data = frappe.db.sql(query, filters, as_dict=1)
 

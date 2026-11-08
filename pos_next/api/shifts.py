@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2024, POS Next and contributors
 # For license information, please see license.txt
 
-from __future__ import unicode_literals
 import json
+
 import frappe
 from frappe import _
 from frappe.utils import get_datetime
+
 from pos_next.api.utilities import get_wallet_payment_modes
 from pos_next.services.sync_classifier import ShiftConflictError
 from pos_next.services.sync_entities import has_pending_close
@@ -227,7 +227,9 @@ def get_closing_shift_data(opening_shift):
 @frappe.whitelist()
 def submit_closing_shift(closing_shift):
 	"""Submit closing shift"""
-	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import submit_closing_shift as submit_shift
+	from pos_next.pos_next.doctype.pos_closing_shift.pos_closing_shift import (
+		submit_closing_shift as submit_shift,
+	)
 
 	try:
 		# closing_shift is already a JSON string from frontend

@@ -9,8 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import frappe
 
-from pos_next.api import partial_payments, shifts
-from pos_next.api import invoices
+from pos_next.api import invoices, partial_payments, shifts
 from pos_next.api.invoices import save_invoice_draft
 from pos_next.pos_next.doctype.pos_closing_shift import pos_closing_shift
 from pos_next.services import sync_entities, sync_inbox

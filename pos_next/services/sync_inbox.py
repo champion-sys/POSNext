@@ -918,7 +918,7 @@ def remind_about_reviews():
     for row in waiting:
         by_profile.setdefault(row.pos_profile, []).append(row.name)
 
-    for pos_profile, names in by_profile.items():
+    for _pos_profile, names in by_profile.items():
         _notify_managers(names[0], _("{0} invoice(s) have waited over 4 hours").format(len(names)))
 
 

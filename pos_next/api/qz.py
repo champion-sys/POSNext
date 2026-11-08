@@ -22,7 +22,6 @@ import os
 import frappe
 from frappe import _
 
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -53,7 +52,7 @@ def get_certificate():
 			title=_("QZ Certificate Missing"),
 		)
 
-	with open(path, "r") as f:
+	with open(path) as f:
 		return f.read()
 
 
@@ -67,7 +66,7 @@ def get_certificate_download():
 			title=_("QZ Certificate Missing"),
 		)
 
-	with open(path, "r") as f:
+	with open(path) as f:
 		pem = f.read()
 
 	company = frappe.db.get_default("company") or ""
@@ -131,11 +130,12 @@ def setup_qz_certificate():
 	qz_dir = _qz_dir()
 	os.makedirs(qz_dir, exist_ok=True)
 
+	from datetime import datetime, timedelta, timezone
+
 	from cryptography import x509
 	from cryptography.hazmat.primitives import hashes, serialization
 	from cryptography.hazmat.primitives.asymmetric import rsa
 	from cryptography.x509.oid import NameOID
-	from datetime import datetime, timedelta, timezone
 
 	# Generate 2048-bit RSA key
 	key = rsa.generate_private_key(public_exponent=65537, key_size=2048)

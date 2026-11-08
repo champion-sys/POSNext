@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
 
 try:
     import frappe
@@ -21,6 +19,7 @@ def console(*data):
 # classes). This is the standard Python module init approach — runs once at import.
 try:
     from erpnext.accounts.doctype.pricing_rule import utils as pr_utils
+
     from pos_next.overrides.pricing_rule import patch_get_other_conditions
     patch_get_other_conditions(pr_utils)
 except Exception:

@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, cint
+from frappe.utils import cint, flt
 
 
 def execute(filters=None):
@@ -117,7 +117,7 @@ def get_data(filters):
 		date_range_days = 30  # Default to 30 days
 
 	# Query to get item sales data
-	query = """
+	query = f"""
 		SELECT
 			sii.item_code,
 			sii.item_name,
@@ -141,7 +141,7 @@ def get_data(filters):
 			sii.item_code
 		ORDER BY
 			qty_sold DESC
-	""".format(conditions=conditions)
+	"""
 
 	data = frappe.db.sql(query, filters, as_dict=1)
 
@@ -231,19 +231,19 @@ def _get_stock_map(item_codes, warehouse=None):
 	placeholders = ", ".join(["%s"] * len(item_codes))
 
 	if warehouse:
-		rows = frappe.db.sql("""
+		rows = frappe.db.sql(f"""
 			SELECT item_code, actual_qty
 			FROM `tabBin`
 			WHERE item_code IN ({placeholders})
 			AND warehouse = %s
-		""".format(placeholders=placeholders), item_codes + [warehouse], as_dict=1)
+		""", item_codes + [warehouse], as_dict=1)
 	else:
-		rows = frappe.db.sql("""
+		rows = frappe.db.sql(f"""
 			SELECT item_code, SUM(actual_qty) as actual_qty
 			FROM `tabBin`
 			WHERE item_code IN ({placeholders})
 			GROUP BY item_code
-		""".format(placeholders=placeholders), item_codes, as_dict=1)
+		""", item_codes, as_dict=1)
 
 	return {row.item_code: flt(row.actual_qty) for row in rows}
 
@@ -268,7 +268,7 @@ def _get_zero_stock_items(filters, warehouse, sold_item_codes):
 		)
 		if allowed_groups:
 			escaped = ", ".join([frappe.db.escape(g) for g in allowed_groups])
-			conditions.append("i.item_group IN ({})".format(escaped))
+			conditions.append(f"i.item_group IN ({escaped})")
 		else:
 			# No item groups configured — only include items that have a Bin
 			# in the POS warehouse to avoid returning every item in the system
@@ -281,7 +281,7 @@ def _get_zero_stock_items(filters, warehouse, sold_item_codes):
 
 	where = (" AND " + " AND ".join(conditions)) if conditions else ""
 
-	query = """
+	query = f"""
 		SELECT
 			i.item_code,
 			i.item_name,
@@ -301,7 +301,7 @@ def _get_zero_stock_items(filters, warehouse, sold_item_codes):
 			{where}
 		GROUP BY
 			i.item_code
-	""".format(warehouse_join=warehouse_join, where=where)
+	"""
 
 	items = frappe.db.sql(query, params, as_dict=1)
 

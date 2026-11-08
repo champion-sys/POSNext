@@ -66,7 +66,7 @@ class POSClosingShift(Document):
         pos_profile = self.pos_profile
         if not pos_profile and self.pos_opening_shift:
             pos_profile = frappe.db.get_value("POS Opening Shift", self.pos_opening_shift, "pos_profile")
-            
+
         if pos_profile:
             allowed_role = frappe.db.get_value("POS Profile", pos_profile, "role_allowed_to_closing_shift")
             user_to_check = self.user or frappe.session.user
@@ -107,7 +107,7 @@ class POSClosingShift(Document):
                 self.closing_to_mode_of_payment = frappe.db.get_value("POS Settings", {"pos_profile": pos_profile}, "closing_to_mode_of_payment")
                 if not self.closing_to_mode_of_payment:
                     self.closing_to_mode_of_payment = _get_cash_mode_of_payment(pos_profile)
-            
+
             if not self.difference_mode_of_payment_account:
                 self.difference_mode_of_payment_account = frappe.db.get_value("POS Profile", pos_profile, "write_off_account")
 
@@ -163,7 +163,7 @@ class POSClosingShift(Document):
         opening_entry.save()
         # link invoices with this closing shift so ERPNext can block edits
         self._set_closing_entry_invoices()
-        
+
         invoice_type = frappe.db.get_value("POS Settings", {"pos_profile": self.pos_profile}, "invoice_type") or "Sales Invoice"
         if invoice_type == "POS Invoice":
             with session_of(BOOKS_USER):
@@ -220,7 +220,7 @@ class POSClosingShift(Document):
         # Calculate expected payments
         from collections import defaultdict
         expected_amounts = defaultdict(float)
-        
+
         for inv in pos_invoices:
             inv_doc = frappe.get_doc("POS Invoice", inv.name)
             for pay in inv_doc.payments:
@@ -240,13 +240,13 @@ class POSClosingShift(Document):
             mop = pm.mode_of_payment
             opening_amt = flt(opening_amounts.get(mop, 0.0))
             expected_amt = flt(expected_amounts.get(mop, 0.0)) + opening_amt
-            
+
             closing_amt = 0.0
             for d in self.payment_reconciliation:
                 if d.mode_of_payment == mop:
                     closing_amt = flt(d.closing_amount)
                     break
-                    
+
             pce.append("payment_reconciliation", {
                 "mode_of_payment": mop,
                 "opening_amount": opening_amt,
