@@ -25,6 +25,16 @@ CASHIER_ROLE = "POSNext Cashier"
 CASHIER_PERMISSIONS = {"Account": "select", "Address": "read", "Customer Group": "read", "Sales Person": "read"}
 
 
+#: What a cashier must not do through the standard API. The POS opens and closes shifts with
+#: its own checks and saves them without the cashier's permissions, and never cancels.
+#: Cancelling a closing undoes the books as BOOKS_USER, and cancelling a sale is a manager's.
+CASHIER_REVOKED_RIGHTS = {
+	"POS Opening Shift": ("write", "create", "submit", "cancel", "amend"),
+	"POS Closing Shift": ("write", "create", "submit", "cancel", "amend"),
+	"POS Closing Entry": ("write", "create", "submit", "cancel", "amend"),
+	"Sales Invoice": ("cancel", "amend"),
+}
+
 #: A failed POS Invoice closing alerts this role, so it must be able to retry or cancel it.
 MANAGER_ROLE = "Nexus POS Manager"
 MANAGER_CLOSING_RIGHTS = ("write", "submit", "cancel")
@@ -63,7 +73,28 @@ def ensure_cashier_permissions():
 				update_permission_property(doctype, CASHIER_ROLE, 0, "read", 0)
 			frappe.clear_cache(doctype=doctype)
 
+	revoke_cashier_rights()
 	ensure_manager_closing_rights()
+
+
+def revoke_cashier_rights():
+	"""Take back what CASHIER_REVOKED_RIGHTS lists, wherever a site's Custom DocPerm still gives it.
+
+	The doctype files and the fixtures no longer give these rights, but a Custom DocPerm a
+	site made in the Role Permission Manager replaces the doctype's own rules and keeps them.
+	"""
+	for doctype, rights in CASHIER_REVOKED_RIGHTS.items():
+		rows = frappe.get_all(
+			"Custom DocPerm", filters={"parent": doctype, "role": CASHIER_ROLE}, fields=["name", *rights]
+		)
+		changed = False
+		for row in rows:
+			granted = {right: 0 for right in rights if row.get(right)}
+			if granted:
+				frappe.db.set_value("Custom DocPerm", row.name, granted)
+				changed = True
+		if changed:
+			frappe.clear_cache(doctype=doctype)
 
 
 def after_install():

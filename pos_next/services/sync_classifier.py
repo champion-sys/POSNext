@@ -71,7 +71,11 @@ class ReplacedByEditError(frappe.ValidationError):
 
 
 class ShiftClosedError(frappe.ValidationError):
-    """A POS Invoice reaches the books through its shift's closing, which has already run."""
+    """A sale for a shift that is closed, being closed, or gone. Its drawer was counted without it."""
+
+
+class WrongShiftError(frappe.ValidationError):
+    """A sale for a shift of another POS Profile, or, online, of another cashier."""
 
 
 class ShiftConflictError(frappe.ValidationError):

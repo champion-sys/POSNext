@@ -63,6 +63,8 @@ def _assert_invoice_write_access(doctype, pos_profile, user=None):
         user: Whose access to check. Defaults to the session user. A queued record
             also checks the colleague who uploaded it, who is not the session user then.
     """
+    from pos_next.auth import assert_device_allows_profile
+
     user = user or frappe.session.user
 
     if doctype not in ALLOWED_INVOICE_DOCTYPES:
@@ -74,11 +76,69 @@ def _assert_invoice_write_access(doctype, pos_profile, user=None):
     if not pos_profile:
         frappe.throw(_("POS Profile is required"), frappe.PermissionError)
 
+    # Every sale, shift and closing passes here. A browser has no device, and a queued
+    # record is processed without one.
+    assert_device_allows_profile(pos_profile)
+
     is_assigned = frappe.db.exists("POS Profile User", {"parent": pos_profile, "user": user})
     if not is_assigned and not frappe.has_permission("POS Profile", "write", user=user):
         frappe.throw(
             _("You do not have access to POS Profile {0}").format(pos_profile),
             frappe.PermissionError,
+        )
+
+
+def assert_shift_takes_sale(shift, pos_profile, queued=False, offline_id=None):
+    """Refuse a sale its shift's drawer cannot hold. Every invoice path passes here.
+
+    The shift must be open, not closed on a device and still finishing, and on the
+    invoice's POS Profile. Online it must be the cashier's own. A queued record may go into
+    a colleague's shift on its profile: a shared device sells into the shift it has open.
+
+    Args:
+        shift: POS Opening Shift name the invoice names
+        pos_profile: The invoice's POS Profile
+        queued: The sale already happened offline. Only the sync queue passes this.
+        offline_id: The queued record. The close it is part of does not refuse it.
+    """
+    from pos_next.services.sync_classifier import ShiftClosedError, WrongShiftError
+    from pos_next.services.sync_entities import has_pending_close
+
+    # A queued record can be moved to an open shift, and the manager needs to be told how
+    fix = (" " + _("Use Change Shift under Fix Record to move it to an open shift.")) if queued else ""
+
+    found = shift and frappe.db.get_value(
+        "POS Opening Shift", shift, ["status", "docstatus", "pos_profile", "user"], as_dict=True
+    )
+    if not found:
+        frappe.throw(_("Shift {0} does not exist.").format(shift or "-") + fix, ShiftClosedError)
+
+    if found.docstatus != 1 or found.status != "Open":
+        frappe.throw(
+            _("Shift {0} is {1}, so its drawer was counted without this sale.").format(
+                shift, _(found.status or "Draft")
+            )
+            + fix,
+            ShiftClosedError,
+        )
+
+    if has_pending_close(shift, offline_id if queued else None):
+        frappe.throw(
+            _("Shift {0} was closed on a device and is being finished, so it takes no more sales.").format(shift)
+            + fix,
+            ShiftClosedError,
+        )
+
+    if found.pos_profile != pos_profile:
+        frappe.throw(
+            _("Shift {0} is on POS Profile {1}, not {2}.").format(shift, found.pos_profile, pos_profile) + fix,
+            WrongShiftError,
+        )
+
+    if not queued and found.user != frappe.session.user:
+        frappe.throw(
+            _("Shift {0} belongs to {1}. Sell into your own shift.").format(shift, found.user),
+            WrongShiftError,
         )
 
 
@@ -818,6 +878,12 @@ def save_invoice_draft(data, queued=False):
             invoice_doc.update(data)
         else:
             invoice_doc = frappe.get_doc(data)
+
+        # The queue checks a record before it gets here, knowing which record it is
+        if not queued:
+            assert_shift_takes_sale(
+                invoice_doc.get("posa_pos_opening_shift"), pos_profile or invoice_doc.get("pos_profile")
+            )
 
         pos_profile_doc = None
         if pos_profile:

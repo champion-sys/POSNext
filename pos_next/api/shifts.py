@@ -133,6 +133,17 @@ def create_opening_shift(pos_profile, company, balance_details):
 	return data
 
 
+def lock_profile_for_opening(pos_profile):
+	"""Serialise the openings of shifts on a POS Profile, until this transaction ends.
+
+	The lock alone is not enough: a plain read sees the snapshot the transaction began
+	with, which a shift opened while it waited is not in. The check after it must be a
+	locking read, as POSOpeningShift.validate_no_other_active_shift does.
+	"""
+	if not frappe.db.get_value("POS Profile", pos_profile, "name", for_update=True):
+		frappe.throw(_("POS Profile {0} does not exist").format(pos_profile), frappe.DoesNotExistError)
+
+
 def insert_opening_shift(pos_profile, company, balance_details, opened_at=None, offline_id=None):
 	"""Open a shift for the session user. Submitting it creates what the POS Profile needs.
 
@@ -144,6 +155,9 @@ def insert_opening_shift(pos_profile, company, balance_details, opened_at=None, 
 	Returns:
 		Document: The submitted POS Opening Shift
 	"""
+	# Two openings at once would both find no shift and both open one
+	lock_profile_for_opening(pos_profile)
+
 	# Check if user already has an open shift
 	existing_shift = check_opening_shift(frappe.session.user)
 	if existing_shift:

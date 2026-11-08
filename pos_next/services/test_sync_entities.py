@@ -258,9 +258,10 @@ class TestProcess(NoSiteTestCase):
 
 
 class TestCreateInvoice(NoSiteTestCase):
+    @patch("pos_next.api.invoices.assert_shift_takes_sale")
     @patch("pos_next.api.invoices._assert_invoice_write_access")
     @patch("pos_next.services.invoice_processor.process_invoice")
-    def test_posts_against_the_real_customer_and_keeps_the_stored_payload(self, process_invoice, _access):
+    def test_posts_against_the_real_customer_and_keeps_the_stored_payload(self, process_invoice, _access, _shift):
         frappe.local.db.get_value.return_value = frappe._dict(status="Synced", sales_invoice="CUST-0001")
         process_invoice.return_value = {"name": "SINV-1", "grand_total": 10}
         stored = json.dumps({"customer": LOCAL_CUSTOMER, "customer_name": "Sara", "pos_profile": "Main"})
@@ -569,6 +570,7 @@ class TestCouponUsage(NoSiteTestCase):
             patch(f"{processor}.frappe.get_doc", return_value=invoice_doc),
             patch(f"{processor}.save_invoice_draft", return_value={"name": "SINV-1"}),
             patch(f"{processor}._assert_invoice_write_access"),
+            patch(f"{processor}.assert_shift_takes_sale"),
             patch(f"{processor}._set_payment_accounts"),
             patch(f"{processor}._auto_set_return_batches"),
             patch(f"{processor}._validate_stock_on_invoice"),
@@ -684,9 +686,10 @@ class TestQueuedCoupons(NoSiteTestCase):
 
         self.assertNotIn("queued", process_invoice.call_args.kwargs)
 
+    @patch("pos_next.api.invoices.assert_shift_takes_sale")
     @patch("pos_next.api.invoices._assert_invoice_write_access")
     @patch("pos_next.services.invoice_processor.process_invoice")
-    def test_the_inbox_is_what_says_a_sale_is_queued(self, process_invoice, _access):
+    def test_the_inbox_is_what_says_a_sale_is_queued(self, process_invoice, _access, _shift):
         process_invoice.return_value = {"name": "SINV-1", "grand_total": 10}
 
         sync_inbox._create_invoice(_row(payload=json.dumps({"pos_profile": "Main"})))
@@ -821,10 +824,11 @@ class TestQueuedReturns(NoSiteTestCase):
         payload = self._align({"return_against": "SINV-1", "customer": "CUST-OLD", "items": []})
         self.assertEqual(payload["customer"], "CUST-0001")
 
+    @patch("pos_next.api.invoices.assert_shift_takes_sale")
     @patch("pos_next.api.invoices._assert_invoice_write_access")
     @patch("pos_next.services.invoice_processor.process_invoice")
     @patch("pos_next.services.sync_entities.align_return")
-    def test_a_return_waits_for_the_real_name_of_its_invoice(self, align_return, process_invoice, _access):
+    def test_a_return_waits_for_the_real_name_of_its_invoice(self, align_return, process_invoice, _access, _shift):
         frappe.local.db.get_value.return_value = frappe._dict(status="Synced", sales_invoice="SINV-9")
         process_invoice.return_value = {"name": "SINV-10", "grand_total": -10}
         stored = json.dumps({"is_return": 1, "return_against": LOCAL_INVOICE, "pos_profile": "Main"})
@@ -1095,13 +1099,26 @@ class TestCloseShift(NoSiteTestCase):
 
 
 class TestPendingClose(NoSiteTestCase):
-    def test_looks_for_an_unfinished_close(self):
-        with patch("pos_next.services.sync_entities.frappe.get_all", return_value=[None]) as get_all:
-            self.assertTrue(sync_entities.has_pending_close("POSA-OS-1"))
+    def _pending(self, closes, waited_for_by=None):
+        rows = [frappe._dict(error_code=code, depends_on=depends_on) for code, depends_on in closes]
+        with patch("pos_next.services.sync_entities.frappe.get_all", return_value=rows) as self.get_all:
+            return sync_entities.has_pending_close("POSA-OS-1", waited_for_by)
 
-        filters = get_all.call_args.kwargs["filters"]
+    def test_looks_for_an_unfinished_close(self):
+        self.assertTrue(self._pending([(None, "")]))
+
+        filters = self.get_all.call_args.kwargs["filters"]
         self.assertEqual(filters["entity"], "shift_close")
         self.assertEqual(filters["status"], ["not in", sync_entities.FINAL_STATES])
+
+    def test_a_close_that_can_never_finish_does_not_count(self):
+        self.assertFalse(self._pending([("NotShiftHolderError", "")]))
+
+    def test_a_close_does_not_refuse_the_sales_it_waits_for(self):
+        self.assertFalse(self._pending([(None, "pos_offline_a\npos_offline_b")], "pos_offline_b"))
+
+    def test_a_close_refuses_a_sale_it_did_not_count(self):
+        self.assertTrue(self._pending([(None, "pos_offline_a\npos_offline_b")], "pos_offline_c"))
 
     @patch("pos_next.api.shifts.has_pending_close", return_value=True)
     def test_a_shift_closing_on_the_server_cannot_be_sold_into(self, _pending):
@@ -1143,9 +1160,10 @@ class TestClosingValidation(NoSiteTestCase):
 
 class TestSaveInvoiceDraft(NoSiteTestCase):
     @patch("pos_next.api.invoices.frappe.log_error")
+    @patch("pos_next.api.invoices.assert_shift_takes_sale")
     @patch("pos_next.api.invoices._assert_invoice_write_access")
     @patch("pos_next.api.invoices.frappe.get_doc")
-    def test_never_makes_a_customer_out_of_a_local_name(self, get_doc, _access, _log_error):
+    def test_never_makes_a_customer_out_of_a_local_name(self, get_doc, _access, _shift, _log_error):
         invoice = frappe._dict(customer=LOCAL_CUSTOMER, doctype="Sales Invoice")
         get_doc.return_value = invoice
 

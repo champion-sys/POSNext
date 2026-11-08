@@ -61,6 +61,7 @@ class ShiftInbox(test_sync_flow.FakeInbox):
     def __init__(self):
         super().__init__()
         self.opening_shifts = {}
+        self.locked_profiles = []
         self.settings = {"allow_offline_shift_open": 1, "invoice_type": "Sales Invoice"}
 
     def _find_shift(self, filters):
@@ -72,6 +73,10 @@ class ShiftInbox(test_sync_flow.FakeInbox):
     def get_value(self, doctype, filters=None, fieldname="name", as_dict=False, **kwargs):
         if doctype == "POS Settings":
             return frappe._dict(self.settings)
+        if doctype == "POS Profile":
+            # The row an opening locks
+            self.locked_profiles.append((filters, kwargs.get("for_update")))
+            return filters
         if doctype == "POS Opening Shift":
             found = self._find_shift(filters)
             if not found:
@@ -170,6 +175,18 @@ class ShiftFlow(test_sync_flow.Flow):
 
 
 class TestTheShiftReachesTheServer(ShiftFlow):
+    def test_the_opening_locks_its_profile_before_it_looks_for_a_shift(self):
+        """Two openings at once would otherwise both find none and both open one."""
+        locked_when_checked = []
+
+        def check(_user):
+            locked_when_checked.append(list(self.inbox.locked_profiles))
+
+        with patch("pos_next.api.shifts.check_opening_shift", side_effect=check):
+            sync_inbox.process(self._open())
+
+        self.assertEqual(locked_when_checked, [[("Main", True)]])
+
     def test_it_keeps_the_time_and_amounts_of_the_device(self):
         sync_inbox.process(self._open())
 
@@ -669,7 +686,10 @@ class TestAFixReplacesWhatTheRecordWaitedFor(ShiftFlow):
         self.assertEqual(self.process_invoice.call_args.args[0]["posa_pos_opening_shift"], "POSA-OS-OPEN")
 
     def test_change_customer_rescues_a_sale_whose_customer_never_came(self):
-        name = self._stuck({"pos_profile": "Main", "customer": test_sync_flow.LOCAL_CUSTOMER})
+        self._add_shift("POSA-OS-OPEN")
+        name = self._stuck(
+            {"pos_profile": "Main", "posa_pos_opening_shift": "POSA-OS-OPEN", "customer": test_sync_flow.LOCAL_CUSTOMER}
+        )
 
         sync_inbox.apply_fix(name, "customer", {"customer": "Walk-in"})
         self._reprocess(name)
@@ -897,16 +917,23 @@ class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
         shift.takes_pos_invoices.return_value = pos_invoices
         return shift
 
+    def _answers(self, shift=None, entry=None):
+        found = {"POS Profile": "Main", "POS Opening Shift": shift, "POS Opening Entry": entry}
+        frappe.local.db.get_value.side_effect = lambda doctype, *_args, **_kwargs: found[doctype]
+
+    def _calls(self, doctype):
+        return [call for call in frappe.local.db.get_value.call_args_list if call.args[0] == doctype]
+
     def _shift_query(self):
-        return frappe.local.db.get_value.call_args_list[0].args[1]
+        return self._calls("POS Opening Shift")[0].args[1]
 
     def test_the_cashiers_own_shift_on_the_profile_gets_the_stable_code(self):
-        frappe.local.db.get_value.return_value = frappe._dict(name="POSA-OS-1", user=CASHIER)
+        self._answers(shift=frappe._dict(name="POSA-OS-1", user=CASHIER))
         with patch("frappe.utils.get_fullname", return_value="Cashier"), self.assertRaises(ShiftConflictError):
             POSOpeningShift.validate_no_other_active_shift(self._shift())
 
     def test_a_colleagues_shift_on_the_profile_does_not_stand_in_the_way(self):
-        frappe.local.db.get_value.return_value = None
+        self._answers()
 
         POSOpeningShift.validate_no_other_active_shift(self._shift())
 
@@ -914,14 +941,25 @@ class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
         self.assertEqual(self._shift_query()["pos_profile"], "Main")
 
     def test_a_shift_for_sales_invoices_never_asks_about_the_standard_entry(self):
-        frappe.local.db.get_value.return_value = None
+        self._answers()
 
         POSOpeningShift.validate_no_other_active_shift(self._shift())
 
-        self.assertEqual(frappe.local.db.get_value.call_count, 1)
+        self.assertEqual(self._calls("POS Opening Entry"), [])
+
+    def test_two_openings_at_once_cannot_both_find_no_shift(self):
+        """The profile row is locked first, and the shift is read past the snapshot."""
+        self._answers()
+
+        POSOpeningShift.validate_no_other_active_shift(self._shift())
+
+        doctypes = [call.args[0] for call in frappe.local.db.get_value.call_args_list]
+        self.assertLess(doctypes.index("POS Profile"), doctypes.index("POS Opening Shift"))
+        self.assertTrue(self._calls("POS Profile")[0].kwargs.get("for_update"))
+        self.assertTrue(self._calls("POS Opening Shift")[0].kwargs.get("for_update"))
 
     def test_a_pos_invoice_profile_keeps_one_shift_for_everyone(self):
-        frappe.local.db.get_value.return_value = frappe._dict(name="POSA-OS-1", user=COLLEAGUE)
+        self._answers(shift=frappe._dict(name="POSA-OS-1", user=COLLEAGUE))
         with patch("frappe.utils.get_fullname", return_value="Colleague"), self.assertRaises(ShiftConflictError):
             POSOpeningShift.validate_no_other_active_shift(self._shift(pos_invoices=True))
 
@@ -929,7 +967,7 @@ class TestRefusalCodes(test_sync_entities.NoSiteTestCase):
 
     def test_an_open_standard_entry_gets_the_stable_code(self):
         entry = frappe._dict(name="POE-1", user="other@example.com", period_start_date=datetime(2026, 11, 7, 8))
-        frappe.local.db.get_value.side_effect = [None, entry]
+        self._answers(entry=entry)
         shift = self._shift(pos_invoices=True)
         shift.is_blocked_by_opening_entry.return_value = True
 

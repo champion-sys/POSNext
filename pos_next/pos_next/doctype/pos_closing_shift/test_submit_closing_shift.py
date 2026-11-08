@@ -49,11 +49,15 @@ class TestSubmitClosingShift(unittest.TestCase):
     def setUp(self):
         frappe.local.flags = frappe._dict()
         frappe.local.message_log = []
+        frappe.local.session = frappe._dict(user="lina@example.com")
+        self.addCleanup(setattr, frappe.local, "session", None)
         self.write_access = patch("pos_next.api.invoices._assert_invoice_write_access")
         self.may_close = patch("pos_next.api.shifts.assert_may_close_shift")
         self.exists = patch("frappe.db", Mock(exists=Mock(return_value=True)))
-        self.opening = patch("frappe.get_doc", return_value=Mock(pos_profile="Main"))
+        self.opening = patch("frappe.get_doc", return_value=Mock(pos_profile="Main", user="lina@example.com"))
         self.save = patch.object(pos_closing_shift, "save_closing_shift", return_value="CLOSE-1")
+        patch.object(pos_closing_shift, "build_closing_shift", return_value={"payment_reconciliation": []}).start()
+        self.manager = patch.object(pos_closing_shift, "is_pos_manager", return_value=False).start()
 
         self.assert_write_access = self.write_access.start()
         self.assert_may_close = self.may_close.start()
@@ -105,6 +109,20 @@ class TestSubmitClosingShift(unittest.TestCase):
         self.assertEqual(pos_closing_shift.submit_closing_shift(closing()), "CLOSE-1")
         self.saved.assert_called_once()
 
+    def test_a_colleague_on_the_profile_cannot_close_the_shift(self):
+        self.get_doc.return_value.user = "sara@example.com"
+
+        with self.assertRaises(frappe.PermissionError):
+            pos_closing_shift.submit_closing_shift(closing())
+
+        self.saved.assert_not_called()
+
+    def test_a_manager_closes_a_cashiers_shift(self):
+        self.get_doc.return_value.user = "sara@example.com"
+        self.manager.return_value = True
+
+        self.assertEqual(pos_closing_shift.submit_closing_shift(closing()), "CLOSE-1")
+
 
 class TestShiftReads(unittest.TestCase):
     """These run raw queries, so the rule of submit_closing_shift is all that guards them."""
@@ -120,9 +138,10 @@ class TestShiftReads(unittest.TestCase):
             "write_access": patch("pos_next.api.invoices._assert_invoice_write_access"),
             "may_close": patch("pos_next.api.shifts.assert_may_close_shift"),
             "db": patch("frappe.db", self.db),
-            "get_doc": patch("frappe.get_doc", return_value=Mock(pos_profile="Main")),
+            "get_doc": patch("frappe.get_doc", return_value=Mock(pos_profile="Main", user="lina@example.com")),
             "get_all": patch("frappe.get_all", return_value=[]),
             "translate": patch.object(pos_closing_shift, "_", lambda text: text),
+            "manager": patch.object(pos_closing_shift, "is_pos_manager", return_value=False),
         }
         self.mocks = {name: patcher.start() for name, patcher in patches.items()}
         self.addCleanup(patch.stopall)
@@ -219,7 +238,7 @@ class TestShiftReads(unittest.TestCase):
             shifts.get_closing_shift_data("POS-1")
 
     def _open_shift_of(self, user):
-        self.mocks["get_doc"].return_value = Mock(company="Co", pos_profile="Main")
+        self.mocks["get_doc"].return_value = Mock(company="Co", pos_profile="Main", user=user or "lina@example.com")
         self.db.get_all = Mock(return_value=[frappe._dict(name="POS-1", pos_profile="Main")])
         with (
             patch("pos_next.api.shifts.has_pending_close", return_value=False),
@@ -233,9 +252,21 @@ class TestShiftReads(unittest.TestCase):
         with self.assertRaises(frappe.PermissionError):
             self._open_shift_of("sara@example.com")
 
-    def test_a_colleague_on_the_profile_may_ask(self):
+    def test_a_colleague_on_the_profile_may_not_read_another_cashiers_shift(self):
+        with self.assertRaises(frappe.PermissionError):
+            self._open_shift_of("sara@example.com")
+
+    def test_a_manager_may_ask_about_a_cashiers_shift(self):
+        self.mocks["manager"].return_value = True
+
         self.assertIsNotNone(self._open_shift_of("sara@example.com"))
         self.mocks["write_access"].assert_called_once_with("Sales Invoice", "Main")
+
+    def test_a_colleagues_closing_data_stays_hidden(self):
+        self.mocks["get_doc"].return_value = Mock(pos_profile="Main", user="sara@example.com")
+
+        with self.assertRaises(frappe.PermissionError):
+            shifts.get_closing_shift_data("POS-1")
 
     def test_a_cashier_may_always_ask_about_their_own(self):
         self._refuse()

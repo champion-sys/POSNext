@@ -29,7 +29,6 @@ from pos_next.services.sync_classifier import (
     ClockSkewError,
     EditConflictError,
     ReplacedByEditError,
-    ShiftClosedError,
     TotalMismatchError,
     WaitingForDependencyError,
 )
@@ -464,24 +463,17 @@ def _is_blocked(row):
     return True
 
 
-def _assert_shift_open(row, payload, doctype):
-    """Refuse a POS Invoice its shift's closing would never collect.
+def _assert_shift_open(row, payload, pos_profile):
+    """Refuse a sale its shift can no longer take, the same way as online.
 
-    A POS Invoice writes no ledgers on submit, and the closing takes only its own shift's
-    invoices, so one submitted after it would end Synced with no GL or stock. A Sales
-    Invoice posts on submit and needs no closing.
+    Its drawer was counted without it, and a POS Invoice would never reach the books: the
+    closing takes only its own shift's invoices. A colleague's sale on a shared device goes
+    into the shift the device has open, so the shift need not be the cashier's.
     """
-    if doctype != "POS Invoice":
-        return
+    from pos_next.api.invoices import assert_shift_takes_sale
 
     shift = payload.get("posa_pos_opening_shift") or payload.get("pos_opening_shift") or row.shift
-    if not shift or frappe.db.get_value("POS Opening Shift", shift, "status") != "Open":
-        raise ShiftClosedError(
-            _(
-                "Shift {0} is closed, so this POS Invoice would never reach the books. "
-                "Use Change Shift under Fix Record to move it to an open shift."
-            ).format(shift or "-")
-        )
+    assert_shift_takes_sale(shift, pos_profile, queued=True, offline_id=row.offline_id)
 
 
 def _assert_device_clock(row):
@@ -512,7 +504,7 @@ def _create_invoice(row):
     pos_profile = payload.get("pos_profile") or row.pos_profile
     doctype = payload.get("doctype") or row.invoice_doctype or "Sales Invoice"
     payload.setdefault("doctype", doctype)
-    _assert_shift_open(row, payload, doctype)
+    _assert_shift_open(row, payload, pos_profile)
 
     from pos_next.api.invoices import _assert_invoice_write_access
 
